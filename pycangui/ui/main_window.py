@@ -15,6 +15,7 @@ from pycangui.core.hooks import Hooks
 from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.trace_view import TraceView
+from pycangui.ui.tx_view import TxView
 
 
 class MainWindow(QMainWindow):
@@ -47,6 +48,8 @@ class MainWindow(QMainWindow):
         self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
         self.canopen_view = CanopenView(self.canopen, self.hooks, self.ctx)
         self._add_dock("canopen", "CANopen", self.canopen_view, Qt.RightDockWidgetArea)
+        self.tx = TxView(self.bus, self.ctx)
+        self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
         self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
 
         self.setStatusBar(QStatusBar())

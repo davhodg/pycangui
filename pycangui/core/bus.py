@@ -123,6 +123,7 @@ class BusManager(QObject):
         if self.bus is None:
             return
         self.disconnected.emit()  # protocol stacks detach their listeners first
+        self.bus.stop_all_periodic_tasks()
         self._timer.stop()
         self.notifier.stop(timeout=1.0)
         self._drain()
@@ -147,6 +148,24 @@ class BusManager(QObject):
             self.bus.send(msg)
         except can.CanError as exc:
             self.error.emit(f"Send failed: {exc}")
+
+    def send_periodic(
+        self, can_id: int, data: bytes, period_s: float, *, extended: bool = False, fd: bool = False
+    ) -> can.broadcastmanager.CyclicSendTaskABC | None:
+        """Start a cyclic transmission; hardware-timed where the adapter supports it.
+
+        Returns the task (``task.modify_data(msg)`` / ``task.stop()``), or None
+        if not connected.  All tasks are stopped automatically on disconnect.
+        """
+        if self.bus is None:
+            self.error.emit("Not connected")
+            return None
+        msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=extended, is_fd=fd)
+        try:
+            return self.bus.send_periodic(msg, period_s)
+        except can.CanError as exc:
+            self.error.emit(f"Cyclic send failed: {exc}")
+            return None
 
     def _drain(self) -> None:
         if self._collector is None:
