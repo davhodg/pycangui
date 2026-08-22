@@ -6,7 +6,9 @@ from PySide6.QtCore import Qt
 
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
+from pycangui.core.hooks import Hooks
 from pycangui.ui.latest_model import LatestModel
+from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, TxView
 
 
@@ -18,11 +20,11 @@ def test_latest_model_one_row_per_id_with_count_and_period(app):
     m = LatestModel()
     m.append([frame(0x100, b"\x01", 0.0), frame(0x200, b"\x02", 0.01), frame(0x100, b"\x03", 0.1)])
     assert m.rowCount() == 2
-    row0 = [m.index(0, c).data() for c in range(9)]
-    assert row0[0] == "100" and row0[4] == "03" and row0[5] == "2" and row0[7] == "100.0 ms"
-    assert m.index(0, 4).data(Qt.ForegroundRole) is not None  # data changed -> highlighted
-    assert m.index(1, 4).data(Qt.ForegroundRole) is None
-    assert m.index(0, 6).data() == ""  # no rate until refreshed
+    row0 = [m.index(0, c).data() for c in range(10)]
+    assert row0[0] == "100" and row0[5] == "03" and row0[6] == "2" and row0[8] == "100.0 ms"
+    assert m.index(0, 5).data(Qt.ForegroundRole) is not None  # data changed -> highlighted
+    assert m.index(1, 5).data(Qt.ForegroundRole) is None
+    assert m.index(0, 7).data() == ""  # no rate until refreshed
 
 
 def test_latest_model_rate(app):
@@ -31,7 +33,7 @@ def test_latest_model_rate(app):
     m._rows[0].last_rate_time -= 1.0  # pretend a second has elapsed
     m.append([frame(0x100, b"", 0.1 * i) for i in range(1, 10)])  # 9 more frames
     m.refresh_rates()
-    assert m.index(0, 6).data().endswith("Hz")
+    assert m.index(0, 7).data().endswith("Hz")
     assert 8.0 <= m._rows[0].rate_hz <= 10.5
 
 
@@ -74,3 +76,28 @@ def test_tx_view_send_and_cyclic(app, tmp_path, monkeypatch):
 
     saved = ctx.settings.get("tx.messages")
     assert saved[0]["id"] == "1A3" and saved[0]["data"] == "01 02"
+
+
+def test_trace_view_kind_column_and_filter(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    view.on_frames([frame(0x185, b"", 0.0), frame(0x705, b"", 0.1), frame(0x123, b"", 0.2)])
+    kinds = [view.model.index(r, 4).data() for r in range(3)]
+    assert kinds == ["TPDO1 n5", "HB n5", ""]
+    assert view.table.model().rowCount() == 3
+    view._group_actions["PDO"].setChecked(False)
+    view._group_actions["Other"].setChecked(False)
+    assert view.table.model().rowCount() == 1  # only the heartbeat survives
+    assert view.latest_table.model().rowCount() == 1
+    assert ctx.settings.get("trace.hidden_groups") == ["Other", "PDO"]
+    view._show_all()
+    assert view.table.model().rowCount() == 3
+
+    # a user hook can relabel frames; the first word picks the group
+    hook_src = "def frame_kind(frame, *, ctx):" + chr(10)
+    hook_src += "    return 'Pump status' if frame.can_id == 0x123 else None" + chr(10)
+    (tmp_path / "hooks" / "trace.py").write_text(hook_src)
+    view.hooks.reload()
+    view.on_frames([frame(0x123, b"", 0.3)])
+    assert view.model.index(3, 4).data() == "Pump status"
