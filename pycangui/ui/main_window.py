@@ -7,10 +7,12 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QDockWidget, QMainWindow, QPlainTextEdit, QStatusBar
 
 from pycangui import APP_NAME, __version__
+from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
-from pycangui.core.demo import DemoTraffic
+from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
+from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.trace_view import TraceView
 
@@ -19,7 +21,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {__version__}")
-        self.resize(1200, 800)
+        self.resize(1400, 900)
         self.setDockNestingEnabled(True)  # full grid layouts, not just the four edges
 
         self.bus = BusManager()
@@ -30,23 +32,22 @@ class MainWindow(QMainWindow):
         self.connect_bar.connect_requested.connect(self.bus.connect_bus)
         self.connect_bar.disconnect_requested.connect(self.bus.disconnect_bus)
 
-        # --- docks -----------------------------------------------------------
-        self.trace = TraceView()
-        self._add_dock("trace", "Trace", self.trace, Qt.TopDockWidgetArea)
-
+        # --- log pane first: everything else reports into it -----------------
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
-        self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
 
-        # Placeholder pane so docking / tabbing can be tried on day one
-        placeholder = QPlainTextEdit("CANopen node browser goes here")
-        placeholder.setReadOnly(True)
-        self._add_dock("canopen", "CANopen", placeholder, Qt.RightDockWidgetArea)
-
-        # --- user context & hooks (needs the Log pane to exist) --------------
+        # --- user context, hooks, protocol managers -------------------------
         self.ctx = Context(log=self.log.appendPlainText)
         self.hooks = Hooks(self.ctx)
+        self.canopen = CanopenManager(self.bus)
+
+        # --- docks -----------------------------------------------------------
+        self.trace = TraceView()
+        self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
+        self.canopen_view = CanopenView(self.canopen, self.hooks, self.ctx)
+        self._add_dock("canopen", "CANopen", self.canopen_view, Qt.RightDockWidgetArea)
+        self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
 
         self.setStatusBar(QStatusBar())
         self._frame_count = 0
@@ -60,7 +61,7 @@ class MainWindow(QMainWindow):
         self.bus.disconnected.connect(self._on_disconnected)
         self.bus.error.connect(self._on_error)
 
-        # --- view menu & layout persistence ----------------------------------
+        # --- menus & layout persistence --------------------------------------
         view_menu = self.menuBar().addMenu("&View")
         for dock in self.findChildren(QDockWidget):
             view_menu.addAction(dock.toggleViewAction())
@@ -68,8 +69,8 @@ class MainWindow(QMainWindow):
         view_menu.addAction("Reset layout", self._reset_layout)
 
         tools_menu = self.menuBar().addMenu("&Tools")
-        self._demo: DemoTraffic | None = None
-        self._demo_action = tools_menu.addAction("Demo traffic (virtual bus)")
+        self._demo: DemoDevice | None = None
+        self._demo_action = tools_menu.addAction("Demo CANopen device (virtual bus)")
         self._demo_action.setCheckable(True)
         self._demo_action.toggled.connect(self._toggle_demo)
         tools_menu.addSeparator()
@@ -101,8 +102,9 @@ class MainWindow(QMainWindow):
         s = QSettings()
         s.setValue("geometry", self.saveGeometry())
         s.setValue("windowState", self.saveState())
-        self._demo_action.setChecked(False)  # stops and shuts down the demo bus
+        self._demo_action.setChecked(False)  # stops and shuts down the demo device
         self.bus.disconnect_bus()
+        self.canopen.shutdown()
         super().closeEvent(event)
 
     # --- slots ---------------------------------------------------------------
@@ -144,10 +146,11 @@ class MainWindow(QMainWindow):
     def _toggle_demo(self, on: bool) -> None:
         if on:
             if self.connect_bar.interface.currentText() != "virtual":
-                self.log.appendPlainText("Demo traffic only works on the virtual interface")
+                self.log.appendPlainText("The demo device only works on the virtual interface")
                 self._demo_action.setChecked(False)
                 return
-            self._demo = DemoTraffic(self.connect_bar.channel.text(), self)
+            self._demo = DemoDevice(self.connect_bar.channel.text(), self)
+            self.log.appendPlainText("Demo device started: node 5, heartbeat 500 ms, TPDO1 100 ms")
         elif self._demo is not None:
             self._demo.stop()
             self._demo = None

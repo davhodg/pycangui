@@ -45,9 +45,11 @@ def node_name(identity: NodeIdentity, *, ctx) -> str | None:
 def eds_for_node(identity: NodeIdentity, *, ctx) -> Path | str | None:
     """Which EDS / DCF file describes this node.
 
-    Return a path, or None for the default: pycangui uses the file remembered
-    for this identity (vendor : product : revision), otherwise it asks you and
-    offers to remember the answer.
+    Return a path, or None for the default, which tries in order:
+      1. the file you chose before for this identity (vendor:product:revision)
+      2. any EDS in your eds folder whose [DeviceInfo] VendorNumber and
+         ProductNumber match the node (exact RevisionNumber preferred)
+      3. asking you, with the option to remember the answer
 
     Examples:
 
