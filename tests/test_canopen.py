@@ -12,11 +12,6 @@ from pycangui.core.bus import BusManager
 from pycangui.core.demo import DemoDevice
 
 
-@pytest.fixture(scope="module")
-def app():
-    return QCoreApplication.instance() or QCoreApplication([])
-
-
 def wait_until(pred, timeout=3.0):
     deadline = time.monotonic() + timeout
     while not pred():
