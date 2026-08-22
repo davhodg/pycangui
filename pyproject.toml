@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pycangui"
+version = "0.0.1"
+description = "User-friendly CAN bus tool: trace, transmit, CANopen, UDS, J1939, XCP, Python scripting"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+authors = [{ name = "davhodg" }]
+dependencies = [
+    "PySide6>=6.7",
+    "pyqtgraph>=0.13",
+    "python-can>=4.4",
+    "canopen>=2.3",
+    "cantools>=39",
+]
+
+[project.optional-dependencies]
+j1939 = ["can-j1939"]
+uds = ["udsoncan"]
+xcp = ["pyxcp"]
+dev = ["pytest", "ruff"]
+
+[project.scripts]
+pycangui = "pycangui.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["pycangui*"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "N", "RUF"]
+ignore = [
+    "N802",   # Qt overrides must be camelCase (rowCount, closeEvent, ...)
+    "B008",   # QModelIndex() as a default argument is the standard Qt signature
+]
