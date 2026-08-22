@@ -14,6 +14,7 @@ from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
 from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.connect_bar import ConnectBar
+from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
 
@@ -51,6 +52,8 @@ class MainWindow(QMainWindow):
         self.tx = TxView(self.bus, self.ctx)
         self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
         self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
+        self.console = ConsoleView(self._console_namespace(), self.ctx)
+        self._add_dock("console", "Python", self.console, Qt.BottomDockWidgetArea)
 
         self.setStatusBar(QStatusBar())
         self._frame_count = 0
@@ -84,6 +87,21 @@ class MainWindow(QMainWindow):
         self._restore_layout()
 
     # --- helpers -------------------------------------------------------------
+    def _console_namespace(self) -> dict:
+        """What scripts and the console see.  Keep names stable: users rely on them."""
+
+        def send(can_id: int, data, ext: bool = False, fd: bool = False) -> None:
+            self.bus.send(can_id, bytes(data), extended=ext, fd=fd)
+
+        return {
+            "ctx": self.ctx,
+            "bus": self.bus,
+            "canopen": self.canopen,
+            "hooks": self.hooks,
+            "window": self,
+            "send": send,
+        }
+
     def _add_dock(self, name: str, title: str, widget, area: Qt.DockWidgetArea) -> QDockWidget:
         dock = QDockWidget(title, self)
         dock.setObjectName(name)  # saveState/restoreState identify docks by objectName

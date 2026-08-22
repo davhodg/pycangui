@@ -3,12 +3,19 @@
 A user-friendly CAN bus tool: live trace, transmit, CANopen, UDS, J1939, XCP
 and Python scripting, on any adapter supported by python-can.  Apache-2.0.
 
-## Development
+## Running
+
+Double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux / macOS).
+The first run creates a virtual environment and installs the dependencies;
+Python 3.12 or newer must be on the PATH.
+
+For development:
 
 ```
 python -m venv .venv
 .venv\Scripts\pip install -e .[dev,j1939,uds,xcp]
 .venv\Scripts\python -m pycangui
+.venv\Scripts\python -m pytest
 ```
 
 Without hardware: pick interface `virtual`, channel `vcan0`, press Connect,
@@ -24,3 +31,7 @@ functions pycangui calls at decision points (which EDS to use for a node, how
 to name it, ...) with the defaults and commented examples in place; `eds/` is
 scanned for EDS files matching a node's vendor/product; `settings.json` holds
 what the GUI remembers.  Tools > Reload hooks applies edits without a restart.
+
+The **Python** pane is a live console with the same objects the GUI uses
+(`bus`, `canopen`, `ctx`, `hooks`, `window`, `send(id, data)`); *Run script...*
+executes a `.py` file in that namespace.
