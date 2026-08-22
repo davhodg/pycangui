@@ -15,8 +15,10 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
 from pycangui.core.bus import Frame
+from pycangui.core.classify import group_of
 
-COLUMNS = ("ID", "Type", "Dir", "DLC", "Data", "Count", "Rate", "Period", "Last")
+COLUMNS = ("ID", "Kind", "Type", "Dir", "DLC", "Data", "Count", "Rate", "Period", "Last")
+ROLE_GROUP = Qt.UserRole + 1
 CHANGED_COLOUR = QColor(220, 120, 0)
 
 
@@ -58,36 +60,40 @@ class LatestModel(QAbstractTableModel):
                 case 0:
                     return f"{f.can_id:08X}" if f.extended else f"{f.can_id:03X}"
                 case 1:
-                    return ("FD" if f.fd else "CAN") + ("x" if f.extended else "")
+                    return f.kind
                 case 2:
-                    return "Rx" if f.rx else "Tx"
+                    return ("FD" if f.fd else "CAN") + ("x" if f.extended else "")
                 case 3:
-                    return str(f.dlc)
+                    return "Rx" if f.rx else "Tx"
                 case 4:
-                    return f.data.hex(" ").upper()
+                    return str(f.dlc)
                 case 5:
-                    return str(row.count)
+                    return f.data.hex(" ").upper()
                 case 6:
-                    return f"{row.rate_hz:.1f} Hz" if row.rate_hz else ""
+                    return str(row.count)
                 case 7:
-                    return f"{row.period_s * 1000:.1f} ms" if row.period_s else ""
+                    return f"{row.rate_hz:.1f} Hz" if row.rate_hz else ""
                 case 8:
+                    return f"{row.period_s * 1000:.1f} ms" if row.period_s else ""
+                case 9:
                     return f"{f.timestamp:.3f}"
-        elif role == Qt.ForegroundRole and col == 4 and row.prev_data != f.data and row.count > 1:
+        elif role == Qt.ForegroundRole and col == 5 and row.prev_data != f.data and row.count > 1:
             return CHANGED_COLOUR
+        elif role == ROLE_GROUP:
+            return group_of(f.kind)
         elif role == Qt.UserRole:  # raw value for sorting
             match col:
                 case 0:
                     return f.can_id
-                case 3:
+                case 4:
                     return f.dlc
-                case 5:
-                    return row.count
                 case 6:
-                    return row.rate_hz
+                    return row.count
                 case 7:
-                    return row.period_s
+                    return row.rate_hz
                 case 8:
+                    return row.period_s
+                case 9:
                     return f.timestamp
                 case _:
                     return self.data(index, Qt.DisplayRole)
@@ -125,7 +131,7 @@ class LatestModel(QAbstractTableModel):
                 row.last_rate_count = row.count
                 row.last_rate_time = now
         if self._rows:
-            self.dataChanged.emit(self.index(0, 6), self.index(len(self._rows) - 1, 6))
+            self.dataChanged.emit(self.index(0, 7), self.index(len(self._rows) - 1, 7))
 
     def clear(self) -> None:
         self.beginResetModel()

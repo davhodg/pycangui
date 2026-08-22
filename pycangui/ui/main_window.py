@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
         self.canopen = CanopenManager(self.bus)
 
         # --- docks -----------------------------------------------------------
-        self.trace = TraceView()
+        self.trace = TraceView(self.hooks, self.ctx)
         self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
         self.canopen_view = CanopenView(self.canopen, self.hooks, self.ctx)
         self._add_dock("canopen", "CANopen", self.canopen_view, Qt.RightDockWidgetArea)

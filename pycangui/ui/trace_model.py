@@ -11,8 +11,10 @@ from __future__ import annotations
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from pycangui.core.bus import Frame
+from pycangui.core.classify import group_of
 
-COLUMNS = ("Time", "Ch", "Dir", "ID", "Type", "DLC", "Data")
+COLUMNS = ("Time", "Ch", "Dir", "ID", "Kind", "Type", "DLC", "Data")
+ROLE_GROUP = Qt.UserRole + 1
 MAX_ROWS = 500_000
 
 
@@ -34,9 +36,11 @@ class TraceModel(QAbstractTableModel):
         return None
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+        f = self._rows[index.row()]
+        if role == ROLE_GROUP:
+            return group_of(f.kind)
         if role != Qt.DisplayRole:
             return None
-        f = self._rows[index.row()]
         match index.column():
             case 0:
                 return f"{f.timestamp:12.6f}"
@@ -47,10 +51,12 @@ class TraceModel(QAbstractTableModel):
             case 3:
                 return f"{f.can_id:08X}" if f.extended else f"{f.can_id:03X}"
             case 4:
-                return ("FD" if f.fd else "CAN") + ("x" if f.extended else "")
+                return f.kind
             case 5:
-                return str(f.dlc)
+                return ("FD" if f.fd else "CAN") + ("x" if f.extended else "")
             case 6:
+                return str(f.dlc)
+            case 7:
                 return f.data.hex(" ").upper()
         return None
 

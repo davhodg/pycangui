@@ -34,6 +34,7 @@ class Frame:
     fd: bool
     rx: bool  # True = received, False = transmitted by us
     data: bytes
+    kind: str = ""  # protocol label, filled in by the trace view (hook frame_kind)
 
     @property
     def dlc(self) -> int:
