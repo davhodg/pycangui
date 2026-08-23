@@ -1,1 +1,8 @@
 * text=auto eol=lf
+
+# Windows batch and installer scripts must keep CRLF or cmd.exe mis-parses
+# labels and goto, and the Inno/NSIS compilers reject them.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.iss text eol=crlf
+*.nsi text eol=crlf

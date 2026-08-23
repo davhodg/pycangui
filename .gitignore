@@ -6,3 +6,7 @@ dist/
 *.egg-info/
 *.spec.bak
 .pytest_cache/
+dist/
+build/work/
+THIRD-PARTY-NOTICES.txt
+build_log.txt
