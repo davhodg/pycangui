@@ -13,7 +13,9 @@ from pycangui.ui.help_menu import (
     LICENCE_FILES,
     AboutDialog,
     LicenceDialog,
+    _find,
     environment_report,
+    missing_licence_files,
 )
 
 
@@ -127,17 +129,42 @@ def test_about_shows_the_version(app, window):
     dialog.deleteLater()
 
 
-def test_the_licence_window_finds_every_file(app, window):
-    """The files are shipped beside the executable; a missing one says so."""
+def test_the_licence_window_shows_every_file(app, window):
+    """Committed files must load; a generated one must explain its absence."""
     dialog = LicenceDialog(window)
     tabs = dialog.findChild(QTabWidget)
     assert tabs.count() == len(LICENCE_FILES)
-    for index, (title, filename, _blurb) in enumerate(LICENCE_FILES):
+    for index, entry in enumerate(LICENCE_FILES):
         body = tabs.widget(index).toPlainText()
-        assert tabs.tabText(index) == title
-        assert f"{filename} was not found" not in body, f"{filename} was not located"
-        assert len(body) > 200, f"{filename} looks empty"
+        assert tabs.tabText(index) == entry.title
+        if entry.generated and _find(entry.filename) is None:
+            assert "generated when the application is built" in body
+        else:
+            assert f"{entry.filename} was not found" not in body
+            assert len(body) > 200, f"{entry.filename} looks empty"
     dialog.deleteLater()
+
+
+def test_only_a_build_is_expected_to_have_the_generated_notices(app):
+    """The rule that broke CI: THIRD-PARTY-NOTICES.txt is built, not committed.
+
+    A stale copy from an earlier local build hid this -- from a fresh checkout
+    the file is simply absent, and demanding it failed both the test suite and
+    --selftest.
+    """
+    generated = [e.filename for e in LICENCE_FILES if e.generated]
+    committed = [e.filename for e in LICENCE_FILES if not e.generated]
+    assert generated == ["THIRD-PARTY-NOTICES.txt"]
+
+    # Whatever is in the working tree, a source run never demands a built file.
+    assert not set(missing_licence_files(frozen=False)) & set(generated)
+    # ...and the committed ones are always required, and always there.
+    assert not set(missing_licence_files(frozen=False)) & set(committed)
+
+    if _find("THIRD-PARTY-NOTICES.txt") is None:
+        assert missing_licence_files(frozen=True) == generated, (
+            "a packaged build must still be required to carry it"
+        )
 
 
 def test_an_up_to_date_check_says_so(app, window, monkeypatch):

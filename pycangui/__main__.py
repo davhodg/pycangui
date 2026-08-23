@@ -57,12 +57,11 @@ def selftest() -> int:
     # build that ships them where _find cannot see them would show three empty
     # tabs, and no import check would notice.
     try:
-        from pycangui.ui.help_menu import LICENCE_FILES, _find
+        from pycangui.ui.help_menu import missing_licence_files
 
         failures += [
-            f"{filename}: not found beside the application"
-            for _title, filename, _blurb in LICENCE_FILES
-            if _find(filename) is None
+            f"{name}: not found beside the application"
+            for name in missing_licence_files(getattr(sys, "frozen", False))
         ]
     except Exception as exc:
         failures.append(f"pycangui.ui.help_menu: {exc}")
