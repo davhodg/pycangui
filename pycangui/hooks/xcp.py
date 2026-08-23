@@ -2,7 +2,7 @@
 
 Each function below is called by pycangui at a decision point.  Return a value
 to take over, or return None to let pycangui do the normal thing.  A function
-that raises is reported in the Log pane and ignored.  Tools > Reload hooks
+that raises is reported in the Event Log pane and ignored.  Tools > Reload hooks
 picks up changes without a restart.
 """
 

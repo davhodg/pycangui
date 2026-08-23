@@ -103,11 +103,11 @@ class MyIsoTp(IsoTpTransport):
 ```
 
 It then appears in the pane's engine/transport selector and the choice is
-remembered.  A backend module that fails to import is reported in the Log and
+remembered.  A backend module that fails to import is reported in the Event Log and
 skipped; the built-in keeps working.  CANopen and J1939 still call their
 libraries directly and will get the same treatment.
 
-The **Python** pane is a live console with the same objects the GUI uses
+The **Python Console** pane is a live console with the same objects the GUI uses
 (`bus`, `canopen`, `ctx`, `hooks`, `window`, `send(id, data)`); *Run script...*
 executes a `.py` file in that namespace.
 

@@ -23,5 +23,5 @@ class Context:
         self._log = log or print
 
     def log(self, message: str) -> None:
-        """Write a line to the Log pane."""
+        """Write a line to the Event Log pane."""
         self._log(message)
