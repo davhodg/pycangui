@@ -31,7 +31,7 @@ from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.j1939_view import J1939View
-from pycangui.ui.replay_view import ReplayView
+from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
@@ -42,7 +42,7 @@ from pycangui.xcp.manager import XcpManager
 # Bumped whenever the set of docks changes.  restoreState declines a state
 # saved under a different version, so an old layout is replaced by the current
 # default instead of being restored with panes missing.
-LAYOUT_VERSION = 1
+LAYOUT_VERSION = 2
 
 
 class MainWindow(QMainWindow):
@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self.record_action.setCheckable(True)
         self.record_action.setToolTip("Record the selected channel to a log file")
         self.record_action.toggled.connect(self._toggle_record)
+        self.replay = ReplayAction(self.connect_bar, self.channels, self.ctx)
 
         self.canopen = CanopenManager(self.bus, self.hooks)
         self.uds = UdsManager(self.bus, self.hooks, self.ctx)
@@ -84,7 +85,7 @@ class MainWindow(QMainWindow):
         self.signals = SignalHub()
         self.dbc = DbcDecoder()
         self.xcp = XcpManager(self.bus, self.hooks, self.signals, self.ctx)
-        self.recorder = Recorder(self.bus)  # records the selected channel
+        self.recorder = Recorder(self.channels)  # every connected channel
 
         # --- docks -----------------------------------------------------------
         self.trace = TraceView(self.hooks, self.ctx)
@@ -108,8 +109,6 @@ class MainWindow(QMainWindow):
         self.xcp_view = XcpView(self.xcp, self.ctx)
         self._add_dock("xcp", "XCP", self.xcp_view, Qt.RightDockWidgetArea)
         self.tx = TxView(self.bus, self.ctx, self.dbc, self.canopen)
-        self.replay = ReplayView(self.bus, self.ctx)
-        self._add_dock("replay", "Replay", self.replay, Qt.BottomDockWidgetArea)
         self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
         self._add_dock("log", "Event Log", self.log, Qt.BottomDockWidgetArea)
         self.console = ConsoleView(self._console_namespace(), self.ctx)
@@ -123,12 +122,9 @@ class MainWindow(QMainWindow):
         # --- wiring ----------------------------------------------------------
         self.channels.frames.connect(self.trace.on_frames)
         self.channels.frames.connect(self._decode_frames)
-        # An offline replay feeds the same consumers as the bus does
-        self.replay.frames_replayed.connect(self.trace.on_frames)
-        self.replay.frames_replayed.connect(self._decode_frames)
-        self.replay.frames_replayed.connect(self._count_frames)
         self.recorder.state.connect(self._on_record_state)
         self.recorder.error.connect(self.log.appendPlainText)
+        self.recorder.note.connect(self.log.appendPlainText)
         self.canopen.rpdos_read.connect(lambda _n: self.tx.refresh_sources())
         self.canopen.pdo_update.connect(self._on_pdo_update)
         self.channels.frames.connect(self._count_frames)

@@ -69,14 +69,21 @@ holds the display still while capture and recording carry on.  The row count
 next to the buttons reads *shown of captured*.  Select rows and press Ctrl+C
 to copy them as text.
 
-**Record** on the toolbar writes everything on the bus to a log file --
-`.blf` (Vector binary), `.asc` (Vector ASCII), `.trc` (PEAK), `.log` (candump),
-`.csv` or `.db` (SQLite); the format follows the file extension.  The
-**Replay** pane plays a log back with its original timing (0.1x to 20x, with
-looping).  With *Transmit* ticked the frames go onto the bus; with it clear
-nothing is transmitted and the frames are fed straight to the trace, the
-decoders, the signal hub and the plot -- so a colleague's recording can be
-examined with no hardware attached at all.
+**Record** and **Replay** sit together on the toolbar.  Record writes every
+connected channel to a log file -- `.blf` (Vector binary), `.asc` (Vector
+ASCII), `.trc` (PEAK), `.log` (candump), `.csv` or `.db` (SQLite); the format
+follows the file extension, and each frame is tagged with the channel it
+arrived on.  A recording is not tied to the channel you have selected, so
+switching channel, or a channel dropping, leaves it running.
+
+Replay plays a log back onto the selected channel with its original timing.
+The arrow beside the button holds the speed (0.1x to 20x), *Loop*, and the
+last few files replayed.  There is no separate offline mode: replaying onto a
+**virtual** channel feeds the trace, the decoders, the signal hub and the plot
+without touching any hardware, which is how a colleague's recording is
+examined with nothing attached -- and if nothing is connected when you press
+Replay, pycangui offers to create that virtual channel for you.  Replaying
+onto a real bus is real traffic, so it asks first.
 
 The **Transmit** pane holds one list of everything being sent, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded
