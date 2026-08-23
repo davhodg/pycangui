@@ -4,17 +4,21 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QDockWidget, QMainWindow, QPlainTextEdit, QStatusBar
+from PySide6.QtWidgets import QDockWidget, QFileDialog, QMainWindow, QPlainTextEdit, QStatusBar
 
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
+from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
+from pycangui.core.signals import SignalHub
 from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
+from pycangui.ui.plot_view import PlotView
+from pycangui.ui.signals_view import SignalsView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
 
@@ -43,10 +47,18 @@ class MainWindow(QMainWindow):
         self.ctx = Context(log=self.log.appendPlainText)
         self.hooks = Hooks(self.ctx)
         self.canopen = CanopenManager(self.bus)
+        self.signals = SignalHub()
+        self.dbc = DbcDecoder()
 
         # --- docks -----------------------------------------------------------
         self.trace = TraceView(self.hooks, self.ctx)
+        self.trace.classifiers.append(self.dbc.message_name)
         self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
+        self.signals_view = SignalsView(self.signals)
+        self._add_dock("signals", "Signals", self.signals_view, Qt.LeftDockWidgetArea)
+        self.plot = PlotView(self.signals, self.bus.now)
+        self._add_dock("plot", "Plot", self.plot, Qt.LeftDockWidgetArea)
+        self.signals_view.plot_toggled.connect(self.plot.set_plotted)
         self.canopen_view = CanopenView(self.canopen, self.hooks, self.ctx)
         self._add_dock("canopen", "CANopen", self.canopen_view, Qt.RightDockWidgetArea)
         self.tx = TxView(self.bus, self.ctx)
@@ -62,12 +74,20 @@ class MainWindow(QMainWindow):
 
         # --- wiring ----------------------------------------------------------
         self.bus.frames.connect(self.trace.on_frames)
+        self.bus.frames.connect(self._decode_frames)
+        self.canopen.pdo_update.connect(self._on_pdo_update)
         self.bus.frames.connect(self._count_frames)
         self.bus.connected.connect(self._on_connected)
         self.bus.disconnected.connect(self._on_disconnected)
         self.bus.error.connect(self._on_error)
 
         # --- menus & layout persistence --------------------------------------
+        file_menu = self.menuBar().addMenu("&File")
+        file_menu.addAction("Load DBC...", self._load_dbc_dialog)
+        file_menu.addAction("Unload all DBCs", self._unload_dbcs)
+        for path in self.ctx.settings.get("dbc.paths", []):
+            self._load_dbc(path)
+
         view_menu = self.menuBar().addMenu("&View")
         for dock in self.findChildren(QDockWidget):
             view_menu.addAction(dock.toggleViewAction())
@@ -175,6 +195,48 @@ class MainWindow(QMainWindow):
         elif self._demo is not None:
             self._demo.stop()
             self._demo = None
+
+    # --- DBC / signals -------------------------------------------------------
+    def _load_dbc_dialog(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load CAN database",
+            str(self.ctx.user_dir),
+            "CAN databases (*.dbc *.kcd *.sym *.arxml)",
+        )
+        if path and self._load_dbc(path):
+            paths = list(self.ctx.settings.get("dbc.paths", []))
+            if path not in paths:
+                self.ctx.settings.set("dbc.paths", [*paths, path])
+
+    def _load_dbc(self, path: str) -> bool:
+        try:
+            db = self.dbc.load(path)
+        except Exception as exc:  # cantools parse errors come in many types
+            self.log.appendPlainText(f"DBC load failed: {path}: {exc}")
+            return False
+        self.log.appendPlainText(f"Loaded {path}: {len(db.messages)} messages")
+        return True
+
+    def _unload_dbcs(self) -> None:
+        for path in list(self.dbc.databases):
+            self.dbc.unload(path)
+        self.ctx.settings.set("dbc.paths", [])
+        self.log.appendPlainText("DBC databases unloaded")
+
+    @Slot(list)
+    def _decode_frames(self, frames: list) -> None:
+        if not self.dbc.loaded:
+            return
+        for f in frames:
+            decoded = self.dbc.decode(f)
+            if decoded is not None:
+                msg, values = decoded
+                self.signals.push_many(f"DBC {msg.name}", f.timestamp, values, self.dbc.units(msg))
+
+    @Slot(int, str, dict)
+    def _on_pdo_update(self, node_id: int, pdo_name: str, values: dict) -> None:
+        self.signals.push_many(f"CANopen node {node_id} {pdo_name}", self.bus.now(), values)
 
     @Slot(list)
     def _count_frames(self, frames: list) -> None:

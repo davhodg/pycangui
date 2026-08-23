@@ -11,7 +11,6 @@ from __future__ import annotations
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from pycangui.core.bus import Frame
-from pycangui.core.classify import group_of
 
 COLUMNS = ("Time", "Ch", "Dir", "ID", "Kind", "Type", "DLC", "Data")
 ROLE_GROUP = Qt.UserRole + 1
@@ -38,7 +37,7 @@ class TraceModel(QAbstractTableModel):
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
         f = self._rows[index.row()]
         if role == ROLE_GROUP:
-            return group_of(f.kind)
+            return f.group
         if role != Qt.DisplayRole:
             return None
         match index.column():

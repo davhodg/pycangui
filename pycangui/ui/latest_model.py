@@ -15,7 +15,6 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
 from pycangui.core.bus import Frame
-from pycangui.core.classify import group_of
 
 COLUMNS = ("ID", "Kind", "Type", "Dir", "DLC", "Data", "Count", "Rate", "Period", "Last")
 ROLE_GROUP = Qt.UserRole + 1
@@ -80,7 +79,7 @@ class LatestModel(QAbstractTableModel):
         elif role == Qt.ForegroundRole and col == 5 and row.prev_data != f.data and row.count > 1:
             return CHANGED_COLOUR
         elif role == ROLE_GROUP:
-            return group_of(f.kind)
+            return f.group
         elif role == Qt.UserRole:  # raw value for sorting
             match col:
                 case 0:

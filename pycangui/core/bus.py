@@ -35,6 +35,7 @@ class Frame:
     rx: bool  # True = received, False = transmitted by us
     data: bytes
     kind: str = ""  # protocol label, filled in by the trace view (hook frame_kind)
+    group: str = "Other"  # filter group, from the CAN id (see core.classify)
 
     @property
     def dlc(self) -> int:
@@ -94,7 +95,12 @@ class BusManager(QObject):
         self.bus: can.BusABC | None = None
         self.notifier: can.Notifier | None = None
         self._collector: _Collector | None = None
+        self._t0 = time.monotonic()
         self._timer = QTimer(self, interval=self.DRAIN_PERIOD_MS, timeout=self._drain)
+
+    def now(self) -> float:
+        """Seconds since connect: the clock used for Frame.timestamp and signals."""
+        return time.monotonic() - self._t0
 
     @property
     def is_connected(self) -> bool:
@@ -113,7 +119,8 @@ class BusManager(QObject):
         except Exception as exc:  # python-can raises a zoo of exception types
             self.error.emit(f"Connect failed: {exc}")
             return
-        self._collector = _Collector(channel, time.monotonic())
+        self._t0 = time.monotonic()
+        self._collector = _Collector(channel, self._t0)
         self.notifier = can.Notifier(self.bus, [self._collector], timeout=0.02)
         self._timer.start()
         fd_text = " FD" if fd else ""
