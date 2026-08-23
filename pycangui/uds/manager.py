@@ -135,8 +135,12 @@ class UdsManager(QObject):
             self.opened.emit(False)
 
     def shutdown(self) -> None:
-        self.close()
+        self.close()  # stops the ISO-TP threads before the bus disappears
         self._worker.stop()
+        try:
+            self._bus.disconnected.disconnect(self.close)
+        except (RuntimeError, TypeError):
+            pass
 
     # --- backend ---------------------------------------------------------------
     def backends(self) -> list[str]:

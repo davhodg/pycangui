@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.backends import BACKENDS
-from pycangui.core.bus import BusManager
+from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
@@ -48,17 +48,11 @@ class MainWindow(QMainWindow):
         self.resize(1400, 900)
         self.setDockNestingEnabled(True)  # full grid layouts, not just the four edges
 
-        self.bus = BusManager()
-
-        # --- toolbar ---------------------------------------------------------
-        self.connect_bar = ConnectBar()
-        self.addToolBar(self.connect_bar)
-        self.connect_bar.connect_requested.connect(self.bus.connect_bus)
-        self.connect_bar.disconnect_requested.connect(self.bus.disconnect_bus)
-        self.record_action = self.connect_bar.addAction("Record")
-        self.record_action.setCheckable(True)
-        self.record_action.setToolTip("Record everything on the bus to a log file")
-        self.record_action.toggled.connect(self._toggle_record)
+        #: Every channel.  ``self.bus`` is whichever one is selected, wearing a
+        #: single bus's interface, so the protocol stacks need not know about
+        #: channels at all.
+        self.channels = Channels()
+        self.bus = ActiveBus(self.channels)
 
         # --- log pane first: everything else reports into it -----------------
         self.log = QPlainTextEdit()
@@ -69,13 +63,24 @@ class MainWindow(QMainWindow):
         self.ctx = Context(log=self.log.appendPlainText)
         self.hooks = Hooks(self.ctx)
         BACKENDS.load_user_backends(self.ctx.backends_dir, self.log.appendPlainText)
+
+        # --- toolbar ---------------------------------------------------------
+        self.connect_bar = ConnectBar(self.channels, self.ctx)
+        self.addToolBar(self.connect_bar)
+        self.connect_bar.connect_requested.connect(self._connect_active)
+        self.connect_bar.disconnect_requested.connect(self._disconnect_active)
+        self.record_action = self.connect_bar.addAction("Record")
+        self.record_action.setCheckable(True)
+        self.record_action.setToolTip("Record the selected channel to a log file")
+        self.record_action.toggled.connect(self._toggle_record)
+
         self.canopen = CanopenManager(self.bus, self.hooks)
         self.uds = UdsManager(self.bus, self.hooks, self.ctx)
         self.j1939 = J1939Manager(self.bus, self.hooks)
         self.signals = SignalHub()
         self.dbc = DbcDecoder()
         self.xcp = XcpManager(self.bus, self.hooks, self.signals, self.ctx)
-        self.recorder = Recorder(self.bus)
+        self.recorder = Recorder(self.bus)  # records the selected channel
 
         # --- docks -----------------------------------------------------------
         self.trace = TraceView(self.hooks, self.ctx)
@@ -111,8 +116,8 @@ class MainWindow(QMainWindow):
         self._status_timer.start()
 
         # --- wiring ----------------------------------------------------------
-        self.bus.frames.connect(self.trace.on_frames)
-        self.bus.frames.connect(self._decode_frames)
+        self.channels.frames.connect(self.trace.on_frames)
+        self.channels.frames.connect(self._decode_frames)
         # An offline replay feeds the same consumers as the bus does
         self.replay.frames_replayed.connect(self.trace.on_frames)
         self.replay.frames_replayed.connect(self._decode_frames)
@@ -121,10 +126,9 @@ class MainWindow(QMainWindow):
         self.recorder.error.connect(self.log.appendPlainText)
         self.canopen.rpdos_read.connect(lambda _n: self.tx.refresh_sources())
         self.canopen.pdo_update.connect(self._on_pdo_update)
-        self.bus.frames.connect(self._count_frames)
-        self.bus.connected.connect(self._on_connected)
-        self.bus.disconnected.connect(self._on_disconnected)
-        self.bus.error.connect(self._on_error)
+        self.channels.frames.connect(self._count_frames)
+        self.channels.state_changed.connect(self._on_channel_state)
+        self.channels.error.connect(self._on_error)
 
         # --- menus & layout persistence --------------------------------------
         file_menu = self.menuBar().addMenu("&File")
@@ -166,7 +170,8 @@ class MainWindow(QMainWindow):
 
         return {
             "ctx": self.ctx,
-            "bus": self.bus,
+            "bus": self.bus,  # the selected channel
+            "channels": self.channels,
             "canopen": self.canopen,
             "uds": self.uds,
             "j1939": self.j1939,
@@ -207,7 +212,7 @@ class MainWindow(QMainWindow):
         self.replay.stop()
         self.recorder.stop()
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
-        self.bus.disconnect_bus()
+        self.channels.shutdown()
         self.canopen.shutdown()
         self.uds.shutdown()
         self.j1939.shutdown()
@@ -216,18 +221,7 @@ class MainWindow(QMainWindow):
 
     # --- slots ---------------------------------------------------------------
     @Slot(str)
-    def _on_connected(self, desc: str) -> None:
-        self.connect_bar.set_connected(True)
-        self.log.appendPlainText(f"Connected: {desc}")
-
-    @Slot()
-    def _on_disconnected(self) -> None:
-        self.connect_bar.set_connected(False)
-        self.log.appendPlainText("Disconnected")
-
-    @Slot(str)
     def _on_error(self, text: str) -> None:
-        self.connect_bar.set_connected(self.bus.is_connected)
         self.log.appendPlainText(f"ERROR: {text}")
 
     def _open_hooks_folder(self) -> None:
@@ -264,6 +258,29 @@ class MainWindow(QMainWindow):
         elif self._demo is not None:
             self._demo.stop()
             self._demo = None
+
+    # --- channels ------------------------------------------------------------
+    @Slot(str, str, int, bool)
+    def _connect_active(self, interface: str, channel: str, bitrate: int, fd: bool) -> None:
+        bus = self.channels.active_bus()
+        if bus is None:
+            self.log.appendPlainText("No channel selected")
+            return
+        bus.connect_bus(interface, channel, bitrate, fd)
+
+    @Slot()
+    def _disconnect_active(self) -> None:
+        bus = self.channels.active_bus()
+        if bus is not None:
+            bus.disconnect_bus()
+
+    @Slot(str, bool)
+    def _on_channel_state(self, name: str, connected: bool) -> None:
+        bus = self.channels.get(name)
+        if connected and bus is not None:
+            self.log.appendPlainText(f"{name} connected: {bus.description}")
+        else:
+            self.log.appendPlainText(f"{name} disconnected")
 
     # --- recording -----------------------------------------------------------
     @Slot(bool)
@@ -335,8 +352,12 @@ class MainWindow(QMainWindow):
         self._frame_count += len(frames)
 
     def _update_status(self) -> None:
-        state = "connected" if self.bus.is_connected else "disconnected"
-        extra = ""
+        parts = []
+        for name in self.channels.names():
+            bus = self.channels.get(name)
+            mark = "*" if name == self.channels.active else ""  # the protocol panes' channel
+            parts.append(f"{mark}{name}: {'up' if bus and bus.is_connected else 'down'}")
         if self.recorder.is_recording:
-            extra = f" | recording {self.recorder.path.name} ({self.recorder.elapsed:.0f} s)"
-        self.statusBar().showMessage(f"{state} | frames: {self._frame_count}{extra}")
+            parts.append(f"recording {self.recorder.path.name} ({self.recorder.elapsed:.0f} s)")
+        parts.append(f"frames: {self._frame_count}")
+        self.statusBar().showMessage("  |  ".join(parts))
