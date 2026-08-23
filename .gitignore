@@ -1,12 +1,15 @@
 .venv/
 __pycache__/
 *.pyc
-build/
-dist/
 *.egg-info/
-*.spec.bak
 .pytest_cache/
+.ruff_cache/
+
+# Build output.  build/ holds the packaging *sources* and is tracked; only what
+# the build writes into it is ignored.
 dist/
 build/work/
-THIRD-PARTY-NOTICES.txt
 build_log.txt
+
+# Regenerated from the installed package metadata by build/notices.py
+THIRD-PARTY-NOTICES.txt
