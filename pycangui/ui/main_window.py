@@ -31,14 +31,18 @@ from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.j1939_view import J1939View
-from pycangui.ui.plot_view import PlotView
 from pycangui.ui.replay_view import ReplayView
-from pycangui.ui.signals_view import SignalsView
+from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
 from pycangui.ui.uds_view import UdsView
 from pycangui.ui.xcp_view import XcpView
 from pycangui.xcp.manager import XcpManager
+
+# Bumped whenever the set of docks changes.  restoreState declines a state
+# saved under a different version, so an old layout is replaced by the current
+# default instead of being restored with panes missing.
+LAYOUT_VERSION = 1
 
 
 class MainWindow(QMainWindow):
@@ -89,11 +93,12 @@ class MainWindow(QMainWindow):
         self.trace.classifiers.append(self.j1939.classify)
         self.trace.classifiers.append(self.xcp.classify)
         self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
-        self.signals_view = SignalsView(self.signals)
-        self._add_dock("signals", "Signals", self.signals_view, Qt.LeftDockWidgetArea)
-        self.plot = PlotView(self.signals, self.bus.now)
-        self._add_dock("plot", "Plot", self.plot, Qt.LeftDockWidgetArea)
-        self.signals_view.plot_toggled.connect(self.plot.set_plotted)
+        self.scope = ScopeView(self.signals, self.bus.now)
+        # The two halves stay reachable by name: the Python console and the
+        # docs refer to window.signals_view and window.plot.
+        self.signals_view = self.scope.signals_view
+        self.plot = self.scope.plot
+        self._add_dock("scope", "Signals and Plot", self.scope, Qt.LeftDockWidgetArea)
         self.canopen_view = CanopenView(self.canopen, self.hooks, self.ctx)
         self._add_dock("canopen", "CANopen", self.canopen_view, Qt.RightDockWidgetArea)
         self.uds_view = UdsView(self.uds, self.ctx)
@@ -158,7 +163,7 @@ class MainWindow(QMainWindow):
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
         tools_menu.addAction("Reload hooks", self._reload_hooks)
         tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
-        self._default_state = self.saveState()
+        self._default_state = self.saveState(LAYOUT_VERSION)
         self._restore_layout()
 
     # --- helpers -------------------------------------------------------------
@@ -200,15 +205,17 @@ class MainWindow(QMainWindow):
         if (geo := s.value("geometry")) is not None:
             self.restoreGeometry(geo)
         if (state := s.value("windowState")) is not None:
-            self.restoreState(state)
+            self.restoreState(state, LAYOUT_VERSION)
+        self.scope.restore_state(s.value("scopeSplitter"))
 
     def _reset_layout(self) -> None:
-        self.restoreState(self._default_state)
+        self.restoreState(self._default_state, LAYOUT_VERSION)
 
     def closeEvent(self, event) -> None:
         s = QSettings()
         s.setValue("geometry", self.saveGeometry())
-        s.setValue("windowState", self.saveState())
+        s.setValue("windowState", self.saveState(LAYOUT_VERSION))
+        s.setValue("scopeSplitter", self.scope.save_state())
         self.replay.stop()
         self.recorder.stop()
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
