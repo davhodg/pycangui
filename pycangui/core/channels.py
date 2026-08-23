@@ -212,6 +212,14 @@ class ActiveBus(QObject):
     def channel_name(self) -> str:
         return self._bound.channel_name if self._bound else ""
 
+    @property
+    def interface(self) -> str:
+        return self._bound.interface if self._bound else ""
+
+    @property
+    def description(self) -> str:
+        return self._bound.description if self._bound else ""
+
     def now(self) -> float:
         return self._bound.now() if self._bound else 0.0
 

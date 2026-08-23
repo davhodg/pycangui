@@ -69,6 +69,14 @@ holds the display still while capture and recording carry on.  The row count
 next to the buttons reads *shown of captured*.  Select rows and press Ctrl+C
 to copy them as text.
 
+pycangui asks before it can disturb equipment that is not its own, once a
+session for each: joining a **real bus** (naming the bitrate, because a
+controller at the wrong one cannot read a frame and signals an error on every
+one it sees, which can drive the working nodes off the bus), **transmitting**
+onto one, and **replaying** a log onto one.  A `virtual` channel never asks --
+nothing leaves pycangui.  Change the bitrate and the connect question comes
+back, since getting it wrong is what the question is for.
+
 **Record** and **Replay** sit together on the toolbar.  Record writes every
 connected channel to a log file -- `.blf` (Vector binary), `.asc` (Vector
 ASCII), `.trc` (PEAK), `.log` (candump), `.csv` or `.db` (SQLite); the format
