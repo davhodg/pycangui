@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff==0.16.*"]  # pinned: a new ruff must not break the build
 
 [project.scripts]
 pycangui = "pycangui.__main__:main"
@@ -35,6 +35,11 @@ include = ["pycangui*"]
 
 [tool.ruff]
 line-length = 100
+# Deliberately below requires-python.  Ruff otherwise formats to the newest
+# syntax the floor allows -- on 3.14 that means PEP 758's parenthesis-free
+# "except A, B:", which is unfamiliar and would stop the code parsing anywhere
+# older.  The style stays portable; the package still requires 3.14 to run.
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "N", "RUF"]
