@@ -10,6 +10,7 @@ from __future__ import annotations
 import platform
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 from PySide6.QtCore import QObject, Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QFont
@@ -29,15 +30,27 @@ from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Rele
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
 
-#: Shown in the Licences window, in this order.  Each is shipped beside the
-#: executable by the installer and lives at the repository root in a checkout.
+
+class LicenceFile(NamedTuple):
+    title: str
+    filename: str
+    blurb: str
+    #: True for a file the build produces rather than one kept in the
+    #: repository, so it is absent from a source checkout and required only
+    #: of a packaged application.
+    generated: bool = False
+
+
+#: Shown in the Licences window, in this order.  All three are shipped beside
+#: the executable in a build.
 LICENCE_FILES = (
-    ("Licence", "LICENSE", "pycangui is licensed under the Apache License 2.0."),
-    ("Notice", "NOTICE", "Attributions required by the licences of the libraries used."),
-    (
+    LicenceFile("Licence", "LICENSE", "pycangui is licensed under the Apache License 2.0."),
+    LicenceFile("Notice", "NOTICE", "Attributions required by the licences of the libraries used."),
+    LicenceFile(
         "Third party",
         "THIRD-PARTY-NOTICES.txt",
-        "The full licence text of every installed package, generated at build time.",
+        "The full licence text of every installed package.",
+        generated=True,
     ),
 )
 
@@ -62,23 +75,53 @@ def _find(name: str) -> Path | None:
     return None
 
 
+def licence_text(entry: LicenceFile) -> str:
+    """The contents of one licence tab, including why it might be empty."""
+    path = _find(entry.filename)
+    if path is None:
+        missing = f"{entry.filename} was not found."
+        if entry.generated:
+            # Running from a source checkout: the file is built, not committed.
+            return (
+                f"{missing}\n\nIt is generated when the application is built, from the "
+                "packages actually installed, so a source checkout does not carry one.\n\n"
+                "Run build/notices.py to produce it."
+            )
+        return missing
+    try:
+        return f"{entry.blurb}\n\n{path.read_text(encoding='utf-8')}"
+    except OSError as exc:
+        return f"{entry.filename} could not be read: {exc}"
+
+
+def missing_licence_files(frozen: bool) -> list[str]:
+    """Licence files that ought to be present but are not.
+
+    A generated file is required only of a packaged build.  A source checkout
+    has no copy -- THIRD-PARTY-NOTICES.txt is built from the packages actually
+    installed and is not committed -- which is what broke CI when this check
+    was first added, because a stale copy from an earlier build was sitting in
+    the working tree and hid it.
+    """
+    return [
+        entry.filename
+        for entry in LICENCE_FILES
+        if (frozen or not entry.generated) and _find(entry.filename) is None
+    ]
+
+
 class LicenceDialog(QDialog):
     def __init__(self, parent: QMainWindow) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"{APP_NAME} licences")
         self.resize(760, 560)
         tabs = QTabWidget()
-        for title, filename, blurb in LICENCE_FILES:
-            path = _find(filename)
-            try:
-                text = path.read_text(encoding="utf-8") if path else ""
-            except OSError as exc:
-                text = f"{filename} could not be read: {exc}"
-            view = QPlainTextEdit(f"{blurb}\n\n{text}" if text else f"{filename} was not found.")
+        for entry in LICENCE_FILES:
+            view = QPlainTextEdit(licence_text(entry))
             view.setReadOnly(True)
             view.setFont(QFont("Consolas", 9))
             view.setLineWrapMode(QPlainTextEdit.NoWrap)
-            tabs.addTab(view, title)
+            tabs.addTab(view, entry.title)
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
