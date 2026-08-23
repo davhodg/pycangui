@@ -13,7 +13,7 @@ For development:
 
 ```
 python -m venv .venv
-.venv\Scripts\pip install -e .[dev,j1939,uds,xcp]
+.venv\Scripts\pip install -e .[dev,j1939,xcp]
 .venv\Scripts\python -m pycangui
 .venv\Scripts\python -m pytest
 ```
@@ -38,6 +38,12 @@ TPDO values appear there too.  Tick *Plot* on any signal to draw it in the
 **Plot** pane (rolling window, pause, follow).  `resources/demo.dbc` matches
 the demo device.
 
+The **UDS** pane talks ISO 14229 over ISO-TP (udsoncan + can-isotp): set the
+tester/ECU ids, Open, then sessions, SecurityAccess (the seed-to-key algorithm
+is `hooks/uds.py::security_key`), tester present, DID read/write, DTC read and
+clear, routines, ECU reset and raw requests.  The demo device answers on
+0x7E0/0x7E8 with a byte-invert key.
+
 The **Python** pane is a live console with the same objects the GUI uses
 (`bus`, `canopen`, `ctx`, `hooks`, `window`, `send(id, data)`); *Run script...*
 executes a `.py` file in that namespace.
@@ -60,7 +66,8 @@ packages, as the LGPL requires.
 | [pyqtgraph](https://www.pyqtgraph.org) | Plotting | MIT |
 | [numpy](https://numpy.org) | Numeric arrays for plotting | BSD-3-Clause (with 0BSD / MIT / Zlib / CC0 parts) |
 | [can-j1939](https://github.com/juergenH87/python-can-j1939) | J1939 (optional `j1939` extra) | MIT |
-| [udsoncan](https://github.com/pylessard/python-udsoncan) | UDS client (optional `uds` extra) | MIT |
+| [udsoncan](https://github.com/pylessard/python-udsoncan) | UDS client | MIT |
+| [can-isotp](https://github.com/pylessard/python-can-isotp) | ISO-TP transport for UDS | MIT |
 | [pyxcp](https://github.com/christoph2/pyxcp) | XCP (optional `xcp` extra) | LGPL-3.0-or-later |
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets); the GPL-only Qt
