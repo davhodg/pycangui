@@ -143,6 +143,7 @@ class CanopenManager(QObject):
             self.eds_loaded.emit(
                 node_id, path, node.object_dictionary.device_information.product_name or ""
             )
+            self.load_rpdos_from_eds(node_id)
             self.subscribe_pdos(node_id)
 
         self._worker.submit(job, done)
@@ -225,8 +226,28 @@ class CanopenManager(QObject):
             if pdo_map.cob_id is not None and len(pdo_map.map)
         ]
 
+    def load_rpdos_from_eds(self, node_id: int) -> None:
+        """Take the RPDO mapping from the loaded EDS -- instant, no bus traffic.
+
+        Most nodes use the mapping their EDS declares, so this is enough to
+        transmit them; ``read_rpdo_config()`` re-reads the live mapping from
+        the node for the case where it was changed at run time.
+        """
+        node = self.node(node_id)
+        if node is None:
+            return
+        try:
+            node.rpdo.read(from_od=True)
+        except Exception as exc:  # an EDS without PDO objects, or an odd one
+            self.message.emit(f"Node {node_id}: no RPDO mapping in the EDS ({exc})")
+            return
+        count = len(self.rpdos(node_id))
+        if count:
+            self.message.emit(f"Node {node_id}: {count} RPDO(s) available to transmit")
+            self.rpdos_read.emit(node_id)
+
     def read_rpdo_config(self, node_id: int) -> None:
-        """Read a node's RPDO mapping over SDO so those PDOs can be transmitted."""
+        """Re-read a node's RPDO mapping from the node itself over SDO."""
         node = self.node(node_id)
         if node is None or not len(node.object_dictionary):
             self.message.emit(f"Node {node_id}: load an EDS first")
