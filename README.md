@@ -38,11 +38,19 @@ to name it, ...) with the defaults and commented examples in place; `eds/` is
 scanned for EDS files matching a node's vendor/product; `settings.json` holds
 what the GUI remembers.  Tools > Reload hooks applies edits without a restart.
 
+pycangui opens with three panes -- the **Trace**, the **Event Log**, and
+**Signals and Plot** -- stacked in one column.  The rest (CANopen, UDS, J1939,
+XCP, Transmit, Python Console) start hidden, because which of them you want
+depends on what you have plugged in; turn any on in the **View** menu, and
+*View > Reset layout* puts everything back.  Panes are dockable, so drag them
+where you like: the arrangement is remembered.
+
 **File > Load DBC...** decodes matching frames: the trace shows the message
-name and the **Signals** pane lists every signal with its live value.  CANopen
-TPDO values appear there too.  Tick *Plot* on any signal to draw it in the
-**Plot** pane (rolling window, pause, follow).  `resources/demo.dbc` matches
-the demo device.
+name and the **Signals and Plot** pane lists every signal with its live value.
+CANopen TPDO values appear there too.  Tick *Plot* on any signal to draw it
+alongside the list (rolling window, pause, follow); drag the splitter to give
+the plot the whole pane, or the list.  `resources/demo.dbc` matches the demo
+device.
 
 ## Channels
 

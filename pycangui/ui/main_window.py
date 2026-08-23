@@ -43,7 +43,12 @@ from pycangui.xcp.manager import XcpManager
 # Bumped whenever the set of docks changes.  restoreState declines a state
 # saved under a different version, so an old layout is replaced by the current
 # default instead of being restored with panes missing.
-LAYOUT_VERSION = 2
+LAYOUT_VERSION = 3
+
+#: Open on a first run.  Everything else is one click away in the View menu:
+#: nine panes at once is a wall, and which of the protocol panes you want
+#: depends entirely on what you have plugged in.
+DEFAULT_VISIBLE = ("trace", "log", "scope")
 
 
 class MainWindow(QMainWindow):
@@ -92,6 +97,7 @@ class MainWindow(QMainWindow):
         self.recorder = Recorder(self.channels)  # every connected channel
 
         # --- docks -----------------------------------------------------------
+        self._docks: dict[str, QDockWidget] = {}
         self.trace = TraceView(self.hooks, self.ctx)
         self.trace.classifiers.append(self.dbc.message_name)
         self.trace.classifiers.append(self.uds.classify)
@@ -117,6 +123,7 @@ class MainWindow(QMainWindow):
         self._add_dock("log", "Event Log", self.log, Qt.BottomDockWidgetArea)
         self.console = ConsoleView(self._console_namespace(), self.ctx)
         self._add_dock("console", "Python Console", self.console, Qt.BottomDockWidgetArea)
+        self._arrange_default()
 
         self.setStatusBar(QStatusBar())
         self._frame_count = 0
@@ -189,6 +196,7 @@ class MainWindow(QMainWindow):
 
     def _add_dock(self, name: str, title: str, widget, area: Qt.DockWidgetArea) -> QDockWidget:
         dock = QDockWidget(title, self)
+        self._docks[name] = dock
         dock.setObjectName(name)  # saveState/restoreState identify docks by objectName
         # Wrap in a scroll area so a pane shrunk below its natural minimum gets
         # scrollbars instead of pushing its controls off screen.
@@ -200,12 +208,37 @@ class MainWindow(QMainWindow):
         self.addDockWidget(area, dock)
         return dock
 
+    def _arrange_default(self) -> None:
+        """The layout a first run opens with: the trace, the log, and the plot.
+
+        Everything else starts hidden rather than removed -- the View menu
+        lists every pane, and showing one puts it back in the area it was
+        added to, so the protocol panes still arrive on the right.
+        """
+        trace, log, scope = (self._docks[n] for n in DEFAULT_VISIBLE)
+        # One column: what the bus is doing, what pycangui is saying about it,
+        # and the signals pulled out of it.
+        self.addDockWidget(Qt.LeftDockWidgetArea, trace)
+        self.splitDockWidget(trace, log, Qt.Vertical)
+        self.splitDockWidget(log, scope, Qt.Vertical)
+        for name, dock in self._docks.items():
+            dock.setVisible(name in DEFAULT_VISIBLE)
+        # The log only carries occasional lines, so it gets a strip.
+        self.resizeDocks([trace, log, scope], [5, 2, 4], Qt.Vertical)
+
     def _restore_layout(self) -> None:
         s = QSettings()
         if (geo := s.value("geometry")) is not None:
             self.restoreGeometry(geo)
-        if (state := s.value("windowState")) is not None:
-            self.restoreState(state, LAYOUT_VERSION)
+        state = s.value("windowState")
+        # restoreState declines a layout saved under an older LAYOUT_VERSION,
+        # which leaves the default in place -- the same as never having run.
+        if state is None or not self.restoreState(state, LAYOUT_VERSION):
+            hidden = [d.windowTitle() for n, d in self._docks.items() if n not in DEFAULT_VISIBLE]
+            self.log.appendPlainText(
+                f"Panes for {', '.join(hidden)} are hidden to start with: "
+                "turn any of them on in the View menu."
+            )
         self.scope.restore_state(s.value("scopeSplitter"))
 
     def _reset_layout(self) -> None:
