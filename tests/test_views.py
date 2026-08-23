@@ -86,7 +86,7 @@ def test_trace_view_kind_column_and_filter(app, tmp_path, monkeypatch):
     view = TraceView(Hooks(ctx), ctx)
     view.on_frames([frame(0x185, b"", 0.0), frame(0x705, b"", 0.1), frame(0x123, b"", 0.2)])
     kinds = [view.model.index(r, 4).data() for r in range(3)]
-    assert kinds == ["TPDO1 n5", "HB n5", ""]
+    assert kinds == ["TxPDO1 n5", "Heartbeat n5", ""]
     assert view.table.model().rowCount() == 3
     view._group_actions["PDO"].setChecked(False)
     view._group_actions["Other"].setChecked(False)

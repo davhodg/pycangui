@@ -25,17 +25,17 @@ GROUPS = (
 # function code (id >> 7) -> (kind prefix, group, has node id)
 _FUNCTION_CODES: dict[int, tuple[str, str, bool]] = {
     0x1: ("EMCY", "EMCY", True),
-    0x3: ("TPDO1", "PDO", True),
-    0x4: ("RPDO1", "PDO", True),
-    0x5: ("TPDO2", "PDO", True),
-    0x6: ("RPDO2", "PDO", True),
-    0x7: ("TPDO3", "PDO", True),
-    0x8: ("RPDO3", "PDO", True),
-    0x9: ("TPDO4", "PDO", True),
-    0xA: ("RPDO4", "PDO", True),
+    0x3: ("TxPDO1", "PDO", True),
+    0x4: ("RxPDO1", "PDO", True),
+    0x5: ("TxPDO2", "PDO", True),
+    0x6: ("RxPDO2", "PDO", True),
+    0x7: ("TxPDO3", "PDO", True),
+    0x8: ("RxPDO3", "PDO", True),
+    0x9: ("TxPDO4", "PDO", True),
+    0xA: ("RxPDO4", "PDO", True),
     0xB: ("SDO-T", "SDO", True),  # server -> client (0x580 + node)
     0xC: ("SDO-R", "SDO", True),  # client -> server (0x600 + node)
-    0xE: ("HB", "Heartbeat", True),  # heartbeat / boot-up / node guarding
+    0xE: ("Heartbeat", "Heartbeat", True),  # heartbeat / boot-up / node guarding
 }
 
 
@@ -77,6 +77,8 @@ def group_of(kind: str) -> str:
         ("SYNC", "SYNC/TIME"),
         ("TIME", "SYNC/TIME"),
         ("EMCY", "EMCY"),
+        ("TXPDO", "PDO"),
+        ("RXPDO", "PDO"),
         ("TPDO", "PDO"),
         ("RPDO", "PDO"),
         ("PDO", "PDO"),
