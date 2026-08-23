@@ -106,7 +106,18 @@ class CanopenManager(QObject):
         self.network = None
 
     def shutdown(self) -> None:
+        self._liveness.stop()
+        self.stop_sync()
+        self._on_bus_disconnected()
         self._worker.stop()
+        for signal, slot in (
+            (self._bus.connected, self._on_bus_connected),
+            (self._bus.disconnected, self._on_bus_disconnected),
+        ):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
 
     # --- callbacks on the Notifier thread: emit only -------------------------
     def _on_heartbeat(self, can_id: int, data: bytearray, _timestamp: float) -> None:

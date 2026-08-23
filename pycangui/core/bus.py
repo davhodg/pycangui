@@ -90,16 +90,21 @@ class BusManager(QObject):
 
     DRAIN_PERIOD_MS = 20
 
-    def __init__(self) -> None:
+    def __init__(self, channel_name: str = "CAN", clock_start: float | None = None) -> None:
         super().__init__()
         self.bus: can.BusABC | None = None
         self.notifier: can.Notifier | None = None
+        #: Shown in the trace's Ch column; distinguishes one adapter from another.
+        self.channel_name = channel_name
+        self.description = ""
         self._collector: _Collector | None = None
-        self._t0 = time.monotonic()
+        #: Channels share a clock so frames from different adapters line up.
+        self._t0 = time.monotonic() if clock_start is None else clock_start
+        self._shared_clock = clock_start is not None
         self._timer = QTimer(self, interval=self.DRAIN_PERIOD_MS, timeout=self._drain)
 
     def now(self) -> float:
-        """Seconds since connect: the clock used for Frame.timestamp and signals."""
+        """Seconds on the shared clock: what Frame.timestamp is measured against."""
         return time.monotonic() - self._t0
 
     @property
@@ -119,12 +124,14 @@ class BusManager(QObject):
         except Exception as exc:  # python-can raises a zoo of exception types
             self.error.emit(f"Connect failed: {exc}")
             return
-        self._t0 = time.monotonic()
-        self._collector = _Collector(channel, self._t0)
+        if not self._shared_clock:
+            self._t0 = time.monotonic()
+        self._collector = _Collector(self.channel_name, self._t0)
         self.notifier = can.Notifier(self.bus, [self._collector], timeout=0.02)
         self._timer.start()
         fd_text = " FD" if fd else ""
-        self.connected.emit(f"{interface}:{channel} @ {bitrate} bit/s{fd_text}")
+        self.description = f"{interface}:{channel} @ {bitrate} bit/s{fd_text}"
+        self.connected.emit(self.description)
 
     @Slot()
     def disconnect_bus(self) -> None:
@@ -137,6 +144,7 @@ class BusManager(QObject):
         self._drain()
         self.bus.shutdown()
         self.bus = self.notifier = self._collector = None
+        self.description = ""
 
     def add_listener(self, listener: can.Listener) -> None:
         """Let a protocol stack see every frame (canopen.Network etc.)."""

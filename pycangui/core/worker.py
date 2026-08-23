@@ -42,5 +42,16 @@ class Worker(QThread):
         callback(result, error)
 
     def stop(self) -> None:
+        """Finish the queue and stop delivering results.
+
+        The ``done`` connection is dropped first: a queued result arriving
+        after the owner has been torn down would be delivered to a dead
+        object, which Qt punishes with an access violation rather than an
+        exception.
+        """
+        try:
+            self.done.disconnect(self._deliver)
+        except (RuntimeError, TypeError):  # already disconnected
+            pass
         self._jobs.put(None)
         self.wait(2000)

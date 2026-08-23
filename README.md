@@ -38,6 +38,19 @@ TPDO values appear there too.  Tick *Plot* on any signal to draw it in the
 **Plot** pane (rolling window, pause, follow).  `resources/demo.dbc` matches
 the demo device.
 
+## Channels
+
+pycangui talks to several CAN buses at once -- a second port on a multi-channel
+adapter, or a second adapter entirely.  Use **+** on the toolbar to add a
+channel, then give it its own interface, bitrate and connection; each channel's
+settings are remembered by name.
+
+The trace, the recorder and the decoders always see **every** connected
+channel, on one shared clock, so an ECU forwarding messages between two buses
+can be watched from both sides with comparable timestamps.  The channel picked
+in the toolbar is the one the protocol panes (CANopen, UDS, J1939, XCP) work
+with; switching channel looks to them like a disconnect and a reconnect.
+
 **Record** on the toolbar writes everything on the bus to a log file --
 `.blf` (Vector binary), `.asc` (Vector ASCII), `.trc` (PEAK), `.log` (candump),
 `.csv` or `.db` (SQLite); the format follows the file extension.  The
