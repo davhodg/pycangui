@@ -1,0 +1,41 @@
+ASAP2_VERSION 1 60
+/begin PROJECT pycangui_demo "pycangui demo"
+/begin MODULE demo "demo ECU"
+
+/begin COMPU_METHOD rpm_conv "engine speed"
+    RAT_FUNC "%.1f" "rpm"
+    COEFFS 0 1 0 0 0 1
+/end COMPU_METHOD
+
+/begin COMPU_METHOD volt_conv "battery voltage"
+    RAT_FUNC "%.2f" "V"
+    COEFFS 0 100 0 0 0 1
+/end COMPU_METHOD
+
+/begin MEASUREMENT EngineSpeed "Engine speed"
+    UWORD rpm_conv 0 0 0 8000
+    ECU_ADDRESS 0x1000
+/end MEASUREMENT
+
+/begin MEASUREMENT BatteryVoltage "Battery voltage"
+    UWORD volt_conv 0 0 0 1600
+    ECU_ADDRESS 0x1002
+/end MEASUREMENT
+
+/begin MEASUREMENT CoolantTemp "Coolant temperature"
+    SWORD NO_COMPU_METHOD 0 0 -40 215
+    ECU_ADDRESS 0x1004
+/end MEASUREMENT
+
+/begin CHARACTERISTIC SpeedLimit "Maximum engine speed" VALUE 0x2000 __UWORD rpm_conv 0 8000
+    UWORD rpm_conv 0 0 0 8000
+    ECU_ADDRESS 0x2000
+/end CHARACTERISTIC
+
+/begin CHARACTERISTIC IdleTarget "Idle speed target" VALUE 0x2002 __UWORD rpm_conv 0 2000
+    UWORD rpm_conv 0 0 0 2000
+    ECU_ADDRESS 0x2002
+/end CHARACTERISTIC
+
+/end MODULE
+/end PROJECT

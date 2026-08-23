@@ -8,7 +8,19 @@ can be named from the id alone.  The result is a short *kind* ("TPDO1 n5",
 
 from __future__ import annotations
 
-GROUPS = ("NMT", "SYNC/TIME", "EMCY", "PDO", "SDO", "Heartbeat", "LSS", "UDS", "J1939", "Other")
+GROUPS = (
+    "NMT",
+    "SYNC/TIME",
+    "EMCY",
+    "PDO",
+    "SDO",
+    "Heartbeat",
+    "LSS",
+    "UDS",
+    "J1939",
+    "XCP",
+    "Other",
+)
 
 # function code (id >> 7) -> (kind prefix, group, has node id)
 _FUNCTION_CODES: dict[int, tuple[str, str, bool]] = {

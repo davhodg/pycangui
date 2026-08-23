@@ -7,7 +7,7 @@ if not exist ".venv\Scripts\python.exe" (
     echo Creating virtual environment...
     python -m venv .venv || goto :fail
     ".venv\Scripts\python.exe" -m pip install --quiet --upgrade pip
-    ".venv\Scripts\python.exe" -m pip install --quiet -e ".[dev,xcp]" || goto :fail
+    ".venv\Scripts\python.exe" -m pip install --quiet -e ".[dev]" || goto :fail
 )
 start "" ".venv\Scripts\pythonw.exe" -m pycangui %*
 exit /b 0
