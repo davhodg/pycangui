@@ -20,8 +20,22 @@ from PySide6.QtCore import QObject, QTimer
 from pycangui import resources
 from pycangui.core.demo_j1939 import DemoJ1939Node
 from pycangui.core.demo_uds import DemoUdsServer
+from pycangui.core.demo_xcp import DemoXcpSlave
 
 NODE_ID = 5
+
+
+class _XcpFrameListener(can.Listener):
+    """Feeds received frames to the demo XCP slave."""
+
+    def __init__(self, slave) -> None:
+        self._slave = slave
+
+    def on_message_received(self, msg: can.Message) -> None:
+        self._slave.on_frame(msg)
+
+    def on_error(self, exc: Exception) -> None:
+        pass
 
 
 class DemoDevice(QObject):
@@ -42,6 +56,8 @@ class DemoDevice(QObject):
         self._timer.start()
         self.uds = DemoUdsServer(self._bus, self._network.notifier, self)
         self.j1939 = DemoJ1939Node(self._bus, self._network.notifier, self)
+        self.xcp = DemoXcpSlave(self._bus, self)
+        self._network.notifier.add_listener(_XcpFrameListener(self.xcp))
 
     def _tick(self) -> None:
         demand = struct.unpack("<h", self.node.get_data(0x2001, 0))[0]
@@ -59,6 +75,7 @@ class DemoDevice(QObject):
         self._timer.stop()
         self.uds.stop()
         self.j1939.stop()
+        self.xcp.stop()
         self._tpdo.stop()
         self.node.nmt.stop_heartbeat()
         self._network.notifier.stop()

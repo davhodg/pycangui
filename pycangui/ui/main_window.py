@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
@@ -32,6 +34,8 @@ from pycangui.ui.signals_view import SignalsView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
 from pycangui.ui.uds_view import UdsView
+from pycangui.ui.xcp_view import XcpView
+from pycangui.xcp.manager import XcpManager
 
 
 class MainWindow(QMainWindow):
@@ -62,12 +66,14 @@ class MainWindow(QMainWindow):
         self.j1939 = J1939Manager(self.bus, self.hooks)
         self.signals = SignalHub()
         self.dbc = DbcDecoder()
+        self.xcp = XcpManager(self.bus, self.hooks, self.signals)
 
         # --- docks -----------------------------------------------------------
         self.trace = TraceView(self.hooks, self.ctx)
         self.trace.classifiers.append(self.dbc.message_name)
         self.trace.classifiers.append(self.uds.classify)
         self.trace.classifiers.append(self.j1939.classify)
+        self.trace.classifiers.append(self.xcp.classify)
         self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
         self.signals_view = SignalsView(self.signals)
         self._add_dock("signals", "Signals", self.signals_view, Qt.LeftDockWidgetArea)
@@ -80,6 +86,8 @@ class MainWindow(QMainWindow):
         self._add_dock("uds", "UDS", self.uds_view, Qt.RightDockWidgetArea)
         self.j1939_view = J1939View(self.j1939, self.ctx)
         self._add_dock("j1939", "J1939", self.j1939_view, Qt.RightDockWidgetArea)
+        self.xcp_view = XcpView(self.xcp, self.ctx)
+        self._add_dock("xcp", "XCP", self.xcp_view, Qt.RightDockWidgetArea)
         self.tx = TxView(self.bus, self.ctx)
         self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
         self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
@@ -106,6 +114,11 @@ class MainWindow(QMainWindow):
         file_menu.addAction("Unload all DBCs", self._unload_dbcs)
         for path in self.ctx.settings.get("dbc.paths", []):
             self._load_dbc(path)
+        if (a2l := self.ctx.settings.get("xcp.a2l")) and Path(a2l).exists():
+            try:
+                self.xcp.load_a2l(a2l)
+            except Exception as exc:
+                self.log.appendPlainText(f"A2L load failed: {exc}")
 
         view_menu = self.menuBar().addMenu("&View")
         for dock in self.findChildren(QDockWidget):
@@ -138,6 +151,7 @@ class MainWindow(QMainWindow):
             "canopen": self.canopen,
             "uds": self.uds,
             "j1939": self.j1939,
+            "xcp": self.xcp,
             "hooks": self.hooks,
             "window": self,
             "send": send,
@@ -175,6 +189,7 @@ class MainWindow(QMainWindow):
         self.canopen.shutdown()
         self.uds.shutdown()
         self.j1939.shutdown()
+        self.xcp.shutdown()
         super().closeEvent(event)
 
     # --- slots ---------------------------------------------------------------

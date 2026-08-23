@@ -13,7 +13,7 @@ For development:
 
 ```
 python -m venv .venv
-.venv\Scripts\pip install -e .[dev,xcp]
+.venv\Scripts\pip install -e .[dev]
 .venv\Scripts\python -m pycangui
 .venv\Scripts\python -m pytest
 ```
@@ -51,6 +51,14 @@ J1939 DBC (`VFrameFormat=J1939PG`) is matched by PGN so SPNs land in Signals
 and Plot.  The demo device includes an engine at SA 0 (EEC1, CCVS1, DM1, and a
 BAM ComponentID reply to a request for PGN 65259).
 
+The **XCP** pane speaks XCP on CAN: set the command/response ids, Connect,
+load an A2L (`File`-style button in the pane) and the MEASUREMENTs and
+CHARACTERISTICs appear.  Double-click to read one, edit a characteristic's
+value to write it (unlock CAL first -- the seed-to-key algorithm is
+`hooks/xcp.py::compute_key`), and tick *Plot* to poll a measurement into the
+Signals/Plot panes.  The demo device answers on 0x7A0/0x7A1 and matches
+`resources/demo.a2l`.
+
 The **Python** pane is a live console with the same objects the GUI uses
 (`bus`, `canopen`, `ctx`, `hooks`, `window`, `send(id, data)`); *Run script...*
 executes a `.py` file in that namespace.
@@ -76,7 +84,9 @@ packages, as the LGPL requires.
 | [pywin32](https://github.com/mhammond/pywin32) | Needed by can-j1939 on Windows | PSF-2.0 |
 | [udsoncan](https://github.com/pylessard/python-udsoncan) | UDS client | MIT |
 | [can-isotp](https://github.com/pylessard/python-can-isotp) | ISO-TP transport for UDS | MIT |
-| [pyxcp](https://github.com/christoph2/pyxcp) | XCP (optional `xcp` extra) | LGPL-3.0-or-later |
+
+XCP on CAN and its A2L reader are implemented directly in pycangui (no XCP
+library dependency).
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets); the GPL-only Qt
 modules such as Qt Charts and Qt Data Visualization are deliberately avoided.
