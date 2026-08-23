@@ -8,7 +8,8 @@ License in the LICENSE file, or at http://www.apache.org/licenses/LICENSE-2.0
 This product includes software developed by third parties, each used unmodified
 under its own licence and installed as a separate package:
 
-  PySide6, shiboken6 (Qt for Python)   LGPL-3.0    https://www.qt.io/qt-for-python
+  PySide6-Essentials, shiboken6        LGPL-3.0    https://www.qt.io/qt-for-python
+  (Qt for Python; the GPL-only add-on modules are not installed at all)
   python-can                           LGPL-3.0    https://github.com/hardbyte/python-can
   canopen                              MIT         https://github.com/christiansandberg/canopen
   cantools                             MIT         https://github.com/cantools/cantools

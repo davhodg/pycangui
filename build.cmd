@@ -13,15 +13,24 @@ setlocal
 cd /d "%~dp0"
 
 set PYTHON=.venv\Scripts\python.exe
+
+echo.
+echo === Environment ===================================================
 if not exist "%PYTHON%" (
-    echo Creating virtual environment...
+    echo Creating the virtual environment in .venv.  First time only, and it
+    echo downloads roughly 250 MB of packages -- Qt is most of it -- so on a
+    echo slow connection this takes several minutes.
     python -m venv .venv
     if errorlevel 1 goto :fail
-    "%PYTHON%" -m pip install --quiet --upgrade pip
+    "%PYTHON%" -m pip install --upgrade pip
+    if errorlevel 1 goto :fail
+) else (
+    echo Using the existing .venv.
 )
-"%PYTHON%" -m pip install --quiet -e ".[dev]"
+echo Installing pycangui, its dependencies and PyInstaller...
+"%PYTHON%" -m pip install -e ".[dev]"
 if errorlevel 1 goto :fail
-"%PYTHON%" -m pip install --quiet pyinstaller
+"%PYTHON%" -m pip install pyinstaller
 if errorlevel 1 goto :fail
 
 echo.
