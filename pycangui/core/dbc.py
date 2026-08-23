@@ -72,6 +72,20 @@ class DbcDecoder:
             return None
         return msg, values
 
+    def messages(self) -> list[Message]:
+        """Every message from every loaded database, sorted by name."""
+        seen: dict[str, Message] = {}
+        for db in self.databases.values():
+            for msg in db.messages:
+                seen.setdefault(msg.name, msg)
+        return sorted(seen.values(), key=lambda m: m.name)
+
+    def message_by_name(self, name: str) -> Message | None:
+        for msg in self.messages():
+            if msg.name == name:
+                return msg
+        return None
+
     @staticmethod
     def units(msg: Message) -> dict[str, str]:
         return {s.name: s.unit or "" for s in msg.signals}

@@ -68,6 +68,10 @@ class CanopenView(QWidget):
             btn.clicked.connect(lambda _=False, c=command: self._nmt(c))
             nmt_bar.addWidget(btn)
         nmt_bar.addStretch()
+        rpdo_btn = QPushButton("Read RPDO config")
+        rpdo_btn.setToolTip("Read this node's RPDO mapping so the Transmit pane can send them")
+        rpdo_btn.clicked.connect(self._read_rpdos)
+        nmt_bar.addWidget(rpdo_btn)
         load_btn = QPushButton("Load EDS...")
         load_btn.clicked.connect(self._load_eds_clicked)
         nmt_bar.addWidget(load_btn)
@@ -228,6 +232,11 @@ class CanopenView(QWidget):
         self.ctx.log(f"Node {node_id}: loaded {Path(path).name}")
         if self.selected_node() == node_id:
             self._populate_od(node_id)
+
+    def _read_rpdos(self) -> None:
+        node_id = self.selected_node()
+        if node_id is not None:
+            self.manager.read_rpdo_config(node_id)
 
     def _nmt(self, command: str) -> None:
         self.manager.nmt(self.selected_node() or 0, command)

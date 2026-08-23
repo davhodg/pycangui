@@ -4,8 +4,10 @@ import time
 
 from PySide6.QtCore import Qt
 
+from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
+from pycangui.core.dbc import DbcDecoder
 from pycangui.core.hooks import Hooks
 from pycangui.ui.latest_model import LatestModel
 from pycangui.ui.trace_view import TraceView
@@ -54,25 +56,25 @@ def test_tx_view_send_and_cyclic(app, tmp_path, monkeypatch):
     bus.frames.connect(received.extend)
     bus.connect_bus("virtual", "vcan_tx", 500000, False)
 
-    view = TxView(bus, ctx)
-    r = view.add_row({"id": "1A3", "data": "de ad be ef", "period": 20})
+    view = TxView(bus, ctx, DbcDecoder(), CanopenManager(bus))
+    r = view.add_message({"kind": "raw", "id": "1A3", "data": "de ad be ef", "period": 20})
     view.send_row(r)
     wait(app, lambda: any(f.can_id == 0x1A3 for f in received))
     assert received[-1].data == bytes.fromhex("deadbeef") and received[-1].rx is False
 
-    view.table.item(r, COL_CYCLIC).setCheckState(Qt.Checked)  # start cyclic
+    view.item(r).setCheckState(COL_CYCLIC, Qt.Checked)  # start cyclic
     wait(app, lambda: sum(f.can_id == 0x1A3 for f in received) >= 4)
-    view.table.item(r, COL_DATA).setText("01 02")  # live edit restarts the task
+    view.item(r).setText(COL_DATA, "01 02")  # live edit restarts the task
     wait(app, lambda: any(f.data == b"\x01\x02" for f in received))
     assert r in view._tasks
 
-    bad = view.add_row({"id": "zz", "data": "00", "period": 10})
+    bad = view.add_message({"kind": "raw", "id": "zz", "data": "00", "period": 10})
     view.send_row(bad)
     assert any("TX row 2" in line for line in log)
 
     bus.disconnect_bus()  # stops periodic tasks, unticks Cyclic
     assert view._tasks == {}
-    assert view.table.item(r, COL_CYCLIC).checkState() == Qt.Unchecked
+    assert view.item(r).checkState(COL_CYCLIC) == Qt.Unchecked
 
     saved = ctx.settings.get("tx.messages")
     assert saved[0]["id"] == "1A3" and saved[0]["data"] == "01 02"
