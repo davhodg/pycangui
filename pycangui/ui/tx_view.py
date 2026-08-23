@@ -104,7 +104,9 @@ class RpdoPicker(QDialog):
                 self.choices.append((node_id, number))
                 self.list.addItem(f"node {node_id}  {name}  ({', '.join(variables) or 'unmapped'})")
         if not self.choices:
-            self.list.addItem("no RPDOs known -- read the node's PDO configuration first")
+            self.list.addItem("No RPDOs known.")
+            self.list.addItem("Select the node in the CANopen pane and load its EDS;")
+            self.list.addItem("use 'Read RPDO config' there if the node was remapped.")
             self.list.setEnabled(False)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)

@@ -73,9 +73,8 @@ def test_dbc_row_encodes_from_signals(stack):
 
 def test_rpdo_row_drives_the_demo_node(stack):
     app, _bus, view, canopen, demo, _ctx = stack
+    # loading the EDS is enough: the mapping comes from the file, no bus traffic
     canopen.load_eds(5, str(resources.path("demo.eds")))
-    wait_until(app, lambda: canopen.node(5) is not None and len(canopen.node(5).object_dictionary))
-    canopen.read_rpdo_config(5)
     wait_until(app, lambda: canopen.rpdos(5))
 
     number, name, variables = canopen.rpdos(5)[0]
