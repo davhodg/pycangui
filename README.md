@@ -215,9 +215,11 @@ Adapter drivers are not bundled: install the vendor's driver and python-can
 finds it.  Hooks, back ends, EDS files and settings stay in `%APPDATA%\pycangui`
 and survive upgrades and uninstallation.
 
-`.github/workflows/ci.yml` runs the tests on Windows and Linux across two
-Python versions, then builds and uploads the installer; a `v*` tag publishes it
-as a release.
+`.github/workflows/ci.yml` runs the tests and lint on Windows and Linux with
+the latest stable Python on every push.  The installer is built only for a
+release -- push a `v*` tag, or start the workflow by hand from the Actions tab
+-- because a Windows runner costs double the minutes and the packaging does not
+change between tags.
 
 ## Development
 
