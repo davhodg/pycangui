@@ -18,10 +18,10 @@ from typing import Any
 
 import canopen
 from canopen.nmt import NMT_COMMANDS, NMT_STATES
-from canopen.objectdictionary import ODArray, ODRecord, ODVariable, datatypes
+from canopen.objectdictionary import ODArray, ODRecord, ODVariable, datatypes, eds
 from PySide6.QtCore import QObject, Signal, Slot
 
-from pycangui.canopen import NodeIdentity
+from pycangui.canopen import NodeIdentity, PdoConfig, PdoEntry
 from pycangui.core.bus import BusManager
 from pycangui.core.worker import Worker
 
@@ -39,12 +39,15 @@ class CanopenManager(QObject):
     pdo_update = Signal(int, str, dict)  # node_id, pdo name, {variable name: value}
     emcy = Signal(int, str)  # node_id, description
     rpdos_read = Signal(int)  # node_id: its RPDO configuration is now known
+    pdo_config = Signal(int)  # node_id: its PDO configuration changed
+    dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
     message = Signal(str)  # for the Event Log pane
 
     def __init__(self, bus: BusManager) -> None:
         super().__init__()
         self._bus = bus
         self.network: canopen.Network | None = None
+        self._sync_on = False
         self._worker = Worker()
         self._worker.start()
         bus.connected.connect(self._on_bus_connected)
@@ -143,7 +146,7 @@ class CanopenManager(QObject):
             self.eds_loaded.emit(
                 node_id, path, node.object_dictionary.device_information.product_name or ""
             )
-            self.load_rpdos_from_eds(node_id)
+            self.load_pdos_from_eds(node_id)
             self.subscribe_pdos(node_id)
 
         self._worker.submit(job, done)
@@ -214,6 +217,232 @@ class CanopenManager(QObject):
 
         self._worker.submit(job, done)
 
+    # --- PDO configuration (both directions) -----------------------------------
+    def pdo_configs(self, node_id: int) -> list[PdoConfig]:
+        """Every configured PDO of a node, transmit and receive."""
+        node = self.node(node_id)
+        if node is None:
+            return []
+        out: list[PdoConfig] = []
+        for direction, maps in (("TPDO", node.tpdo.map), ("RPDO", node.rpdo.map)):
+            for number, pdo_map in maps.items():
+                if pdo_map.cob_id is None:
+                    continue
+                out.append(
+                    PdoConfig(
+                        node_id=node_id,
+                        direction=direction,
+                        number=number,
+                        name=pdo_map.name,
+                        cob_id=pdo_map.cob_id,
+                        enabled=bool(pdo_map.enabled),
+                        transmission_type=pdo_map.trans_type,
+                        inhibit_time_us=(pdo_map.inhibit_time or 0) * 100,
+                        event_timer_ms=pdo_map.event_timer,
+                        entries=[PdoEntry(v.index, v.subindex, v.length, v.name) for v in pdo_map],
+                    )
+                )
+        return out
+
+    def read_pdo_config(self, node_id: int) -> None:
+        """Read the live PDO configuration of a node from the node itself."""
+        node = self.node(node_id)
+        if node is None or not len(node.object_dictionary):
+            self.message.emit(f"Node {node_id}: load an EDS first")
+            return
+
+        def job() -> int:
+            node.tpdo.read()
+            node.rpdo.read()
+            return len(self.pdo_configs(node_id))
+
+        def done(count: int | None, error: str | None) -> None:
+            if error:
+                self.message.emit(f"Node {node_id}: PDO configuration read failed ({error})")
+                return
+            self.message.emit(f"Node {node_id}: {count} PDO(s) configured")
+            self.pdo_config.emit(node_id)
+            self.rpdos_read.emit(node_id)
+
+        self._worker.submit(job, done)
+
+    def write_pdo_config(self, config: PdoConfig) -> None:
+        """Write one PDO's communication and mapping parameters back to the node."""
+        node = self.node(config.node_id)
+        if node is None:
+            return
+        maps = node.tpdo.map if config.direction == "TPDO" else node.rpdo.map
+        pdo_map = maps.get(config.number)
+        if pdo_map is None:
+            self.message.emit(f"Node {config.node_id}: {config.direction}{config.number} unknown")
+            return
+
+        def job() -> str:
+            pdo_map.cob_id = config.cob_id
+            pdo_map.enabled = config.enabled
+            pdo_map.trans_type = config.transmission_type
+            # Many devices implement only sub-indices 1 and 2 of the communication
+            # record; setting the others would make canopen write a missing entry.
+            has = {sub for sub in pdo_map.com_record}
+            pdo_map.inhibit_time = (
+                int(config.inhibit_time_us // 100)
+                if config.inhibit_time_us is not None and 3 in has
+                else None
+            )
+            pdo_map.event_timer = config.event_timer_ms if 5 in has else None
+            if 6 not in has:
+                pdo_map.sync_start_value = None
+            pdo_map.clear()
+            for entry in config.entries:
+                pdo_map.add_variable(entry.index, entry.subindex, entry.bits)
+            pdo_map.save()  # writes the communication and mapping records over SDO
+            return f"{config.direction}{config.number} written to node {config.node_id}"
+
+        def done(text: str | None, error: str | None) -> None:
+            if error:
+                self.message.emit(f"Node {config.node_id}: PDO write failed ({error})")
+            else:
+                self.message.emit(f"Node {config.node_id}: {text}")
+                self.pdo_config.emit(config.node_id)
+
+        self._worker.submit(job, done)
+
+    # --- saving and restoring parameters (0x1010 / 0x1011) ---------------------
+    def store_parameters(self, node_id: int, subindex: int = 1) -> None:
+        node = self.node(node_id)
+        if node is None:
+            return
+
+        def job() -> str:
+            node.store(subindex)
+            return "parameters stored to non-volatile memory"
+
+        self._worker.submit(job, lambda t, e: self._report(node_id, t, e))
+
+    def restore_parameters(self, node_id: int, subindex: int = 1) -> None:
+        node = self.node(node_id)
+        if node is None:
+            return
+
+        def job() -> str:
+            node.restore(subindex)
+            return "default parameters restored (reset the node to apply)"
+
+        self._worker.submit(job, lambda t, e: self._report(node_id, t, e))
+
+    def _report(self, node_id: int, text: str | None, error: str | None) -> None:
+        self.message.emit(f"Node {node_id}: {text if error is None else error}")
+
+    # --- SYNC producer ---------------------------------------------------------
+    @property
+    def sync_running(self) -> bool:
+        return self._sync_on
+
+    def start_sync(self, period_s: float) -> None:
+        """Transmit SYNC (COB-ID 0x80) so synchronous PDOs are exchanged."""
+        self.stop_sync()
+        if self.network is None:
+            self.message.emit("SYNC: not connected")
+            return
+        self.network.sync.start(period_s)  # returns None; it keeps its own task
+        self._sync_on = True
+        self.message.emit(f"SYNC started at {period_s * 1000:.0f} ms")
+
+    def stop_sync(self) -> None:
+        if not self._sync_on:
+            return
+        try:
+            self.network.sync.stop()
+        except Exception:  # the bus went away first
+            pass
+        self._sync_on = False
+        self.message.emit("SYNC stopped")
+
+    # --- DCF (a device configuration file: an EDS plus the parameter values) ----
+    def save_dcf(self, node_id: int, path: str) -> None:
+        """Read every readable parameter from the node and write a DCF."""
+        node = self.node(node_id)
+        if node is None or not len(node.object_dictionary):
+            self.message.emit(f"Node {node_id}: load an EDS first")
+            return
+
+        def job() -> tuple[int, int]:
+            variables = [
+                var
+                for var in _all_variables(node.object_dictionary)
+                if var.readable and var.index >= 0x1000 and var.data_type != datatypes.DOMAIN
+            ]
+            read = 0
+            for i, var in enumerate(variables):
+                try:
+                    value = self._variable(node, var.index, var.subindex).raw
+                    var.value = value
+                    # canopen writes value_raw verbatim, and formats negative
+                    # numbers as "0x-4D2", which its own reader then rejects.
+                    # Write plain decimal for numbers so DCFs round trip.
+                    if isinstance(value, int | float) and not isinstance(value, bool):
+                        var.value_raw = str(value)
+                    read += 1
+                except Exception:  # not implemented by this node: leave it out
+                    var.value = None
+                    var.value_raw = None
+                if i % 10 == 0:
+                    self.dcf_progress.emit(i, len(variables))
+            self.dcf_progress.emit(len(variables), len(variables))
+            node.object_dictionary.node_id = node_id
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                eds.export_dcf(node.object_dictionary, f)  # wants a file, not a path
+            return read, len(variables)
+
+        def done(counts: tuple[int, int] | None, error: str | None) -> None:
+            if error:
+                self.message.emit(f"Node {node_id}: DCF save failed ({error})")
+            else:
+                read, total = counts
+                self.message.emit(f"Node {node_id}: DCF written, {read}/{total} parameters read")
+
+        self._worker.submit(job, done)
+
+    def apply_dcf(self, node_id: int, path: str) -> None:
+        """Write the parameter values from a DCF into the node."""
+        if self.node(node_id) is None:
+            self.message.emit(f"Node {node_id}: not known")
+            return
+        node = self.node(node_id)
+
+        def job() -> tuple[int, int, list[str]]:
+            source = canopen.import_od(path, node_id)
+            wanted = [
+                var
+                for var in _all_variables(source)
+                if var.value is not None and var.writable and var.index >= 0x1000
+            ]
+            written, failures = 0, []
+            for i, var in enumerate(wanted):
+                try:
+                    self._variable(node, var.index, var.subindex).raw = var.value
+                    written += 1
+                except Exception as exc:
+                    failures.append(f"{var.index:04X}:{var.subindex:02X} ({exc})")
+                if i % 5 == 0:
+                    self.dcf_progress.emit(i, len(wanted))
+            self.dcf_progress.emit(len(wanted), len(wanted))
+            return written, len(wanted), failures
+
+        def done(result: tuple[int, int, list[str]] | None, error: str | None) -> None:
+            if error:
+                self.message.emit(f"Node {node_id}: DCF apply failed ({error})")
+                return
+            written, total, failures = result
+            self.message.emit(f"Node {node_id}: {written}/{total} parameters written from the DCF")
+            for failure in failures[:10]:
+                self.message.emit(f"  not written: {failure}")
+            if len(failures) > 10:
+                self.message.emit(f"  ... and {len(failures) - 10} more")
+            self.read_pdo_config(node_id)
+
+        self._worker.submit(job, done)
+
     # --- RPDO (the node receives these, so the tester transmits them) -----------
     def rpdos(self, node_id: int) -> list[tuple[int, str, list[str]]]:
         """Configured RPDOs of a node: (number, name, mapped variable names)."""
@@ -226,21 +455,23 @@ class CanopenManager(QObject):
             if pdo_map.cob_id is not None and len(pdo_map.map)
         ]
 
-    def load_rpdos_from_eds(self, node_id: int) -> None:
-        """Take the RPDO mapping from the loaded EDS -- instant, no bus traffic.
+    def load_pdos_from_eds(self, node_id: int) -> None:
+        """Take the PDO configuration from the loaded EDS -- instant, no traffic.
 
-        Most nodes use the mapping their EDS declares, so this is enough to
-        transmit them; ``read_rpdo_config()`` re-reads the live mapping from
-        the node for the case where it was changed at run time.
+        Most nodes use the mapping their EDS declares, so this is enough to see
+        and to transmit them; ``read_pdo_config()`` re-reads the live mapping
+        from the node for the case where it was changed at run time.
         """
         node = self.node(node_id)
         if node is None:
             return
         try:
             node.rpdo.read(from_od=True)
+            node.tpdo.read(from_od=True)
         except Exception as exc:  # an EDS without PDO objects, or an odd one
-            self.message.emit(f"Node {node_id}: no RPDO mapping in the EDS ({exc})")
+            self.message.emit(f"Node {node_id}: no PDO mapping in the EDS ({exc})")
             return
+        self.pdo_config.emit(node_id)
         count = len(self.rpdos(node_id))
         if count:
             self.message.emit(f"Node {node_id}: {count} RPDO(s) available to transmit")
@@ -283,6 +514,18 @@ class CanopenManager(QObject):
                 except Exception:  # value out of range for the mapped type
                     var.raw = int(values[var.name])
         return pdo_map.cob_id, bytes(pdo_map.data)
+
+
+def _all_variables(od) -> list[ODVariable]:
+    """Every ODVariable in an object dictionary, records and arrays flattened."""
+    out: list[ODVariable] = []
+    for index in od:
+        obj = od[index]
+        if isinstance(obj, ODVariable):
+            out.append(obj)
+        elif isinstance(obj, ODRecord | ODArray):
+            out.extend(obj[sub] for sub in obj)
+    return out
 
 
 # --- helpers used by the view ----------------------------------------------

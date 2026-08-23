@@ -15,6 +15,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -33,6 +35,7 @@ from pycangui.canopen import NodeIdentity, find_eds
 from pycangui.canopen.manager import CanopenManager, format_value, od_entries, type_name
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
+from pycangui.ui.pdo_view import PdoConfigView
 
 ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
@@ -67,14 +70,34 @@ class CanopenView(QWidget):
             btn = QPushButton(label)
             btn.clicked.connect(lambda _=False, c=command: self._nmt(c))
             nmt_bar.addWidget(btn)
+        self.sync_period = QDoubleSpinBox()
+        self.sync_period.setRange(1, 10000)
+        self.sync_period.setValue(100)
+        self.sync_period.setSuffix(" ms")
+        self.sync_period.setToolTip("SYNC period")
+        self.sync_btn = QPushButton("SYNC")
+        self.sync_btn.setCheckable(True)
+        self.sync_btn.setToolTip("Transmit SYNC so synchronous PDOs are exchanged")
+        self.sync_btn.toggled.connect(self._toggle_sync)
+        nmt_bar.addWidget(self.sync_period)
+        nmt_bar.addWidget(self.sync_btn)
         nmt_bar.addStretch()
-        rpdo_btn = QPushButton("Read RPDO config")
-        rpdo_btn.setToolTip("Read this node's RPDO mapping so the Transmit pane can send them")
-        rpdo_btn.clicked.connect(self._read_rpdos)
-        nmt_bar.addWidget(rpdo_btn)
+        store_btn = QPushButton("Store")
+        store_btn.setToolTip("Save the node's parameters to non-volatile memory (0x1010)")
+        store_btn.clicked.connect(self._store)
+        restore_btn = QPushButton("Restore defaults")
+        restore_btn.setToolTip("Restore the node's default parameters (0x1011)")
+        restore_btn.clicked.connect(self._restore)
+        save_dcf = QPushButton("Save DCF...")
+        save_dcf.setToolTip("Read every parameter from the node and write a .dcf file")
+        save_dcf.clicked.connect(self._save_dcf)
+        apply_dcf = QPushButton("Apply DCF...")
+        apply_dcf.setToolTip("Write the parameter values from a .dcf file into the node")
+        apply_dcf.clicked.connect(self._apply_dcf)
         load_btn = QPushButton("Load EDS...")
         load_btn.clicked.connect(self._load_eds_clicked)
-        nmt_bar.addWidget(load_btn)
+        for b in (store_btn, restore_btn, save_dcf, apply_dcf, load_btn):
+            nmt_bar.addWidget(b)
 
         # --- object dictionary ---------------------------------------------
         self.od = QTreeWidget()
@@ -109,11 +132,14 @@ class CanopenView(QWidget):
         mid_l.setContentsMargins(0, 0, 0, 0)
         mid_l.addLayout(od_bar)
         mid_l.addWidget(self.od)
-        bottom = QWidget()
-        bottom_l = QVBoxLayout(bottom)
-        bottom_l.setContentsMargins(0, 0, 0, 0)
-        bottom_l.addWidget(QLabel("Live PDOs"))
-        bottom_l.addWidget(self.pdos)
+        self.pdo_config = PdoConfigView(manager, ctx)
+        bottom = QTabWidget()
+        live = QWidget()
+        live_l = QVBoxLayout(live)
+        live_l.setContentsMargins(0, 0, 0, 0)
+        live_l.addWidget(self.pdos)
+        bottom.addTab(live, "Live PDOs")
+        bottom.addTab(self.pdo_config, "PDO configuration")
         splitter = QSplitter(Qt.Vertical)
         for w, stretch in ((top, 1), (mid, 3), (bottom, 1)):
             splitter.addWidget(w)
@@ -232,11 +258,56 @@ class CanopenView(QWidget):
         self.ctx.log(f"Node {node_id}: loaded {Path(path).name}")
         if self.selected_node() == node_id:
             self._populate_od(node_id)
+            self.pdo_config.set_node(node_id)
 
     def _read_rpdos(self) -> None:
         node_id = self.selected_node()
         if node_id is not None:
             self.manager.read_rpdo_config(node_id)
+
+    def _store(self) -> None:
+        node_id = self.selected_node()
+        if node_id is not None:
+            self.manager.store_parameters(node_id)
+
+    def _restore(self) -> None:
+        node_id = self.selected_node()
+        if node_id is not None:
+            self.manager.restore_parameters(node_id)
+
+    def _save_dcf(self) -> None:
+        node_id = self.selected_node()
+        if node_id is None:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Save node {node_id} configuration",
+            str(self.ctx.eds_dir / f"node{node_id}.dcf"),
+            "Device configuration (*.dcf);;All files (*)",
+        )
+        if path:
+            self.ctx.log(f"Node {node_id}: reading all parameters, this can take a while...")
+            self.manager.save_dcf(node_id, path)
+
+    def _apply_dcf(self) -> None:
+        node_id = self.selected_node()
+        if node_id is None:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            f"Apply a configuration to node {node_id}",
+            str(self.ctx.eds_dir),
+            "Device configuration (*.dcf *.eds);;All files (*)",
+        )
+        if path:
+            self.manager.apply_dcf(node_id, path)
+
+    @Slot(bool)
+    def _toggle_sync(self, on: bool) -> None:
+        if on:
+            self.manager.start_sync(self.sync_period.value() / 1000)
+        else:
+            self.manager.stop_sync()
 
     def _nmt(self, command: str) -> None:
         self.manager.nmt(self.selected_node() or 0, command)
@@ -249,11 +320,14 @@ class CanopenView(QWidget):
         self._pdo_items.clear()
         self._identities.clear()
         self._asked.clear()
+        self.pdo_config.set_node(None)
+        self.sync_btn.setChecked(False)
 
     # --- object dictionary -------------------------------------------------------
     def _on_node_selected(self, current: QTreeWidgetItem | None, _previous) -> None:
         self.pdos.clear()
         self._pdo_items.clear()
+        self.pdo_config.set_node(None if current is None else current.data(0, ROLE_INDEX))
         self._populate_od(None if current is None else current.data(0, ROLE_INDEX))
 
     def _populate_od(self, node_id: int | None) -> None:
