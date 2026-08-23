@@ -28,6 +28,7 @@ from pycangui.core.signals import SignalHub
 from pycangui.j1939.manager import J1939Manager
 from pycangui.uds.manager import UdsManager
 from pycangui.ui.canopen_view import CanopenView
+from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.j1939_view import J1939View
@@ -66,6 +67,9 @@ class MainWindow(QMainWindow):
         # --- user context, hooks, protocol managers -------------------------
         self.ctx = Context(log=self.log.appendPlainText)
         self.hooks = Hooks(self.ctx)
+        #: Shared so that agreeing once covers connecting, transmitting and
+        #: replaying rather than each asking again.
+        self.confirm = Confirmations()
         BACKENDS.load_user_backends(self.ctx.backends_dir, self.log.appendPlainText)
 
         # --- toolbar ---------------------------------------------------------
@@ -77,7 +81,7 @@ class MainWindow(QMainWindow):
         self.record_action.setCheckable(True)
         self.record_action.setToolTip("Record the selected channel to a log file")
         self.record_action.toggled.connect(self._toggle_record)
-        self.replay = ReplayAction(self.connect_bar, self.channels, self.ctx)
+        self.replay = ReplayAction(self.connect_bar, self.channels, self.ctx, self.confirm)
 
         self.canopen = CanopenManager(self.bus, self.hooks)
         self.uds = UdsManager(self.bus, self.hooks, self.ctx)
@@ -108,7 +112,7 @@ class MainWindow(QMainWindow):
         self._add_dock("j1939", "J1939", self.j1939_view, Qt.RightDockWidgetArea)
         self.xcp_view = XcpView(self.xcp, self.ctx)
         self._add_dock("xcp", "XCP", self.xcp_view, Qt.RightDockWidgetArea)
-        self.tx = TxView(self.bus, self.ctx, self.dbc, self.canopen)
+        self.tx = TxView(self.bus, self.ctx, self.dbc, self.canopen, self.confirm)
         self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
         self._add_dock("log", "Event Log", self.log, Qt.BottomDockWidgetArea)
         self.console = ConsoleView(self._console_namespace(), self.ctx)
@@ -270,7 +274,41 @@ class MainWindow(QMainWindow):
         if bus is None:
             self.log.appendPlainText("No channel selected")
             return
+        if not self._may_connect(bus.channel_name, interface, channel, bitrate, fd):
+            self.connect_bar.set_connected(False)
+            return
         bus.connect_bus(interface, channel, bitrate, fd)
+        if not bus.is_connected:
+            # connect_bus reports the reason and returns; without this the
+            # button stays reading "Disconnect" for a bus we never joined.
+            self.connect_bar.set_connected(False)
+
+    def _may_connect(self, name: str, interface: str, channel: str, bitrate: int, fd: bool) -> bool:
+        """Ask before joining a real bus, because the bitrate has to be right.
+
+        A CAN controller at the wrong bitrate cannot read a frame correctly, so
+        it signals an error on every one it sees.  That is not a quiet failure
+        on our side: those error frames go out on the wire, and the nodes that
+        are working can be driven error passive and then bus off by them, which
+        on a live machine means the machine stops talking to itself.
+
+        Keyed on the bitrate, so changing it asks again -- getting it wrong is
+        the whole reason for the question.
+        """
+        if not is_real(interface):
+            return True
+        return self.confirm.ask(
+            self,
+            f"connect:{name}:{interface}:{channel}:{bitrate}:{fd}",
+            "Connect to a real CAN bus?",
+            f"{name} is about to join {interface}:{channel} at "
+            f"{bitrate // 1000} kbit/s.\n\n"
+            "If that is not the bitrate the bus is running at, this adapter cannot "
+            "read the traffic, and signals an error on every frame it sees.  Those "
+            "errors go out on the bus, and can stop the working nodes on it from "
+            "communicating.\n\n"
+            "Check the bitrate before continuing.",
+        )
 
     @Slot()
     def _disconnect_active(self) -> None:

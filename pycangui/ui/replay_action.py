@@ -22,6 +22,7 @@ from pycangui.core.bus import BusManager
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.logging import READ_FILTER, Player
+from pycangui.ui.confirm import Confirmations, is_real
 
 SPEEDS = (0.1, 0.5, 1.0, 2.0, 5.0, 20.0)
 RECENT_MAX = 5
@@ -31,15 +32,21 @@ VIRTUAL_CHANNEL = "Virtual"
 class ReplayAction(QObject):
     """The Replay button, its menu, and the player behind them."""
 
-    def __init__(self, toolbar: QToolBar, channels: Channels, ctx: Context) -> None:
+    def __init__(
+        self,
+        toolbar: QToolBar,
+        channels: Channels,
+        ctx: Context,
+        confirm: Confirmations | None = None,
+    ) -> None:
         super().__init__(toolbar)
         self.channels = channels
         self.ctx = ctx
+        self.confirm = confirm if confirm is not None else Confirmations()
         self.player: Player | None = None
         #: Pinned when the replay starts, so selecting a different channel
         #: while it runs cannot redirect the frames onto another bus.
         self._playing_on = ""
-        self._confirmed: set[str] = set()  # real channels okayed this session
 
         self.action = QAction("Replay", self)
         self.action.setCheckable(True)
@@ -160,23 +167,22 @@ class ReplayAction(QObject):
         bus = self.channels.active_bus()
         if bus is None or not bus.is_connected:
             return self._offer_virtual()
-        if bus.interface != "virtual" and bus.channel_name not in self._confirmed:
-            name = self._path.name if self._path else "the log"
-            answer = QMessageBox.question(
-                self.button,
-                "Replay onto a real bus?",
-                f"{bus.channel_name} is connected to {bus.description}.\n\n"
-                f"Replaying puts every frame in {name} onto that bus, and the "
-                "devices on it will act on them.\n\n"
-                "To replay without transmitting, connect a virtual channel and "
-                "select that instead.",
-                QMessageBox.Yes | QMessageBox.Cancel,
-                QMessageBox.Cancel,
-            )
-            if answer != QMessageBox.Yes:
-                return None
-            self._confirmed.add(bus.channel_name)  # asked once per channel per session
-        return bus
+        if not is_real(bus.interface):
+            return bus
+        name = self._path.name if self._path else "the log"
+        # Keyed separately from the Transmit pane's question: agreeing to send
+        # one frame by hand is not agreeing to pour a whole log onto the bus.
+        allowed = self.confirm.ask(
+            self.button,
+            f"replay:{bus.channel_name}:{bus.description}",
+            "Replay onto a real CAN bus?",
+            f"{bus.channel_name} is connected to {bus.description}.\n\n"
+            f"Replaying puts every frame in {name} onto that bus, and the "
+            "devices on it will act on them.\n\n"
+            "To replay without transmitting, connect a virtual channel and "
+            "select that instead.",
+        )
+        return bus if allowed else None
 
     def _offer_virtual(self) -> BusManager | None:
         """Nothing is connected: offer the virtual channel a replay needs.

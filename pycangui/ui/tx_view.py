@@ -38,6 +38,7 @@ from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
+from pycangui.ui.confirm import Confirmations, is_real
 
 COL_NAME, COL_ID, COL_EXT, COL_FD, COL_DATA, COL_PERIOD, COL_CYCLIC, COL_UNIT = range(8)
 HEADERS = ("Message / Signal", "ID", "Ext", "FD", "Data / Value", "Period ms", "Cyclic", "Unit")
@@ -123,11 +124,17 @@ class RpdoPicker(QDialog):
 
 class TxView(QWidget):
     def __init__(
-        self, bus: BusManager, ctx: Context, dbc: DbcDecoder, canopen: CanopenManager
+        self,
+        bus: BusManager,
+        ctx: Context,
+        dbc: DbcDecoder,
+        canopen: CanopenManager,
+        confirm: Confirmations | None = None,
     ) -> None:
         super().__init__()
         self.bus = bus
         self.ctx = ctx
+        self.confirm = confirm if confirm is not None else Confirmations()
         self.dbc = dbc
         self.canopen = canopen
         self._tasks: dict[int, object] = {}  # top-level row -> periodic task
@@ -360,8 +367,30 @@ class TxView(QWidget):
             raise ValueError(f"{label}: {len(data)} data bytes is too many")
         return can_id, data, spec["ext"], spec["fd"], period
 
+    def _may_transmit(self) -> bool:
+        """Ask before the first frame goes onto a real bus this session.
+
+        The gate is on transmitting rather than on adding a row: a row that is
+        sitting in the list has done nothing yet, and asking when it is built
+        would train the answer out of the user before it mattered.  Keyed on
+        the connection, so pointing the channel at a different bus asks again.
+        """
+        if not is_real(self.bus.interface):
+            return True
+        return self.confirm.ask(
+            self,
+            f"transmit:{self.bus.channel_name}:{self.bus.description}",
+            "Transmit onto a real CAN bus?",
+            f"{self.bus.channel_name} is connected to {self.bus.description}.\n\n"
+            "Sending puts these frames onto that bus, and the devices on it will "
+            "act on them.\n\n"
+            "Transmit on this channel?",
+        )
+
     # --- sending -----------------------------------------------------------------------
     def send_row(self, row: int) -> None:
+        if not self._may_transmit():
+            return
         try:
             can_id, data, ext, fd, _ = self._message(row)
         except ValueError as exc:
@@ -377,6 +406,9 @@ class TxView(QWidget):
             self.send_row(row)
 
     def _start_row(self, row: int) -> None:
+        if not self._may_transmit():
+            self._set_cyclic(row, False)
+            return
         try:
             can_id, data, ext, fd, period = self._message(row)
             if period <= 0:
