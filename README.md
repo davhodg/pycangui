@@ -141,10 +141,9 @@ modules such as Qt Charts and Qt Data Visualization are deliberately avoided.
 Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the
 vendor's driver and python-can loads it at run time.
 
-## Development and AI disclosure
+## Development
 
-pycangui is designed and directed by davhodg.  Much of the code is
-written with the assistance of Anthropic's Claude (Claude Fable 5) working as
-a pair-programming tool under direction, with the design decisions, review,
-testing and acceptance made by the author.  Contributions are reviewed to the
-same standard regardless of origin.
+pycangui is copyright 2026 davhodg and licensed under the Apache License
+2.0; see `LICENSE` and `NOTICE`.
+
+Development has made use of Anthropic's Claude.

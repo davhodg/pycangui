@@ -1,0 +1,32 @@
+pycangui
+Copyright 2026 davhodg
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License.  You may obtain a copy of the
+License in the LICENSE file, or at http://www.apache.org/licenses/LICENSE-2.0
+
+This product includes software developed by third parties, each used unmodified
+under its own licence and installed as a separate package:
+
+  PySide6, shiboken6 (Qt for Python)   LGPL-3.0    https://www.qt.io/qt-for-python
+  python-can                           LGPL-3.0    https://github.com/hardbyte/python-can
+  canopen                              MIT         https://github.com/christiansandberg/canopen
+  cantools                             MIT         https://github.com/cantools/cantools
+  can-isotp                            MIT         https://github.com/pylessard/python-can-isotp
+  udsoncan                             MIT         https://github.com/pylessard/python-udsoncan
+  can-j1939                            MIT         https://github.com/juergenH87/python-can-j1939
+  pyqtgraph                            MIT         https://www.pyqtgraph.org
+  numpy                                BSD-3-Clause  https://numpy.org
+  pywin32 (Windows only)               PSF-2.0     https://github.com/mhammond/pywin32
+  Python                               PSF-2.0     https://www.python.org
+
+The LGPL-licensed components are dynamically linked and separately replaceable;
+their sources are available from the projects listed above.  Only LGPL Qt
+modules are used -- the GPL-only Qt modules (Qt Charts, Qt Data Visualization,
+Qt Graphs, Qt Virtual Keyboard) are deliberately not used.
+
+Adapter drivers (PCAN, Kvaser, Vector, IXXAT and others) are not distributed
+with pycangui; python-can loads the vendor's own driver at run time.
+
+Development note: pycangui is developed with the assistance of Anthropic's
+Claude.
