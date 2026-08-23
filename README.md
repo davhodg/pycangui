@@ -45,6 +45,10 @@ adapter, or a second adapter entirely.  Use **+** on the toolbar to add a
 channel, then give it its own interface, bitrate and connection; each channel's
 settings are remembered by name.
 
+The status bar shows each channel's state and its **bus load** -- an estimate
+from the frames seen and the configured bitrate, including nominal bit
+stuffing.  The trace's *Channel* column says which bus a frame came from.
+
 The trace, the recorder and the decoders always see **every** connected
 channel, on one shared clock, so an ECU forwarding messages between two buses
 can be watched from both sides with comparable timestamps.  The channel picked
