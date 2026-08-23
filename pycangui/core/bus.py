@@ -111,6 +111,10 @@ class BusManager(QObject):
         self.notifier: can.Notifier | None = None
         #: Shown in the trace's Ch column; distinguishes one adapter from another.
         self.channel_name = channel_name
+        #: python-can interface name while connected, "" otherwise.  Replay asks
+        #: for it: putting frames onto "virtual" is harmless, onto anything else
+        #: it is real traffic on a real bus.
+        self.interface = ""
         self.description = ""
         self.bitrate = 0
         #: Percentage of the bus's capacity used, refreshed every LOAD_PERIOD_MS.
@@ -152,6 +156,7 @@ class BusManager(QObject):
         self.notifier = can.Notifier(self.bus, [self._collector], timeout=0.02)
         self._timer.start()
         self.bitrate = bitrate
+        self.interface = interface
         fd_text = " FD" if fd else ""
         self.description = f"{interface}:{channel} @ {bitrate} bit/s{fd_text}"
         self.connected.emit(self.description)
@@ -168,6 +173,7 @@ class BusManager(QObject):
         self.bus.shutdown()
         self.bus = self.notifier = self._collector = None
         self.description = ""
+        self.interface = ""
         self.load_percent = 0.0
 
     def add_listener(self, listener: can.Listener) -> None:
