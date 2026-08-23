@@ -41,3 +41,37 @@ the demo device.
 The **Python** pane is a live console with the same objects the GUI uses
 (`bus`, `canopen`, `ctx`, `hooks`, `window`, `send(id, data)`); *Run script...*
 executes a `.py` file in that namespace.
+
+## Built with
+
+pycangui is Apache-2.0 and is a pure-Python application on top of these
+packages, each used unmodified under its own licence (licence text as declared
+in the package metadata).  The LGPL components stay separate, replaceable
+packages, as the LGPL requires.
+
+| Package | Used for | Licence |
+|---------|----------|---------|
+| [Python](https://www.python.org) | Runtime | PSF-2.0 |
+| [PySide6](https://www.qt.io/qt-for-python) | GUI toolkit (Qt for Python) | LGPL-3.0 (used under LGPL) |
+| [shiboken6](https://www.qt.io/qt-for-python) | Qt binding runtime used by PySide6 | LGPL-3.0 (used under LGPL) |
+| [python-can](https://github.com/hardbyte/python-can) | CAN adapter abstraction | LGPL-3.0 |
+| [canopen](https://github.com/christiansandberg/canopen) | CANopen protocol stack | MIT |
+| [cantools](https://github.com/cantools/cantools) | DBC / KCD / SYM / ARXML decoding | MIT |
+| [pyqtgraph](https://www.pyqtgraph.org) | Plotting | MIT |
+| [numpy](https://numpy.org) | Numeric arrays for plotting | BSD-3-Clause (with 0BSD / MIT / Zlib / CC0 parts) |
+| [can-j1939](https://github.com/juergenH87/python-can-j1939) | J1939 (optional `j1939` extra) | MIT |
+| [udsoncan](https://github.com/pylessard/python-udsoncan) | UDS client (optional `uds` extra) | MIT |
+| [pyxcp](https://github.com/christoph2/pyxcp) | XCP (optional `xcp` extra) | LGPL-3.0-or-later |
+
+Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets); the GPL-only Qt
+modules such as Qt Charts and Qt Data Visualization are deliberately avoided.
+Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the
+vendor's driver and python-can loads it at run time.
+
+## Development and AI disclosure
+
+pycangui is designed and directed by davhodg.  Much of the code is
+written with the assistance of Anthropic's Claude (Claude Fable 5) working as
+a pair-programming tool under direction, with the design decisions, review,
+testing and acceptance made by the author.  Contributions are reviewed to the
+same standard regardless of origin.
