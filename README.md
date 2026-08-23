@@ -38,6 +38,13 @@ TPDO values appear there too.  Tick *Plot* on any signal to draw it in the
 **Plot** pane (rolling window, pause, follow).  `resources/demo.dbc` matches
 the demo device.
 
+The **Transmit** pane holds one list of everything being sent, with three kinds
+of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded
+database and edit its signals in physical units), and **CANopen RPDO** (pick a
+node's RPDO -- press *Read RPDO config* in the CANopen pane first -- and edit
+its mapped variables).  Expand a row to see its signals; the encoded bytes
+update as you type, and a message that is already cycling is updated live.
+
 The **UDS** pane talks ISO 14229 over ISO-TP (udsoncan + can-isotp): set the
 tester/ECU ids, Open, then sessions, SecurityAccess (the seed-to-key algorithm
 is `hooks/uds.py::security_key`), tester present, DID read/write, DTC read and

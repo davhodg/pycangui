@@ -107,13 +107,15 @@ DefaultValue=0x0000BEEF
 PDOMapping=0
 
 [OptionalObjects]
-SupportedObjects=6
+SupportedObjects=8
 1=0x1008
 2=0x1017
-3=0x1800
-4=0x1A00
-5=0x6040
-6=0x6041
+3=0x1400
+4=0x1600
+5=0x1800
+6=0x1A00
+7=0x6040
+8=0x6041
 
 [1008]
 ParameterName=Manufacturer device name
@@ -129,6 +131,56 @@ ObjectType=0x7
 DataType=0x0006
 AccessType=rw
 DefaultValue=500
+PDOMapping=0
+
+[1400]
+ParameterName=RPDO1 communication parameter
+ObjectType=0x9
+SubNumber=3
+
+[1400sub0]
+ParameterName=Number of entries
+ObjectType=0x7
+DataType=0x0005
+AccessType=ro
+DefaultValue=2
+PDOMapping=0
+
+[1400sub1]
+ParameterName=COB-ID
+ObjectType=0x7
+DataType=0x0007
+AccessType=rw
+DefaultValue=$NODEID+0x200
+PDOMapping=0
+
+[1400sub2]
+ParameterName=Transmission type
+ObjectType=0x7
+DataType=0x0005
+AccessType=rw
+DefaultValue=255
+PDOMapping=0
+
+[1600]
+ParameterName=RPDO1 mapping parameter
+ObjectType=0x8
+SubNumber=2
+
+[1600sub0]
+ParameterName=Number of entries
+ObjectType=0x7
+DataType=0x0005
+AccessType=rw
+DefaultValue=1
+PDOMapping=0
+
+[1600sub1]
+ParameterName=Mapping 1
+ObjectType=0x7
+DataType=0x0007
+AccessType=rw
+DefaultValue=0x20010010
 PDOMapping=0
 
 [1800]

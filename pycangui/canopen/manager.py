@@ -38,6 +38,7 @@ class CanopenManager(QObject):
     sdo_result = Signal(int, int, int, object, object)  # node_id, index, sub, value, error|None
     pdo_update = Signal(int, str, dict)  # node_id, pdo name, {variable name: value}
     emcy = Signal(int, str)  # node_id, description
+    rpdos_read = Signal(int)  # node_id: its RPDO configuration is now known
     message = Signal(str)  # for the Log pane
 
     def __init__(self, bus: BusManager) -> None:
@@ -211,6 +212,56 @@ class CanopenManager(QObject):
                 self.message.emit(f"Node {node_id}: decoding {', '.join(names)}")
 
         self._worker.submit(job, done)
+
+    # --- RPDO (the node receives these, so the tester transmits them) -----------
+    def rpdos(self, node_id: int) -> list[tuple[int, str, list[str]]]:
+        """Configured RPDOs of a node: (number, name, mapped variable names)."""
+        node = self.node(node_id)
+        if node is None:
+            return []
+        return [
+            (number, pdo_map.name, [v.name for v in pdo_map])
+            for number, pdo_map in node.rpdo.map.items()
+            if pdo_map.cob_id is not None and len(pdo_map.map)
+        ]
+
+    def read_rpdo_config(self, node_id: int) -> None:
+        """Read a node's RPDO mapping over SDO so those PDOs can be transmitted."""
+        node = self.node(node_id)
+        if node is None or not len(node.object_dictionary):
+            self.message.emit(f"Node {node_id}: load an EDS first")
+            return
+
+        def job() -> int:
+            node.rpdo.read()
+            return sum(1 for m in node.rpdo.map.values() if m.cob_id is not None and len(m.map))
+
+        def done(count: int | None, error: str | None) -> None:
+            if error:
+                self.message.emit(f"Node {node_id}: RPDO configuration read failed ({error})")
+            else:
+                self.message.emit(f"Node {node_id}: {count} RPDO(s) configured")
+                self.rpdos_read.emit(node_id)
+
+        self._worker.submit(job, done)
+
+    def encode_rpdo(
+        self, node_id: int, number: int, values: dict[str, float]
+    ) -> tuple[int, bytes] | None:
+        """CAN id and data for an RPDO, from physical values of its variables."""
+        node = self.node(node_id)
+        if node is None:
+            return None
+        pdo_map = node.rpdo.map.get(number)
+        if pdo_map is None or pdo_map.cob_id is None:
+            return None
+        for var in pdo_map:
+            if var.name in values:
+                try:
+                    var.phys = values[var.name]
+                except Exception:  # value out of range for the mapped type
+                    var.raw = int(values[var.name])
+        return pdo_map.cob_id, bytes(pdo_map.data)
 
 
 # --- helpers used by the view ----------------------------------------------

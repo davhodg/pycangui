@@ -6,7 +6,7 @@ It also answers UDS on 0x7E0/0x7E8 (see demo_uds.py).  It is a real
 ``canopen.LocalNode`` built from ``resources/demo.eds``: it
 answers SDO reads/writes, sends a heartbeat, obeys NMT commands and transmits
 TPDO1 every 100 ms with a moving "motor speed" that follows whatever you write
-to *Speed demand* (0x2001).
+to *Speed demand* (0x2001) -- by SDO, or by sending it RPDO1 (0x205).
 """
 
 from __future__ import annotations
@@ -50,6 +50,9 @@ class DemoDevice(QObject):
         self._tpdo = self.node.tpdo[1]
         self._tpdo.read(from_od=True)
         self._tpdo.start(0.1)
+        self._rpdo = self.node.rpdo[1]  # a tester can drive Speed demand with this
+        self._rpdo.read(from_od=True)
+        self._rpdo.add_callback(self._on_rpdo)
         self._speed = 0
         self._odometer = 0
         self._timer = QTimer(self, interval=100, timeout=self._tick)
@@ -58,6 +61,12 @@ class DemoDevice(QObject):
         self.j1939 = DemoJ1939Node(self._bus, self._network.notifier, self)
         self.xcp = DemoXcpSlave(self._bus, self)
         self._network.notifier.add_listener(_XcpFrameListener(self.xcp))
+
+    def _on_rpdo(self, pdo_map) -> None:
+        """Apply a received RPDO to the object dictionary (canopen leaves this
+        to the application)."""
+        for var in pdo_map:
+            self.node.set_data(var.index, var.subindex, var.get_data())
 
     def _tick(self) -> None:
         demand = struct.unpack("<h", self.node.get_data(0x2001, 0))[0]

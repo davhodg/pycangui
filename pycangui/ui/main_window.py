@@ -90,7 +90,7 @@ class MainWindow(QMainWindow):
         self._add_dock("j1939", "J1939", self.j1939_view, Qt.RightDockWidgetArea)
         self.xcp_view = XcpView(self.xcp, self.ctx)
         self._add_dock("xcp", "XCP", self.xcp_view, Qt.RightDockWidgetArea)
-        self.tx = TxView(self.bus, self.ctx)
+        self.tx = TxView(self.bus, self.ctx, self.dbc, self.canopen)
         self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
         self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
         self.console = ConsoleView(self._console_namespace(), self.ctx)
@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
         # --- wiring ----------------------------------------------------------
         self.bus.frames.connect(self.trace.on_frames)
         self.bus.frames.connect(self._decode_frames)
+        self.canopen.rpdos_read.connect(lambda _n: self.tx.refresh_sources())
         self.canopen.pdo_update.connect(self._on_pdo_update)
         self.bus.frames.connect(self._count_frames)
         self.bus.connected.connect(self._on_connected)
@@ -266,12 +267,15 @@ class MainWindow(QMainWindow):
             self.log.appendPlainText(f"DBC load failed: {path}: {exc}")
             return False
         self.log.appendPlainText(f"Loaded {path}: {len(db.messages)} messages")
+        if hasattr(self, "tx"):
+            self.tx.refresh_sources()
         return True
 
     def _unload_dbcs(self) -> None:
         for path in list(self.dbc.databases):
             self.dbc.unload(path)
         self.ctx.settings.set("dbc.paths", [])
+        self.tx.refresh_sources()
         self.log.appendPlainText("DBC databases unloaded")
 
     @Slot(list)
