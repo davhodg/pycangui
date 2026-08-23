@@ -22,6 +22,7 @@ from canopen.objectdictionary import ODArray, ODRecord, ODVariable, datatypes, e
 from PySide6.QtCore import QObject, Signal, Slot
 
 from pycangui.canopen import NodeIdentity, PdoConfig, PdoEntry
+from pycangui.canopen.emcy import Emcy
 from pycangui.core.bus import BusManager
 from pycangui.core.worker import Worker
 
@@ -37,15 +38,17 @@ class CanopenManager(QObject):
     eds_loaded = Signal(int, str, str)  # node_id, path, product name
     sdo_result = Signal(int, int, int, object, object)  # node_id, index, sub, value, error|None
     pdo_update = Signal(int, str, dict)  # node_id, pdo name, {variable name: value}
-    emcy = Signal(int, str)  # node_id, description
+    emcy = Signal(object)  # Emcy
     rpdos_read = Signal(int)  # node_id: its RPDO configuration is now known
     pdo_config = Signal(int)  # node_id: its PDO configuration changed
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
     message = Signal(str)  # for the Event Log pane
 
-    def __init__(self, bus: BusManager) -> None:
+    def __init__(self, bus: BusManager, hooks=None) -> None:
         super().__init__()
         self._bus = bus
+        self._hooks = hooks
+        self.emcy_history: list[Emcy] = []
         self.network: canopen.Network | None = None
         self._sync_on = False
         self._worker = Worker()
@@ -84,7 +87,32 @@ class CanopenManager(QObject):
         self.pdo_update.emit(node_id, pdo_map.name, values)
 
     def _on_emcy(self, node_id: int, err: canopen.emcy.EmcyError) -> None:
-        self.emcy.emit(node_id, str(err))
+        """Runs on the Notifier thread: decode and emit, nothing else."""
+        data = bytes(err.data or b"")
+        text = ""
+        if self._hooks is not None:
+            text = (
+                self._hooks.call("canopen", "emcy_manufacturer", err.code, err.register, data) or ""
+            )
+        self.emcy.emit(
+            Emcy(
+                node_id=node_id,
+                code=err.code,
+                register=err.register,
+                data=data,
+                timestamp=err.timestamp,
+                manufacturer_text=text,
+            )
+        )
+
+    @Slot(object)
+    def remember_emcy(self, emergency: Emcy) -> None:
+        """Keep a history (GUI thread); the view connects this to ``emcy``."""
+        self.emcy_history.append(emergency)
+        del self.emcy_history[:-500]
+
+    def clear_emcy_history(self) -> None:
+        self.emcy_history.clear()
 
     # --- nodes ---------------------------------------------------------------
     def node(self, node_id: int) -> canopen.RemoteNode | None:

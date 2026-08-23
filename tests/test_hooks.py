@@ -84,7 +84,9 @@ def test_hook_receives_ctx(home, hooks):
 def test_update_stubs_appends_missing_without_touching_existing(home, hooks):
     write_user(home, "def node_name(identity, *, ctx):\n    return 'mine'\n")
     added = hooks.update_stubs()
-    assert added == {"canopen": ["eds_for_node"]}
+    # everything the module defines except the one the user already wrote
+    expected = sorted(set(registry()["canopen"]) - {"node_name"})
+    assert sorted(added["canopen"]) == expected
     text = (home / "hooks" / "canopen.py").read_text()
     assert "return 'mine'" in text and "def eds_for_node" in text
     hooks.reload()
