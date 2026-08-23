@@ -82,8 +82,7 @@ class CanopenManager(QObject):
         self._liveness.start()
         self.network: canopen.Network | None = None
         self._sync_on = False
-        self._worker = Worker()
-        self._worker.start()
+        self._worker = Worker()  # starts itself the first time it is used
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
 

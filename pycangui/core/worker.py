@@ -26,6 +26,11 @@ class Worker(QThread):
         self.done.connect(self._deliver)
 
     def submit(self, fn: Callable[[], Any], callback: Callback) -> None:
+        # Started on first use: a QThread that is running when Qt destroys it
+        # aborts the process, so an owner that is created and dropped without
+        # ever asking for anything must not leave a thread behind.
+        if not self.isRunning():
+            self.start()
         self._jobs.put((fn, callback))
 
     def run(self) -> None:
@@ -53,5 +58,7 @@ class Worker(QThread):
             self.done.disconnect(self._deliver)
         except (RuntimeError, TypeError):  # already disconnected
             pass
+        if not self.isRunning():
+            return
         self._jobs.put(None)
         self.wait(2000)

@@ -78,8 +78,7 @@ class UdsManager(QObject):
         self.client: Client | None = None
         self.backend_name = ctx.settings.get("backends.isotp", DEFAULT_BACKEND)
         self._transport: IsoTpTransport | None = None
-        self._worker = Worker()
-        self._worker.start()
+        self._worker = Worker()  # starts itself the first time it is used
         self._tp_timer = QTimer(self, timeout=self._tester_present_tick)
         bus.disconnected.connect(self.close)
 
