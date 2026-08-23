@@ -59,9 +59,14 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -m pycangui --selftest
 
+  # The installer is only built for a release: a Windows runner costs double
+  # the minutes, and nothing about the packaging changes between tags.  Push a
+  # tag (git tag v0.1.0 && git push --tags) to produce and publish one, or run
+  # the workflow by hand from the Actions tab.
   package:
     name: Windows installer
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
