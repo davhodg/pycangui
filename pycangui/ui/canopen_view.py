@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -37,11 +37,14 @@ from pycangui.canopen import NodeIdentity, find_eds
 from pycangui.canopen.manager import CanopenManager, format_value, od_entries, type_name
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
+from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
 
 ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
 ERROR_COLOUR = QColor(200, 40, 40)
+LOST_COLOUR = QColor(150, 150, 150)
+ALIVE_BRUSH = QBrush()  # an empty brush restores the theme's normal colour
 RESET_COLOUR = QColor(40, 140, 40)
 NMT_COMMANDS_UI = (
     ("Start (operational)", "OPERATIONAL"),
@@ -192,6 +195,8 @@ class CanopenView(QWidget):
         emcy_bar.addWidget(clear_emcy)
         emcy_l.addLayout(emcy_bar)
         self.emcy_tab_index = bottom.addTab(emcy_box, "Emergencies")
+        self.lss = LssView(manager, ctx)
+        bottom.addTab(self.lss, "LSS")
         self.bottom_tabs = bottom
         splitter = QSplitter(Qt.Vertical)
         for w, stretch in ((top, 1), (mid, 3), (bottom, 1)):
@@ -203,6 +208,8 @@ class CanopenView(QWidget):
 
         # --- wiring ------------------------------------------------------------
         manager.node_seen.connect(self.on_node_seen)
+        manager.node_lost.connect(self.on_node_lost)
+        manager.node_back.connect(self.on_node_back)
         manager.identified.connect(self.on_identified)
         manager.eds_loaded.connect(self.on_eds_loaded)
         manager.sdo_result.connect(self.on_sdo_result)
@@ -235,7 +242,22 @@ class CanopenView(QWidget):
                 self.nodes.setCurrentItem(item)
             self.manager.identify(node_id)
         else:
-            item.setText(2, state)
+            item.setText(2, state)  # a fresh heartbeat replaces any "lost" text
+
+    @Slot(int)
+    def on_node_lost(self, node_id: int) -> None:
+        item = self._node_item(node_id)
+        if item is not None:
+            item.setText(2, f"lost ({item.text(2)})")
+            for column in range(item.columnCount()):
+                item.setForeground(column, LOST_COLOUR)
+
+    @Slot(int)
+    def on_node_back(self, node_id: int) -> None:
+        item = self._node_item(node_id)
+        if item is not None:
+            for column in range(item.columnCount()):
+                item.setForeground(column, ALIVE_BRUSH)
 
     @Slot(object)
     def on_identified(self, identity: NodeIdentity) -> None:
