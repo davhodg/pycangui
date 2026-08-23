@@ -38,6 +38,15 @@ TPDO values appear there too.  Tick *Plot* on any signal to draw it in the
 **Plot** pane (rolling window, pause, follow).  `resources/demo.dbc` matches
 the demo device.
 
+**Record** on the toolbar writes everything on the bus to a log file --
+`.blf` (Vector binary), `.asc` (Vector ASCII), `.trc` (PEAK), `.log` (candump),
+`.csv` or `.db` (SQLite); the format follows the file extension.  The
+**Replay** pane plays a log back with its original timing (0.1x to 20x, with
+looping).  With *Transmit* ticked the frames go onto the bus; with it clear
+nothing is transmitted and the frames are fed straight to the trace, the
+decoders, the signal hub and the plot -- so a colleague's recording can be
+examined with no hardware attached at all.
+
 The **Transmit** pane holds one list of everything being sent, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded
 database and edit its signals in physical units), and **CANopen RPDO** (pick a
