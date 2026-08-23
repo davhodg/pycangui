@@ -66,3 +66,34 @@ def eds_for_node(identity: NodeIdentity, *, ctx) -> Path | str | None:
         # return ctx.eds_dir / "my_device.eds"
     """
     return None
+
+
+@hook
+def emcy_manufacturer(code: int, register: int, data: bytes, *, ctx) -> str | None:
+    """Decode the five manufacturer-specific bytes of an emergency object.
+
+    Bytes 3..7 of an EMCY mean whatever the device maker decided, so only you
+    can decode them.  Return the text to show in the Emergencies tab, or None
+    to leave the raw bytes on their own.
+
+    ``code`` is the 16-bit error code (the standard part is decoded already),
+    ``register`` is object 0x1001, ``data`` is the five bytes.
+
+    Examples:
+
+        # A 16-bit measured value in the first two bytes, then a channel number
+        # if code == 0x2310 and len(data) >= 3:
+        #     current = int.from_bytes(data[0:2], "little") / 10
+        #     return f"{current:.1f} A on channel {data[2]}"
+
+        # A bitfield of internal faults
+        # FAULTS = {0x01: "encoder", 0x02: "hall", 0x04: "supply"}
+        # if code == 0x5000 and data:
+        #     names = [n for bit, n in FAULTS.items() if data[0] & bit]
+        #     return "internal: " + (", ".join(names) or "none")
+
+        # Some devices repeat the error code of the *previous* emergency
+        # if len(data) >= 2:
+        #     return f"previous code 0x{int.from_bytes(data[0:2], 'little'):04X}"
+    """
+    return None

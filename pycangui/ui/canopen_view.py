@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
@@ -41,6 +41,8 @@ from pycangui.ui.pdo_view import PdoConfigView
 
 ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
+ERROR_COLOUR = QColor(200, 40, 40)
+RESET_COLOUR = QColor(40, 140, 40)
 NMT_COMMANDS_UI = (
     ("Start (operational)", "OPERATIONAL"),
     ("Pre-operational", "PRE-OPERATIONAL"),
@@ -167,6 +169,30 @@ class CanopenView(QWidget):
         live_l.addLayout(pdo_bar)
         bottom.addTab(live, "Live PDOs")
         bottom.addTab(self.pdo_config, "PDO configuration")
+
+        self.emcy = QTreeWidget()
+        self.emcy.setHeaderLabels(
+            ["Time", "Node", "Code", "Description", "Register", "Data", "Manufacturer"]
+        )
+        self.emcy.setRootIsDecorated(False)
+        self.emcy.setFont(mono)
+        self.emcy.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.emcy.header().setStretchLastSection(True)
+        emcy_box = QWidget()
+        emcy_l = QVBoxLayout(emcy_box)
+        emcy_l.setContentsMargins(0, 0, 0, 0)
+        emcy_l.addWidget(self.emcy)
+        emcy_bar = QHBoxLayout()
+        emcy_bar.addWidget(
+            QLabel("Manufacturer bytes are decoded by hooks/canopen.py::emcy_manufacturer")
+        )
+        emcy_bar.addStretch()
+        clear_emcy = QPushButton("Clear")
+        clear_emcy.clicked.connect(self.clear_emergencies)
+        emcy_bar.addWidget(clear_emcy)
+        emcy_l.addLayout(emcy_bar)
+        self.emcy_tab_index = bottom.addTab(emcy_box, "Emergencies")
+        self.bottom_tabs = bottom
         splitter = QSplitter(Qt.Vertical)
         for w, stretch in ((top, 1), (mid, 3), (bottom, 1)):
             splitter.addWidget(w)
@@ -181,7 +207,8 @@ class CanopenView(QWidget):
         manager.eds_loaded.connect(self.on_eds_loaded)
         manager.sdo_result.connect(self.on_sdo_result)
         manager.pdo_update.connect(self.on_pdo_update)
-        manager.emcy.connect(lambda n, text: ctx.log(f"EMCY node {n}: {text}"))
+        manager.emcy.connect(manager.remember_emcy)
+        manager.emcy.connect(self.on_emcy)
         manager.message.connect(ctx.log)
         manager._bus.disconnected.connect(self.clear)
 
@@ -349,10 +376,40 @@ class CanopenView(QWidget):
         self.nodes.clear()
         self.od.clear()
         self.clear_live_pdos()
+        self.clear_emergencies()
         self._identities.clear()
         self._asked.clear()
         self.pdo_config.set_node(None)
         self.sync_btn.setChecked(False)
+
+    # --- emergencies ----------------------------------------------------------------
+    @Slot(object)
+    def on_emcy(self, emergency) -> None:
+        item = QTreeWidgetItem(
+            [
+                f"{emergency.timestamp:.3f}" if emergency.timestamp else "",
+                str(emergency.node_id),
+                f"{emergency.code:04X}",
+                emergency.description,
+                f"{emergency.register:02X} ({emergency.register_text})",
+                emergency.data_hex,
+                emergency.manufacturer_text,
+            ]
+        )
+        if emergency.is_reset:
+            item.setForeground(3, RESET_COLOUR)
+        else:
+            item.setForeground(3, ERROR_COLOUR)
+        self.emcy.addTopLevelItem(item)
+        self.emcy.scrollToBottom()
+        if self.emcy.topLevelItemCount() > 500:
+            self.emcy.takeTopLevelItem(0)
+        self.ctx.log(f"EMCY {emergency}")
+
+    @Slot()
+    def clear_emergencies(self) -> None:
+        self.emcy.clear()
+        self.manager.clear_emcy_history()
 
     # --- object dictionary -------------------------------------------------------
     def _on_node_selected(self, current: QTreeWidgetItem | None, _previous) -> None:

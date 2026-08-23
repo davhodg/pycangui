@@ -69,7 +69,7 @@ class MainWindow(QMainWindow):
         self.ctx = Context(log=self.log.appendPlainText)
         self.hooks = Hooks(self.ctx)
         BACKENDS.load_user_backends(self.ctx.backends_dir, self.log.appendPlainText)
-        self.canopen = CanopenManager(self.bus)
+        self.canopen = CanopenManager(self.bus, self.hooks)
         self.uds = UdsManager(self.bus, self.hooks, self.ctx)
         self.j1939 = J1939Manager(self.bus, self.hooks)
         self.signals = SignalHub()

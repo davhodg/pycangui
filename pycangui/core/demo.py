@@ -18,6 +18,7 @@ import canopen
 from PySide6.QtCore import QObject, QTimer
 
 from pycangui import resources
+from pycangui.canopen.emcy import encode as encode_emcy
 from pycangui.core.demo_j1939 import DemoJ1939Node
 from pycangui.core.demo_uds import DemoUdsServer
 from pycangui.core.demo_xcp import DemoXcpSlave
@@ -55,6 +56,7 @@ class DemoDevice(QObject):
         self._rpdo.add_callback(self._on_rpdo)
         self._speed = 0
         self._odometer = 0
+        self._over_current = False
         self._timer = QTimer(self, interval=100, timeout=self._tick)
         self._timer.start()
         self.uds = DemoUdsServer(self._bus, self._network.notifier, self)
@@ -79,6 +81,32 @@ class DemoDevice(QObject):
         self._tpdo["Measurements.Odometer"].raw = self._odometer
         if self.node.nmt.state == "OPERATIONAL":
             self._tpdo.update()
+        self._check_emergency(demand)
+
+    def _check_emergency(self, demand: int) -> None:
+        """Raise an over-current emergency past a speed demand of 2000, and
+        clear it when the demand comes back down -- so the Emergencies tab has
+        something realistic to show, manufacturer bytes included."""
+        too_fast = abs(demand) > 2000
+        if too_fast and not self._over_current:
+            self._over_current = True
+            # manufacturer bytes: measured current in 0.1 A, then a channel
+            current = min(abs(demand) // 10, 0xFFFF)
+            self.node.set_data(0x1001, 0, b"\x02")  # error register: current
+            self._send_emcy(0x2310, 0x02, current.to_bytes(2, "little") + b"\x01")
+        elif not too_fast and self._over_current:
+            self._over_current = False
+            self.node.set_data(0x1001, 0, b"\x00")
+            self._send_emcy(0x0000, 0x00, b"")  # error reset
+
+    def _send_emcy(self, code: int, register: int, data: bytes) -> None:
+        self._bus.send(
+            can.Message(
+                arbitration_id=0x80 + NODE_ID,
+                data=encode_emcy(code, register, data),
+                is_extended_id=False,
+            )
+        )
 
     def stop(self) -> None:
         self._timer.stop()
