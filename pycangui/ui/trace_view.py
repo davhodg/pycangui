@@ -8,6 +8,8 @@ the group is re-enabled.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, QTimer, Slot
 from PySide6.QtGui import QAction, QFont
 from PySide6.QtWidgets import (
@@ -26,7 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.bus import Frame
-from pycangui.core.classify import GROUPS, classify
+from pycangui.core.classify import GROUPS, classify, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.ui.latest_model import ROLE_GROUP, LatestModel
@@ -72,6 +74,8 @@ class TraceView(QWidget):
         super().__init__()
         self.hooks = hooks
         self.ctx = ctx
+        # Extra labellers tried after the hook, before the CANopen classifier (DBC names)
+        self.classifiers: list[Callable[[Frame], str | None]] = []
         mono = QFont("Consolas", 9)
         self.model = TraceModel()
         self.latest = LatestModel()
@@ -153,9 +157,17 @@ class TraceView(QWidget):
 
     # --- frames ----------------------------------------------------------------------
     def _classify(self, frames: list[Frame]) -> None:
+        """Label precedence: user hook, then DBC names, then CANopen; the filter
+        group always comes from the CAN id so a DBC-named PDO still counts as PDO."""
         for f in frames:
+            co_kind, co_group = classify(f.can_id, f.extended)
             kind = self.hooks.call("trace", "frame_kind", f)
-            f.kind = kind if kind is not None else classify(f.can_id, f.extended)[0]
+            if kind is None:
+                for fn in self.classifiers:
+                    if kind := fn(f):
+                        break
+            f.kind = kind or co_kind
+            f.group = co_group if co_group != "Other" else group_of(f.kind)
 
     def _on_mode_changed(self, index: int) -> None:
         self.stack.setCurrentIndex(index)

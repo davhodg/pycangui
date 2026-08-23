@@ -32,6 +32,12 @@ to name it, ...) with the defaults and commented examples in place; `eds/` is
 scanned for EDS files matching a node's vendor/product; `settings.json` holds
 what the GUI remembers.  Tools > Reload hooks applies edits without a restart.
 
+**File > Load DBC...** decodes matching frames: the trace shows the message
+name and the **Signals** pane lists every signal with its live value.  CANopen
+TPDO values appear there too.  Tick *Plot* on any signal to draw it in the
+**Plot** pane (rolling window, pause, follow).  `resources/demo.dbc` matches
+the demo device.
+
 The **Python** pane is a live console with the same objects the GUI uses
 (`bus`, `canopen`, `ctx`, `hooks`, `window`, `send(id, data)`); *Run script...*
 executes a `.py` file in that namespace.
