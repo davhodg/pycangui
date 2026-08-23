@@ -6,8 +6,14 @@ and Python scripting, on any adapter supported by python-can.  Apache-2.0.
 ## Running
 
 Double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux / macOS).
-The first run creates a virtual environment and installs the dependencies;
 Python 3.12 or newer must be on the PATH.
+
+The first run sets itself up: it creates a *virtual environment* -- a folder
+called `.venv` holding its own copy of Python and only the libraries pycangui
+needs, so nothing else on the machine is touched -- and downloads about 90 MB
+into it.  That takes a few minutes once; every later start is immediate, and
+deleting `.venv` undoes it.  If `uv` is installed it is used instead of pip,
+which makes rebuilding that folder later a matter of seconds.
 
 For development:
 
@@ -167,7 +173,7 @@ packages, as the LGPL requires.
 | Package | Used for | Licence |
 |---------|----------|---------|
 | [Python](https://www.python.org) | Runtime | PSF-2.0 |
-| [PySide6](https://www.qt.io/qt-for-python) | GUI toolkit (Qt for Python) | LGPL-3.0 (used under LGPL) |
+| [PySide6-Essentials](https://www.qt.io/qt-for-python) | GUI toolkit (Qt for Python) | LGPL-3.0 (used under LGPL) |
 | [shiboken6](https://www.qt.io/qt-for-python) | Qt binding runtime used by PySide6 | LGPL-3.0 (used under LGPL) |
 | [python-can](https://github.com/hardbyte/python-can) | CAN adapter abstraction | LGPL-3.0 |
 | [canopen](https://github.com/christiansandberg/canopen) | CANopen protocol stack | MIT |
@@ -182,8 +188,10 @@ packages, as the LGPL requires.
 XCP on CAN and its A2L reader are implemented directly in pycangui (no XCP
 library dependency).
 
-Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets); the GPL-only Qt
-modules such as Qt Charts and Qt Data Visualization are deliberately avoided.
+Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets).  pycangui depends on
+**PySide6-Essentials** rather than the full PySide6, so the GPL-only add-on
+modules (Qt Charts, Qt Data Visualization and the rest) are never installed --
+which also saves about 160 MB.
 Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the
 vendor's driver and python-can loads it at run time.
 

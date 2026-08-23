@@ -12,9 +12,15 @@ license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.12"
 authors = [{ name = "davhodg" }]
 dependencies = [
-    "PySide6>=6.7",
+    # Essentials, not the full PySide6: the "addons" wheel is another 160 MB of
+    # Qt (3D, Charts, Multimedia, WebEngine) that pycangui never imports, and
+    # the GPL-only modules live there too.
+    "PySide6-Essentials>=6.7",
     "pyqtgraph>=0.13",
-    "python-can>=4.4",
+    # [serial] pulls in pyserial, which the slcan and serial backends need --
+    # the cheap USB adapters (CANable, Lawicel, USB2CAN).  It is only an
+    # optional extra of python-can, so without this they silently fail.
+    "python-can[serial]>=4.4",
     "canopen>=2.3",
     "cantools>=39",
     "numpy>=1.26",
