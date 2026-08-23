@@ -20,8 +20,22 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QSettings
 from PySide6.QtWidgets import QApplication
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_settings(tmp_path_factory):
+    """Keep QSettings in a temporary file rather than the registry.
+
+    MainWindow saves its geometry and dock layout in closeEvent, so without
+    this a test run leaves settings behind, and the next run restores a layout
+    from the last one -- which is exactly what a layout test must not see.
+    """
+    QSettings.setDefaultFormat(QSettings.IniFormat)
+    QSettings.setPath(
+        QSettings.IniFormat, QSettings.UserScope, str(tmp_path_factory.mktemp("settings"))
+    )
 
 
 @pytest.fixture(scope="session")
