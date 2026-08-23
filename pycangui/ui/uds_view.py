@@ -3,7 +3,7 @@ routines, ECU reset and raw requests.  Results go to the pane's own log."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
 from pycangui.uds import UdsConfig
 from pycangui.uds.manager import RESETS, SESSIONS, UdsManager, parse_bytes
@@ -48,6 +49,15 @@ class UdsView(QWidget):
         self.ext.setChecked(cfg.extended_id)
         self.padding = QCheckBox("Pad")
         self.padding.setChecked(cfg.padding is not None)
+        self.transport = QComboBox()
+        self.transport.setToolTip("ISO-TP implementation (add your own in the backends folder)")
+        for spec in BACKENDS.specs("isotp"):
+            self.transport.addItem(spec.name, spec.name)
+            self.transport.setItemData(self.transport.count() - 1, spec.description, Qt.ToolTipRole)
+        index = self.transport.findData(manager.backend_name)
+        if index >= 0:
+            self.transport.setCurrentIndex(index)
+        self.transport.currentTextChanged.connect(manager.set_backend)
         self.open_btn = QPushButton("Open")
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
@@ -57,7 +67,9 @@ class UdsView(QWidget):
             if label:
                 g.addWidget(QLabel(label), 0, col * 2)
             g.addWidget(w, 0, col * 2 + 1)
-        g.addWidget(self.open_btn, 0, 9)
+        g.addWidget(QLabel(" Transport"), 0, 9)
+        g.addWidget(self.transport, 0, 10)
+        g.addWidget(self.open_btn, 0, 11)
 
         # --- session / security ----------------------------------------------
         sess = QGroupBox("Session and security")

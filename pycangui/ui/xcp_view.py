@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -20,11 +21,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
 ROLE_NAME = Qt.UserRole
+
+
+def _specs(kind: str):
+    return BACKENDS.specs(kind)
 
 
 class XcpView(QWidget):
@@ -51,7 +57,18 @@ class XcpView(QWidget):
         unlock.clicked.connect(lambda: self.manager.unlock(RESOURCE_CAL))
         load = QPushButton("Load A2L...")
         load.clicked.connect(self._load_a2l)
+        self.backend = QComboBox()
+        self.backend.setToolTip("XCP implementation (add your own in the backends folder)")
+        for spec in _specs("xcp"):
+            self.backend.addItem(spec.name, spec.name)
+            self.backend.setItemData(self.backend.count() - 1, spec.description, Qt.ToolTipRole)
+        index = self.backend.findData(manager.backend_name)
+        if index >= 0:
+            self.backend.setCurrentIndex(index)
+        self.backend.currentTextChanged.connect(manager.set_backend)
         bar = QHBoxLayout()
+        bar.addWidget(QLabel("Engine"))
+        bar.addWidget(self.backend)
         bar.addWidget(QLabel("Cmd ID"))
         bar.addWidget(self.cmd_id)
         bar.addWidget(QLabel("Resp ID"))

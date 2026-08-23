@@ -56,7 +56,7 @@ def stack(app, tmp_path, monkeypatch):
     hooks = Hooks(ctx)
     hub = SignalHub()
     bus = BusManager()
-    manager = XcpManager(bus, hooks, hub)
+    manager = XcpManager(bus, hooks, hub, ctx)
     bus.connect_bus("virtual", "vcan_xcp", 500000, False)
     demo = DemoDevice("vcan_xcp")
     yield bus, manager, demo, hub, tmp_path
@@ -79,7 +79,7 @@ def test_xcp_against_demo_slave(stack):
     manager.load_a2l(str(resources.path("demo.a2l")))
     n = len(lines)
     manager.connect_slave()
-    assert "resources CAL" in last_after(n)
+    assert "resources CAL" in last_after(n) and "(native)" in lines[-1]
     assert manager.is_connected
     n += 1
 

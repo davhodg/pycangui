@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
+from pycangui.core.backends import BACKENDS
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
@@ -61,12 +62,13 @@ class MainWindow(QMainWindow):
         # --- user context, hooks, protocol managers -------------------------
         self.ctx = Context(log=self.log.appendPlainText)
         self.hooks = Hooks(self.ctx)
+        BACKENDS.load_user_backends(self.ctx.backends_dir, self.log.appendPlainText)
         self.canopen = CanopenManager(self.bus)
-        self.uds = UdsManager(self.bus, self.hooks)
+        self.uds = UdsManager(self.bus, self.hooks, self.ctx)
         self.j1939 = J1939Manager(self.bus, self.hooks)
         self.signals = SignalHub()
         self.dbc = DbcDecoder()
-        self.xcp = XcpManager(self.bus, self.hooks, self.signals)
+        self.xcp = XcpManager(self.bus, self.hooks, self.signals, self.ctx)
 
         # --- docks -----------------------------------------------------------
         self.trace = TraceView(self.hooks, self.ctx)
@@ -133,6 +135,7 @@ class MainWindow(QMainWindow):
         self._demo_action.toggled.connect(self._toggle_demo)
         tools_menu.addSeparator()
         tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
+        tools_menu.addAction("Open backends folder", self._open_backends_folder)
         tools_menu.addAction("Reload hooks", self._reload_hooks)
         tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
         self._default_state = self.saveState()
@@ -210,6 +213,9 @@ class MainWindow(QMainWindow):
 
     def _open_hooks_folder(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.ctx.hooks_dir)))
+
+    def _open_backends_folder(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.ctx.backends_dir)))
 
     def _reload_hooks(self) -> None:
         self.hooks.reload()

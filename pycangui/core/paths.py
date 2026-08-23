@@ -39,3 +39,9 @@ def eds_dir() -> Path:
     d = user_dir() / "eds"
     d.mkdir(exist_ok=True)
     return d
+
+
+def backends_dir() -> Path:
+    d = user_dir() / "backends"
+    d.mkdir(exist_ok=True)
+    return d
