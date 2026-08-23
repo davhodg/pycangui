@@ -12,23 +12,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Only the latest stable Python is tested, on both platforms: platform
-  # differences are what actually bite (Qt, threads, drivers), and Actions
-  # minutes are finite -- Windows runners cost double.  requires-python in
-  # pyproject.toml is kept in step with this, so nothing is claimed untested.
+  # Both ends of the supported range, but only where it earns its keep.  The
+  # latest Python runs on both platforms, because platform differences (Qt,
+  # threads, drivers) are what actually bite.  The oldest supported Python runs
+  # on Linux only, which is the cheap runner: bugs that appear only on the
+  # floor are real -- 3.12 and 3.13 evaluate annotations eagerly, which broke
+  # the hook stubs while 3.14 hid it -- but they are rarely platform specific.
+  # Windows minutes cost double, so there is no Windows job for the floor.
   test:
-    name: Test on ${{ matrix.os }}
+    name: Test on ${{ matrix.os }}, Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        include:
+          - { os: windows-latest, python: "3.14" }
+          - { os: ubuntu-latest, python: "3.14" }
+          - { os: ubuntu-latest, python: "3.12" }  # the floor: requires-python
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python }}
           cache: pip
 
       - name: Install

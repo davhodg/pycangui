@@ -7,7 +7,7 @@ and Python scripting, on any adapter supported by python-can.  Apache-2.0.
 
 Double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux / macOS).
 The first run creates a virtual environment and installs the dependencies;
-Python 3.14 or newer must be on the PATH.
+Python 3.12 or newer must be on the PATH.
 
 For development:
 
@@ -215,8 +215,10 @@ Adapter drivers are not bundled: install the vendor's driver and python-can
 finds it.  Hooks, back ends, EDS files and settings stay in `%APPDATA%\pycangui`
 and survive upgrades and uninstallation.
 
-`.github/workflows/ci.yml` runs the tests and lint on Windows and Linux with
-the latest stable Python on every push.  The installer is built only for a
+`.github/workflows/ci.yml` runs the tests and lint on every push: the latest
+Python on Windows and Linux, and the oldest supported Python on Linux as well
+(bugs that only appear on the floor are real, but rarely platform specific, and
+the Linux runner is the cheap one).  The installer is built only for a
 release -- push a `v*` tag, or start the workflow by hand from the Actions tab
 -- because a Windows runner costs double the minutes and the packaging does not
 change between tags.
