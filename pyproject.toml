@@ -19,10 +19,11 @@ dependencies = [
     "numpy>=1.26",
     "udsoncan>=1.23",
     "can-isotp>=2.0",
+    "can-j1939>=2.0",
+    "pywin32>=306; sys_platform == 'win32'",  # can-j1939 imports pythoncom on Windows
 ]
 
 [project.optional-dependencies]
-j1939 = ["can-j1939"]
 xcp = ["pyxcp"]
 dev = ["pytest", "ruff"]
 

@@ -8,7 +8,7 @@ can be named from the id alone.  The result is a short *kind* ("TPDO1 n5",
 
 from __future__ import annotations
 
-GROUPS = ("NMT", "SYNC/TIME", "EMCY", "PDO", "SDO", "Heartbeat", "LSS", "UDS", "Other")
+GROUPS = ("NMT", "SYNC/TIME", "EMCY", "PDO", "SDO", "Heartbeat", "LSS", "UDS", "J1939", "Other")
 
 # function code (id >> 7) -> (kind prefix, group, has node id)
 _FUNCTION_CODES: dict[int, tuple[str, str, bool]] = {
@@ -30,7 +30,7 @@ _FUNCTION_CODES: dict[int, tuple[str, str, bool]] = {
 def classify(can_id: int, extended: bool) -> tuple[str, str]:
     """Return (kind, group) for a CAN id."""
     if extended:
-        return ("", "Other")
+        return ("", "J1939")  # label comes from the J1939 manager (PGN name + SA)
     if can_id == 0x000:
         return ("NMT", "NMT")
     if can_id == 0x080:

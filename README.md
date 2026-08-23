@@ -13,7 +13,7 @@ For development:
 
 ```
 python -m venv .venv
-.venv\Scripts\pip install -e .[dev,j1939,xcp]
+.venv\Scripts\pip install -e .[dev,xcp]
 .venv\Scripts\python -m pycangui
 .venv\Scripts\python -m pytest
 ```
@@ -44,6 +44,13 @@ is `hooks/uds.py::security_key`), tester present, DID read/write, DTC read and
 clear, routines, ECU reset and raw requests.  The demo device answers on
 0x7E0/0x7E8 with a byte-invert key.
 
+The **J1939** pane lists nodes (NAME from address claims), active faults from
+DM1 with lamp status, and reassembled multi-packet messages (TP.BAM / TP.CM via
+can-j1939).  Claim a tester address to send requests and multi-packet PGNs; a
+J1939 DBC (`VFrameFormat=J1939PG`) is matched by PGN so SPNs land in Signals
+and Plot.  The demo device includes an engine at SA 0 (EEC1, CCVS1, DM1, and a
+BAM ComponentID reply to a request for PGN 65259).
+
 The **Python** pane is a live console with the same objects the GUI uses
 (`bus`, `canopen`, `ctx`, `hooks`, `window`, `send(id, data)`); *Run script...*
 executes a `.py` file in that namespace.
@@ -65,7 +72,8 @@ packages, as the LGPL requires.
 | [cantools](https://github.com/cantools/cantools) | DBC / KCD / SYM / ARXML decoding | MIT |
 | [pyqtgraph](https://www.pyqtgraph.org) | Plotting | MIT |
 | [numpy](https://numpy.org) | Numeric arrays for plotting | BSD-3-Clause (with 0BSD / MIT / Zlib / CC0 parts) |
-| [can-j1939](https://github.com/juergenH87/python-can-j1939) | J1939 (optional `j1939` extra) | MIT |
+| [can-j1939](https://github.com/juergenH87/python-can-j1939) | J1939 transport and address claim | MIT |
+| [pywin32](https://github.com/mhammond/pywin32) | Needed by can-j1939 on Windows | PSF-2.0 |
 | [udsoncan](https://github.com/pylessard/python-udsoncan) | UDS client | MIT |
 | [can-isotp](https://github.com/pylessard/python-can-isotp) | ISO-TP transport for UDS | MIT |
 | [pyxcp](https://github.com/christoph2/pyxcp) | XCP (optional `xcp` extra) | LGPL-3.0-or-later |

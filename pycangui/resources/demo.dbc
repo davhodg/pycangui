@@ -33,7 +33,7 @@ NS_ :
 
 BS_:
 
-BU_: DemoDrive Tester
+BU_: DemoDrive Tester Engine
 
 
 BO_ 389 DriveStatus: 8 DemoDrive
@@ -48,8 +48,19 @@ BO_ 291 PumpCommand: 4 Tester
  SG_ PumpEnable : 0|1@1+ (1,0) [0|1] "" DemoDrive
  SG_ PumpSpeedDemand : 8|16@1+ (0.1,0) [0|6553.5] "rpm" DemoDrive
 
+BO_ 2364540158 EEC1: 8 Engine
+ SG_ EngineSpeed : 24|16@1+ (0.125,0) [0|8031.875] "rpm" Tester
+
+BO_ 2566844926 CCVS1: 8 Engine
+ SG_ WheelBasedVehicleSpeed : 8|16@1+ (0.00390625,0) [0|250.996] "km/h" Tester
+
 
 
 CM_ BO_ 389 "CANopen TPDO1 of the pycangui demo device (node 5)";
+CM_ BO_ 2364540158 "J1939 EEC1 (PGN 61444) from the demo engine, SA 0";
+BA_DEF_ BO_  "VFrameFormat" ENUM  "StandardCAN","ExtendedCAN","reserved","J1939PG";
+BA_DEF_DEF_  "VFrameFormat" "StandardCAN";
+BA_ "VFrameFormat" BO_ 2364540158 3;
+BA_ "VFrameFormat" BO_ 2566844926 3;
 CM_ BO_ 1797 "CANopen heartbeat of the demo device";
 VAL_ 1797 NmtState 0 "Boot-up" 4 "Stopped" 5 "Operational" 127 "Pre-operational" ;
