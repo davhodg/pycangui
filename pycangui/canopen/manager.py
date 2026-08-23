@@ -14,12 +14,14 @@ Threads, and why:
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import canopen
+from canopen import lss as lss_module
 from canopen.nmt import NMT_COMMANDS, NMT_STATES
 from canopen.objectdictionary import ODArray, ODRecord, ODVariable, datatypes, eds
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from pycangui.canopen import NodeIdentity, PdoConfig, PdoEntry
 from pycangui.canopen.emcy import Emcy
@@ -31,6 +33,24 @@ DATATYPE_NAMES: dict[int, str] = {
 }
 INTEGER_TYPES = {*datatypes.SIGNED_TYPES, *datatypes.UNSIGNED_TYPES, datatypes.BOOLEAN}
 
+#: A node is reported lost after this many heartbeats fail to arrive.  CiA 301
+#: leaves the consumer window to configuration; the usual choice is a small
+#: multiple of the producer time, which is what we learn from the bus.
+MISSED_HEARTBEATS = 3
+MIN_HEARTBEAT_TIMEOUT_S = 1.0
+
+#: Bit timing table 1 of CiA 305, as (index, bit rate).
+LSS_BIT_TIMINGS: tuple[tuple[int, int], ...] = (
+    (0, 1_000_000),
+    (1, 800_000),
+    (2, 500_000),
+    (3, 250_000),
+    (4, 125_000),
+    (6, 50_000),
+    (7, 20_000),
+    (8, 10_000),
+)
+
 
 class CanopenManager(QObject):
     node_seen = Signal(int, str)  # node_id, NMT state from heartbeat
@@ -39,7 +59,11 @@ class CanopenManager(QObject):
     sdo_result = Signal(int, int, int, object, object)  # node_id, index, sub, value, error|None
     pdo_update = Signal(int, str, dict)  # node_id, pdo name, {variable name: value}
     emcy = Signal(object)  # Emcy
+    node_lost = Signal(int)  # node_id: its heartbeat stopped arriving
+    node_back = Signal(int)  # node_id: heartbeats resumed
     rpdos_read = Signal(int)  # node_id: its RPDO configuration is now known
+    lss_result = Signal(str)  # readable outcome of an LSS operation
+    lss_found = Signal(object)  # NodeIdentity discovered by LSS
     pdo_config = Signal(int)  # node_id: its PDO configuration changed
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
     message = Signal(str)  # for the Event Log pane
@@ -49,6 +73,13 @@ class CanopenManager(QObject):
         self._bus = bus
         self._hooks = hooks
         self.emcy_history: list[Emcy] = []
+        #: node_id -> when its last heartbeat arrived, and the interval between
+        #: the last two.  A node is called lost after MISSED_HEARTBEATS of them.
+        self.last_heartbeat: dict[int, float] = {}
+        self.heartbeat_interval: dict[int, float] = {}
+        self.lost_nodes: set[int] = set()
+        self._liveness = QTimer(self, interval=250, timeout=self._check_liveness)
+        self._liveness.start()
         self.network: canopen.Network | None = None
         self._sync_on = False
         self._worker = Worker()
@@ -67,6 +98,7 @@ class CanopenManager(QObject):
 
     @Slot()
     def _on_bus_disconnected(self) -> None:
+        self.forget_nodes()
         if self.network is None:
             return
         for listener in self.network.listeners:
@@ -78,13 +110,64 @@ class CanopenManager(QObject):
 
     # --- callbacks on the Notifier thread: emit only -------------------------
     def _on_heartbeat(self, can_id: int, data: bytearray, _timestamp: float) -> None:
-        if data:
-            state = NMT_STATES.get(data[0] & 0x7F, f"0x{data[0]:02X}")
-            self.node_seen.emit(can_id - 0x700, state)
+        if not data:
+            return
+        node_id = can_id - 0x700
+        now = time.monotonic()
+        if (previous := self.last_heartbeat.get(node_id)) is not None:
+            gap = now - previous
+            if 0.001 < gap < 60:  # ignore the first one and absurd gaps
+                self.heartbeat_interval[node_id] = gap
+        self.last_heartbeat[node_id] = now
+        state = NMT_STATES.get(data[0] & 0x7F, f"0x{data[0]:02X}")
+        self.node_seen.emit(node_id, state)
 
     def _on_pdo(self, node_id: int, pdo_map: canopen.pdo.base.PdoMap) -> None:
         values = {var.name: var.raw for var in pdo_map}
         self.pdo_update.emit(node_id, pdo_map.name, values)
+
+    # --- liveness: the heartbeat consumer side ---------------------------------
+    def heartbeat_timeout(self, node_id: int) -> float:
+        """How long to wait before calling a node lost.
+
+        Uses the producer time from object 0x1017 when the EDS or the node has
+        given us one, otherwise the interval observed on the bus.  Returns 0
+        when only one heartbeat has been seen: there is nothing to judge yet.
+        """
+        interval = None
+        node = self.node(node_id)
+        if node is not None and 0x1017 in node.object_dictionary:
+            configured = node.object_dictionary[0x1017].value
+            if configured:
+                interval = configured / 1000
+        if interval is None:
+            interval = self.heartbeat_interval.get(node_id)
+        if not interval:
+            return 0.0
+        return max(interval * MISSED_HEARTBEATS, MIN_HEARTBEAT_TIMEOUT_S)
+
+    def _check_liveness(self) -> None:
+        now = time.monotonic()
+        for node_id, last in list(self.last_heartbeat.items()):
+            timeout = self.heartbeat_timeout(node_id)
+            if not timeout:
+                continue
+            overdue = now - last > timeout
+            if overdue and node_id not in self.lost_nodes:
+                self.lost_nodes.add(node_id)
+                self.message.emit(
+                    f"Node {node_id}: heartbeat lost (nothing for {now - last:.1f} s)"
+                )
+                self.node_lost.emit(node_id)
+            elif not overdue and node_id in self.lost_nodes:
+                self.lost_nodes.discard(node_id)
+                self.message.emit(f"Node {node_id}: heartbeat back")
+                self.node_back.emit(node_id)
+
+    def forget_nodes(self) -> None:
+        self.last_heartbeat.clear()
+        self.heartbeat_interval.clear()
+        self.lost_nodes.clear()
 
     def _on_emcy(self, node_id: int, err: canopen.emcy.EmcyError) -> None:
         """Runs on the Notifier thread: decode and emit, nothing else."""
@@ -385,6 +468,144 @@ class CanopenManager(QObject):
             pass
         self._sync_on = False
         self.message.emit("SYNC stopped")
+
+    # --- LSS, layer setting services (CiA 305) ----------------------------------
+    # LSS configures a node's node-ID and bit rate over CAN, before it has a
+    # usable node-ID.  Exactly one node may be in configuration state at a time.
+    def _lss(self):
+        return self.network.lss if self.network is not None else None
+
+    def _lss_job(self, label: str, fn) -> None:
+        if self._lss() is None:
+            self.lss_result.emit("LSS: not connected")
+            return
+
+        def job() -> str:
+            return fn(self._lss())
+
+        def done(text: str | None, error: str | None) -> None:
+            self.lss_result.emit(text if error is None else f"{label}: {error}")
+
+        self._worker.submit(job, done)
+
+    def lss_switch_global(self, configuration: bool) -> None:
+        """Put every node on the bus into configuration or waiting state.
+
+        Only safe when a single node is connected -- otherwise several nodes
+        answer at once.  Use ``lss_select()`` on a populated bus.
+        """
+
+        def fn(lss) -> str:
+            # the state constants live on the master object, not the module
+            lss.send_switch_state_global(
+                lss.CONFIGURATION_STATE if configuration else lss.WAITING_STATE
+            )
+            return f"LSS: all nodes switched to {'configuration' if configuration else 'waiting'}"
+
+        self._lss_job("LSS switch global", fn)
+
+    def lss_select(self, vendor: int, product: int, revision: int, serial: int) -> None:
+        """Put one node, addressed by its 0x1018 identity, into configuration state."""
+
+        def fn(lss) -> str:
+            try:
+                found = lss.send_switch_state_selective(vendor, product, revision, serial)
+            except lss_module.LssError:
+                found = False  # nothing answered within the response timeout
+            if found:
+                return (
+                    f"LSS: node {vendor:08X}:{product:08X}:{revision:08X}:{serial:08X}"
+                    " is in configuration state"
+                )
+            return "LSS: no node matched that address"
+
+        self._lss_job("LSS select", fn)
+
+    def lss_fast_scan(self) -> None:
+        """Discover an unconfigured node's identity by binary search, and leave
+        it in configuration state."""
+
+        def fn(lss) -> str:
+            found, identity = lss.fast_scan()
+            if not found:
+                return "LSS fastscan: no unconfigured node answered"
+            vendor, product, revision, serial = identity
+            self.lss_found.emit(
+                NodeIdentity(
+                    node_id=0,
+                    vendor_id=vendor,
+                    product_code=product,
+                    revision=revision,
+                    serial=serial,
+                )
+            )
+            return (
+                f"LSS fastscan: found {vendor:08X}:{product:08X}:{revision:08X}:{serial:08X}"
+                " (now in configuration state)"
+            )
+
+        self._lss_job("LSS fastscan", fn)
+
+    def lss_set_node_id(self, node_id: int) -> None:
+        def fn(lss) -> str:
+            lss.configure_node_id(node_id)
+            return f"LSS: node-ID set to {node_id} (store and reset for it to take effect)"
+
+        self._lss_job("LSS node-ID", fn)
+
+    def lss_set_bit_timing(self, table_index: int) -> None:
+        rate = dict(LSS_BIT_TIMINGS).get(table_index)
+
+        def fn(lss) -> str:
+            lss.configure_bit_timing(table_index)
+            return f"LSS: bit rate set to {rate} bit/s (activate or store to apply)"
+
+        self._lss_job("LSS bit timing", fn)
+
+    def lss_activate_bit_timing(self, delay_ms: int = 100) -> None:
+        def fn(lss) -> str:
+            lss.activate_bit_timing(delay_ms)
+            return (
+                f"LSS: every node switches bit rate in {delay_ms} ms -- "
+                "reconnect this tool at the new rate"
+            )
+
+        self._lss_job("LSS activate", fn)
+
+    def lss_store(self) -> None:
+        def fn(lss) -> str:
+            lss.store_configuration()
+            return "LSS: configuration stored in the node"
+
+        self._lss_job("LSS store", fn)
+
+    def lss_inquire(self) -> None:
+        """Read back the node-ID and identity of the node in configuration state."""
+
+        def fn(lss) -> str:
+            node_id = lss.inquire_node_id()
+            parts = [
+                lss.inquire_lss_address(cs)
+                for cs in (
+                    lss_module.CS_INQUIRE_VENDOR_ID,
+                    lss_module.CS_INQUIRE_PRODUCT_CODE,
+                    lss_module.CS_INQUIRE_REVISION_NUMBER,
+                    lss_module.CS_INQUIRE_SERIAL_NUMBER,
+                )
+            ]
+            self.lss_found.emit(
+                NodeIdentity(
+                    node_id=node_id,
+                    vendor_id=parts[0],
+                    product_code=parts[1],
+                    revision=parts[2],
+                    serial=parts[3],
+                )
+            )
+            joined = ":".join(f"{v:08X}" for v in parts)
+            return f"LSS: node-ID {node_id}, address {joined}"
+
+        self._lss_job("LSS inquire", fn)
 
     # --- DCF (a device configuration file: an EDS plus the parameter values) ----
     def save_dcf(self, node_id: int, path: str) -> None:
