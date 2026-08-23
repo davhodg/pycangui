@@ -13,12 +13,14 @@ import cantools
 from cantools.database import Database, Message
 
 from pycangui.core.bus import Frame
+from pycangui.j1939 import pgn_mask
 
 
 class DbcDecoder:
     def __init__(self) -> None:
         self.databases: dict[str, Database] = {}  # path -> db
         self._by_id: dict[tuple[int, bool], Message] = {}
+        self._by_pgn: dict[int, Message] = {}  # J1939 messages keyed by masked 29-bit id
         self.errors = 0
 
     # --- files ---------------------------------------------------------------------
@@ -35,9 +37,13 @@ class DbcDecoder:
 
     def _rebuild(self) -> None:
         self._by_id = {}
+        self._by_pgn = {}
         for db in self.databases.values():
             for msg in db.messages:
                 self._by_id.setdefault((msg.frame_id, msg.is_extended_frame), msg)
+                if msg.is_extended_frame and (msg.protocol == "j1939" or _looks_j1939(msg)):
+                    pgn = (msg.frame_id >> 8) & 0x3FFFF
+                    self._by_pgn.setdefault(msg.frame_id & pgn_mask(pgn), msg)
 
     @property
     def loaded(self) -> bool:
@@ -45,7 +51,11 @@ class DbcDecoder:
 
     # --- decoding --------------------------------------------------------------------
     def message_for(self, frame: Frame) -> Message | None:
-        return self._by_id.get((frame.can_id, frame.extended))
+        msg = self._by_id.get((frame.can_id, frame.extended))
+        if msg is None and frame.extended and self._by_pgn:
+            pgn = (frame.can_id >> 8) & 0x3FFFF
+            msg = self._by_pgn.get(frame.can_id & pgn_mask(pgn))
+        return msg
 
     def message_name(self, frame: Frame) -> str | None:
         msg = self.message_for(frame)
@@ -65,3 +75,8 @@ class DbcDecoder:
     @staticmethod
     def units(msg: Message) -> dict[str, str]:
         return {s.name: s.unit or "" for s in msg.signals}
+
+
+def _looks_j1939(msg: Message) -> bool:
+    """DBCs without VFrameFormat: treat 29-bit ids with a J1939-shaped PGN as J1939."""
+    return msg.frame_id > 0x7FF and (msg.frame_id >> 26) & 0x7 in (3, 6, 7)

@@ -20,7 +20,7 @@ def test_unknown_ids_are_other():
     assert classify(0x123, False) == ("", "Other")  # 0x100 block with node 35 -> TIME? no: fn 2
     assert classify(0x180, False) == ("", "Other")  # node 0 is not a node
     assert classify(0x7FF, False) == ("", "Other")
-    assert classify(0x18DA00F1, True) == ("", "Other")  # 29-bit: not CANopen
+    assert classify(0x18DA00F1, True) == ("", "J1939")  # 29-bit: J1939 group, label from manager
 
 
 def test_group_of_user_labels():

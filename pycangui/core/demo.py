@@ -18,6 +18,7 @@ import canopen
 from PySide6.QtCore import QObject, QTimer
 
 from pycangui import resources
+from pycangui.core.demo_j1939 import DemoJ1939Node
 from pycangui.core.demo_uds import DemoUdsServer
 
 NODE_ID = 5
@@ -40,6 +41,7 @@ class DemoDevice(QObject):
         self._timer = QTimer(self, interval=100, timeout=self._tick)
         self._timer.start()
         self.uds = DemoUdsServer(self._bus, self._network.notifier, self)
+        self.j1939 = DemoJ1939Node(self._bus, self._network.notifier, self)
 
     def _tick(self) -> None:
         demand = struct.unpack("<h", self.node.get_data(0x2001, 0))[0]
@@ -56,6 +58,7 @@ class DemoDevice(QObject):
     def stop(self) -> None:
         self._timer.stop()
         self.uds.stop()
+        self.j1939.stop()
         self._tpdo.stop()
         self.node.nmt.stop_heartbeat()
         self._network.notifier.stop()

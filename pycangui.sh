@@ -6,6 +6,6 @@ if [ ! -x .venv/bin/python ]; then
     echo "Creating virtual environment..."
     python3 -m venv .venv || exit 1
     .venv/bin/python -m pip install --quiet --upgrade pip
-    .venv/bin/python -m pip install --quiet -e ".[dev,j1939,xcp]" || exit 1
+    .venv/bin/python -m pip install --quiet -e ".[dev,xcp]" || exit 1
 fi
 exec .venv/bin/python -m pycangui "$@"
