@@ -212,6 +212,7 @@ class MainWindow(QMainWindow):
         self.replay.stop()
         self.recorder.stop()
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
+        self.bus.close()  # stop the facade before its channels go away
         self.channels.shutdown()
         self.canopen.shutdown()
         self.uds.shutdown()

@@ -42,6 +42,7 @@ class Channels(QObject):
     def __init__(self) -> None:
         super().__init__()
         self._buses: dict[str, BusManager] = {}
+        self._connections: dict[str, tuple] = {}
         self._active = ""
         self._t0 = time.monotonic()  # one clock for every channel
         self.add(DEFAULT_CHANNEL)
@@ -58,10 +59,17 @@ class Channels(QObject):
             return self._buses[name]
         bus = BusManager(channel_name=name, clock_start=self._t0)
         self._buses[name] = bus
-        bus.frames.connect(self.frames)  # merged trace
-        bus.connected.connect(lambda _d, n=name: self.state_changed.emit(n, True))
-        bus.disconnected.connect(lambda n=name: self.state_changed.emit(n, False))
-        bus.error.connect(lambda text, n=name: self.error.emit(f"{n}: {text}"))
+        # Keep the connections so they can be undone: a queued signal arriving
+        # after this object has gone is delivered to a dead C++ object, which
+        # Qt punishes with a segmentation fault rather than an exception.
+        self._connections[name] = (
+            (bus.frames, self.frames),
+            (bus.connected, lambda _d, n=name: self.state_changed.emit(n, True)),
+            (bus.disconnected, lambda n=name: self.state_changed.emit(n, False)),
+            (bus.error, lambda text, n=name: self.error.emit(f"{n}: {text}")),
+        )
+        for signal, slot in self._connections[name]:
+            signal.connect(slot)
         self.channel_added.emit(name)
         if not self._active:
             self.set_active(name)
@@ -72,6 +80,7 @@ class Channels(QObject):
         if bus is None:
             return
         bus.disconnect_bus()
+        self._disconnect(name)
         self.channel_removed.emit(name)
         if self._active == name:
             self.set_active(next(iter(self._buses), ""))
@@ -109,8 +118,19 @@ class Channels(QObject):
         for bus in self._buses.values():
             bus.disconnect_bus()
 
+    def _disconnect(self, name: str) -> None:
+        for signal, slot in self._connections.pop(name, ()):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):  # already gone
+                pass
+
     def shutdown(self) -> None:
+        """Stop every channel and drop every connection made to it."""
         self.disconnect_all()
+        for name in list(self._connections):
+            self._disconnect(name)
+        self._buses.clear()
 
 
 class ActiveBus(QObject):
@@ -139,11 +159,9 @@ class ActiveBus(QObject):
         if new is self._bound:
             return
         if self._bound is not None:
-            self._bound.frames.disconnect(self.frames)
-            self._bound.connected.disconnect(self.connected)
-            self._bound.disconnected.disconnect(self.disconnected)
-            self._bound.error.disconnect(self.error)
-            if self._bound.is_connected:
+            was_connected = self._bound.is_connected
+            self._unbind()
+            if was_connected:
                 self.disconnected.emit()  # the stacks tear down cleanly
         self._bound = new
         if new is not None:
@@ -153,6 +171,29 @@ class ActiveBus(QObject):
             new.error.connect(self.error)
             if new.is_connected:
                 self.connected.emit(new.description)
+
+    def close(self) -> None:
+        """Stop following the selection and drop the connections to the bus."""
+        try:
+            self._channels.active_changed.disconnect(self._rebind)
+        except (RuntimeError, TypeError):
+            pass
+        self._unbind()
+        self._bound = None
+
+    def _unbind(self) -> None:
+        if self._bound is None:
+            return
+        for signal, slot in (
+            (self._bound.frames, self.frames),
+            (self._bound.connected, self.connected),
+            (self._bound.disconnected, self.disconnected),
+            (self._bound.error, self.error),
+        ):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
 
     # --- the BusManager interface ----------------------------------------------------
     @property
