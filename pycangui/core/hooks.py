@@ -103,7 +103,13 @@ class Hooks:
     def update_stubs(self) -> dict[str, list[str]]:
         """Append hooks that exist in the defaults but not in the user file.
 
-        Never touches existing user code.  Returns {module: [added names]}.
+        Never touches existing user code.  The imports the appended code needs
+        are added too, including ``from __future__ import annotations``: from
+        Python 3.14 annotations are evaluated lazily, but on 3.12 and 3.13 they
+        are evaluated as the function is defined, so a pasted-in signature
+        mentioning ``Path`` or ``NodeIdentity`` would break the whole file.
+
+        Returns {module: [added names]}.
         """
         added: dict[str, list[str]] = {}
         for module, specs in registry().items():
@@ -115,11 +121,13 @@ class Hooks:
             text = dest.read_text(encoding="utf-8")
             present = set(re.findall(r"^def\s+(\w+)\s*\(", text, re.MULTILINE))
             missing = [name for name in specs if name not in present]
-            if missing:
-                chunks = ["\n\n# --- added by 'Update hook stubs' ---\n"]
-                chunks += ["\n\n@hook\n" + inspect.getsource(specs[n].default) for n in missing]
-                dest.write_text(text.rstrip("\n") + "".join(chunks) + "\n", encoding="utf-8")
-                added[module] = missing
+            if not missing:
+                continue
+            text = _with_imports_for(module, text)
+            chunks = ["\n\n# --- added by 'Update hook stubs' ---\n"]
+            chunks += ["\n\n@hook\n" + inspect.getsource(specs[n].default) for n in missing]
+            dest.write_text(text.rstrip("\n") + "".join(chunks) + "\n", encoding="utf-8")
+            added[module] = missing
         return added
 
     # --- loading -----------------------------------------------------------
@@ -181,6 +189,31 @@ class Hooks:
                 if result is not None:
                     return result
         return spec.default(*args, ctx=self.ctx, **kwargs)
+
+
+def _import_lines(module: str) -> list[str]:
+    """The import statements at the top of a defaults module."""
+    lines = []
+    for line in _defaults_path(module).read_text(encoding="utf-8").splitlines():
+        if line.startswith(("import ", "from ")):
+            lines.append(line)
+        elif line.startswith(("@hook", "def ", "class ")):
+            break
+    return lines
+
+
+def _with_imports_for(module: str, text: str) -> str:
+    """Add whatever imports the appended hook sources will need."""
+    future = "from __future__ import annotations"
+    header = [line for line in _import_lines(module) if line.split("#")[0].strip() not in text]
+    if future in text and future in header:
+        header.remove(future)
+    elif future not in text and future not in header:
+        header.insert(0, future)
+    if not header:
+        return text
+    # Imports go at the top, where a reader expects to find them.
+    return "\n".join(header) + "\n\n" + text.lstrip("\n")
 
 
 def _defaults_path(module: str) -> Path:

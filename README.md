@@ -7,7 +7,7 @@ and Python scripting, on any adapter supported by python-can.  Apache-2.0.
 
 Double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux / macOS).
 The first run creates a virtual environment and installs the dependencies;
-Python 3.12 or newer must be on the PATH.
+Python 3.14 or newer must be on the PATH.
 
 For development:
 

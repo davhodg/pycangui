@@ -1,6 +1,6 @@
 @echo off
 rem Launch pycangui.  Creates the virtual environment on first run (needs
-rem python 3.12+ on PATH), then starts the application.
+rem python 3.14+ on PATH), then starts the application.
 setlocal
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
@@ -13,6 +13,6 @@ start "" ".venv\Scripts\pythonw.exe" -m pycangui %*
 exit /b 0
 :fail
 echo.
-echo Setup failed. Is Python 3.12 or newer on the PATH?
+echo Setup failed. Is Python 3.14 or newer on the PATH?
 pause
 exit /b 1

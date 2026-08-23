@@ -92,3 +92,34 @@ def test_update_stubs_appends_missing_without_touching_existing(home, hooks):
     hooks.reload()
     assert hooks.call("canopen", "node_name", IDENT) == "mine"
     assert hooks.update_stubs() == {}
+
+
+def test_update_stubs_adds_the_imports_the_new_code_needs(home, hooks):
+    """A stub pasted into a bare user file must not break it.
+
+    The default hook signatures mention Path and NodeIdentity.  Before Python
+    3.14 annotations are evaluated as the function is defined, so without the
+    imports (and the future import) the whole file would fail to load and every
+    hook in it would silently fall back to the default.
+    """
+    import ast
+
+    user_file = home / "hooks" / "canopen.py"
+    user_file.write_text('def node_name(identity, *, ctx):\n    return "mine"\n')
+    hooks.reload()
+    hooks.update_stubs()
+
+    text = user_file.read_text()
+    assert ast.parse(text)  # still valid Python
+    lines = text.splitlines()
+    assert lines[0] == "from __future__ import annotations"  # must come first
+    header = "\n".join(lines[:6])
+    assert "from pathlib import Path" in header
+    assert "from pycangui.canopen import NodeIdentity" in header
+    assert "from pycangui.core.hooks import hook" in header
+    assert 'return "mine"' in text  # the user's own code is untouched
+
+    hooks.reload()
+    assert hooks.errors() == {}  # the file really does load
+    assert hooks.call("canopen", "node_name", IDENT) == "mine"
+    assert hooks.update_stubs() == {}  # and running it again changes nothing
