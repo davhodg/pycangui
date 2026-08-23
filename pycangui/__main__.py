@@ -53,6 +53,20 @@ def selftest() -> int:
     except Exception as exc:
         failures.append(f"can.interfaces: {exc}")
 
+    # Help > Licences reads these at run time from beside the executable.  A
+    # build that ships them where _find cannot see them would show three empty
+    # tabs, and no import check would notice.
+    try:
+        from pycangui.ui.help_menu import LICENCE_FILES, _find
+
+        failures += [
+            f"{filename}: not found beside the application"
+            for _title, filename, _blurb in LICENCE_FILES
+            if _find(filename) is None
+        ]
+    except Exception as exc:
+        failures.append(f"pycangui.ui.help_menu: {exc}")
+
     if failures:
         sys.stderr.write("selftest failures:" + "".join(f"\n  {f}" for f in failures) + "\n")
         return 1

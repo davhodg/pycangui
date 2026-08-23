@@ -30,6 +30,11 @@ dependencies = [
     "pywin32>=306; sys_platform == 'win32'",  # can-j1939 imports pythoncom on Windows
 ]
 
+[project.urls]
+Homepage = "https://github.com/davhodg/pycangui"
+Repository = "https://github.com/davhodg/pycangui"
+Issues = "https://github.com/davhodg/pycangui/issues"
+
 [project.optional-dependencies]
 dev = ["pytest", "ruff==0.16.*"]  # pinned: a new ruff must not break the build
 

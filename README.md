@@ -38,6 +38,15 @@ to name it, ...) with the defaults and commented examples in place; `eds/` is
 scanned for EDS files matching a node's vendor/product; `settings.json` holds
 what the GUI remembers.  Tools > Reload hooks applies edits without a restart.
 
+**Help > About** shows the version alongside the Python, Qt, python-can and
+canopen versions in a form you can copy into a bug report; **Help > Licences**
+shows pycangui's own Apache-2.0 licence, the NOTICE attributions and the full
+third-party licence text, all shipped with the application.  **Help > Check
+for updates** asks GitHub whether there is a newer release -- only when you
+pick it: pycangui makes no network connection of its own accord, sends nothing
+about your machine, and downloads nothing.  A newer version just offers to
+open the releases page.
+
 pycangui opens with three panes: the **Trace** with the **Event Log** beside
 it, and **Signals and Plot** spanning underneath.  The rest (CANopen, UDS, J1939,
 XCP, Transmit, Python Console) start hidden, because which of them you want
