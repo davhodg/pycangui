@@ -187,6 +187,38 @@ modules such as Qt Charts and Qt Data Visualization are deliberately avoided.
 Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the
 vendor's driver and python-can loads it at run time.
 
+## Building a distributable
+
+`build.cmd` produces a self-contained Windows application, and an installer if
+a compiler for one is present:
+
+```
+build.cmd            tests, notices, PyInstaller, checks, then setup.exe
+build.cmd nosetup    stop after the checked application folder
+```
+
+It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed
+package metadata, builds a **one-directory** bundle with PyInstaller (so Qt and
+python-can stay separate, replaceable DLLs, as the LGPL asks), checks the
+result, and then uses **Inno Setup** or **NSIS**, whichever it finds.  The
+result is `dist\pycangui\pycangui.exe` and `dist\pycangui-<version>-setup.exe`;
+nothing needs to be installed on the target machine, not even Python.
+
+`build/check_build.py` fails the build if a **GPL-only Qt module** has crept in
+(shipping Qt Charts or the Virtual Keyboard would change the licence of the
+whole application), if a sample or hook template is missing, or if the built
+executable cannot import its protocol stacks and every python-can adapter
+backend -- it runs `pycangui.exe --selftest` to find out rather than guessing
+from file names.
+
+Adapter drivers are not bundled: install the vendor's driver and python-can
+finds it.  Hooks, back ends, EDS files and settings stay in `%APPDATA%\pycangui`
+and survive upgrades and uninstallation.
+
+`.github/workflows/ci.yml` runs the tests on Windows and Linux across two
+Python versions, then builds and uploads the installer; a `v*` tag publishes it
+as a release.
+
 ## Development
 
 pycangui is copyright 2026 davhodg and licensed under the Apache License
