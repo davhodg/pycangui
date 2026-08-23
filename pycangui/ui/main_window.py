@@ -23,6 +23,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
+from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.signals import SignalHub
 from pycangui.j1939.manager import J1939Manager
 from pycangui.uds.manager import UdsManager
@@ -31,6 +32,7 @@ from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.plot_view import PlotView
+from pycangui.ui.replay_view import ReplayView
 from pycangui.ui.signals_view import SignalsView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
@@ -53,6 +55,10 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.connect_bar)
         self.connect_bar.connect_requested.connect(self.bus.connect_bus)
         self.connect_bar.disconnect_requested.connect(self.bus.disconnect_bus)
+        self.record_action = self.connect_bar.addAction("Record")
+        self.record_action.setCheckable(True)
+        self.record_action.setToolTip("Record everything on the bus to a log file")
+        self.record_action.toggled.connect(self._toggle_record)
 
         # --- log pane first: everything else reports into it -----------------
         self.log = QPlainTextEdit()
@@ -69,6 +75,7 @@ class MainWindow(QMainWindow):
         self.signals = SignalHub()
         self.dbc = DbcDecoder()
         self.xcp = XcpManager(self.bus, self.hooks, self.signals, self.ctx)
+        self.recorder = Recorder(self.bus)
 
         # --- docks -----------------------------------------------------------
         self.trace = TraceView(self.hooks, self.ctx)
@@ -91,6 +98,8 @@ class MainWindow(QMainWindow):
         self.xcp_view = XcpView(self.xcp, self.ctx)
         self._add_dock("xcp", "XCP", self.xcp_view, Qt.RightDockWidgetArea)
         self.tx = TxView(self.bus, self.ctx, self.dbc, self.canopen)
+        self.replay = ReplayView(self.bus, self.ctx)
+        self._add_dock("replay", "Replay", self.replay, Qt.BottomDockWidgetArea)
         self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
         self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
         self.console = ConsoleView(self._console_namespace(), self.ctx)
@@ -104,6 +113,12 @@ class MainWindow(QMainWindow):
         # --- wiring ----------------------------------------------------------
         self.bus.frames.connect(self.trace.on_frames)
         self.bus.frames.connect(self._decode_frames)
+        # An offline replay feeds the same consumers as the bus does
+        self.replay.frames_replayed.connect(self.trace.on_frames)
+        self.replay.frames_replayed.connect(self._decode_frames)
+        self.replay.frames_replayed.connect(self._count_frames)
+        self.recorder.state.connect(self._on_record_state)
+        self.recorder.error.connect(self.log.appendPlainText)
         self.canopen.rpdos_read.connect(lambda _n: self.tx.refresh_sources())
         self.canopen.pdo_update.connect(self._on_pdo_update)
         self.bus.frames.connect(self._count_frames)
@@ -158,6 +173,7 @@ class MainWindow(QMainWindow):
             "xcp": self.xcp,
             "hooks": self.hooks,
             "window": self,
+            "recorder": self.recorder,
             "send": send,
         }
 
@@ -188,6 +204,8 @@ class MainWindow(QMainWindow):
         s = QSettings()
         s.setValue("geometry", self.saveGeometry())
         s.setValue("windowState", self.saveState())
+        self.replay.stop()
+        self.recorder.stop()
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
         self.bus.disconnect_bus()
         self.canopen.shutdown()
@@ -247,6 +265,26 @@ class MainWindow(QMainWindow):
             self._demo.stop()
             self._demo = None
 
+    # --- recording -----------------------------------------------------------
+    @Slot(bool)
+    def _toggle_record(self, on: bool) -> None:
+        if not on:
+            self.recorder.stop()
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Record to a log file", str(self.ctx.user_dir / "capture.blf"), WRITE_FILTER
+        )
+        if not path or not self.recorder.start(path):
+            self.record_action.setChecked(False)
+
+    @Slot(bool, str)
+    def _on_record_state(self, recording: bool, path: str) -> None:
+        self.record_action.blockSignals(True)
+        self.record_action.setChecked(recording)
+        self.record_action.setText("Recording..." if recording else "Record")
+        self.record_action.blockSignals(False)
+        self.log.appendPlainText(f"Recording to {path}" if recording else "Recording stopped")
+
     # --- DBC / signals -------------------------------------------------------
     def _load_dbc_dialog(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -298,4 +336,7 @@ class MainWindow(QMainWindow):
 
     def _update_status(self) -> None:
         state = "connected" if self.bus.is_connected else "disconnected"
-        self.statusBar().showMessage(f"{state} | frames: {self._frame_count}")
+        extra = ""
+        if self.recorder.is_recording:
+            extra = f" | recording {self.recorder.path.name} ({self.recorder.elapsed:.0f} s)"
+        self.statusBar().showMessage(f"{state} | frames: {self._frame_count}{extra}")
