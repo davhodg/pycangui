@@ -17,6 +17,8 @@ from pycangui.core.bus import Frame
 # the width of the id.  FD is marked on the length instead.
 COLUMNS = ("Time", "Channel", "Dir", "ID", "Kind", "DLC", "Data")
 ROLE_GROUP = Qt.UserRole + 1
+ROLE_CHANNEL = Qt.UserRole + 2
+ROLE_SEARCH = Qt.UserRole + 3  # everything about a row, lowercased, for the filter box
 MAX_ROWS = 500_000
 
 
@@ -41,6 +43,10 @@ class TraceModel(QAbstractTableModel):
         f = self._rows[index.row()]
         if role == ROLE_GROUP:
             return f.group
+        if role == ROLE_CHANNEL:
+            return f.channel
+        if role == ROLE_SEARCH:
+            return _searchable(f)
         if role != Qt.DisplayRole:
             return None
         match index.column():
@@ -78,3 +84,9 @@ class TraceModel(QAbstractTableModel):
         self.beginResetModel()
         self._rows.clear()
         self.endResetModel()
+
+
+def _searchable(f: Frame) -> str:
+    """What the filter box matches against: id, name, channel and data."""
+    ident = f"{f.can_id:08X}" if f.extended else f"{f.can_id:03X}"
+    return f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}".lower()

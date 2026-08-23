@@ -18,6 +18,8 @@ from pycangui.core.bus import Frame
 
 COLUMNS = ("ID", "Kind", "Channel", "Dir", "DLC", "Data", "Count", "Rate", "Period", "Last")
 ROLE_GROUP = Qt.UserRole + 1
+ROLE_CHANNEL = Qt.UserRole + 2
+ROLE_SEARCH = Qt.UserRole + 3
 CHANGED_COLOUR = QColor(220, 120, 0)
 
 
@@ -80,6 +82,10 @@ class LatestModel(QAbstractTableModel):
             return CHANGED_COLOUR
         elif role == ROLE_GROUP:
             return f.group
+        elif role == ROLE_CHANNEL:
+            return f.channel
+        elif role == ROLE_SEARCH:
+            return _searchable(f)
         elif role == Qt.UserRole:  # raw value for sorting
             match col:
                 case 0:
@@ -137,3 +143,9 @@ class LatestModel(QAbstractTableModel):
         self._rows.clear()
         self._index.clear()
         self.endResetModel()
+
+
+def _searchable(f: Frame) -> str:
+    """What the filter box matches against: id, name, channel and data."""
+    ident = f"{f.can_id:08X}" if f.extended else f"{f.can_id:03X}"
+    return f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}".lower()

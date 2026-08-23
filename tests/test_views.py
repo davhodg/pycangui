@@ -142,3 +142,92 @@ def test_canopen_label_beats_a_dbc_message_name(app, tmp_path, monkeypatch):
     )
     kinds = [view.model.index(r, 4).data() for r in range(3)]
     assert kinds == ["TxPDO1 n5", "Heartbeat n5", "PumpCommand"]
+
+
+def make_view(tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    return TraceView(Hooks(ctx), ctx), ctx
+
+
+def test_filter_box_matches_id_name_channel_and_data(app, tmp_path, monkeypatch):
+    view, _ctx = make_view(tmp_path, monkeypatch)
+    view.on_frames(
+        [
+            Frame(0.0, "CAN 1", 0x185, False, False, True, b"\xde\xad"),
+            Frame(0.1, "CAN 1", 0x705, False, False, True, b"\x05"),
+            Frame(0.2, "Drive bus", 0x185, False, False, True, b"\x00"),
+        ]
+    )
+    shown = lambda: view.table.model().rowCount()  # noqa: E731
+    assert shown() == 3
+
+    view.search.setText("185")  # by id
+    assert shown() == 2
+    view.search.setText("heartbeat")  # by decoded name
+    assert shown() == 1
+    view.search.setText("drive bus")  # by channel, spaces and all
+    assert shown() == 1
+    view.search.setText("de ad")  # by data
+    assert shown() == 1
+    view.search.setText("185 drive")  # every word must match
+    assert shown() == 1
+    view.search.setText("185 nonsense")
+    assert shown() == 0
+    view.search.clear()
+    assert shown() == 3
+    # the latest-per-id view filters with the same terms
+    view.search.setText("705")
+    assert view.latest_table.model().rowCount() == 1
+
+
+def test_channels_can_be_hidden(app, tmp_path, monkeypatch):
+    view, ctx = make_view(tmp_path, monkeypatch)
+    view.on_frames(
+        [
+            Frame(0.0, "CAN 1", 0x185, False, False, True, b""),
+            Frame(0.1, "Drive bus", 0x186, False, False, True, b""),
+        ]
+    )
+    # channels appear in the filter menu as soon as traffic is seen on them
+    assert set(view._channel_actions) == {"CAN 1", "Drive bus"}
+    view._channel_actions["Drive bus"].setChecked(False)
+    assert view.table.model().rowCount() == 1
+    assert ctx.settings.get("trace.hidden_channels") == ["Drive bus"]
+    view._show_all()
+    assert view.table.model().rowCount() == 2
+
+
+def test_pause_holds_the_display_without_losing_frames(app, tmp_path, monkeypatch):
+    view, _ctx = make_view(tmp_path, monkeypatch)
+    view.on_frames([Frame(0.0, "CAN 1", 0x100, False, False, True, b"")])
+    assert view.model.rowCount() == 1
+
+    view.pause.setChecked(True)
+    view.on_frames([Frame(0.1, "CAN 1", 0x101, False, False, True, b"") for _ in range(5)])
+    assert view.model.rowCount() == 1  # the display has not moved
+    assert len(view._pending) == 5  # but nothing was thrown away
+    assert "held" in view.count_label.text()
+
+    view.pause.setChecked(False)
+    assert view.model.rowCount() == 6 and view._pending == []
+
+
+def test_copy_selection_puts_rows_on_the_clipboard(app, tmp_path, monkeypatch):
+    from PySide6.QtGui import QGuiApplication
+
+    view, _ctx = make_view(tmp_path, monkeypatch)
+    view.on_frames(
+        [
+            Frame(0.0, "CAN 1", 0x185, False, False, True, b"\x01\x02"),
+            Frame(0.1, "CAN 1", 0x705, False, False, True, b"\x05"),
+        ]
+    )
+    view.table.selectRow(0)
+    view.copy_selection()
+    text = QGuiApplication.clipboard().text()
+    lines = text.splitlines()
+    assert lines[0].split("\t")[:5] == ["Time", "Channel", "Dir", "ID", "Kind"]
+    assert lines[1].split("\t")[1] == "CAN 1"
+    assert lines[1].split("\t")[3] == "185"
+    assert len(lines) == 2  # header plus the one selected row
