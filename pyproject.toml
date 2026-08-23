@@ -9,7 +9,7 @@ description = "User-friendly CAN bus tool: trace, transmit, CANopen, UDS, J1939,
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 authors = [{ name = "davhodg" }]
 dependencies = [
     "PySide6>=6.7",
@@ -35,10 +35,8 @@ include = ["pycangui*"]
 
 [tool.ruff]
 line-length = 100
-# Deliberately below requires-python.  Ruff otherwise formats to the newest
-# syntax the floor allows -- on 3.14 that means PEP 758's parenthesis-free
-# "except A, B:", which is unfamiliar and would stop the code parsing anywhere
-# older.  The style stays portable; the package still requires 3.14 to run.
+# Matches requires-python: ruff formats to the newest syntax the floor allows,
+# and the code must stay parseable on the oldest Python we support.
 target-version = "py312"
 
 [tool.ruff.lint]
