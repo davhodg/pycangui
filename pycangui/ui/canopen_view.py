@@ -10,11 +10,13 @@ EDS selection flow when a node first appears:
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
@@ -39,12 +41,12 @@ from pycangui.ui.pdo_view import PdoConfigView
 
 ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
-NMT_BUTTONS = (
-    ("Start", "OPERATIONAL"),
+NMT_COMMANDS_UI = (
+    ("Start (operational)", "OPERATIONAL"),
+    ("Pre-operational", "PRE-OPERATIONAL"),
     ("Stop", "STOPPED"),
-    ("Pre-op", "PRE-OPERATIONAL"),
-    ("Reset", "RESET"),
-    ("Reset comm", "RESET COMMUNICATION"),
+    ("Reset node", "RESET"),
+    ("Reset communication", "RESET COMMUNICATION"),
 )
 
 
@@ -65,23 +67,35 @@ class CanopenView(QWidget):
         self.nodes.setHeaderLabels(["Node", "Name", "State", "EDS"])
         self.nodes.setRootIsDecorated(False)
         self.nodes.currentItemChanged.connect(self._on_node_selected)
+        # Two rows: commands on top, file / persistence actions below, so the
+        # bar stays narrow enough for a docked pane.
         nmt_bar = QHBoxLayout()
-        for label, command in NMT_BUTTONS:
-            btn = QPushButton(label)
-            btn.clicked.connect(lambda _=False, c=command: self._nmt(c))
-            nmt_bar.addWidget(btn)
+        nmt_bar.addWidget(QLabel("NMT command:"))
+        self.nmt_command = QComboBox()
+        for label, command in NMT_COMMANDS_UI:
+            self.nmt_command.addItem(label, command)
+        self.nmt_command.setToolTip("Command to send to the selected node (or to all nodes)")
+        nmt_bar.addWidget(self.nmt_command)
+        send_nmt = QPushButton("Send")
+        send_nmt.setToolTip("Send this NMT command to the selected node")
+        send_nmt.clicked.connect(self._send_nmt)
+        nmt_bar.addWidget(send_nmt)
+        nmt_bar.addSpacing(16)
+        nmt_bar.addWidget(QLabel("SYNC producer:"))
         self.sync_period = QDoubleSpinBox()
         self.sync_period.setRange(1, 10000)
         self.sync_period.setValue(100)
         self.sync_period.setSuffix(" ms")
         self.sync_period.setToolTip("SYNC period")
-        self.sync_btn = QPushButton("SYNC")
+        self.sync_btn = QPushButton("Start")
         self.sync_btn.setCheckable(True)
-        self.sync_btn.setToolTip("Transmit SYNC so synchronous PDOs are exchanged")
+        self.sync_btn.setToolTip("Transmit SYNC (0x080) so synchronous PDOs are exchanged")
         self.sync_btn.toggled.connect(self._toggle_sync)
         nmt_bar.addWidget(self.sync_period)
         nmt_bar.addWidget(self.sync_btn)
         nmt_bar.addStretch()
+
+        file_bar = QHBoxLayout()
         store_btn = QPushButton("Store")
         store_btn.setToolTip("Save the node's parameters to non-volatile memory (0x1010)")
         store_btn.clicked.connect(self._store)
@@ -97,7 +111,8 @@ class CanopenView(QWidget):
         load_btn = QPushButton("Load EDS...")
         load_btn.clicked.connect(self._load_eds_clicked)
         for b in (store_btn, restore_btn, save_dcf, apply_dcf, load_btn):
-            nmt_bar.addWidget(b)
+            file_bar.addWidget(b)
+        file_bar.addStretch()
 
         # --- object dictionary ---------------------------------------------
         self.od = QTreeWidget()
@@ -116,7 +131,7 @@ class CanopenView(QWidget):
 
         # --- PDOs -----------------------------------------------------------
         self.pdos = QTreeWidget()
-        self.pdos.setHeaderLabels(["PDO", "Variable", "Value"])
+        self.pdos.setHeaderLabels(["PDO / variable", "Value", "Count", "Rate"])
         self.pdos.setFont(mono)
         self.pdos.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.pdos.header().setStretchLastSection(True)
@@ -126,6 +141,7 @@ class CanopenView(QWidget):
         top_l = QVBoxLayout(top)
         top_l.setContentsMargins(0, 0, 0, 0)
         top_l.addLayout(nmt_bar)
+        top_l.addLayout(file_bar)
         top_l.addWidget(self.nodes)
         mid = QWidget()
         mid_l = QVBoxLayout(mid)
@@ -138,6 +154,17 @@ class CanopenView(QWidget):
         live_l = QVBoxLayout(live)
         live_l.setContentsMargins(0, 0, 0, 0)
         live_l.addWidget(self.pdos)
+        self._pdo_counts: dict[str, int] = {}
+        self._pdo_last: dict[str, tuple[int, float]] = {}  # name -> (count, when)
+        self._pdo_rate_timer = QTimer(self, interval=500, timeout=self._refresh_pdo_rates)
+        self._pdo_rate_timer.start()
+        pdo_bar = QHBoxLayout()
+        pdo_bar.addStretch()
+        clear_pdos = QPushButton("Clear")
+        clear_pdos.setToolTip("Forget the counts and rates collected so far")
+        clear_pdos.clicked.connect(self.clear_live_pdos)
+        pdo_bar.addWidget(clear_pdos)
+        live_l.addLayout(pdo_bar)
         bottom.addTab(live, "Live PDOs")
         bottom.addTab(self.pdo_config, "PDO configuration")
         splitter = QSplitter(Qt.Vertical)
@@ -260,6 +287,9 @@ class CanopenView(QWidget):
             self._populate_od(node_id)
             self.pdo_config.set_node(node_id)
 
+    def _send_nmt(self) -> None:
+        self._nmt(self.nmt_command.currentData())
+
     def _read_rpdos(self) -> None:
         node_id = self.selected_node()
         if node_id is not None:
@@ -304,6 +334,8 @@ class CanopenView(QWidget):
 
     @Slot(bool)
     def _toggle_sync(self, on: bool) -> None:
+        self.sync_btn.setText("Stop" if on else "Start")
+        self.sync_period.setEnabled(not on)
         if on:
             self.manager.start_sync(self.sync_period.value() / 1000)
         else:
@@ -316,8 +348,7 @@ class CanopenView(QWidget):
     def clear(self) -> None:
         self.nodes.clear()
         self.od.clear()
-        self.pdos.clear()
-        self._pdo_items.clear()
+        self.clear_live_pdos()
         self._identities.clear()
         self._asked.clear()
         self.pdo_config.set_node(None)
@@ -325,8 +356,7 @@ class CanopenView(QWidget):
 
     # --- object dictionary -------------------------------------------------------
     def _on_node_selected(self, current: QTreeWidgetItem | None, _previous) -> None:
-        self.pdos.clear()
-        self._pdo_items.clear()
+        self.clear_live_pdos()
         self.pdo_config.set_node(None if current is None else current.data(0, ROLE_INDEX))
         self._populate_od(None if current is None else current.data(0, ROLE_INDEX))
 
@@ -408,14 +438,44 @@ class CanopenView(QWidget):
     def on_pdo_update(self, node_id: int, pdo_name: str, values: dict) -> None:
         if node_id != self.selected_node():
             return
+        parent = self._pdo_items.get((pdo_name, None))
+        if parent is None:
+            parent = QTreeWidgetItem([pdo_name, "", "0", ""])
+            self.pdos.addTopLevelItem(parent)
+            parent.setExpanded(True)
+            self._pdo_items[(pdo_name, None)] = parent
+            self._pdo_last[pdo_name] = (0, time.monotonic())
+        count = self._pdo_counts.get(pdo_name, 0) + 1
+        self._pdo_counts[pdo_name] = count
+        parent.setText(2, str(count))
         for var_name, value in values.items():
             key = (pdo_name, var_name)
             item = self._pdo_items.get(key)
             if item is None:
-                item = QTreeWidgetItem([pdo_name, var_name, ""])
-                self.pdos.addTopLevelItem(item)
+                item = QTreeWidgetItem([var_name, "", "", ""])
+                parent.addChild(item)
                 self._pdo_items[key] = item
-            item.setText(2, format_value(value, None))
+            item.setText(1, format_value(value, None))
+
+    def _refresh_pdo_rates(self) -> None:
+        """Rate over the refresh interval, so the figure reads steadily."""
+        now = time.monotonic()
+        for pdo_name, count in self._pdo_counts.items():
+            last_count, last_time = self._pdo_last.get(pdo_name, (0, now))
+            dt = now - last_time
+            if dt < 0.45:
+                continue
+            item = self._pdo_items.get((pdo_name, None))
+            if item is not None:
+                item.setText(3, f"{(count - last_count) / dt:.1f} Hz")
+            self._pdo_last[pdo_name] = (count, now)
+
+    @Slot()
+    def clear_live_pdos(self) -> None:
+        self.pdos.clear()
+        self._pdo_items.clear()
+        self._pdo_counts.clear()
+        self._pdo_last.clear()
 
 
 def _hex(value: int | None) -> str:
