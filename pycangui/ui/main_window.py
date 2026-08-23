@@ -14,6 +14,7 @@ from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
 from pycangui.core.signals import SignalHub
+from pycangui.uds.manager import UdsManager
 from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
@@ -21,6 +22,7 @@ from pycangui.ui.plot_view import PlotView
 from pycangui.ui.signals_view import SignalsView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
+from pycangui.ui.uds_view import UdsView
 
 
 class MainWindow(QMainWindow):
@@ -47,12 +49,14 @@ class MainWindow(QMainWindow):
         self.ctx = Context(log=self.log.appendPlainText)
         self.hooks = Hooks(self.ctx)
         self.canopen = CanopenManager(self.bus)
+        self.uds = UdsManager(self.bus, self.hooks)
         self.signals = SignalHub()
         self.dbc = DbcDecoder()
 
         # --- docks -----------------------------------------------------------
         self.trace = TraceView(self.hooks, self.ctx)
         self.trace.classifiers.append(self.dbc.message_name)
+        self.trace.classifiers.append(self.uds.classify)
         self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
         self.signals_view = SignalsView(self.signals)
         self._add_dock("signals", "Signals", self.signals_view, Qt.LeftDockWidgetArea)
@@ -61,6 +65,8 @@ class MainWindow(QMainWindow):
         self.signals_view.plot_toggled.connect(self.plot.set_plotted)
         self.canopen_view = CanopenView(self.canopen, self.hooks, self.ctx)
         self._add_dock("canopen", "CANopen", self.canopen_view, Qt.RightDockWidgetArea)
+        self.uds_view = UdsView(self.uds, self.ctx)
+        self._add_dock("uds", "UDS", self.uds_view, Qt.RightDockWidgetArea)
         self.tx = TxView(self.bus, self.ctx)
         self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
         self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
@@ -117,6 +123,7 @@ class MainWindow(QMainWindow):
             "ctx": self.ctx,
             "bus": self.bus,
             "canopen": self.canopen,
+            "uds": self.uds,
             "hooks": self.hooks,
             "window": self,
             "send": send,
@@ -146,6 +153,7 @@ class MainWindow(QMainWindow):
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
         self.bus.disconnect_bus()
         self.canopen.shutdown()
+        self.uds.shutdown()
         super().closeEvent(event)
 
     # --- slots ---------------------------------------------------------------

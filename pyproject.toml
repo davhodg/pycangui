@@ -17,11 +17,12 @@ dependencies = [
     "canopen>=2.3",
     "cantools>=39",
     "numpy>=1.26",
+    "udsoncan>=1.23",
+    "can-isotp>=2.0",
 ]
 
 [project.optional-dependencies]
 j1939 = ["can-j1939"]
-uds = ["udsoncan"]
 xcp = ["pyxcp"]
 dev = ["pytest", "ruff"]
 

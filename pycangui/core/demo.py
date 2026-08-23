@@ -2,7 +2,8 @@
 without hardware.  python-can's ``virtual`` interface only connects buses in
 the same process, which is why this lives in-app.
 
-It is a real ``canopen.LocalNode`` built from ``resources/demo.eds``: it
+It also answers UDS on 0x7E0/0x7E8 (see demo_uds.py).  It is a real
+``canopen.LocalNode`` built from ``resources/demo.eds``: it
 answers SDO reads/writes, sends a heartbeat, obeys NMT commands and transmits
 TPDO1 every 100 ms with a moving "motor speed" that follows whatever you write
 to *Speed demand* (0x2001).
@@ -17,6 +18,7 @@ import canopen
 from PySide6.QtCore import QObject, QTimer
 
 from pycangui import resources
+from pycangui.core.demo_uds import DemoUdsServer
 
 NODE_ID = 5
 
@@ -37,6 +39,7 @@ class DemoDevice(QObject):
         self._odometer = 0
         self._timer = QTimer(self, interval=100, timeout=self._tick)
         self._timer.start()
+        self.uds = DemoUdsServer(self._bus, self._network.notifier, self)
 
     def _tick(self) -> None:
         demand = struct.unpack("<h", self.node.get_data(0x2001, 0))[0]
@@ -52,6 +55,7 @@ class DemoDevice(QObject):
 
     def stop(self) -> None:
         self._timer.stop()
+        self.uds.stop()
         self._tpdo.stop()
         self.node.nmt.stop_heartbeat()
         self._network.notifier.stop()

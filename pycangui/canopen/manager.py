@@ -14,45 +14,21 @@ Threads, and why:
 
 from __future__ import annotations
 
-import queue
-from collections.abc import Callable
 from typing import Any
 
 import canopen
 from canopen.nmt import NMT_COMMANDS, NMT_STATES
 from canopen.objectdictionary import ODArray, ODRecord, ODVariable, datatypes
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 
 from pycangui.canopen import NodeIdentity
 from pycangui.core.bus import BusManager
+from pycangui.core.worker import Worker
 
 DATATYPE_NAMES: dict[int, str] = {
     v: k for k, v in vars(datatypes).items() if isinstance(v, int) and k.isupper()
 }
 INTEGER_TYPES = {*datatypes.SIGNED_TYPES, *datatypes.UNSIGNED_TYPES, datatypes.BOOLEAN}
-
-
-class _Worker(QThread):
-    done = Signal(object)  # (callback, result, error)
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._jobs: queue.Queue = queue.Queue()
-
-    def submit(self, fn: Callable[[], Any], callback: Callable[[Any, str | None], None]) -> None:
-        self._jobs.put((fn, callback))
-
-    def run(self) -> None:
-        while (job := self._jobs.get()) is not None:
-            fn, callback = job
-            try:
-                self.done.emit((callback, fn(), None))
-            except Exception as exc:  # report, never die
-                self.done.emit((callback, None, f"{type(exc).__name__}: {exc}"))
-
-    def stop(self) -> None:
-        self._jobs.put(None)
-        self.wait(2000)
 
 
 class CanopenManager(QObject):
@@ -68,8 +44,7 @@ class CanopenManager(QObject):
         super().__init__()
         self._bus = bus
         self.network: canopen.Network | None = None
-        self._worker = _Worker()
-        self._worker.done.connect(self._on_job_done)
+        self._worker = Worker()
         self._worker.start()
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
@@ -236,12 +211,6 @@ class CanopenManager(QObject):
                 self.message.emit(f"Node {node_id}: decoding {', '.join(names)}")
 
         self._worker.submit(job, done)
-
-    # --- worker results (GUI thread) -----------------------------------------
-    @Slot(object)
-    def _on_job_done(self, packet: tuple) -> None:
-        callback, result, error = packet
-        callback(result, error)
 
 
 # --- helpers used by the view ----------------------------------------------

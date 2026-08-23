@@ -8,7 +8,7 @@ can be named from the id alone.  The result is a short *kind* ("TPDO1 n5",
 
 from __future__ import annotations
 
-GROUPS = ("NMT", "SYNC/TIME", "EMCY", "PDO", "SDO", "Heartbeat", "LSS", "Other")
+GROUPS = ("NMT", "SYNC/TIME", "EMCY", "PDO", "SDO", "Heartbeat", "LSS", "UDS", "Other")
 
 # function code (id >> 7) -> (kind prefix, group, has node id)
 _FUNCTION_CODES: dict[int, tuple[str, str, bool]] = {
@@ -39,6 +39,12 @@ def classify(can_id: int, extended: bool) -> tuple[str, str]:
         return ("TIME", "SYNC/TIME")
     if can_id in (0x7E4, 0x7E5):
         return ("LSS", "LSS")
+    if can_id == 0x7DF:
+        return ("UDS func", "UDS")
+    if 0x7E0 <= can_id <= 0x7E7:
+        return (f"UDS req {can_id - 0x7E0}", "UDS")
+    if 0x7E8 <= can_id <= 0x7EF:
+        return (f"UDS resp {can_id - 0x7E8}", "UDS")
     entry = _FUNCTION_CODES.get(can_id >> 7)
     if entry is None:
         return ("", "Other")
@@ -66,6 +72,7 @@ def group_of(kind: str) -> str:
         ("HB", "Heartbeat"),
         ("HEARTBEAT", "Heartbeat"),
         ("LSS", "LSS"),
+        ("UDS", "UDS"),
     ):
         if head.startswith(prefix):
             return group
