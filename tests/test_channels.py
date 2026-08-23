@@ -24,6 +24,25 @@ def channels(app):
     c.shutdown()
 
 
+@pytest.fixture
+def active_bus(channels):
+    """Hands out ActiveBus objects and closes them again.
+
+    Closing matters: a facade left connected would still be delivered queued
+    signals after the test, when Qt has already destroyed it.
+    """
+    made = []
+
+    def make() -> ActiveBus:
+        bus = ActiveBus(channels)
+        made.append(bus)
+        return bus
+
+    yield make
+    for bus in made:
+        bus.close()
+
+
 def test_starts_with_one_channel(channels):
     assert channels.names() == [DEFAULT_CHANNEL]
     assert channels.active == DEFAULT_CHANNEL
@@ -70,8 +89,8 @@ def test_frames_from_every_channel_are_merged_on_one_clock(app, channels):
     assert channels.any_connected
 
 
-def test_active_bus_follows_the_selection(app, channels):
-    bus = ActiveBus(channels)
+def test_active_bus_follows_the_selection(app, channels, active_bus):
+    bus = active_bus()
     connected: list[str] = []
     disconnected: list[int] = []
     frames: list[Frame] = []
@@ -109,8 +128,8 @@ def test_active_bus_follows_the_selection(app, channels):
     assert len(connected) > n
 
 
-def test_active_bus_without_a_channel_reports_rather_than_crashing(app, channels):
-    bus = ActiveBus(channels)
+def test_active_bus_without_a_channel_reports_rather_than_crashing(app, channels, active_bus):
+    bus = active_bus()
     errors: list[str] = []
     bus.error.connect(errors.append)
     channels.remove(DEFAULT_CHANNEL)  # the only one: nothing is selected now
