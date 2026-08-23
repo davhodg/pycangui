@@ -71,11 +71,10 @@ jobs:
           python-version: "3.14"
           cache: pip
 
-      # Both installer compilers run happily on the hosted Windows runners.
-      # NSIS is usually present already; installing is cheap and makes the
-      # build reproducible whichever image version is in use.
-      - name: Install NSIS
-        run: choco install nsis --no-progress -y
+      # The hosted image usually has Inno Setup already; installing it anyway
+      # keeps the build reproducible whichever image version is in use.
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
 
       - name: Build, check and package
         run: .\build.cmd

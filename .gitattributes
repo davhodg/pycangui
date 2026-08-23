@@ -5,4 +5,3 @@
 *.cmd text eol=crlf
 *.bat text eol=crlf
 *.iss text eol=crlf
-*.nsi text eol=crlf

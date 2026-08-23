@@ -200,7 +200,7 @@ build.cmd nosetup    stop after the checked application folder
 It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed
 package metadata, builds a **one-directory** bundle with PyInstaller (so Qt and
 python-can stay separate, replaceable DLLs, as the LGPL asks), checks the
-result, and then uses **Inno Setup** or **NSIS**, whichever it finds.  The
+result, and then wraps it with **Inno Setup**.  The
 result is `dist\pycangui\pycangui.exe` and `dist\pycangui-<version>-setup.exe`;
 nothing needs to be installed on the target machine, not even Python.
 

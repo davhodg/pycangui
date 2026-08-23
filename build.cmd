@@ -1,9 +1,8 @@
 @echo off
 rem Build a distributable pycangui: a PyInstaller one-directory build, checked,
-rem then wrapped in a Windows installer.
+rem then wrapped in a Windows installer with Inno Setup.
 rem
-rem   build.cmd            build, check, and make setup.exe if an installer
-rem                        compiler (Inno Setup or NSIS) is available
+rem   build.cmd            build, check, and make setup.exe
 rem   build.cmd nosetup    stop after the checked one-directory build
 rem
 rem Two notes for editing this file: batch files must keep CRLF line endings or
@@ -48,39 +47,41 @@ if errorlevel 1 goto :fail
 
 if /i "%~1"=="nosetup" goto :done
 
-for /f %%v in ('"%PYTHON%" -c "import pycangui; print(pycangui.__version__)"') do set VERSION=%%v
+rem Read the version through a file: nesting quotes inside a for /f is parsed
+rem differently by cmd depending on context, and comes out empty.
+set VERSION=
+set VERSIONFILE=%TEMP%\pycangui_version.txt
+"%PYTHON%" -c "import pycangui; print(pycangui.__version__)" > "%VERSIONFILE%"
+if errorlevel 1 goto :fail
+set /p VERSION=<"%VERSIONFILE%"
+del "%VERSIONFILE%" 2>nul
+if not defined VERSION (
+    echo Could not read the version from the package.
+    goto :fail
+)
 
 echo.
 echo === Installer =====================================================
+echo Version %VERSION%
+rem Newest first, then whatever is on the PATH, so this keeps working across
+rem Inno Setup versions without being edited.
 set ISCC=
 for %%p in (
+    "%ProgramFiles(x86)%\Inno Setup 7\ISCC.exe"
+    "%ProgramFiles%\Inno Setup 7\ISCC.exe"
     "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
     "%ProgramFiles%\Inno Setup 6\ISCC.exe"
-) do if exist %%p set ISCC=%%p
-set MAKENSIS=
-for %%p in (
-    "%ProgramFiles(x86)%\NSIS\makensis.exe"
-    "%ProgramFiles%\NSIS\makensis.exe"
-) do if exist %%p set MAKENSIS=%%p
-
-if defined ISCC (
-    echo Using Inno Setup.
-    %ISCC% /DAppVersion=%VERSION% build\installer.iss
-    if errorlevel 1 goto :fail
-    echo Installer: dist\pycangui-%VERSION%-setup.exe
+) do if exist %%p if not defined ISCC set ISCC=%%p
+if not defined ISCC for %%p in (ISCC.exe) do if not "%%~$PATH:p"=="" set ISCC="%%~$PATH:p"
+if not defined ISCC (
+    echo Inno Setup was not found, so no setup.exe was made.
+    echo The application itself is ready in dist\pycangui.
+    echo Install it from https://jrsoftware.org/isinfo.php to build one.
     goto :done
 )
-if defined MAKENSIS (
-    echo Using NSIS.
-    %MAKENSIS% /DAppVersion=%VERSION% build\installer.nsi
-    if errorlevel 1 goto :fail
-    echo Installer: dist\pycangui-%VERSION%-setup.exe
-    goto :done
-)
-echo No installer compiler found, so no setup.exe was made.
-echo The application is ready in dist\pycangui.
-echo Install Inno Setup ^(https://jrsoftware.org/isinfo.php^)
-echo or NSIS ^(https://nsis.sourceforge.io^) to build one.
+%ISCC% /DAppVersion=%VERSION% build\installer.iss
+if errorlevel 1 goto :fail
+echo Installer: dist\pycangui-%VERSION%-setup.exe
 
 :done
 echo.
