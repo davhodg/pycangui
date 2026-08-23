@@ -216,15 +216,17 @@ class MainWindow(QMainWindow):
         added to, so the protocol panes still arrive on the right.
         """
         trace, log, scope = (self._docks[n] for n in DEFAULT_VISIBLE)
-        # One column: what the bus is doing, what pycangui is saying about it,
-        # and the signals pulled out of it.
+        # The trace and the log share the top row and the plot spans below
+        # them: both of those want width, and the log's lines are short.
+        # Nested splits inside one area rather than the four edges, which is
+        # what setDockNestingEnabled above buys.
         self.addDockWidget(Qt.LeftDockWidgetArea, trace)
-        self.splitDockWidget(trace, log, Qt.Vertical)
-        self.splitDockWidget(log, scope, Qt.Vertical)
+        self.splitDockWidget(trace, scope, Qt.Vertical)
+        self.splitDockWidget(trace, log, Qt.Horizontal)
         for name, dock in self._docks.items():
             dock.setVisible(name in DEFAULT_VISIBLE)
-        # The log only carries occasional lines, so it gets a strip.
-        self.resizeDocks([trace, log, scope], [5, 2, 4], Qt.Vertical)
+        self.resizeDocks([trace, log], [7, 3], Qt.Horizontal)
+        self.resizeDocks([trace, scope], [6, 4], Qt.Vertical)
 
     def _restore_layout(self) -> None:
         s = QSettings()
