@@ -16,7 +16,7 @@ from PySide6.QtGui import QColor
 
 from pycangui.core.bus import Frame
 
-COLUMNS = ("ID", "Kind", "Type", "Dir", "DLC", "Data", "Count", "Rate", "Period", "Last")
+COLUMNS = ("ID", "Kind", "Channel", "Dir", "DLC", "Data", "Count", "Rate", "Period", "Last")
 ROLE_GROUP = Qt.UserRole + 1
 CHANGED_COLOUR = QColor(220, 120, 0)
 
@@ -61,11 +61,11 @@ class LatestModel(QAbstractTableModel):
                 case 1:
                     return f.kind
                 case 2:
-                    return ("FD" if f.fd else "CAN") + ("x" if f.extended else "")
+                    return f.channel
                 case 3:
                     return "Rx" if f.rx else "Tx"
                 case 4:
-                    return str(f.dlc)
+                    return f"{f.dlc} FD" if f.fd else str(f.dlc)
                 case 5:
                     return f.data.hex(" ").upper()
                 case 6:

@@ -356,7 +356,10 @@ class MainWindow(QMainWindow):
         for name in self.channels.names():
             bus = self.channels.get(name)
             mark = "*" if name == self.channels.active else ""  # the protocol panes' channel
-            parts.append(f"{mark}{name}: {'up' if bus and bus.is_connected else 'down'}")
+            if bus and bus.is_connected:
+                parts.append(f"{mark}{name}: up, {bus.load_percent:.1f}% load")
+            else:
+                parts.append(f"{mark}{name}: down")
         if self.recorder.is_recording:
             parts.append(f"recording {self.recorder.path.name} ({self.recorder.elapsed:.0f} s)")
         parts.append(f"frames: {self._frame_count}")

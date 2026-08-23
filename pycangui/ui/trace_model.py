@@ -12,7 +12,10 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from pycangui.core.bus import Frame
 
-COLUMNS = ("Time", "Ch", "Dir", "ID", "Kind", "Type", "DLC", "Data")
+# "Channel" replaces the old CAN / CANx column: with several buses connected
+# the channel is what you need to see, and 11 vs 29-bit is already obvious from
+# the width of the id.  FD is marked on the length instead.
+COLUMNS = ("Time", "Channel", "Dir", "ID", "Kind", "DLC", "Data")
 ROLE_GROUP = Qt.UserRole + 1
 MAX_ROWS = 500_000
 
@@ -52,10 +55,8 @@ class TraceModel(QAbstractTableModel):
             case 4:
                 return f.kind
             case 5:
-                return ("FD" if f.fd else "CAN") + ("x" if f.extended else "")
+                return f"{f.dlc} FD" if f.fd else str(f.dlc)
             case 6:
-                return str(f.dlc)
-            case 7:
                 return f.data.hex(" ").upper()
         return None
 

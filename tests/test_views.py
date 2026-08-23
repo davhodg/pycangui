@@ -4,6 +4,7 @@ import time
 
 from PySide6.QtCore import Qt
 
+from pycangui import resources
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
@@ -103,3 +104,41 @@ def test_trace_view_kind_column_and_filter(app, tmp_path, monkeypatch):
     view.hooks.reload()
     view.on_frames([frame(0x123, b"", 0.3)])
     assert view.model.index(3, 4).data() == "Pump status"
+
+
+def test_trace_columns_show_the_channel_and_fd(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    standard = Frame(0.0, "CAN 1", 0x185, False, False, True, b"\x01\x02")
+    extended = Frame(0.1, "Drive bus", 0x18DAF110, True, True, True, bytes(12))
+    view.on_frames([standard, extended])
+    row0 = [view.model.index(0, c).data() for c in range(7)]
+    row1 = [view.model.index(1, c).data() for c in range(7)]
+    assert row0[1] == "CAN 1" and row1[1] == "Drive bus"  # the channel, not "CAN"/"CANx"
+    assert row0[3] == "185" and row1[3] == "18DAF110"  # 11 vs 29-bit is clear from the id
+    assert row0[5] == "2" and row1[5] == "12 FD"  # FD is marked on the length
+    # the same in the latest-per-id view
+    assert view.latest.index(0, 2).data() == "CAN 1"
+    assert view.latest.index(1, 2).data() == "Drive bus"
+    assert view.latest.index(1, 4).data() == "12 FD"
+
+
+def test_canopen_label_beats_a_dbc_message_name(app, tmp_path, monkeypatch):
+    """A DBC that names 0x185 must not hide which node sent it."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    dbc = DbcDecoder()
+    dbc.load(resources.path("demo.dbc"))  # names 0x185 DriveStatus, 0x705 DriveHeartbeat
+    view.classifiers.append(dbc.message_name)
+
+    view.on_frames(
+        [
+            frame(0x185, b"\x00" * 8, 0.0),  # a CANopen TPDO the DBC also names
+            frame(0x705, b"\x05", 0.1),  # a heartbeat the DBC also names
+            frame(0x123, b"\x00" * 4, 0.2),  # not CANopen: the DBC name stands
+        ]
+    )
+    kinds = [view.model.index(r, 4).data() for r in range(3)]
+    assert kinds == ["TxPDO1 n5", "Heartbeat n5", "PumpCommand"]

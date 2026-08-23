@@ -157,12 +157,21 @@ class TraceView(QWidget):
 
     # --- frames ----------------------------------------------------------------------
     def _classify(self, frames: list[Frame]) -> None:
-        """Label precedence: user hook, then DBC names, then CANopen; the filter
-        group always comes from the CAN id so a DBC-named PDO still counts as PDO."""
+        """Label precedence: the user hook first, then what the CAN id says on
+        its own (CANopen's predefined connection set), then the other labellers
+        -- DBC message names, J1939 PGNs, UDS and XCP.
+
+        The id-based label wins over a database name on purpose: "TxPDO1 n5"
+        says which node sent it, which a DBC message name cannot.  The database
+        still names the signals in the Signals and Plot panes.
+
+        The filter group always comes from the id, so a PDO stays under PDO
+        whatever it ends up being called.
+        """
         for f in frames:
             co_kind, co_group = classify(f.can_id, f.extended)
             kind = self.hooks.call("trace", "frame_kind", f)
-            if kind is None:
+            if kind is None and not co_kind:
                 for fn in self.classifiers:
                     if kind := fn(f):
                         break

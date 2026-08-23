@@ -23,6 +23,20 @@ import can
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 
+def frame_bits(dlc: int, extended: bool, fd: bool) -> int:
+    """Roughly how many bits a frame occupies on the wire.
+
+    Classic CAN: 47 bits of overhead for an 11-bit id, 67 for a 29-bit one,
+    plus the data.  Bit stuffing adds up to a fifth more on unlucky payloads,
+    so a nominal 20% is included -- bus load is an indication, not a
+    measurement, and the exact figure depends on the data itself.  CAN FD with
+    bit rate switching sends its data faster than its header, which this does
+    not model, so FD loads read high.
+    """
+    overhead = 67 if extended else 47
+    return int((overhead + 8 * dlc) * 1.2)
+
+
 @dataclass(slots=True)
 class Frame:
     """One CAN frame as seen on the bus (both directions)."""
@@ -89,6 +103,7 @@ class BusManager(QObject):
     error = Signal(str)
 
     DRAIN_PERIOD_MS = 20
+    LOAD_PERIOD_MS = 500
 
     def __init__(self, channel_name: str = "CAN", clock_start: float | None = None) -> None:
         super().__init__()
@@ -97,11 +112,18 @@ class BusManager(QObject):
         #: Shown in the trace's Ch column; distinguishes one adapter from another.
         self.channel_name = channel_name
         self.description = ""
+        self.bitrate = 0
+        #: Percentage of the bus's capacity used, refreshed every LOAD_PERIOD_MS.
+        self.load_percent = 0.0
+        self._bits = 0
+        self._bits_at = time.monotonic()
         self._collector: _Collector | None = None
         #: Channels share a clock so frames from different adapters line up.
         self._t0 = time.monotonic() if clock_start is None else clock_start
         self._shared_clock = clock_start is not None
         self._timer = QTimer(self, interval=self.DRAIN_PERIOD_MS, timeout=self._drain)
+        self._load_timer = QTimer(self, interval=self.LOAD_PERIOD_MS, timeout=self._update_load)
+        self._load_timer.start()
 
     def now(self) -> float:
         """Seconds on the shared clock: what Frame.timestamp is measured against."""
@@ -129,6 +151,7 @@ class BusManager(QObject):
         self._collector = _Collector(self.channel_name, self._t0)
         self.notifier = can.Notifier(self.bus, [self._collector], timeout=0.02)
         self._timer.start()
+        self.bitrate = bitrate
         fd_text = " FD" if fd else ""
         self.description = f"{interface}:{channel} @ {bitrate} bit/s{fd_text}"
         self.connected.emit(self.description)
@@ -145,6 +168,7 @@ class BusManager(QObject):
         self.bus.shutdown()
         self.bus = self.notifier = self._collector = None
         self.description = ""
+        self.load_percent = 0.0
 
     def add_listener(self, listener: can.Listener) -> None:
         """Let a protocol stack see every frame (canopen.Network etc.)."""
@@ -183,11 +207,23 @@ class BusManager(QObject):
             self.error.emit(f"Cyclic send failed: {exc}")
             return None
 
+    def _update_load(self) -> None:
+        now = time.monotonic()
+        elapsed = now - self._bits_at
+        capacity = self.bitrate * elapsed
+        if self.is_connected and capacity > 0:
+            self.load_percent = min(100.0, 100.0 * self._bits / capacity)
+        else:
+            self.load_percent = 0.0
+        self._bits = 0
+        self._bits_at = now
+
     def _drain(self) -> None:
         if self._collector is None:
             return
         batch = self._collector.drain()
         if batch:
+            self._bits += sum(frame_bits(f.dlc, f.extended, f.fd) for f in batch)
             self.frames.emit(batch)
         if self.notifier is not None and self.notifier.exception is not None:
             exc, self.notifier.exception = self.notifier.exception, None
