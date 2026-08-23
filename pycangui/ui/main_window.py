@@ -31,6 +31,7 @@ from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
+from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.scope_view import ScopeView
@@ -170,6 +171,8 @@ class MainWindow(QMainWindow):
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
         tools_menu.addAction("Reload hooks", self._reload_hooks)
         tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
+
+        self.help_menu = HelpMenu(self)
         self._default_state = self.saveState(LAYOUT_VERSION)
         self._restore_layout()
 
@@ -252,6 +255,7 @@ class MainWindow(QMainWindow):
         s.setValue("windowState", self.saveState(LAYOUT_VERSION))
         s.setValue("scopeSplitter", self.scope.save_state())
         self.replay.stop()
+        self.help_menu.shutdown()
         self.recorder.stop()
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
         self.bus.close()  # stop the facade before its channels go away
