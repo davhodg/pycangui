@@ -57,7 +57,8 @@ def test_tx_view_send_and_cyclic(app, tmp_path, monkeypatch):
     bus.frames.connect(received.extend)
     bus.connect_bus("virtual", "vcan_tx", 500000, False)
 
-    view = TxView(bus, ctx, DbcDecoder(), CanopenManager(bus))
+    canopen = CanopenManager(bus)
+    view = TxView(bus, ctx, DbcDecoder(), canopen)
     r = view.add_message({"kind": "raw", "id": "1A3", "data": "de ad be ef", "period": 20})
     view.send_row(r)
     wait(app, lambda: any(f.can_id == 0x1A3 for f in received))
@@ -79,6 +80,7 @@ def test_tx_view_send_and_cyclic(app, tmp_path, monkeypatch):
 
     saved = ctx.settings.get("tx.messages")
     assert saved[0]["id"] == "1A3" and saved[0]["data"] == "01 02"
+    canopen.shutdown()  # a QThread still running when Qt destroys it aborts
 
 
 def test_trace_view_kind_column_and_filter(app, tmp_path, monkeypatch):
