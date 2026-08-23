@@ -24,10 +24,13 @@ def test_only_three_panes_are_open_to_start_with(app, window):
     assert visible == set(DEFAULT_VISIBLE) == {"trace", "log", "scope"}
 
 
-def test_they_are_stacked_in_one_column(app, window):
-    tops = [window._docks[n].geometry().y() for n in ("trace", "log", "scope")]
-    assert tops == sorted(tops), "trace above the log, the log above signals and plot"
-    assert window._docks["trace"].geometry().height() > window._docks["log"].geometry().height()
+def test_the_log_sits_beside_the_trace_with_the_plot_below(app, window):
+    trace, log, scope = (window._docks[n].geometry() for n in ("trace", "log", "scope"))
+    assert log.x() > trace.x(), "the log is to the right of the trace..."
+    assert log.y() == trace.y(), "...sharing the top row with it"
+    assert trace.width() > log.width(), "and the trace gets the greater share of the width"
+    assert scope.y() > trace.y(), "signals and plot go below both"
+    assert scope.width() > trace.width(), "spanning the full width"
 
 
 def test_a_hidden_pane_comes_back_where_it_belongs(app, window):

@@ -38,8 +38,8 @@ to name it, ...) with the defaults and commented examples in place; `eds/` is
 scanned for EDS files matching a node's vendor/product; `settings.json` holds
 what the GUI remembers.  Tools > Reload hooks applies edits without a restart.
 
-pycangui opens with three panes -- the **Trace**, the **Event Log**, and
-**Signals and Plot** -- stacked in one column.  The rest (CANopen, UDS, J1939,
+pycangui opens with three panes: the **Trace** with the **Event Log** beside
+it, and **Signals and Plot** spanning underneath.  The rest (CANopen, UDS, J1939,
 XCP, Transmit, Python Console) start hidden, because which of them you want
 depends on what you have plugged in; turn any on in the **View** menu, and
 *View > Reset layout* puts everything back.  Panes are dockable, so drag them
