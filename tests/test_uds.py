@@ -28,7 +28,7 @@ def stack(app, tmp_path, monkeypatch):
     ctx = Context(log=print)
     hooks = Hooks(ctx)
     bus = BusManager()
-    manager = UdsManager(bus, hooks)
+    manager = UdsManager(bus, hooks, ctx)
     bus.connect_bus("virtual", "vcan_uds", 500000, False)
     demo = DemoDevice("vcan_uds")
     yield bus, manager, demo, tmp_path

@@ -18,6 +18,7 @@ class Context:
         self.user_dir: Path = paths.user_dir()
         self.hooks_dir: Path = paths.hooks_dir()
         self.eds_dir: Path = paths.eds_dir()
+        self.backends_dir: Path = paths.backends_dir()
         self.settings = Settings(self.user_dir / "settings.json")
         self._log = log or print
 

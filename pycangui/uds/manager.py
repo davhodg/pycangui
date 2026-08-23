@@ -8,18 +8,57 @@ import struct
 from collections.abc import Callable
 from typing import Any
 
-import isotp
 import udsoncan
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from udsoncan import Request, Response, services
 from udsoncan.client import Client
-from udsoncan.connections import PythonIsoTpConnection
+from udsoncan.connections import BaseConnection
 from udsoncan.exceptions import NegativeResponseException, TimeoutException
 
+from pycangui.core.backends import BACKENDS
 from pycangui.core.bus import BusManager, Frame
+from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
 from pycangui.uds import UdsConfig
+from pycangui.uds.transport import IsoTpTransport
+
+DEFAULT_BACKEND = "can-isotp"
+
+
+class _TransportConnection(BaseConnection):
+    """Adapts any IsoTpTransport to what udsoncan's Client expects."""
+
+    def __init__(self, transport: IsoTpTransport) -> None:
+        super().__init__(name="pycangui")
+        self._transport = transport
+        self._opened = False
+
+    def open(self):
+        self._transport.open()
+        self._opened = True
+        return self
+
+    def close(self) -> None:
+        self._transport.close()
+        self._opened = False
+
+    def is_open(self) -> bool:
+        return self._opened
+
+    def specific_send(self, payload: bytes) -> None:
+        self._transport.send(payload)
+
+    def specific_wait_frame(self, timeout: float = 2) -> bytes:
+        data = self._transport.recv(timeout)
+        if data is None:
+            raise TimeoutException(f"no ISO-TP frame in {timeout} s")
+        return data
+
+    def empty_rxqueue(self) -> None:
+        while not self._transport.empty:
+            self._transport.recv(0)
+
 
 SESSIONS = {1: "default", 2: "programming", 3: "extended", 4: "safety system"}
 RESETS = {1: "hard reset", 2: "key off/on", 3: "soft reset", 4: "enable rapid power shutdown"}
@@ -30,13 +69,15 @@ class UdsManager(QObject):
     opened = Signal(bool)  # client open state changed
     did_value = Signal(int, bytes)  # did, raw data (for scripts / future signal hub use)
 
-    def __init__(self, bus: BusManager, hooks: Hooks) -> None:
+    def __init__(self, bus: BusManager, hooks: Hooks, ctx: Context) -> None:
         super().__init__()
         self._bus = bus
         self._hooks = hooks
+        self._ctx = ctx
         self.config = UdsConfig()
         self.client: Client | None = None
-        self._stack: isotp.NotifierBasedCanStack | None = None
+        self.backend_name = ctx.settings.get("backends.isotp", DEFAULT_BACKEND)
+        self._transport: IsoTpTransport | None = None
         self._worker = Worker()
         self._worker.start()
         self._tp_timer = QTimer(self, timeout=self._tester_present_tick)
@@ -53,22 +94,14 @@ class UdsManager(QObject):
             self.result.emit("UDS: not connected to a bus")
             return
         self.config = config
-        mode = (
-            isotp.AddressingMode.Normal_29bits
-            if config.extended_id
-            else isotp.AddressingMode.Normal_11bits
-        )
-        address = isotp.Address(mode, txid=config.tx_id, rxid=config.rx_id)
-        params = {
-            "tx_padding": config.padding,
-            "rx_flowcontrol_timeout": 1000,
-            "rx_consecutive_frame_timeout": 1000,
-            "can_fd": False,
-        }
-        self._stack = isotp.NotifierBasedCanStack(
-            self._bus.bus, self._bus.notifier, address=address, params=params
-        )
-        conn = PythonIsoTpConnection(self._stack)  # starts/stops the stack with open()/close()
+        try:
+            self._transport = BACKENDS.create(
+                "isotp", self.backend_name, self._bus, config, self._ctx
+            )
+        except Exception as exc:
+            self.result.emit(f"UDS transport {self.backend_name!r} failed: {exc}")
+            return
+        conn = _TransportConnection(self._transport)
         cfg = dict(udsoncan.configs.default_client_config)
         cfg.update(
             {
@@ -83,7 +116,8 @@ class UdsManager(QObject):
         self.client = Client(conn, config=cfg)
         self.client.open()
         ids = f"tx {config.tx_id:X} rx {config.rx_id:X}"
-        self.result.emit(f"UDS open: {ids}{' (29-bit)' if config.extended_id else ''}")
+        ext = " (29-bit)" if config.extended_id else ""
+        self.result.emit(f"UDS open [{self.backend_name}]: {ids}{ext}")
         self.opened.emit(True)
 
     @Slot()
@@ -94,16 +128,30 @@ class UdsManager(QObject):
                 self.client.close()
             finally:
                 self.client = None
-        if self._stack is not None:
-            if self._stack.started:
-                self._stack.stop()
-            self._stack = None
+        if self._transport is not None:
+            self._transport.close()
+            self._transport = None
             self.result.emit("UDS closed")
             self.opened.emit(False)
 
     def shutdown(self) -> None:
         self.close()
         self._worker.stop()
+
+    # --- backend ---------------------------------------------------------------
+    def backends(self) -> list[str]:
+        return BACKENDS.names("isotp")
+
+    def set_backend(self, name: str) -> None:
+        if name == self.backend_name:
+            return
+        was_open = self.is_open
+        self.close()
+        self.backend_name = name
+        self._ctx.settings.set("backends.isotp", name)
+        self.result.emit(f"UDS transport: {name}")
+        if was_open:
+            self.open(self.config)
 
     # --- trace labelling -------------------------------------------------------
     def classify(self, frame: Frame) -> str | None:

@@ -1,44 +1,28 @@
-"""XCP-on-CAN master.  Command/response runs on a worker thread (each command
-waits for the slave's reply on the shared bus); results come back as signals.
+"""XCP pane logic: A2L handling, seed-and-key, read/write, measurement polling.
 
-Measurement polling reads each selected parameter with SHORT_UPLOAD on a timer
-and pushes the physical value into the signal hub, so XCP values plot alongside
-CANopen / DBC / J1939 signals.
+The protocol itself lives behind an :class:`~pycangui.xcp.engine.XcpEngine`
+chosen from the backend registry, so a different implementation (a Rust or C
+library, or another transport) can be dropped in without touching this file or
+the GUI.  Commands run on a worker thread because they block on the slave.
 """
 
 from __future__ import annotations
 
 import queue
-import struct
 import threading
 
-from PySide6.QtCore import QObject, QTimer, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, Signal
 
+from pycangui.core.backends import BACKENDS
 from pycangui.core.bus import BusManager, Frame
+from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.signals import SignalHub
-from pycangui.xcp import (
-    CMD_CONNECT,
-    CMD_DISCONNECT,
-    CMD_DOWNLOAD,
-    CMD_GET_SEED,
-    CMD_SET_MTA,
-    CMD_SHORT_UPLOAD,
-    CMD_UNLOCK,
-    ERROR_CODES,
-    PID_ERR,
-    PID_RES,
-    ConnectInfo,
-    decode_value,
-    encode_value,
-)
+from pycangui.xcp import DATATYPES, decode_value, encode_value
 from pycangui.xcp.a2l import A2l, Parameter
+from pycangui.xcp.engine import XcpEngine, XcpError
 
-
-class XcpError(Exception):
-    def __init__(self, code: int) -> None:
-        super().__init__(ERROR_CODES.get(code, f"0x{code:02X}"))
-        self.code = code
+DEFAULT_BACKEND = "native"
 
 
 class XcpManager(QObject):
@@ -47,31 +31,47 @@ class XcpManager(QObject):
     a2l_loaded = Signal(int)  # number of parameters
     value = Signal(str, float)  # parameter name, physical value
 
-    def __init__(self, bus: BusManager, hooks: Hooks, signals: SignalHub) -> None:
+    def __init__(self, bus: BusManager, hooks: Hooks, signals: SignalHub, ctx: Context) -> None:
         super().__init__()
         self._bus = bus
         self._hooks = hooks
         self._signals = signals
+        self._ctx = ctx
         self.a2l: A2l | None = None
-        self.info: ConnectInfo | None = None
-        self.cmd_id = 0x7A0  # master -> slave (XCP ids are project specific)
-        self.res_id = 0x7A1  # slave -> master
-        self.extended_id = False
-        self._resp: queue.Queue = queue.Queue()
+        self.engine: XcpEngine | None = None
+        self.backend_name = ctx.settings.get("backends.xcp", DEFAULT_BACKEND)
         self._connected = False
         self._polled: dict[str, Parameter] = {}
-        self._worker: threading.Thread | None = None
         self._jobs: queue.Queue = queue.Queue()
         self._poll_timer = QTimer(self, interval=100, timeout=self._poll)
-        bus.frames.connect(self._on_frames)
-        bus.disconnected.connect(lambda: self.set_connected(False))
-        self._start_worker()
-
-    # --- worker (serialises blocking command/response) ---------------------------
-    def _start_worker(self) -> None:
         self._worker = threading.Thread(target=self._run, name="xcp", daemon=True)
         self._worker.start()
+        bus.disconnected.connect(lambda: self.set_connected(False))
+        self._make_engine()
 
+    # --- backend ---------------------------------------------------------------
+    def backends(self) -> list[str]:
+        return BACKENDS.names("xcp")
+
+    def set_backend(self, name: str) -> None:
+        if name == self.backend_name and self.engine is not None:
+            return
+        self.disconnect_slave()
+        self.backend_name = name
+        self._ctx.settings.set("backends.xcp", name)
+        self._make_engine()
+        self.result.emit(f"XCP backend: {name}")
+
+    def _make_engine(self) -> None:
+        if self.engine is not None:
+            self.engine.close()
+        try:
+            self.engine = BACKENDS.create("xcp", self.backend_name, self._bus, self._ctx)
+        except Exception as exc:  # a user backend may fail to construct
+            self.engine = None
+            self.result.emit(f"XCP backend {self.backend_name!r} failed: {exc}")
+
+    # --- worker ------------------------------------------------------------------
     def _run(self) -> None:
         while (job := self._jobs.get()) is not None:
             fn, label = job
@@ -87,62 +87,46 @@ class XcpManager(QObject):
                 self.result.emit(f"{label}: {type(exc).__name__}: {exc}")
 
     def _submit(self, label: str, fn) -> None:
+        if self.engine is None:
+            self.result.emit(f"{label}: no XCP backend")
+            return
         self._jobs.put((fn, label))
 
     def shutdown(self) -> None:
         self._poll_timer.stop()
         self._jobs.put(None)
-        if self._worker is not None:
-            self._worker.join(2.0)
-
-    # --- low level -----------------------------------------------------------------
-    @Slot(list)
-    def _on_frames(self, frames: list[Frame]) -> None:
-        for f in frames:
-            if f.rx and f.can_id == self.res_id and f.extended == self.extended_id:
-                self._resp.put(f.data)
-
-    def _command(self, pid: int, payload: bytes = b"", timeout: float = 1.0) -> bytes:
-        while not self._resp.empty():  # drop stale
-            self._resp.get_nowait()
-        self._bus.send(self.cmd_id, bytes([pid]) + payload, extended=self.extended_id)
-        try:
-            data = self._resp.get(timeout=timeout)
-        except queue.Empty as exc:
-            raise TimeoutError from exc
-        if not data:
-            raise TimeoutError
-        if data[0] == PID_ERR:
-            raise XcpError(data[1] if len(data) > 1 else 0x31)
-        if data[0] != PID_RES:
-            raise XcpError(0x31)
-        return bytes(data[1:])
+        self._worker.join(2.0)
+        if self.engine is not None:
+            self.engine.close()
 
     # --- connection ----------------------------------------------------------------
     def set_ids(self, cmd_id: int, res_id: int, extended: bool) -> None:
-        self.cmd_id, self.res_id, self.extended_id = cmd_id, res_id, extended
+        if self.engine is not None:
+            self.engine.set_ids(cmd_id, res_id, extended)
+
+    @property
+    def info(self):
+        return self.engine.info if self.engine else None
 
     def connect_slave(self) -> None:
         def fn() -> str:
-            r = self._command(CMD_CONNECT, bytes([0x00]))
-            # CONNECT response: resource, commModeBasic, maxCTO, maxDTO(2), protoVer, transVer
-            resource = r[0]
-            comm = r[1]
-            max_cto = r[2]
-            big_endian = bool(comm & 0x01)
-            max_dto = struct.unpack(">H" if big_endian else "<H", r[3:5])[0]
-            self.info = ConnectInfo(resource, 0, big_endian, max_cto, max_dto)
+            info = self.engine.connect()
             self.set_connected(True)
-            names = self.info.resource_names(resource)
-            order = "big-endian" if big_endian else "little-endian"
-            return f"XCP connected: resources {names}, maxCTO {max_cto}, maxDTO {max_dto}, {order}"
+            order = "big-endian" if info.big_endian else "little-endian"
+            return (
+                f"XCP connected ({self.backend_name}): resources "
+                f"{info.resource_names(info.resources)}, maxCTO {info.max_cto}, "
+                f"maxDTO {info.max_dto}, {order}"
+            )
 
         self._submit("CONNECT", fn)
 
     def disconnect_slave(self) -> None:
+        if not self._connected:
+            return
+
         def fn() -> str:
-            if self._connected:
-                self._command(CMD_DISCONNECT)
+            self.engine.disconnect()
             self.set_connected(False)
             return "XCP disconnected"
 
@@ -155,7 +139,6 @@ class XcpManager(QObject):
         if not on:
             self._poll_timer.stop()
             self._polled.clear()
-            self.info = None
         self.connected.emit(on)
 
     @property
@@ -164,18 +147,16 @@ class XcpManager(QObject):
 
     def unlock(self, resource: int) -> None:
         def fn() -> str:
-            seed = self._command(CMD_GET_SEED, bytes([0x00, resource]))
-            seed_len = seed[0]
-            seed_bytes = seed[1 : 1 + seed_len]
-            key = self._hooks.call("xcp", "compute_key", resource, bytes(seed_bytes))
+            seed = self.engine.get_seed(resource)
+            key = self._hooks.call("xcp", "compute_key", resource, bytes(seed))
             if key is None:
                 return "XCP unlock: no key algorithm (implement hooks/xcp.py::compute_key)"
-            self._command(CMD_UNLOCK, bytes([len(key), *key]))
+            self.engine.unlock(bytes(key))
             return f"XCP resource 0x{resource:02X} unlocked"
 
         self._submit("UNLOCK", fn)
 
-    # --- A2L -----------------------------------------------------------------------
+    # --- A2L -------------------------------------------------------------------------
     def load_a2l(self, path: str) -> None:
         self.a2l = A2l.load(path)
         self.a2l_loaded.emit(len(self.a2l.parameters))
@@ -184,24 +165,12 @@ class XcpManager(QObject):
             f"{len(self.a2l.characteristics())} characteristics"
         )
 
-    # --- read / write --------------------------------------------------------------
-    def _read_raw(self, param: Parameter) -> float:
-        size = {
-            "UBYTE": 1,
-            "SBYTE": 1,
-            "UWORD": 2,
-            "SWORD": 2,
-            "ULONG": 4,
-            "SLONG": 4,
-            "A_UINT64": 8,
-            "A_INT64": 8,
-            "FLOAT32_IEEE": 4,
-            "FLOAT64_IEEE": 8,
-        }[param.datatype]
-        big = self.info.big_endian if self.info else False
-        addr = struct.pack(">I" if big else "<I", param.address)
-        data = self._command(CMD_SHORT_UPLOAD, bytes([size, 0x00, 0x00]) + addr)
-        return decode_value(data, param.datatype, big)
+    # --- read / write ------------------------------------------------------------------
+    def _read_value(self, param: Parameter) -> float:
+        size = DATATYPES[param.datatype][1]
+        big = bool(self.info and self.info.big_endian)
+        raw = decode_value(self.engine.read(param.address, size), param.datatype, big)
+        return param.conversion.to_phys(raw) if param.conversion else raw
 
     def read(self, name: str) -> None:
         param = self.a2l.parameters.get(name) if self.a2l else None
@@ -210,8 +179,7 @@ class XcpManager(QObject):
             return
 
         def fn() -> str:
-            raw = self._read_raw(param)
-            phys = param.conversion.to_phys(raw) if param.conversion else raw
+            phys = self._read_value(param)
             self.value.emit(name, phys)
             unit = f" {param.unit}" if param.unit else ""
             return f"{name} = {phys:g}{unit}"
@@ -227,16 +195,13 @@ class XcpManager(QObject):
         def fn() -> str:
             phys = float(text)
             raw = param.conversion.to_raw(phys) if param.conversion else phys
-            big = self.info.big_endian if self.info else False
-            data = encode_value(raw, param.datatype, big)
-            addr = struct.pack(">I" if big else "<I", param.address)
-            self._command(CMD_SET_MTA, bytes([0x00, 0x00, 0x00]) + addr)
-            self._command(CMD_DOWNLOAD, bytes([len(data)]) + data)
+            big = bool(self.info and self.info.big_endian)
+            self.engine.write(param.address, encode_value(raw, param.datatype, big))
             return f"{name} <- {phys:g}"
 
         self._submit(f"write {name}", fn)
 
-    # --- polling -------------------------------------------------------------------
+    # --- polling ---------------------------------------------------------------------
     def set_polled(self, name: str, on: bool) -> None:
         param = self.a2l.parameters.get(name) if self.a2l else None
         if param is None:
@@ -253,24 +218,16 @@ class XcpManager(QObject):
     def _poll(self) -> None:
         if not self._connected or not self._polled:
             return
-        # One batch of reads per tick, queued on the worker; values feed the hub.
         for name, param in list(self._polled.items()):
 
             def fn(p=param, n=name) -> str:
-                raw = self._read_raw(p)
-                phys = p.conversion.to_phys(raw) if p.conversion else raw
+                phys = self._read_value(p)
                 self.value.emit(n, phys)
                 self._signals.push("XCP", n, self._bus.now(), phys, p.unit)
                 return ""
 
             self._submit(f"poll {name}", fn)
 
-    # --- trace labelling -----------------------------------------------------------
+    # --- trace labelling ---------------------------------------------------------------
     def classify(self, frame: Frame) -> str | None:
-        if frame.extended != self.extended_id:
-            return None
-        if frame.can_id == self.cmd_id:
-            return "XCP cmd"
-        if frame.can_id == self.res_id:
-            return "XCP resp"
-        return None
+        return self.engine.owns_frame(frame) if self.engine else None
