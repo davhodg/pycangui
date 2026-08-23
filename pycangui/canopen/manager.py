@@ -39,7 +39,7 @@ class CanopenManager(QObject):
     pdo_update = Signal(int, str, dict)  # node_id, pdo name, {variable name: value}
     emcy = Signal(int, str)  # node_id, description
     rpdos_read = Signal(int)  # node_id: its RPDO configuration is now known
-    message = Signal(str)  # for the Log pane
+    message = Signal(str)  # for the Event Log pane
 
     def __init__(self, bus: BusManager) -> None:
         super().__init__()

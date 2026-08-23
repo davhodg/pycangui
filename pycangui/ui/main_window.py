@@ -101,9 +101,9 @@ class MainWindow(QMainWindow):
         self.replay = ReplayView(self.bus, self.ctx)
         self._add_dock("replay", "Replay", self.replay, Qt.BottomDockWidgetArea)
         self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
-        self._add_dock("log", "Log", self.log, Qt.BottomDockWidgetArea)
+        self._add_dock("log", "Event Log", self.log, Qt.BottomDockWidgetArea)
         self.console = ConsoleView(self._console_namespace(), self.ctx)
-        self._add_dock("console", "Python", self.console, Qt.BottomDockWidgetArea)
+        self._add_dock("console", "Python Console", self.console, Qt.BottomDockWidgetArea)
 
         self.setStatusBar(QStatusBar())
         self._frame_count = 0

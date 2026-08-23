@@ -22,7 +22,7 @@ Users add their own by dropping a module into ``<user dir>/backends/``:
             self._lib = ctypes.CDLL(str(ctx.user_dir / "xcp_rust.dll"))
         ...
 
-A module that fails to import is reported in the Log pane and skipped, exactly
+A module that fails to import is reported in the Event Log pane and skipped, exactly
 like a broken hook file; the built-in engine keeps working.
 """
 

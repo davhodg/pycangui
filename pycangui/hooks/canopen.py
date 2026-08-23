@@ -2,13 +2,13 @@
 
 Each function below is called by pycangui at a decision point.  Return a value
 to take over, or return None to let pycangui do the normal thing.  A function
-that raises is reported in the Log pane and ignored, so mistakes here never
+that raises is reported in the Event Log pane and ignored, so mistakes here never
 break the application.  Tools > Reload hooks picks up changes without a
 restart; Tools > Update hook stubs appends any new hooks added by a newer
 pycangui version.
 
 ``ctx`` is the pycangui context:
-    ctx.log("text")          write to the Log pane
+    ctx.log("text")          write to the Event Log pane
     ctx.eds_dir              Path of your EDS folder
     ctx.user_dir             Path of the pycangui user folder
     ctx.settings.get(key)    values pycangui remembers (see settings.json)
