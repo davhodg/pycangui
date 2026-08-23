@@ -18,6 +18,7 @@ from PySide6.QtCore import Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -139,14 +141,33 @@ class LssView(QWidget):
         self.output.setFont(QFont("Consolas", 9))
         self.output.setMaximumBlockCount(500)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
+        # The three steps go in a scroll area of their own: this pane is one tab
+        # among several, and without it its natural height became the minimum
+        # height of the whole CANopen pane, which then could not be made smaller.
         note = QLabel(WARNING)
         note.setWordWrap(True)
-        layout.addWidget(note)
-        for widget in (select, configure, finish):
-            layout.addWidget(widget)
-        layout.addWidget(self.output, 1)
+        steps = QWidget()
+        steps_layout = QVBoxLayout(steps)
+        steps_layout.setContentsMargins(0, 0, 0, 0)
+        steps_layout.addWidget(note)
+        steps_layout.addWidget(select)
+        side_by_side = QHBoxLayout()  # steps 2 and 3 are short: keep them on one row
+        side_by_side.addWidget(configure, 1)
+        side_by_side.addWidget(finish)
+        steps_layout.addLayout(side_by_side)
+        steps_layout.addStretch()
+
+        scroll = QScrollArea()
+        scroll.setWidget(steps)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setMinimumHeight(0)
+
+        self.output.setMinimumHeight(40)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.addWidget(scroll, 1)
+        layout.addWidget(self.output)
 
         manager.lss_result.connect(self._append)
         manager.lss_found.connect(self._on_found)

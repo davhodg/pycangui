@@ -8,6 +8,7 @@ from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -163,11 +165,25 @@ class UdsView(QWidget):
         self.output.setFont(QFont("Consolas", 9))
         self.output.setMaximumBlockCount(2000)
 
+        # Scrolled for the same reason as the LSS pane: the controls must not
+        # dictate how small the dock can be made.
+        controls = QWidget()
+        controls_layout = QVBoxLayout(controls)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        for w in (addr, sess, data):
+            controls_layout.addWidget(w)
+        controls_layout.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidget(controls)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setMinimumHeight(0)
+
+        self.output.setMinimumHeight(40)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
-        for w in (addr, sess, data):
-            layout.addWidget(w)
-        layout.addWidget(self.output, 1)
+        layout.addWidget(scroll, 1)
+        layout.addWidget(self.output)
 
         manager.result.connect(self._append)
         manager.opened.connect(self._on_opened)
