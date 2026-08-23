@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QDockWidget, QFileDialog, QMainWindow, QPlainTextEdit, QStatusBar
+from PySide6.QtWidgets import (
+    QDockWidget,
+    QFileDialog,
+    QMainWindow,
+    QPlainTextEdit,
+    QScrollArea,
+    QStatusBar,
+)
 
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
@@ -139,7 +146,13 @@ class MainWindow(QMainWindow):
     def _add_dock(self, name: str, title: str, widget, area: Qt.DockWidgetArea) -> QDockWidget:
         dock = QDockWidget(title, self)
         dock.setObjectName(name)  # saveState/restoreState identify docks by objectName
-        dock.setWidget(widget)
+        # Wrap in a scroll area so a pane shrunk below its natural minimum gets
+        # scrollbars instead of pushing its controls off screen.
+        scroll = QScrollArea()
+        scroll.setWidget(widget)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        dock.setWidget(scroll)
         self.addDockWidget(area, dock)
         return dock
 
