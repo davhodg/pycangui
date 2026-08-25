@@ -39,10 +39,39 @@ def test_a_detected_channel_is_left_alone():
     assert detect.coerce_channel("ixxat", 3) == 3
 
 
+@pytest.mark.skipif(
+    not detect.channel_annotation("ixxat"),
+    reason="the ixxat backend cannot be imported on this platform",
+)
 def test_the_backends_really_do_disagree():
-    """The reason coercion exists, asserted against python-can itself."""
+    """The reason coercion exists, asserted against python-can itself.
+
+    Only runs where the backend imports: ixxat is Windows-only, so on Linux
+    there is no signature to read -- which is what INT_CHANNEL_BACKENDS covers.
+    """
     assert "int" in detect.channel_annotation("ixxat")
     assert "int" not in detect.channel_annotation("socketcan")
+
+
+@pytest.mark.parametrize(
+    ("annotation", "expected"), [("<class 'int'>", 7), ("<class 'str'>", "7"), ("", "7")]
+)
+def test_coercion_follows_the_declared_type(monkeypatch, annotation, expected):
+    """The rule itself, independent of which backends this platform can load."""
+    monkeypatch.setattr(detect, "channel_annotation", lambda _i: annotation)
+    result = detect.coerce_channel("madeup", "7")
+    assert result == expected and type(result) is type(expected)
+
+
+def test_an_unimportable_backend_falls_back_to_the_table(monkeypatch):
+    """On Linux the ixxat module will not load, so its signature cannot be read.
+
+    Connecting could not work there either, but the rule must not silently
+    invert just because introspection came back empty.
+    """
+    monkeypatch.setattr(detect, "channel_annotation", lambda _i: "")
+    assert detect.coerce_channel("ixxat", "0") == 0
+    assert detect.coerce_channel("socketcan", "0") == "0"
 
 
 # --- which adapter -------------------------------------------------------------------

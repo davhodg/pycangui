@@ -18,8 +18,9 @@ Three problems, all of which made connecting to real hardware guesswork:
   and the backends disagree: IXXAT and Kvaser declare ``channel: int``,
   socketcan and PCAN declare ``str``.  A "0" typed into a text box is a
   string, and an IXXAT given a string does not open.  The type is read from
-  the backend's own signature rather than from a table kept here, so a new or
-  changed backend needs no edit.
+  the backend's own signature, so a new or changed backend needs no edit here;
+  the small table below is only for backends that cannot be imported at all on
+  this platform, such as a Windows-only vendor driver seen from Linux.
 """
 
 from __future__ import annotations
@@ -32,6 +33,13 @@ import can
 import can.interfaces
 
 DETECT_TIMEOUT_S = 5.0
+
+#: Backends that declare ``channel: int``, as a fallback for when the backend
+#: cannot be imported and so cannot be asked.  Reading the signature is the
+#: primary route and keeps working as python-can changes; this is only reached
+#: when the module will not load at all -- a Windows-only vendor driver on
+#: Linux, say -- which is also a case where connecting could not work anyway.
+INT_CHANNEL_BACKENDS = frozenset({"cantact", "ixxat", "kvaser"})
 
 #: Keys that identify *which device*, rather than which channel on it.  Only
 #: used to build a readable label; every reported key is passed to the backend
@@ -95,7 +103,10 @@ def coerce_channel(interface: str, channel: object) -> object:
     text = channel.strip()
     if not text.lstrip("-").isdigit():
         return text
-    return int(text) if "int" in channel_annotation(interface) else text
+    annotation = channel_annotation(interface)
+    if annotation:
+        return int(text) if "int" in annotation else text
+    return int(text) if interface in INT_CHANNEL_BACKENDS else text
 
 
 def describe(config: dict) -> str:
