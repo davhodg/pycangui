@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QInputDialog,
     QLabel,
-    QLineEdit,
     QPushButton,
     QToolBar,
 )
@@ -21,12 +20,17 @@ from PySide6.QtWidgets import (
 from pycangui.core.bus import available_interfaces
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
+from pycangui.core.detect import detect_channels
+from pycangui.core.worker import Worker
 
 BITRATES = (125_000, 250_000, 500_000, 1_000_000)
+ROLE_EXTRA = 0x0100  # Qt.UserRole: the rest of a detected adapter's configuration
 
 
 class ConnectBar(QToolBar):
-    connect_requested = Signal(str, str, int, bool)  # interface, channel, bitrate, fd
+    # interface, channel, bitrate, fd, extra (the rest of a detected adapter's
+    # configuration -- an IXXAT's unique_hardware_id, a Vector's serial)
+    connect_requested = Signal(str, str, int, bool, object)
     disconnect_requested = Signal()
 
     def __init__(self, channels: Channels, ctx: Context) -> None:
@@ -36,6 +40,8 @@ class ConnectBar(QToolBar):
         self.channels = channels
         self.ctx = ctx
         self._loading = False
+        self._worker = Worker(self)  # detection talks to drivers; keep it off the GUI thread
+        self._detecting = False
 
         self.selector = QComboBox()
         self.selector.setToolTip("The channel the protocol panes work with")
@@ -51,10 +57,17 @@ class ConnectBar(QToolBar):
 
         self.interface = QComboBox()
         self.interface.addItems(available_interfaces())
-        self.interface.currentTextChanged.connect(lambda _t: self._save_settings())
-        self.channel = QLineEdit("vcan0")
-        self.channel.setFixedWidth(90)
-        self.channel.editingFinished.connect(self._save_settings)
+        self.interface.currentTextChanged.connect(self._on_interface_changed)
+        # Editable: detection covers most adapters, but not every backend can
+        # enumerate, and a channel can always be typed in.
+        self.channel = QComboBox()
+        self.channel.setEditable(True)
+        self.channel.setMinimumWidth(150)
+        self.channel.setToolTip("Pick a detected adapter, or type a channel")
+        self.channel.currentTextChanged.connect(lambda _t: self._save_settings())
+        self.detect = QPushButton("Detect")
+        self.detect.setToolTip("Ask the selected interface which adapters are attached")
+        self.detect.clicked.connect(lambda: self.detect_channels(announce=True))
         self.bitrate = QComboBox()
         for b in BITRATES:
             self.bitrate.addItem(f"{b // 1000} kbit/s", b)
@@ -74,10 +87,12 @@ class ConnectBar(QToolBar):
         for label, widget in (
             ("Interface", self.interface),
             ("Channel", self.channel),
-            ("Bitrate", self.bitrate),
         ):
             self.addWidget(QLabel(f" {label}: "))
             self.addWidget(widget)
+        self.addWidget(self.detect)
+        self.addWidget(QLabel(" Bitrate: "))
+        self.addWidget(self.bitrate)
         self.addWidget(self.fd)
         self.addSeparator()
         self.addWidget(self.button)
@@ -117,6 +132,90 @@ class ConnectBar(QToolBar):
         self.channels.set_active(name)
         self._load_settings()
 
+    # --- detection --------------------------------------------------------------------
+    @Slot(str)
+    def _on_interface_changed(self, _text: str) -> None:
+        self._save_settings()
+        if self._loading:
+            return
+        # A channel belongs to its interface -- "can0" means nothing to an
+        # IXXAT -- so the old one goes rather than lingering in the list.
+        self._loading = True
+        self.channel.clear()
+        self._loading = False
+        # Someone picking an interface wants to know what is attached to it.
+        # Not on startup, though: enumerating adapters can take seconds and is
+        # nobody's idea of a launch.
+        self.detect_channels(keep_typed=False)
+
+    def detect_channels(self, announce: bool = False, keep_typed: bool = True) -> None:
+        """Ask the interface what is attached, off the GUI thread."""
+        if self._detecting:
+            return
+        interface = self.interface.currentText()
+        self._detecting = True
+        self.detect.setEnabled(False)
+        self.detect.setText("...")
+        typed = self.channel.currentText() if keep_typed else ""
+        self._worker.submit(
+            lambda: detect_channels(interface),
+            lambda found, error: self._on_detected(interface, found, error, announce, typed),
+        )
+
+    def _on_detected(
+        self, interface: str, found, error: str | None, announce: bool, typed: str
+    ) -> None:
+        self._detecting = False
+        self.detect.setEnabled(True)
+        self.detect.setText("Detect")
+        if error is not None:
+            self.ctx.log(f"Detect on {interface} failed: {error}")
+            return
+        # Whatever is in the box now also counts as typed: detection runs in the
+        # background, and someone who started typing a channel while it was out
+        # must not have it wiped when the answer arrives.
+        typed = (typed or self.channel.currentText()).strip()
+        self._loading = True
+        self.channel.clear()
+        for entry in found or []:
+            self.channel.addItem(entry.label, entry.config)
+        # Keeping it also means detection cannot discard a channel the backend
+        # was unable to enumerate but which works perfectly well.
+        if typed and self.channel.findText(typed) < 0:
+            self.channel.insertItem(0, typed, {})
+        self.channel.setCurrentText(typed or (found[0].label if found else ""))
+        self._loading = False
+        if not found and announce:
+            self.ctx.log(
+                f"Detect: {interface} reported no adapters.  Either none is attached, "
+                "its driver is not installed, or this backend cannot enumerate -- "
+                "type the channel in and connect anyway."
+            )
+        elif announce:
+            self.ctx.log(f"Detect: {interface} reported {len(found)} channel(s)")
+
+    def current_extra(self) -> dict:
+        """The configuration of the selected adapter, beyond its channel name.
+
+        Empty when the channel was typed rather than detected: there is then
+        nothing to say about which device is meant, and the backend picks.
+        """
+        index = self.channel.findText(self.channel.currentText())
+        if index < 0:
+            return {}
+        config = self.channel.itemData(index) or {}
+        return {key: value for key, value in config.items() if key != "channel"}
+
+    def current_channel(self) -> str:
+        """The channel itself, as the backend names it."""
+        index = self.channel.findText(self.channel.currentText())
+        if index >= 0 and (config := self.channel.itemData(index)):
+            return str(config.get("channel", self.channel.currentText()))
+        return self.channel.currentText().strip()
+
+    def shutdown(self) -> None:
+        self._worker.stop()
+
     # --- per-channel settings ---------------------------------------------------------
     def _save_settings(self) -> None:
         if self._loading or not self.selector.currentText():
@@ -125,7 +224,10 @@ class ConnectBar(QToolBar):
             f"channels.{self.selector.currentText()}",
             {
                 "interface": self.interface.currentText(),
-                "channel": self.channel.text(),
+                "channel": self.current_channel(),
+                # Saved as well as the channel, so reconnecting picks the same
+                # adapter rather than whichever the driver enumerates first.
+                "extra": self.current_extra(),
                 "bitrate": self.bitrate.currentData(),
                 "fd": self.fd.isChecked(),
             },
@@ -138,7 +240,10 @@ class ConnectBar(QToolBar):
         saved = self.ctx.settings.get(f"channels.{name}", {})
         self._loading = True
         self.interface.setCurrentText(saved.get("interface", "virtual"))
-        self.channel.setText(saved.get("channel", "vcan0"))
+        channel = saved.get("channel", "vcan0")
+        self.channel.clear()
+        self.channel.addItem(channel, {"channel": channel, **saved.get("extra", {})})
+        self.channel.setCurrentText(channel)
         index = self.bitrate.findData(saved.get("bitrate", 500_000))
         self.bitrate.setCurrentIndex(index if index >= 0 else 2)
         self.fd.setChecked(bool(saved.get("fd", False)))
@@ -155,9 +260,10 @@ class ConnectBar(QToolBar):
             self._save_settings()
             self.connect_requested.emit(
                 self.interface.currentText(),
-                self.channel.text(),
+                self.current_channel(),
                 self.bitrate.currentData(),
                 self.fd.isChecked(),
+                self.current_extra(),
             )
         else:
             self.disconnect_requested.emit()
@@ -173,6 +279,6 @@ class ConnectBar(QToolBar):
         self._loading = True
         self.button.setChecked(connected)
         self.button.setText("Disconnect" if connected else "Connect")
-        for w in (self.interface, self.channel, self.bitrate, self.fd):
+        for w in (self.interface, self.channel, self.detect, self.bitrate, self.fd):
             w.setEnabled(not connected)
         self._loading = was_loading
