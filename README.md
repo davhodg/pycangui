@@ -68,6 +68,22 @@ adapter, or a second adapter entirely.  Use **+** on the toolbar to add a
 channel, then give it its own interface, bitrate and connection; each channel's
 settings are remembered by name.
 
+Pick the interface and press **Detect**: pycangui asks it which adapters are
+attached and lists them, so the channel is chosen rather than guessed (it is
+`can0` on socketcan, `PCAN_USBBUS1` on a PEAK, and plain `0` on an IXXAT).
+Detection also runs by itself when you change interface.  It only enumerates
+adapters -- nothing is transmitted and no bitrate is applied.
+
+Channel numbers belong to an adapter, so **two identical dongles both offer
+channels 0 and 1**.  The list shows each one's hardware id or serial number to
+tell them apart, and the whole configuration is used to open the bus -- picking
+the second dongle really does connect to the second dongle, not to whichever
+the driver enumerated first.  Which one you chose is saved with the channel and
+shown in its description.
+
+Backends that cannot enumerate are still usable: the channel box stays
+editable, and anything typed into it is kept.
+
 The status bar shows each channel's state and its **bus load** -- an estimate
 from the frames seen and the configured bitrate, including nominal bit
 stuffing.  The trace's *Channel* column says which bus a frame came from.

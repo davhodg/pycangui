@@ -22,6 +22,8 @@ from dataclasses import dataclass
 import can
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
+from pycangui.core.detect import IDENTITY_KEYS, coerce_channel
+
 
 def frame_bits(dlc: int, extended: bool, fd: bool) -> int:
     """Roughly how many bits a frame occupies on the wire.
@@ -137,14 +139,37 @@ class BusManager(QObject):
     def is_connected(self) -> bool:
         return self.bus is not None
 
-    @Slot(str, str, int, bool)
-    def connect_bus(self, interface: str, channel: str, bitrate: int, fd: bool) -> None:
+    def connect_bus(
+        self,
+        interface: str,
+        channel: str,
+        bitrate: int,
+        fd: bool,
+        extra: dict | None = None,
+    ) -> None:
+        """Join a bus.
+
+        ``extra`` is the rest of the configuration the adapter reported when
+        it was detected -- an IXXAT's ``unique_hardware_id``, a Vector's
+        ``serial``.  Without it a channel number is ambiguous as soon as two
+        of the same adapter are plugged in, since each numbers its own
+        channels from zero.
+        """
         if self.bus is not None:
             self.disconnect_bus()
-        kwargs: dict = {"interface": interface, "channel": channel, "receive_own_messages": True}
+        # The channel is coerced because the backends disagree about its type
+        # and a text box can only produce a string.
+        channel_value = coerce_channel(interface, channel)
+        kwargs: dict = {
+            "interface": interface,
+            "channel": channel_value,
+            "receive_own_messages": True,
+        }
         if interface != "virtual":
             kwargs["bitrate"] = bitrate
             kwargs["fd"] = fd
+        # Ours win: bitrate and FD are the user's choice, not the adapter's.
+        kwargs.update({k: v for k, v in (extra or {}).items() if k not in kwargs})
         try:
             self.bus = can.Bus(**kwargs)
         except Exception as exc:  # python-can raises a zoo of exception types
@@ -158,7 +183,11 @@ class BusManager(QObject):
         self.bitrate = bitrate
         self.interface = interface
         fd_text = " FD" if fd else ""
-        self.description = f"{interface}:{channel} @ {bitrate} bit/s{fd_text}"
+        # The identifying part of extra belongs in the description: with two
+        # adapters attached, "ixxat:0" alone does not say which one.
+        identity = " ".join(f"{v}" for k, v in sorted((extra or {}).items()) if k in IDENTITY_KEYS)
+        where = f"{interface}:{channel_value}" + (f" [{identity}]" if identity else "")
+        self.description = f"{where} @ {bitrate} bit/s{fd_text}"
         self.connected.emit(self.description)
 
     @Slot()

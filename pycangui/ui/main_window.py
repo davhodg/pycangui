@@ -256,6 +256,7 @@ class MainWindow(QMainWindow):
         s.setValue("scopeSplitter", self.scope.save_state())
         self.replay.stop()
         self.help_menu.shutdown()
+        self.connect_bar.shutdown()
         self.recorder.stop()
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
         self.bus.close()  # stop the facade before its channels go away
@@ -307,22 +308,31 @@ class MainWindow(QMainWindow):
             self._demo = None
 
     # --- channels ------------------------------------------------------------
-    @Slot(str, str, int, bool)
-    def _connect_active(self, interface: str, channel: str, bitrate: int, fd: bool) -> None:
+    def _connect_active(
+        self, interface: str, channel: str, bitrate: int, fd: bool, extra: dict | None = None
+    ) -> None:
         bus = self.channels.active_bus()
         if bus is None:
             self.log.appendPlainText("No channel selected")
             return
-        if not self._may_connect(bus.channel_name, interface, channel, bitrate, fd):
+        if not self._may_connect(bus.channel_name, interface, channel, bitrate, fd, extra):
             self.connect_bar.set_connected(False)
             return
-        bus.connect_bus(interface, channel, bitrate, fd)
+        bus.connect_bus(interface, channel, bitrate, fd, extra)
         if not bus.is_connected:
             # connect_bus reports the reason and returns; without this the
             # button stays reading "Disconnect" for a bus we never joined.
             self.connect_bar.set_connected(False)
 
-    def _may_connect(self, name: str, interface: str, channel: str, bitrate: int, fd: bool) -> bool:
+    def _may_connect(
+        self,
+        name: str,
+        interface: str,
+        channel: str,
+        bitrate: int,
+        fd: bool,
+        extra: dict | None = None,
+    ) -> bool:
         """Ask before joining a real bus, because the bitrate has to be right.
 
         A CAN controller at the wrong bitrate cannot read a frame correctly, so
@@ -336,11 +346,15 @@ class MainWindow(QMainWindow):
         """
         if not is_real(interface):
             return True
+        # The device identity is part of the key: with two adapters attached,
+        # agreeing to channel 0 on one is not agreeing to channel 0 on the other.
+        identity = ":".join(f"{k}={v}" for k, v in sorted((extra or {}).items()))
+        where = f"{interface}:{channel}" + (f" [{identity}]" if identity else "")
         return self.confirm.ask(
             self,
-            f"connect:{name}:{interface}:{channel}:{bitrate}:{fd}",
+            f"connect:{name}:{where}:{bitrate}:{fd}",
             "Connect to a real CAN bus?",
-            f"{name} is about to join {interface}:{channel} at "
+            f"{name} is about to join {where} at "
             f"{bitrate // 1000} kbit/s.\n\n"
             "If that is not the bitrate the bus is running at, this adapter cannot "
             "read the traffic, and signals an error on every frame it sees.  Those "
