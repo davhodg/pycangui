@@ -180,7 +180,9 @@ def test_detect_fills_the_channel_list(app, bar, monkeypatch):
     monkeypatch.setattr(can, "detect_available_configs", lambda *_a, **_k: TWO_DONGLES)
     bar.interface.setCurrentText("ixxat")
     bar.detect_channels()
-    settle(app, lambda: bar.channel.count() >= 4)
+    # The box is seeded with suggestions at once, so a count is no longer
+    # proof that detection has come back.
+    settle(app, lambda: not bar._detecting)
 
     labels = [bar.channel.itemText(i) for i in range(bar.channel.count())]
     assert len(labels) == 4 and len(set(labels)) == 4
@@ -191,7 +193,9 @@ def test_picking_the_second_dongle_connects_to_that_one(app, bar, monkeypatch):
     monkeypatch.setattr(can, "detect_available_configs", lambda *_a, **_k: TWO_DONGLES)
     bar.interface.setCurrentText("ixxat")
     bar.detect_channels()
-    settle(app, lambda: bar.channel.count() >= 4)
+    # The box is seeded with suggestions at once, so a count is no longer
+    # proof that detection has come back.
+    settle(app, lambda: not bar._detecting)
 
     requests = []
     bar.connect_requested.connect(lambda *a: requests.append(a))
@@ -216,3 +220,38 @@ def test_a_typed_channel_still_works(app, bar, monkeypatch):
 
     assert bar.current_channel() == "COM3", "detection finding nothing must not erase it"
     assert bar.current_extra() == {}
+
+
+def test_the_box_offers_something_before_anyone_presses_detect(app, bar):
+    """The complaint: picking virtual still left you typing a channel in."""
+    labels = [bar.channel.itemText(i) for i in range(bar.channel.count())]
+    assert "vcan0" in labels, f"the conventional virtual channel must be offered: {labels}"
+    assert bar.channel.isEnabled()
+
+
+def test_changing_interface_offers_that_interfaces_channels(app, bar, monkeypatch):
+    monkeypatch.setattr(can, "detect_available_configs", lambda *_a, **_k: [])
+    bar.interface.setCurrentText("pcan")
+    settle(app, lambda: not bar._detecting)
+    labels = [bar.channel.itemText(i) for i in range(bar.channel.count())]
+    assert "PCAN_USBBUS1" in labels, f"PCAN declares that default itself: {labels}"
+    assert "vcan0" not in labels, "the virtual channel must not follow you to a PEAK"
+
+
+def test_a_backend_with_no_channel_greys_the_box_out(app, bar, monkeypatch):
+    """No python-can backend needs this today; the rule should still hold."""
+    monkeypatch.setattr(
+        "pycangui.ui.connect_bar.takes_a_channel",
+        lambda _i: False,
+    )
+    bar._set_channel_enabled("madeup")
+    assert not bar.channel.isEnabled()
+    assert bar.channel.currentText() == ""
+    assert "does not use a channel" in bar.channel.toolTip()
+
+
+def test_the_declared_default_is_used_where_we_have_no_opinion():
+    """Read from the backend's signature, so it cannot drift out of date."""
+    assert detect.channel_default("pcan") == "PCAN_USBBUS1"
+    assert detect.channel_default("nixnet") == "CAN1"
+    assert [c.label for c in detect.channel_suggestions("nixnet")] == ["CAN1"]
