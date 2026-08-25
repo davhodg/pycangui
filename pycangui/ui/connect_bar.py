@@ -20,7 +20,12 @@ from PySide6.QtWidgets import (
 from pycangui.core.bus import available_interfaces
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
-from pycangui.core.detect import detect_channels
+from pycangui.core.detect import (
+    Channel,
+    channel_suggestions,
+    channels_for,
+    takes_a_channel,
+)
 from pycangui.core.worker import Worker
 
 BITRATES = (125_000, 250_000, 500_000, 1_000_000)
@@ -140,9 +145,9 @@ class ConnectBar(QToolBar):
             return
         # A channel belongs to its interface -- "can0" means nothing to an
         # IXXAT -- so the old one goes rather than lingering in the list.
-        self._loading = True
-        self.channel.clear()
-        self._loading = False
+        interface = self.interface.currentText()
+        self._fill_channels(channel_suggestions(interface))
+        self._set_channel_enabled(interface)
         # Someone picking an interface wants to know what is attached to it.
         # Not on startup, though: enumerating adapters can take seconds and is
         # nobody's idea of a launch.
@@ -158,7 +163,7 @@ class ConnectBar(QToolBar):
         self.detect.setText("...")
         typed = self.channel.currentText() if keep_typed else ""
         self._worker.submit(
-            lambda: detect_channels(interface),
+            lambda: channels_for(interface),
             lambda found, error: self._on_detected(interface, found, error, announce, typed),
         )
 
@@ -171,20 +176,20 @@ class ConnectBar(QToolBar):
         if error is not None:
             self.ctx.log(f"Detect on {interface} failed: {error}")
             return
-        # Whatever is in the box now also counts as typed: detection runs in the
-        # background, and someone who started typing a channel while it was out
-        # must not have it wiped when the answer arrives.
-        typed = (typed or self.channel.currentText()).strip()
-        self._loading = True
-        self.channel.clear()
-        for entry in found or []:
-            self.channel.addItem(entry.label, entry.config)
-        # Keeping it also means detection cannot discard a channel the backend
-        # was unable to enumerate but which works perfectly well.
-        if typed and self.channel.findText(typed) < 0:
-            self.channel.insertItem(0, typed, {})
-        self.channel.setCurrentText(typed or (found[0].label if found else ""))
-        self._loading = False
+        # Whatever was typed into the box while detection was out also counts:
+        # it runs in the background, and someone who started typing a channel
+        # must not have it wiped when the answer arrives.  Text that matches an
+        # item is a selection, not typing -- often one pycangui suggested
+        # itself -- and detection is free to replace it.
+        current = self.channel.currentText().strip()
+        if not typed and current and self.channel.findText(current) < 0:
+            typed = current
+        entries = list(found or [])
+        # Keeping what was typed means detection cannot discard a channel the
+        # backend was unable to enumerate but which works perfectly well.
+        if typed and typed not in {entry.text for entry in entries}:
+            entries.insert(0, Channel(config={"channel": typed}, label=typed))
+        self._fill_channels(entries, select=typed)
         if not found and announce:
             self.ctx.log(
                 f"Detect: {interface} reported no adapters.  Either none is attached, "
@@ -193,6 +198,45 @@ class ConnectBar(QToolBar):
             )
         elif announce:
             self.ctx.log(f"Detect: {interface} reported {len(found)} channel(s)")
+
+    def _set_channel_enabled(self, interface: str) -> None:
+        """Blank and disable the box for a backend that has no channel.
+
+        Nothing in python-can needs this today -- every backend takes a
+        channel, most with a default -- but a box you can type into whose
+        value is discarded is worse than one that says it is not used.
+        """
+        usable = takes_a_channel(interface)
+        self.channel.setEnabled(usable and not self.button.isChecked())
+        if not usable:
+            was_loading, self._loading = self._loading, True
+            self.channel.clear()
+            self.channel.setCurrentText("")
+            self._loading = was_loading
+        self.channel.setToolTip(
+            "Pick a detected adapter, or type a channel"
+            if usable
+            else f"{interface} does not use a channel"
+        )
+
+    def _fill_channels(self, entries, select: str = "") -> None:
+        """Put entries in the channel box, keeping the first of any duplicates.
+
+        Duplicates are judged by the *label*, not by the channel: two IXXAT
+        dongles both offer channel 0, and collapsing those would throw away
+        the second adapter -- which is the whole thing this is here to fix.
+        """
+        was_loading = self._loading
+        self._loading = True
+        self.channel.clear()
+        seen = set()
+        for entry in entries:
+            if entry.label in seen:
+                continue
+            seen.add(entry.label)
+            self.channel.addItem(entry.label, entry.config)
+        self.channel.setCurrentText(select or (entries[0].label if entries else ""))
+        self._loading = was_loading
 
     def current_extra(self) -> dict:
         """The configuration of the selected adapter, beyond its channel name.
@@ -241,9 +285,15 @@ class ConnectBar(QToolBar):
         self._loading = True
         self.interface.setCurrentText(saved.get("interface", "virtual"))
         channel = saved.get("channel", "vcan0")
-        self.channel.clear()
-        self.channel.addItem(channel, {"channel": channel, **saved.get("extra", {})})
-        self.channel.setCurrentText(channel)
+        interface = saved.get("interface", "virtual")
+        self._fill_channels(
+            [
+                Channel(config={"channel": channel, **saved.get("extra", {})}, label=channel),
+                *channel_suggestions(interface),
+            ],
+            select=channel,
+        )
+        self._set_channel_enabled(interface)
         index = self.bitrate.findData(saved.get("bitrate", 500_000))
         self.bitrate.setCurrentIndex(index if index >= 0 else 2)
         self.fd.setChecked(bool(saved.get("fd", False)))
@@ -281,4 +331,6 @@ class ConnectBar(QToolBar):
         self.button.setText("Disconnect" if connected else "Connect")
         for w in (self.interface, self.channel, self.detect, self.bitrate, self.fd):
             w.setEnabled(not connected)
+        if not connected:
+            self._set_channel_enabled(self.interface.currentText())
         self._loading = was_loading

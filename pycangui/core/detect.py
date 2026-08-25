@@ -41,6 +41,34 @@ DETECT_TIMEOUT_S = 5.0
 #: Linux, say -- which is also a case where connecting could not work anyway.
 INT_CHANNEL_BACKENDS = frozenset({"cantact", "ixxat", "kvaser"})
 
+#: Channels worth offering when an interface cannot enumerate its own.  Not
+#: a claim that these exist -- they are the conventional names, so that the
+#: box is something to choose from rather than something to guess at.
+SUGGESTIONS = {
+    "virtual": ("vcan0", "vcan1"),
+    "socketcan": ("can0", "can1", "vcan0"),
+    "socketcand": ("can0", "can1"),
+    "ixxat": ("0", "1", "2", "3"),
+    "kvaser": ("0", "1", "2", "3"),
+    "cantact": ("0", "1"),
+    "neousys": ("0", "1"),
+    "systec": ("0", "1"),
+    "pcan": ("PCAN_USBBUS1", "PCAN_USBBUS2", "PCAN_USBBUS3", "PCAN_USBBUS4"),
+    "vector": ("0", "1", "2", "3"),
+    "udp_multicast": ("225.0.0.1",),
+}
+
+#: Interfaces whose detection is real but unhelpful as a menu, so the
+#: conventional names are offered as well.  python-can's virtual backend
+#: reports the channels currently in use plus one random unused name, which
+#: is a different name every time and never the one the demo device uses.
+ALWAYS_SUGGEST = frozenset({"virtual"})
+
+#: Backends that are a serial port underneath, so the ports themselves are
+#: the useful suggestion.  pyserial is a declared dependency (python-can does
+#: not require it, but the slcan and serial backends do not work without it).
+SERIAL_BACKENDS = frozenset({"slcan", "serial", "robotell", "seeedstudio", "usb2can"})
+
 #: Keys that identify *which device*, rather than which channel on it.  Only
 #: used to build a readable label; every reported key is passed to the backend
 #: whether it is listed here or not.
@@ -88,6 +116,44 @@ def channel_annotation(interface: str) -> str:
     if parameter is None or parameter.annotation is inspect.Parameter.empty:
         return ""
     return str(parameter.annotation)
+
+
+def channel_parameter(interface: str):
+    """The backend's ``channel`` parameter, or None if it has none."""
+    entry = can.interfaces.BACKENDS.get(interface)
+    if entry is None:
+        return None
+    module_name, class_name = entry
+    try:
+        bus_class = getattr(importlib.import_module(module_name), class_name)
+        return inspect.signature(bus_class.__init__).parameters.get("channel")
+    except Exception:  # a backend whose vendor library is absent, and worse
+        return None
+
+
+def takes_a_channel(interface: str) -> bool:
+    """Whether this interface has a channel to speak of at all.
+
+    A backend with no ``channel`` parameter has nothing to choose, so the box
+    is better empty and disabled than inviting a value that is thrown away.
+    Unknown or unimportable interfaces are given the benefit of the doubt.
+    """
+    if interface not in can.interfaces.BACKENDS:
+        return True
+    parameter = channel_parameter(interface)
+    return parameter is not None or not channel_annotation(interface) == ""
+
+
+def channel_default(interface: str) -> str:
+    """The channel the backend itself falls back on, if it declares one.
+
+    Better than anything written down here: PCAN says PCAN_USBBUS1 and NI-XNET
+    says CAN1 in their own signatures, and they will not drift.
+    """
+    parameter = channel_parameter(interface)
+    if parameter is None or parameter.default in (inspect.Parameter.empty, None, ""):
+        return ""
+    return str(parameter.default)
 
 
 def coerce_channel(interface: str, channel: object) -> object:
@@ -140,3 +206,45 @@ def detect_channels(interface: str, timeout: float = DETECT_TIMEOUT_S) -> list[C
         kept = {key: value for key, value in config.items() if key != "interface"}
         found.append(Channel(config=kept, label=describe(config)))
     return found
+
+
+def serial_ports() -> list[str]:
+    """The serial ports on this machine, for the adapters that are one."""
+    try:
+        from serial.tools import list_ports
+    except Exception:  # pyserial missing: not fatal, there is just nothing to add
+        return []
+    return [port.device for port in list_ports.comports()]
+
+
+def channel_suggestions(interface: str) -> list[Channel]:
+    """Plausible channel names for an interface, when it cannot say itself."""
+    names = SUGGESTIONS.get(interface, ())
+    if interface in SERIAL_BACKENDS:
+        names = tuple(serial_ports()) or names
+    # The backend's own default is the most likely right answer where we have
+    # no opinion -- PCAN says PCAN_USBBUS1 in its own signature, and that will
+    # not drift.  Where there are curated names it goes after them: vcan0 is
+    # what the demo device and the default settings use, so for the virtual
+    # bus it beats the backend's "channel-0".
+    if (declared := channel_default(interface)) and declared not in names:
+        names = (*names, declared) if names else (declared,)
+    return [Channel(config={"channel": name}, label=name) for name in names]
+
+
+def channels_for(interface: str, timeout: float = DETECT_TIMEOUT_S) -> list[Channel]:
+    """What to put in the channel drop-down: what is there, then what is usual.
+
+    Suggestions only fill in where detection came back empty, so a real
+    adapter is never buried under invented names -- with two dongles attached
+    a bare "2" would say nothing about which device it meant.
+    """
+    found = detect_channels(interface, timeout)
+    if found and interface not in ALWAYS_SUGGEST:
+        return found
+    seen = {entry.text for entry in found}
+    extra = [entry for entry in channel_suggestions(interface) if entry.text not in seen]
+    # For the always-suggest interfaces the conventional names go first: what
+    # the virtual backend "detects" is a throwaway, and vcan0 is the one the
+    # demo device uses and the one the settings default to.
+    return extra + found if interface in ALWAYS_SUGGEST else found + extra
