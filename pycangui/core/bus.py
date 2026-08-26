@@ -51,6 +51,9 @@ class Frame:
     rx: bool  # True = received, False = transmitted by us
     data: bytes
     kind: str = ""  # protocol label, filled in by the trace view (hook frame_kind)
+    #: An error frame rather than traffic: the controller reporting a
+    #: fault on the wire.  Its id carries error flags, not an identifier.
+    error: bool = False
     group: str = "Other"  # filter group, from the CAN id (see core.classify)
 
     @property
@@ -66,9 +69,19 @@ class _Collector(can.Listener):
         self._t0 = t0
         self._lock = threading.Lock()
         self._batch: list[Frame] = []
+        #: Counted as well as listed, so the log can say when a bus starts
+        #: and stops producing them without a line per frame.
+        self.errors = 0
 
     def on_message_received(self, msg: can.Message) -> None:
-        frame = Frame(
+        frame = self._to_frame(msg)
+        with self._lock:
+            if frame.error:
+                self.errors += 1
+            self._batch.append(frame)
+
+    def _to_frame(self, msg: can.Message) -> Frame:
+        return Frame(
             timestamp=time.monotonic() - self._t0,
             channel=self._channel,
             can_id=msg.arbitration_id,
@@ -76,14 +89,18 @@ class _Collector(can.Listener):
             fd=msg.is_fd,
             rx=msg.is_rx,  # python-can marks our own echoed frames is_rx=False
             data=bytes(msg.data),
+            error=bool(msg.is_error_frame),
         )
-        with self._lock:
-            self._batch.append(frame)
 
     def drain(self) -> list[Frame]:
         with self._lock:
             batch, self._batch = self._batch, []
         return batch
+
+    def take_errors(self) -> int:
+        with self._lock:
+            count, self.errors = self.errors, 0
+        return count
 
     def on_error(self, exc: Exception) -> None:
         pass  # reported through Notifier.exception, see BusManager._drain
@@ -103,9 +120,16 @@ class BusManager(QObject):
     disconnected = Signal()
     frames = Signal(list)
     error = Signal(str)
+    note = Signal(str)  # worth saying, but not a failure
 
     DRAIN_PERIOD_MS = 20
     LOAD_PERIOD_MS = 500
+    #: How long a newly connected bus may stay silent before saying so.  A
+    #: wrong bitrate connects perfectly happily and then hears nothing, which
+    #: is indistinguishable from a quiet bus unless somebody mentions it.
+    QUIET_WARNING_S = 5.0
+    #: How long the bus must be free of error frames before saying they stopped.
+    ERROR_QUIET_S = 2.0
 
     def __init__(self, channel_name: str = "CAN", clock_start: float | None = None) -> None:
         super().__init__()
@@ -123,6 +147,12 @@ class BusManager(QObject):
         self.load_percent = 0.0
         self._bits = 0
         self._bits_at = time.monotonic()
+        self._connected_at = 0.0
+        self._seen_a_frame = False
+        self._state = ""
+        self._error_frames = 0
+        self._erroring = False
+        self._errors_at = 0.0
         self._collector: _Collector | None = None
         #: Channels share a clock so frames from different adapters line up.
         self._t0 = time.monotonic() if clock_start is None else clock_start
@@ -182,6 +212,10 @@ class BusManager(QObject):
         self._timer.start()
         self.bitrate = bitrate
         self.interface = interface
+        self._connected_at = time.monotonic()
+        self._seen_a_frame = False
+        self._error_frames = 0
+        self._state = self._read_state()
         fd_text = " FD" if fd else ""
         # The identifying part of extra belongs in the description: with two
         # adapters attached, "ixxat:0" alone does not say which one.
@@ -242,6 +276,70 @@ class BusManager(QObject):
             self.error.emit(f"Cyclic send failed: {exc}")
             return None
 
+    # --- what the controller is doing ---------------------------------------------
+    def _read_state(self) -> str:
+        """The controller's state, or "" if the backend does not report one.
+
+        Every backend answers -- python-can's base class returns ACTIVE -- so
+        a backend that does not really know simply never appears to change.
+        """
+        if self.bus is None:
+            return ""
+        try:
+            return str(getattr(self.bus, "state", "")).rsplit(".", 1)[-1]
+        except Exception:  # reading it talks to the driver, which can fail
+            return ""
+
+    def _report_state(self) -> None:
+        """Say when the controller changes state.
+
+        This is the difference between a quiet bus and a broken one.  An
+        adapter that has gone bus off -- the wrong bitrate, a shorted line, no
+        termination -- stays connected and simply hears nothing, which is
+        exactly what an idle bus looks like from the outside.
+        """
+        if not self.is_connected:
+            return
+        state = self._read_state()
+        if not state or state == self._state:
+            return
+        was, self._state = self._state, state
+        if state.upper() == "ACTIVE":
+            self.note.emit(f"{self.channel_name}: bus active")
+        else:
+            self.note.emit(
+                f"{self.channel_name}: bus state {was or 'unknown'} -> {state}.  "
+                "The controller is not taking part in traffic; check the bitrate, "
+                "the wiring and the termination."
+            )
+
+    def _report_error_frames(self, now: float) -> None:
+        """Say when error frames start and stop, not that each one happened.
+
+        The frames themselves go to the trace like any others, under their own
+        filter group, because that is where you look at frames.  The log gets
+        the condition: a bus in trouble produces thousands a second, and a
+        line each would bury everything else in it.
+        """
+        if self._collector is None:
+            return
+        count = self._collector.take_errors()
+        if count:
+            self._error_frames += count
+            self._errors_at = now
+            if not self._erroring:
+                self._erroring = True
+                self.note.emit(
+                    f"{self.channel_name}: error frames on the bus.  The controller is "
+                    "rejecting what it sees; check the bitrate, the wiring and the "
+                    "termination.  They are listed in the trace under Bus errors."
+                )
+        elif self._erroring and now - self._errors_at > self.ERROR_QUIET_S:
+            self._erroring = False
+            self.note.emit(
+                f"{self.channel_name}: error frames stopped ({self._error_frames} in total)"
+            )
+
     def _update_load(self) -> None:
         now = time.monotonic()
         elapsed = now - self._bits_at
@@ -251,6 +349,8 @@ class BusManager(QObject):
         else:
             self.load_percent = 0.0
         self._bits = 0
+        self._report_state()
+        self._report_error_frames(now)
         self._bits_at = now
 
     def _drain(self) -> None:
@@ -259,7 +359,21 @@ class BusManager(QObject):
         batch = self._collector.drain()
         if batch:
             self._bits += sum(frame_bits(f.dlc, f.extended, f.fd) for f in batch)
+            self._seen_a_frame = True
             self.frames.emit(batch)
+        elif (
+            not self._seen_a_frame
+            and self._connected_at
+            and time.monotonic() - self._connected_at > self.QUIET_WARNING_S
+        ):
+            # Said once: after this the flag stops the check, whether or not a
+            # frame ever turns up.
+            self._seen_a_frame = True
+            self.note.emit(
+                f"{self.channel_name}: connected to {self.description} but nothing has been "
+                f"received in {self.QUIET_WARNING_S:.0f} s.  If the bus is not idle, the "
+                "usual cause is the wrong bitrate; wiring and termination are the others."
+            )
         if self.notifier is not None and self.notifier.exception is not None:
             exc, self.notifier.exception = self.notifier.exception, None
             self.error.emit(f"Bus reader error: {exc}")

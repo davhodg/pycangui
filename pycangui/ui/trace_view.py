@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.bus import Frame
-from pycangui.core.classify import GROUPS, classify, group_of
+from pycangui.core.classify import ERROR_GROUP, GROUPS, classify, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.ui.latest_model import ROLE_CHANNEL, ROLE_GROUP, ROLE_SEARCH, LatestModel
@@ -263,6 +263,15 @@ class TraceView(QWidget):
         whatever it ends up being called.
         """
         for f in frames:
+            if f.error:
+                # An error frame is the controller reporting a fault, not a
+                # message: its id carries error flags rather than an
+                # identifier, so none of the decoders apply to it.  Its own
+                # group means the Filter menu can hide them, which matters
+                # because a bus in trouble produces them faster than anything
+                # else on the wire.
+                f.kind, f.group = "Bus error", ERROR_GROUP
+                continue
             co_kind, co_group = classify(f.can_id, f.extended)
             kind = self.hooks.call("trace", "frame_kind", f)
             if kind is None and not co_kind:

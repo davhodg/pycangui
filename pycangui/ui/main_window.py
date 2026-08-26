@@ -23,6 +23,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
+from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.signals import SignalHub
 from pycangui.j1939.manager import J1939Manager
@@ -72,6 +73,10 @@ class MainWindow(QMainWindow):
 
         # --- user context, hooks, protocol managers -------------------------
         self.ctx = Context(log=self.log.appendPlainText)
+        #: python-can says everything through the logging module and nothing
+        #: through return values -- a wrong bitrate is reported there and
+        #: nowhere else, so without this it looks like an idle bus.
+        self.log_bridge = LogBridge(self.log.appendPlainText)
         self.hooks = Hooks(self.ctx)
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
@@ -142,6 +147,7 @@ class MainWindow(QMainWindow):
         self.channels.frames.connect(self._count_frames)
         self.channels.state_changed.connect(self._on_channel_state)
         self.channels.error.connect(self._on_error)
+        self.channels.note.connect(self.log.appendPlainText)
 
         # --- menus & layout persistence --------------------------------------
         file_menu = self.menuBar().addMenu("&File")
@@ -171,6 +177,11 @@ class MainWindow(QMainWindow):
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
         tools_menu.addAction("Reload hooks", self._reload_hooks)
         tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
+        tools_menu.addSeparator()
+        verbose = tools_menu.addAction("Verbose CAN logging")
+        verbose.setCheckable(True)
+        verbose.setToolTip("Relay the CAN libraries' info messages to the event log too")
+        verbose.toggled.connect(self._set_verbose_logging)
 
         self.help_menu = HelpMenu(self)
         self._default_state = self.saveState(LAYOUT_VERSION)
@@ -257,6 +268,7 @@ class MainWindow(QMainWindow):
         self.replay.stop()
         self.help_menu.shutdown()
         self.connect_bar.shutdown()
+        self.log_bridge.detach()
         self.recorder.stop()
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
         self.bus.close()  # stop the facade before its channels go away
@@ -271,6 +283,14 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_error(self, text: str) -> None:
         self.log.appendPlainText(f"ERROR: {text}")
+
+    @Slot(bool)
+    def _set_verbose_logging(self, on: bool) -> None:
+        self.log_bridge.set_verbose(on)
+        self.log.appendPlainText(
+            f"Verbose CAN logging {'on' if on else 'off'}: the CAN libraries' "
+            f"{'info messages are' if on else 'warnings and errors are still'} relayed here."
+        )
 
     def _open_hooks_folder(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.ctx.hooks_dir)))
@@ -301,7 +321,16 @@ class MainWindow(QMainWindow):
                 self.log.appendPlainText("The demo device only works on the virtual interface")
                 self._demo_action.setChecked(False)
                 return
-            self._demo = DemoDevice(self.connect_bar.channel.text(), self)
+            try:
+                # current_channel(), not the widget's text: the box shows a
+                # label, which for a detected adapter is not the channel.
+                self._demo = DemoDevice(self.connect_bar.current_channel(), self)
+            except Exception as exc:
+                # A slot that raises leaves the menu ticked and the user with
+                # nothing but a traceback on a console they cannot see.
+                self.log.appendPlainText(f"Demo device failed to start: {exc}")
+                self._demo_action.setChecked(False)
+                return
             self.log.appendPlainText("Demo device started: node 5, heartbeat 500 ms, TPDO1 100 ms")
         elif self._demo is not None:
             self._demo.stop()
