@@ -8,6 +8,11 @@ can be named from the id alone.  The result is a short *kind* ("TPDO1 n5",
 
 from __future__ import annotations
 
+#: Error frames get a group of their own so the trace Filter menu can hide
+#: them: they are the controller reporting a fault, not traffic, and a bus in
+#: trouble produces far more of them than of anything else.
+ERROR_GROUP = "Bus errors"
+
 GROUPS = (
     "NMT",
     "SYNC/TIME",
@@ -19,6 +24,7 @@ GROUPS = (
     "UDS",
     "J1939",
     "XCP",
+    ERROR_GROUP,
     "Other",
 )
 

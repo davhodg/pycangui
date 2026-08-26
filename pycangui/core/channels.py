@@ -38,6 +38,7 @@ class Channels(QObject):
     state_changed = Signal(str, bool)  # channel name, connected
     active_changed = Signal(str)
     error = Signal(str)  # "channel: text"
+    note = Signal(str)  # worth saying, but not a failure
 
     def __init__(self) -> None:
         super().__init__()
@@ -67,6 +68,7 @@ class Channels(QObject):
             (bus.connected, lambda _d, n=name: self.state_changed.emit(n, True)),
             (bus.disconnected, lambda n=name: self.state_changed.emit(n, False)),
             (bus.error, lambda text, n=name: self.error.emit(f"{n}: {text}")),
+            (bus.note, self.note),
         )
         for signal, slot in self._connections[name]:
             signal.connect(slot)

@@ -7,8 +7,9 @@ trace, the recorder and the decoders always see every connected channel.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QInputDialog,
@@ -29,7 +30,26 @@ from pycangui.core.detect import (
 from pycangui.core.worker import Worker
 
 BITRATES = (125_000, 250_000, 500_000, 1_000_000)
+#: Detecting while the list opens blocks the window, so it is capped well
+#: below the background timeout.
+EXPAND_TIMEOUT_S = 2.0
 ROLE_EXTRA = 0x0100  # Qt.UserRole: the rest of a detected adapter's configuration
+
+
+class ChannelBox(QComboBox):
+    """The channel drop-down, which looks for adapters when it is opened.
+
+    Detection normally runs in the background when the interface changes, so
+    opening this is usually instant.  Where it has not run for the interface
+    in question -- the first open after starting up -- it runs here and
+    briefly blocks, which beats showing a list that is out of date.
+    """
+
+    expanded = Signal()
+
+    def showPopup(self) -> None:
+        self.expanded.emit()
+        super().showPopup()
 
 
 class ConnectBar(QToolBar):
@@ -47,6 +67,7 @@ class ConnectBar(QToolBar):
         self._loading = False
         self._worker = Worker(self)  # detection talks to drivers; keep it off the GUI thread
         self._detecting = False
+        self._detected_for = ""  # the interface the list was last built for
 
         self.selector = QComboBox()
         self.selector.setToolTip("The channel the protocol panes work with")
@@ -65,14 +86,12 @@ class ConnectBar(QToolBar):
         self.interface.currentTextChanged.connect(self._on_interface_changed)
         # Editable: detection covers most adapters, but not every backend can
         # enumerate, and a channel can always be typed in.
-        self.channel = QComboBox()
+        self.channel = ChannelBox()
         self.channel.setEditable(True)
-        self.channel.setMinimumWidth(150)
-        self.channel.setToolTip("Pick a detected adapter, or type a channel")
+        self.channel.setMinimumWidth(170)
+        self.channel.setToolTip("Pick an adapter, or type a channel.  Opening this looks again.")
         self.channel.currentTextChanged.connect(lambda _t: self._save_settings())
-        self.detect = QPushButton("Detect")
-        self.detect.setToolTip("Ask the selected interface which adapters are attached")
-        self.detect.clicked.connect(lambda: self.detect_channels(announce=True))
+        self.channel.expanded.connect(self._on_channel_expanded)
         self.bitrate = QComboBox()
         for b in BITRATES:
             self.bitrate.addItem(f"{b // 1000} kbit/s", b)
@@ -95,7 +114,6 @@ class ConnectBar(QToolBar):
         ):
             self.addWidget(QLabel(f" {label}: "))
             self.addWidget(widget)
-        self.addWidget(self.detect)
         self.addWidget(QLabel(" Bitrate: "))
         self.addWidget(self.bitrate)
         self.addWidget(self.fd)
@@ -143,6 +161,7 @@ class ConnectBar(QToolBar):
         self._save_settings()
         if self._loading:
             return
+        self._detected_for = ""
         # A channel belongs to its interface -- "can0" means nothing to an
         # IXXAT -- so the old one goes rather than lingering in the list.
         interface = self.interface.currentText()
@@ -153,43 +172,67 @@ class ConnectBar(QToolBar):
         # nobody's idea of a launch.
         self.detect_channels(keep_typed=False)
 
+    def _on_channel_expanded(self) -> None:
+        """Fill the list as it opens, if the background detection has not.
+
+        Opening the list is the moment somebody wants to know what is there,
+        so that is where the work belongs rather than on a button of its own.
+        """
+        interface = self.interface.currentText()
+        if self._detected_for == interface or self._detecting:
+            return
+        self._detected_for = interface
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            found = channels_for(interface, timeout=EXPAND_TIMEOUT_S)
+        except Exception as exc:  # a driver that objects must not stop the popup
+            self._detected_for = ""
+            self.ctx.log(f"Looking for {interface} adapters failed: {exc}")
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        self._merge(found, typed=self._typed_text())
+
     def detect_channels(self, announce: bool = False, keep_typed: bool = True) -> None:
         """Ask the interface what is attached, off the GUI thread."""
         if self._detecting:
             return
         interface = self.interface.currentText()
         self._detecting = True
-        self.detect.setEnabled(False)
-        self.detect.setText("...")
+        self._detected_for = interface
         typed = self.channel.currentText() if keep_typed else ""
         self._worker.submit(
             lambda: channels_for(interface),
             lambda found, error: self._on_detected(interface, found, error, announce, typed),
         )
 
-    def _on_detected(
-        self, interface: str, found, error: str | None, announce: bool, typed: str
-    ) -> None:
-        self._detecting = False
-        self.detect.setEnabled(True)
-        self.detect.setText("Detect")
-        if error is not None:
-            self.ctx.log(f"Detect on {interface} failed: {error}")
-            return
-        # Whatever was typed into the box while detection was out also counts:
-        # it runs in the background, and someone who started typing a channel
-        # must not have it wiped when the answer arrives.  Text that matches an
-        # item is a selection, not typing -- often one pycangui suggested
-        # itself -- and detection is free to replace it.
+    def _typed_text(self) -> str:
+        """Text somebody entered, as opposed to an item they picked."""
         current = self.channel.currentText().strip()
-        if not typed and current and self.channel.findText(current) < 0:
-            typed = current
+        return current if current and self.channel.findText(current) < 0 else ""
+
+    def _merge(self, found, typed: str) -> None:
         entries = list(found or [])
         # Keeping what was typed means detection cannot discard a channel the
         # backend was unable to enumerate but which works perfectly well.
         if typed and typed not in {entry.text for entry in entries}:
             entries.insert(0, Channel(config={"channel": typed}, label=typed))
         self._fill_channels(entries, select=typed)
+
+    def _on_detected(
+        self, interface: str, found, error: str | None, announce: bool, typed: str
+    ) -> None:
+        self._detecting = False
+        if error is not None:
+            self._detected_for = ""  # let opening the list try again
+            self.ctx.log(f"Looking for {interface} adapters failed: {error}")
+            return
+        # Whatever was typed into the box while detection was out also counts:
+        # it runs in the background, and someone who started typing a channel
+        # must not have it wiped when the answer arrives.  Text that matches an
+        # item is a selection, not typing -- often one pycangui suggested
+        # itself -- and detection is free to replace it.
+        self._merge(found, typed=typed or self._typed_text())
         if not found and announce:
             self.ctx.log(
                 f"Detect: {interface} reported no adapters.  Either none is attached, "
@@ -329,7 +372,7 @@ class ConnectBar(QToolBar):
         self._loading = True
         self.button.setChecked(connected)
         self.button.setText("Disconnect" if connected else "Connect")
-        for w in (self.interface, self.channel, self.detect, self.bitrate, self.fd):
+        for w in (self.interface, self.channel, self.bitrate, self.fd):
             w.setEnabled(not connected)
         if not connected:
             self._set_channel_enabled(self.interface.currentText())
