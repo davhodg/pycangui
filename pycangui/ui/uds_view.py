@@ -94,15 +94,22 @@ class UdsView(QWidget):
         self.tp = QCheckBox("Tester present")
         self.tp.toggled.connect(self.manager.set_tester_present)
         h.addWidget(self.tp)
-        h.addSpacing(12)
+        h.addStretch()
+
+        # --- reset ---------------------------------------------------------------
+        # Its own box: a reset is not part of getting into a session, it is the
+        # one control here that interrupts whatever the ECU was doing.
+        reset_box = QGroupBox("ECU reset")
+        r = QHBoxLayout(reset_box)
         self.reset_type = QComboBox()
         for code, name in RESETS.items():
             self.reset_type.addItem(name, code)
-        h.addWidget(self.reset_type)
-        reset = QPushButton("ECU reset")
+        r.addWidget(QLabel("Type"))
+        r.addWidget(self.reset_type)
+        reset = QPushButton("Reset")
         reset.clicked.connect(lambda: self.manager.ecu_reset(self.reset_type.currentData()))
-        h.addWidget(reset)
-        h.addStretch()
+        r.addWidget(reset)
+        r.addStretch()
 
         # --- data ----------------------------------------------------------------
         data = QGroupBox("Data, DTCs, routines")
@@ -170,7 +177,7 @@ class UdsView(QWidget):
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        for w in (addr, sess, data):
+        for w in (addr, sess, reset_box, data):
             controls_layout.addWidget(w)
         controls_layout.addStretch()
         scroll = QScrollArea()

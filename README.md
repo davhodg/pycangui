@@ -164,14 +164,22 @@ set its node-ID and bit rate, store, and return to the waiting state.
 The **UDS** pane talks ISO 14229 over ISO-TP (udsoncan + can-isotp): set the
 tester/ECU ids, Open, then sessions, SecurityAccess (the seed-to-key algorithm
 is `hooks/uds.py::security_key`), tester present, DID read/write, DTC read and
-clear, routines, ECU reset and raw requests.  The demo device answers on
+clear, routines, ECU reset (its own box, since it interrupts whatever the ECU
+was doing) and raw requests.  Data identifiers are named from ISO 14229-1 --
+`F190 (VIN)` -- and negative responses by their standard code name.  The demo device answers on
 0x7E0/0x7E8 with a byte-invert key.
 
 The **J1939** pane lists nodes (NAME from address claims), active faults from
 DM1 with lamp status, and reassembled multi-packet messages (TP.BAM / TP.CM via
 can-j1939).  Claim a tester address to send requests and multi-packet PGNs; a
 J1939 DBC (`VFrameFormat=J1939PG`) is matched by PGN so SPNs land in Signals
-and Plot.  The demo device includes an engine at SA 0 (EEC1, CCVS1, DM1, and a
+and Plot.  DM1/DM2 faults show the failure mode in words -- the 32 FMI
+meanings are fixed by SAE J1939-73 -- next to the SPN.  SPN *names* are not
+shipped: there are thousands, they are defined in the copyrighted SAE J1939-71,
+so load a J1939 DBC to name them or fill in `hooks/j1939.py`.  The same applies
+to UDS DTC descriptions, which no standard defines at all.
+
+The demo device includes an engine at SA 0 (EEC1, CCVS1, DM1, and a
 BAM ComponentID reply to a request for PGN 65259).
 
 The **XCP** pane speaks XCP on CAN: set the command/response ids, Connect,

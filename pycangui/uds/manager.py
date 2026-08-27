@@ -253,6 +253,11 @@ class UdsManager(QObject):
 
         self._run("ECUReset", fn)
 
+    def did_label(self, did: int) -> str:
+        """ "F190 (VIN)" -- the number, and what the identifier is called."""
+        name = self._hooks.call("uds", "did_label", did)
+        return f"{did:04X} ({name})" if name else f"{did:04X}"
+
     def read_did(self, did: int) -> None:
         def fn(c: Client) -> str:
             req = Request(services.ReadDataByIdentifier, data=struct.pack(">H", did))
@@ -260,7 +265,8 @@ class UdsManager(QObject):
             data = bytes(resp.data[2:])  # strip echoed DID
             self.did_value.emit(did, data)
             text = self._hooks.call("uds", "did_decode", did, data)
-            return f"DID {did:04X} = {text if text is not None else describe_bytes(data)}"
+            value = text if text is not None else describe_bytes(data)
+            return f"DID {self.did_label(did)} = {value}"
 
         self._run(f"ReadDID {did:04X}", fn)
 
@@ -271,7 +277,7 @@ class UdsManager(QObject):
                 data = parse_bytes(text)
             req = Request(services.WriteDataByIdentifier, data=struct.pack(">H", did) + bytes(data))
             c.send_request(req)
-            return f"DID {did:04X} written ({len(data)} bytes)"
+            return f"DID {self.did_label(did)} written ({len(data)} bytes)"
 
         self._run(f"WriteDID {did:04X}", fn)
 
