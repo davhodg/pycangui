@@ -115,9 +115,15 @@ def window(app, tmp_path, monkeypatch):
     win.close()
 
 
-def test_the_help_menu_has_the_four_entries(app, window):
+def test_the_help_menu_entries(app, window):
     texts = [a.text() for a in window.help_menu.menu.actions() if a.text()]
-    assert texts == ["Documentation", "Check for updates...", "Licences...", "About pycangui"]
+    assert texts == [
+        "Documentation",
+        "Diagnostics...",
+        "Check for updates...",
+        "Licences...",
+        "About pycangui",
+    ]
 
 
 def test_about_shows_the_version(app, window):

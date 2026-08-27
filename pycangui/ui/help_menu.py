@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from PySide6.QtCore import QObject, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QFont
+from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -167,6 +167,48 @@ def environment_report() -> str:
     return "\n".join(lines)
 
 
+def diagnostics(window) -> str:
+    """Everything needed to work out why a bus looks silent.
+
+    Written for copying into a bug report.  "Connected, frames arriving, none
+    shown" and "connected, no frames at all" are entirely different faults and
+    look identical from a description; this separates them.
+    """
+    lines = [environment_report(), ""]
+
+    lines.append("Channels")
+    for name in window.channels.names():
+        bus = window.channels.get(name)
+        active = " (selected)" if name == window.channels.active else ""
+        if bus is None or not bus.is_connected:
+            lines.append(f"  {name}{active}: not connected")
+            continue
+        lines.append(
+            f"  {name}{active}: {bus.description}\n"
+            f"      interface={bus.interface!r} state={bus._read_state() or 'unreported'} "
+            f"load={bus.load_percent:.1f}% error frames={bus._error_frames}"
+        )
+
+    trace = window.trace
+    hidden_groups = sorted(trace.hidden_groups())
+    hidden_channels = sorted(trace.hidden_channels())
+    lines += [
+        "",
+        "Trace",
+        f"  captured={trace.model.rowCount()} shown={trace.table.model().rowCount()} "
+        f"counter={window._frame_count}",
+        f"  paused={trace.pause.isChecked()} search={trace.search.text()!r}",
+        f"  hidden groups={hidden_groups or 'none'}",
+        f"  hidden channels={hidden_channels or 'none'}",
+        f"  demo device={'running' if window._demo is not None else 'off'}",
+    ]
+    if trace.model.rowCount() and not trace.table.model().rowCount():
+        lines.append("  >> frames ARE arriving and the filter is hiding all of them")
+    elif not trace.model.rowCount():
+        lines.append("  >> no frames have reached the trace at all")
+    return "\n".join(lines)
+
+
 class HelpMenu(QObject):
     """Builds the Help menu and owns the update check behind it."""
 
@@ -178,6 +220,7 @@ class HelpMenu(QObject):
 
         menu = window.menuBar().addMenu("&Help")
         menu.addAction("Documentation", self._open_docs)
+        menu.addAction("Diagnostics...", self._show_diagnostics)
         menu.addSeparator()
         self.check_action = menu.addAction("Check for updates...", self._check_for_updates)
         menu.addAction("Licences...", self._show_licences)
@@ -189,6 +232,12 @@ class HelpMenu(QObject):
 
     def _open_docs(self) -> None:
         QDesktopServices.openUrl(QUrl(README_PAGE))
+
+    def _show_diagnostics(self) -> None:
+        """Report the state of the window, and put it on the clipboard."""
+        report = diagnostics(self.window)
+        QGuiApplication.clipboard().setText(report)
+        self.window.log.appendPlainText("Diagnostics (copied to the clipboard):\n" + report + "\n")
 
     def _show_licences(self) -> None:
         LicenceDialog(self.window).exec()
