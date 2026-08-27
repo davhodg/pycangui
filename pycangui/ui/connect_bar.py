@@ -263,11 +263,15 @@ class ConnectBar(QToolBar):
         )
 
     def _fill_channels(self, entries, select: str = "") -> None:
-        """Put entries in the channel box, keeping the first of any duplicates.
+        """Put entries in the channel box and select one by its channel.
 
         Duplicates are judged by the *label*, not by the channel: two IXXAT
         dongles both offer channel 0, and collapsing those would throw away
         the second adapter -- which is the whole thing this is here to fix.
+
+        ``select`` is a channel rather than a label, because the caller knows
+        what it wants to be on, not how this list happens to describe it --
+        "vcan0" and "vcan0  (CANopen demo device)" are the same channel.
         """
         was_loading = self._loading
         self._loading = True
@@ -278,7 +282,8 @@ class ConnectBar(QToolBar):
                 continue
             seen.add(entry.label)
             self.channel.addItem(entry.label, entry.config)
-        self.channel.setCurrentText(select or (entries[0].label if entries else ""))
+        chosen = next((e.label for e in entries if select and e.text == select), "")
+        self.channel.setCurrentText(chosen or select or (entries[0].label if entries else ""))
         self._loading = was_loading
 
     def current_extra(self) -> dict:
@@ -329,13 +334,17 @@ class ConnectBar(QToolBar):
         self.interface.setCurrentText(saved.get("interface", "virtual"))
         channel = saved.get("channel", "vcan0")
         interface = saved.get("interface", "virtual")
-        self._fill_channels(
-            [
-                Channel(config={"channel": channel, **saved.get("extra", {})}, label=channel),
-                *channel_suggestions(interface),
-            ],
-            select=channel,
+        # The saved channel is only worth its own entry if nothing already
+        # offers it: otherwise "vcan0" would sit next to the same channel
+        # described properly as "vcan0  (CANopen demo device)".
+        offered = channel_suggestions(interface)
+        known = {entry.text for entry in offered}
+        saved_entry = (
+            []
+            if channel in known
+            else [Channel(config={"channel": channel, **saved.get("extra", {})}, label=channel)]
         )
+        self._fill_channels([*saved_entry, *offered], select=channel)
         self._set_channel_enabled(interface)
         index = self.bitrate.findData(saved.get("bitrate", 500_000))
         self.bitrate.setCurrentIndex(index if index >= 0 else 2)

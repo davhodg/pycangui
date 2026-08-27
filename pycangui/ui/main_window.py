@@ -22,6 +22,7 @@ from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
+from pycangui.core.detect import DEMO_CHANNEL
 from pycangui.core.excepthook import ExceptionLogger
 from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
@@ -151,6 +152,9 @@ class MainWindow(QMainWindow):
         self.canopen.pdo_update.connect(self._on_pdo_update)
         self.channels.frames.connect(self._count_frames)
         self.channels.state_changed.connect(self._on_channel_state)
+        # Queued: disconnected is emitted *before* the bus is torn down, so
+        # asking straight away would still see it connected.
+        self.channels.state_changed.connect(lambda *_a: self._sync_demo(), Qt.QueuedConnection)
         self.channels.error.connect(self._on_error)
         self.channels.note.connect(self.log.appendPlainText)
 
@@ -172,12 +176,8 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         view_menu.addAction("Reset layout", self._reset_layout)
 
-        tools_menu = self.menuBar().addMenu("&Tools")
         self._demo: DemoDevice | None = None
-        self._demo_action = tools_menu.addAction("Demo CANopen device (virtual bus)")
-        self._demo_action.setCheckable(True)
-        self._demo_action.toggled.connect(self._toggle_demo)
-        tools_menu.addSeparator()
+        tools_menu = self.menuBar().addMenu("&Tools")
         tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
         tools_menu.addAction("Reload hooks", self._reload_hooks)
@@ -282,7 +282,7 @@ class MainWindow(QMainWindow):
         self.log_bridge.detach()
         self.exceptions.remove()
         self.recorder.stop()
-        self._demo_action.setChecked(False)  # stops and shuts down the demo device
+        self._stop_demo()
         self.bus.close()  # stop the facade before its channels go away
         self.channels.shutdown()
         self.canopen.shutdown()
@@ -326,25 +326,33 @@ class MainWindow(QMainWindow):
         else:
             self.log.appendPlainText("Hook files already up to date")
 
-    @Slot(bool)
-    def _toggle_demo(self, on: bool) -> None:
-        if on:
-            if self.connect_bar.interface.currentText() != "virtual":
-                self.log.appendPlainText("The demo device only works on the virtual interface")
-                self._demo_action.setChecked(False)
-                return
+    def _sync_demo(self) -> None:
+        """Run the demo device exactly while a channel is connected to its bus.
+
+        Selecting the channel is the switch.  A separate on/off somewhere in a
+        menu meant connecting to the virtual bus and finding it empty, with
+        nothing on screen to say why or what to do about it.
+        """
+        wanted = any(
+            bus.is_connected and bus.interface == "virtual" and bus.channel == DEMO_CHANNEL
+            for name in self.channels.names()
+            if (bus := self.channels.get(name)) is not None
+        )
+        if wanted and self._demo is None:
             try:
-                # current_channel(), not the widget's text: the box shows a
-                # label, which for a detected adapter is not the channel.
-                self._demo = DemoDevice(self.connect_bar.current_channel(), self)
+                self._demo = DemoDevice(DEMO_CHANNEL, self)
             except Exception as exc:
-                # A slot that raises leaves the menu ticked and the user with
-                # nothing but a traceback on a console they cannot see.
                 self.log.appendPlainText(f"Demo device failed to start: {exc}")
-                self._demo_action.setChecked(False)
                 return
-            self.log.appendPlainText("Demo device started: node 5, heartbeat 500 ms, TPDO1 100 ms")
-        elif self._demo is not None:
+            self.log.appendPlainText(
+                f"Demo CANopen device running on {DEMO_CHANNEL}: "
+                "node 5, heartbeat 500 ms, TPDO1 100 ms"
+            )
+        elif not wanted:
+            self._stop_demo()
+
+    def _stop_demo(self) -> None:
+        if self._demo is not None:
             self._demo.stop()
             self._demo = None
 

@@ -11,6 +11,7 @@ import time
 import pytest
 from PySide6.QtCore import QSettings
 
+from pycangui.core.detect import DEMO_CHANNEL, channels_for
 from pycangui.ui.main_window import MainWindow
 
 
@@ -20,7 +21,6 @@ def window(app, tmp_path, monkeypatch):
     QSettings().clear()
     win = MainWindow()
     yield win
-    win._demo_action.setChecked(False)
     win.close()
 
 
@@ -33,42 +33,72 @@ def run_for(app, seconds, until=None):
         time.sleep(0.01)
 
 
-def test_the_demo_device_puts_traffic_in_the_trace(app, window):
-    """Connect, start the demo, see frames -- the path a first run takes."""
+def connect_to(app, window, channel):
+    window.connect_bar.channel.setCurrentIndex(
+        window.connect_bar.channel.findData({"channel": channel})
+    )
+    if window.connect_bar.current_channel() != channel:  # findData is exact-match only
+        window.connect_bar.channel.setCurrentText(channel)
     window.connect_bar.button.setChecked(True)
     app.processEvents()
-    assert window.channels.active_bus().is_connected, window.log.toPlainText()
 
-    window._demo_action.setChecked(True)
-    assert window._demo is not None, f"the demo failed to start: {window.log.toPlainText()}"
-    # Bus load is only recomputed on its own 500 ms timer, so wait for that
-    # too rather than racing it.
+
+def test_connecting_to_the_demo_channel_starts_the_demo(app, window):
+    """Selecting the channel is the switch: there is no separate on/off.
+
+    Connecting to the virtual bus and finding it empty, with nothing to say
+    why, was the whole problem with a menu item somewhere else.
+    """
+    connect_to(app, window, DEMO_CHANNEL)
+    assert window.channels.active_bus().is_connected, window.log.toPlainText()
+    assert window._demo is not None, f"the demo did not start: {window.log.toPlainText()}"
+
     bus = window.channels.active_bus()
     run_for(app, 4.0, until=lambda: window.trace.model.rowCount() > 10 and bus.load_percent > 0)
-
     captured = window.trace.model.rowCount()
-    shown = window.trace.table.model().rowCount()
     assert captured > 10, f"no traffic reached the trace: {window.log.toPlainText()}"
-    assert shown == captured, "and none of it is being filtered out"
+    assert window.trace.table.model().rowCount() == captured, "and none of it is filtered out"
     assert window._frame_count == captured
     assert bus.load_percent > 0, "bus load must move too"
 
 
+def test_an_empty_virtual_channel_stays_empty(app, window):
+    """vcan1 says "empty" in the list, and means it."""
+    connect_to(app, window, "vcan1")
+    assert window.channels.active_bus().is_connected
+    assert window._demo is None, "only the demo channel runs the demo"
+    run_for(app, 1.0)
+    assert window.trace.model.rowCount() == 0
+
+
+def test_disconnecting_stops_the_demo(app, window):
+    connect_to(app, window, DEMO_CHANNEL)
+    assert window._demo is not None
+    window.connect_bar.button.setChecked(False)
+    app.processEvents()
+    assert window._demo is None, "nothing should be left running on a bus nobody is on"
+
+
+def test_the_channel_list_says_what_each_one_carries(app, window):
+    labels = [
+        window.connect_bar.channel.itemText(i) for i in range(window.connect_bar.channel.count())
+    ]
+    assert any(DEMO_CHANNEL in x and "demo" in x.lower() for x in labels), labels
+    assert any("empty" in x for x in labels), labels
+    # No random throwaway names from the backend's own detection.
+    assert not any("channel-" in x for x in labels), labels
+
+
+def test_the_virtual_channels_are_a_known_set():
+    labels = [c.label for c in channels_for("virtual")]
+    assert labels[0].startswith(DEMO_CHANNEL)
+    assert all("channel-" not in x for x in labels)
+
+
 def test_the_demo_is_decoded_not_just_listed(app, window):
     """The trace labels CANopen ids, so a heartbeat is not just an id."""
-    window.connect_bar.button.setChecked(True)
-    app.processEvents()
-    window._demo_action.setChecked(True)
+    connect_to(app, window, DEMO_CHANNEL)
     run_for(app, 3.0, until=lambda: window.trace.model.rowCount() > 10)
 
     kinds = {window.trace.model.data(window.trace.model.index(row, 4)) for row in range(20)}
     assert any("Heartbeat" in str(k) or "PDO" in str(k) for k in kinds), kinds
-
-
-def test_the_demo_refuses_a_non_virtual_interface_without_crashing(app, window):
-    window.connect_bar.interface.setCurrentText("socketcan")
-    app.processEvents()
-    window._demo_action.setChecked(True)
-    assert window._demo is None
-    assert not window._demo_action.isChecked(), "and it unticks itself"
-    assert "virtual" in window.log.toPlainText()

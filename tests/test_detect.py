@@ -225,7 +225,10 @@ def test_a_typed_channel_still_works(app, bar, monkeypatch):
 def test_the_box_offers_something_before_anyone_presses_detect(app, bar):
     """The complaint: picking virtual still left you typing a channel in."""
     labels = [bar.channel.itemText(i) for i in range(bar.channel.count())]
-    assert "vcan0" in labels, f"the conventional virtual channel must be offered: {labels}"
+    # The labels describe what each channel carries, so match the channel.
+    channels = [(bar.channel.itemData(i) or {}).get("channel") for i in range(bar.channel.count())]
+    assert "vcan0" in channels, f"the demo channel must be offered: {labels}"
+    assert any("demo" in x.lower() for x in labels), labels
     assert bar.channel.isEnabled()
 
 

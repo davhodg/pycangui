@@ -141,6 +141,9 @@ class BusManager(QObject):
         #: for it: putting frames onto "virtual" is harmless, onto anything else
         #: it is real traffic on a real bus.
         self.interface = ""
+        #: The backend's channel while connected -- "vcan0", "can0", 0 -- as
+        #: opposed to channel_name, which is what the user called this channel.
+        self.channel = ""
         self.description = ""
         self.bitrate = 0
         #: Percentage of the bus's capacity used, refreshed every LOAD_PERIOD_MS.
@@ -212,6 +215,7 @@ class BusManager(QObject):
         self._timer.start()
         self.bitrate = bitrate
         self.interface = interface
+        self.channel = str(channel_value)
         self._connected_at = time.monotonic()
         self._seen_a_frame = False
         self._error_frames = 0
@@ -237,6 +241,7 @@ class BusManager(QObject):
         self.bus = self.notifier = self._collector = None
         self.description = ""
         self.interface = ""
+        self.channel = ""
         self.load_percent = 0.0
 
     def add_listener(self, listener: can.Listener) -> None:
