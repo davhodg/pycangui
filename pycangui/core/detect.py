@@ -45,7 +45,6 @@ INT_CHANNEL_BACKENDS = frozenset({"cantact", "ixxat", "kvaser"})
 #: a claim that these exist -- they are the conventional names, so that the
 #: box is something to choose from rather than something to guess at.
 SUGGESTIONS = {
-    "virtual": ("vcan0", "vcan1"),
     "socketcan": ("can0", "can1", "vcan0"),
     "socketcand": ("can0", "can1"),
     "ixxat": ("0", "1", "2", "3"),
@@ -58,11 +57,20 @@ SUGGESTIONS = {
     "udp_multicast": ("225.0.0.1",),
 }
 
-#: Interfaces whose detection is real but unhelpful as a menu, so the
-#: conventional names are offered as well.  python-can's virtual backend
-#: reports the channels currently in use plus one random unused name, which
-#: is a different name every time and never the one the demo device uses.
-ALWAYS_SUGGEST = frozenset({"virtual"})
+#: The channel the demo CANopen device runs on.  Selecting it is what starts
+#: the device: a channel that says what is on it beats a separate switch
+#: somewhere else that you have to know about.
+DEMO_CHANNEL = "vcan0"
+
+#: The virtual channels, and what each one carries.  A fixed set rather than
+#: whatever the backend reports: python-can's virtual bus lists the channels
+#: in use plus one random unused name, which is a different name every time,
+#: is never the one the demo runs on, and means nothing to anybody.
+VIRTUAL_CHANNELS = (
+    (DEMO_CHANNEL, "CANopen demo device"),
+    ("vcan1", "empty"),
+    ("vcan2", "empty"),
+)
 
 #: Backends that are a serial port underneath, so the ports themselves are
 #: the useful suggestion.  pyserial is a declared dependency (python-can does
@@ -219,6 +227,11 @@ def serial_ports() -> list[str]:
 
 def channel_suggestions(interface: str) -> list[Channel]:
     """Plausible channel names for an interface, when it cannot say itself."""
+    if interface == "virtual":
+        return [
+            Channel(config={"channel": name}, label=f"{name}  ({what})")
+            for name, what in VIRTUAL_CHANNELS
+        ]
     names = SUGGESTIONS.get(interface, ())
     if interface in SERIAL_BACKENDS:
         names = tuple(serial_ports()) or names
@@ -239,12 +252,9 @@ def channels_for(interface: str, timeout: float = DETECT_TIMEOUT_S) -> list[Chan
     adapter is never buried under invented names -- with two dongles attached
     a bare "2" would say nothing about which device it meant.
     """
+    if interface == "virtual":
+        return channel_suggestions(interface)  # a known set, not whatever is in use
     found = detect_channels(interface, timeout)
-    if found and interface not in ALWAYS_SUGGEST:
+    if found:
         return found
-    seen = {entry.text for entry in found}
-    extra = [entry for entry in channel_suggestions(interface) if entry.text not in seen]
-    # For the always-suggest interfaces the conventional names go first: what
-    # the virtual backend "detects" is a throwaway, and vcan0 is the one the
-    # demo device uses and the one the settings default to.
-    return extra + found if interface in ALWAYS_SUGGEST else found + extra
+    return channel_suggestions(interface)

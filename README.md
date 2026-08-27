@@ -24,8 +24,10 @@ python -m venv .venv
 .venv\Scripts\python -m pytest
 ```
 
-Without hardware: pick interface `virtual`, channel `vcan0`, press Connect,
-then enable Tools > Demo CANopen device.  A simulated node 5 appears in the
+Without hardware: pick interface `virtual`, channel **vcan0 (CANopen demo
+device)**, and press Connect -- the channel is the switch, so there is nothing
+else to turn on.  `vcan1` and `vcan2` are empty loopbacks, for replaying a log
+onto or sending your own frames.  A simulated node 5 appears in the
 CANopen pane: its EDS is matched automatically, the object dictionary can be
 read (double-click) and written (edit the value), NMT Start makes it transmit
 TPDO1, and writing *Speed demand* (0x2001) moves the motor speed in the PDO.
