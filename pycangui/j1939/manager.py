@@ -152,6 +152,10 @@ class J1939Manager(QObject):
     def spn_description(self, spn: int) -> str:
         return self._hooks.call("j1939", "spn_description", spn) or ""
 
+    def fmi_description(self, fmi: int) -> str:
+        """What the failure mode means.  Standard, so this is nearly always set."""
+        return self._hooks.call("j1939", "fmi_description", fmi) or ""
+
     # --- address claim / sending --------------------------------------------------------
     def claim_address(self, address: int) -> None:
         """Become a node on the bus (needed to send multi-packet messages and

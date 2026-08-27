@@ -17,6 +17,7 @@ User files never crash the application and are never overwritten.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import inspect
 import re
@@ -103,11 +104,14 @@ class Hooks:
     def update_stubs(self) -> dict[str, list[str]]:
         """Append hooks that exist in the defaults but not in the user file.
 
-        Never touches existing user code.  The imports the appended code needs
-        are added too, including ``from __future__ import annotations``: from
-        Python 3.14 annotations are evaluated lazily, but on 3.12 and 3.13 they
-        are evaluated as the function is defined, so a pasted-in signature
-        mentioning ``Path`` or ``NodeIdentity`` would break the whole file.
+        Never touches existing user code.  Whatever the appended code needs
+        comes with it: the imports, including ``from __future__ import
+        annotations`` (from Python 3.14 annotations are evaluated lazily, but
+        on 3.12 and 3.13 they are evaluated as the function is defined, so a
+        pasted-in signature mentioning ``Path`` would break the whole file),
+        and the module-level tables it reads.  A hook that arrived without its
+        DID_NAMES would raise on every call and fall back to the built-in
+        default, which is a poor way to find out.
 
         Returns {module: [added names]}.
         """
@@ -125,6 +129,7 @@ class Hooks:
                 continue
             text = _with_imports_for(module, text)
             chunks = ["\n\n# --- added by 'Update hook stubs' ---\n"]
+            chunks += ["\n\n" + source for _name, source in _missing_constants(module, text)]
             chunks += ["\n\n@hook\n" + inspect.getsource(specs[n].default) for n in missing]
             dest.write_text(text.rstrip("\n") + "".join(chunks) + "\n", encoding="utf-8")
             added[module] = missing
@@ -189,6 +194,37 @@ class Hooks:
                 if result is not None:
                     return result
         return spec.default(*args, ctx=self.ctx, **kwargs)
+
+
+def _module_constants(module: str) -> list[tuple[str, str]]:
+    """(name, source) for every module-level assignment in a defaults file.
+
+    These are the tables the hooks read -- DID_NAMES, SPN_NAMES -- and are as
+    much a part of a hook as its body is.
+    """
+    source = _defaults_path(module).read_text(encoding="utf-8")
+    found = []
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            name = node.target.id
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+            if not isinstance(node.targets[0], ast.Name):
+                continue
+            name = node.targets[0].id
+        else:
+            continue
+        if (text := ast.get_source_segment(source, node)) is not None:
+            found.append((name, text))
+    return found
+
+
+def _missing_constants(module: str, text: str) -> list[tuple[str, str]]:
+    """The defaults' tables that the user's file does not already define."""
+    return [
+        (name, source)
+        for name, source in _module_constants(module)
+        if not re.search(rf"^{re.escape(name)}\s*[:=]", text, re.MULTILINE)
+    ]
 
 
 def _import_lines(module: str) -> list[str]:

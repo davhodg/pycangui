@@ -90,6 +90,46 @@ def pgn_label(pgn: int) -> str:
 
 
 # --- DM1 / DM2 -------------------------------------------------------------
+#: What each Failure Mode Identifier means (SAE J1939-73).  Thirty-two fixed
+#: values, the same for every SPN on every ECU, so a fault reads as "voltage
+#: below normal" rather than "FMI 4".
+#:
+#: The SPNs themselves are a different matter: there are thousands, they are
+#: defined in SAE J1939-71, and that document cannot be shipped in an
+#: Apache-2.0 project.  Load a J1939 DBC (File > Load DBC) to name them, or
+#: fill in hooks/j1939.py for the handful you care about.
+FMI_NAMES = {
+    0: "Data valid but above normal operating range (most severe)",
+    1: "Data valid but below normal operating range (most severe)",
+    2: "Data erratic, intermittent or incorrect",
+    3: "Voltage above normal, or shorted to high source",
+    4: "Voltage below normal, or shorted to low source",
+    5: "Current below normal or open circuit",
+    6: "Current above normal or grounded circuit",
+    7: "Mechanical system not responding or out of adjustment",
+    8: "Abnormal frequency, pulse width or period",
+    9: "Abnormal update rate",
+    10: "Abnormal rate of change",
+    11: "Root cause not known",
+    12: "Bad intelligent device or component",
+    13: "Out of calibration",
+    14: "Special instructions",
+    15: "Data valid but above normal operating range (least severe)",
+    16: "Data valid but above normal operating range (moderately severe)",
+    17: "Data valid but below normal operating range (least severe)",
+    18: "Data valid but below normal operating range (moderately severe)",
+    19: "Received network data in error",
+    20: "Data drifted high",
+    21: "Data drifted low",
+    31: "Condition exists",
+}
+
+
+def fmi_name(fmi: int) -> str:
+    """What an FMI means, or "" for the values J1939-73 leaves reserved."""
+    return FMI_NAMES.get(fmi, "")
+
+
 @dataclass(frozen=True, slots=True)
 class Dtc:
     spn: int

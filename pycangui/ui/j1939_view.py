@@ -98,7 +98,7 @@ class J1939View(QWidget):
 
         # --- faults ----------------------------------------------------------------
         self.faults = QTreeWidget()
-        self.faults.setHeaderLabels(["SA", "Lamps", "SPN", "FMI", "OC", "Description"])
+        self.faults.setHeaderLabels(["SA", "Lamps", "SPN", "SPN name", "FMI", "Failure mode", "OC"])
         self.faults.setRootIsDecorated(False)
         self.faults.setFont(mono)
         self.faults.header().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -208,7 +208,7 @@ class J1939View(QWidget):
                 self.faults.takeTopLevelItem(i)
         lamps = dm1.lamps()
         if not dm1.dtcs:
-            item = QTreeWidgetItem([f"{sa:02X}", lamps, "-", "", "", "no active faults"])
+            item = QTreeWidgetItem([f"{sa:02X}", lamps, "-", "no active faults", "", "", ""])
             item.setData(0, ROLE_SA, sa)
             self.faults.addTopLevelItem(item)
         for d in dm1.dtcs:
@@ -217,9 +217,10 @@ class J1939View(QWidget):
                     f"{sa:02X}",
                     lamps,
                     str(d.spn),
-                    str(d.fmi),
-                    str(d.occurrence),
                     self.manager.spn_description(d.spn),
+                    str(d.fmi),
+                    self.manager.fmi_description(d.fmi),
+                    str(d.occurrence),
                 ]
             )
             item.setData(0, ROLE_SA, sa)
