@@ -22,6 +22,7 @@ from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
+from pycangui.core.excepthook import ExceptionLogger
 from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
@@ -77,6 +78,10 @@ class MainWindow(QMainWindow):
         #: through return values -- a wrong bitrate is reported there and
         #: nowhere else, so without this it looks like an idle bus.
         self.log_bridge = LogBridge(self.log.appendPlainText)
+        #: Started with pythonw, which has no console, so a traceback from a
+        #: Qt slot would otherwise go nowhere at all -- see the module.
+        self.exceptions = ExceptionLogger(self.log.appendPlainText)
+        self.exceptions.install()
         self.hooks = Hooks(self.ctx)
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
@@ -269,6 +274,7 @@ class MainWindow(QMainWindow):
         self.help_menu.shutdown()
         self.connect_bar.shutdown()
         self.log_bridge.detach()
+        self.exceptions.remove()
         self.recorder.stop()
         self._demo_action.setChecked(False)  # stops and shuts down the demo device
         self.bus.close()  # stop the facade before its channels go away

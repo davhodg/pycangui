@@ -37,6 +37,7 @@ INTEGER_TYPES = {*datatypes.SIGNED_TYPES, *datatypes.UNSIGNED_TYPES, datatypes.B
 #: leaves the consumer window to configuration; the usual choice is a small
 #: multiple of the producer time, which is what we learn from the bus.
 MISSED_HEARTBEATS = 3
+MIN_HEARTBEAT_GAP_S = 0.01  # the shortest gap that can be a real heartbeat period
 MIN_HEARTBEAT_TIMEOUT_S = 1.0
 
 #: Bit timing table 1 of CiA 305, as (index, bit rate).
@@ -126,7 +127,12 @@ class CanopenManager(QObject):
         now = time.monotonic()
         if (previous := self.last_heartbeat.get(node_id)) is not None:
             gap = now - previous
-            if 0.001 < gap < 60:  # ignore the first one and absurd gaps
+            # A producer time of 0x1017 is in milliseconds and nobody sets
+            # one below about ten.  A shorter gap than that is two frames
+            # arriving together -- a periodic task catching up after the
+            # machine stalled -- and taking it for the period would make
+            # the liveness timeout far shorter than the node deserves.
+            if MIN_HEARTBEAT_GAP_S < gap < 60:
                 self.heartbeat_interval[node_id] = gap
         self.last_heartbeat[node_id] = now
         state = NMT_STATES.get(data[0] & 0x7F, f"0x{data[0]:02X}")
