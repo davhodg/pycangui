@@ -173,7 +173,7 @@ The **J1939** pane lists nodes (NAME from address claims), active faults from
 DM1 with lamp status, and reassembled multi-packet messages (TP.BAM / TP.CM via
 can-j1939).  Claim a tester address to send requests and multi-packet PGNs; a
 J1939 DBC (`VFrameFormat=J1939PG`) is matched by PGN so SPNs land in Signals
-and Plot.  DM1/DM2 faults show the failure mode in words -- the 32 FMI
+and Plot.  DM1/DM2 faults show the failure mode in words -- the FMI
 meanings are fixed by SAE J1939-73 -- next to the SPN.  SPN *names* are not
 shipped: there are thousands, they are defined in the copyrighted SAE J1939-71,
 so load a J1939 DBC to name them or fill in `hooks/j1939.py`.  The same applies
