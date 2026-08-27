@@ -17,7 +17,6 @@ from pycangui.core.bus import BusManager, Frame
 from pycangui.core.hooks import Hooks
 from pycangui.j1939 import (
     GLOBAL,
-    PGN_NAMES,
     Name,
     _compat,  # noqa: F401 - patches pythoncom typo in can-j1939
     build_id,
@@ -138,8 +137,8 @@ class J1939Manager(QObject):
 
     # --- labelling ------------------------------------------------------------------
     def pgn_name(self, pgn: int) -> str:
-        name = self._hooks.call("j1939", "pgn_name", pgn)
-        return name if name is not None else PGN_NAMES.get(pgn, "")
+        """The PGN's short name, from hooks/j1939.py.  "" if it has none."""
+        return self._hooks.call("j1939", "pgn_name", pgn) or ""
 
     def classify(self, frame: Frame) -> str | None:
         if not frame.extended:
