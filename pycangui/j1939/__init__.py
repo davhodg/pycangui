@@ -90,9 +90,10 @@ def pgn_label(pgn: int) -> str:
 
 
 # --- DM1 / DM2 -------------------------------------------------------------
-#: What each Failure Mode Identifier means (SAE J1939-73).  Thirty-two fixed
-#: values, the same for every SPN on every ECU, so a fault reads as "voltage
-#: below normal" rather than "FMI 4".
+#: What each Failure Mode Identifier means (SAE J1939-73).  Fixed meanings,
+#: the same for every SPN on every ECU, so a fault reads as "voltage below
+#: normal" rather than "FMI 4".  J1939-73 leaves 22 to 30 reserved, so they
+#: are absent here rather than guessed at.
 #:
 #: The SPNs themselves are a different matter: there are thousands, they are
 #: defined in SAE J1939-71, and that document cannot be shipped in an

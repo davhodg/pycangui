@@ -11,8 +11,8 @@ the standard behaviour is visible and yours to change.  Returning None means
 "do the usual thing" and lets pycangui's own copy of the function answer, so
 return an empty string when you mean "show nothing".
 
-The failure mode identifiers are standard -- thirty-two fixed meanings from
-SAE J1939-73 -- so they are filled in.  The SPNs are not: there are thousands
+The failure mode identifiers are standard -- fixed meanings from SAE
+J1939-73 -- so they are filled in.  The SPNs are not: there are thousands
 of them, they are defined in SAE J1939-71, and that document cannot be shipped
 in an Apache-2.0 project.  The practical source for SPN names is a J1939 DBC
 (File > Load DBC), which names the signals in each PGN; SPN_NAMES below is for
