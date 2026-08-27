@@ -9,45 +9,6 @@ from dataclasses import dataclass
 GLOBAL = 0xFF
 NULL_ADDRESS = 0xFE
 
-PGN_NAMES: dict[int, str] = {
-    59392: "ACK",
-    59904: "Request",
-    60160: "TP.DT",
-    60416: "TP.CM",
-    60928: "AddressClaim",
-    61184: "ProprietaryA",
-    61440: "ERC1",
-    61441: "EBC1",
-    61442: "ETC1",
-    61443: "EEC2",
-    61444: "EEC1",
-    61445: "ETC2",
-    65132: "TCO1",
-    65198: "AT1T1I",
-    65217: "VDHR",
-    65226: "DM1",
-    65227: "DM2",
-    65228: "DM3",
-    65235: "DM11",
-    65242: "SoftwareID",
-    65247: "EEC3",
-    65248: "VD",
-    65253: "HOURS",
-    65254: "TD",
-    65257: "LFC",
-    65259: "ComponentID",
-    65260: "VI",
-    65262: "ET1",
-    65263: "EFL/P1",
-    65265: "CCVS1",
-    65266: "LFE1",
-    65269: "AMB",
-    65270: "IC1",
-    65271: "VEP1",
-    65272: "TRF1",
-    65276: "DD",
-}
-
 
 @dataclass(frozen=True, slots=True)
 class MessageId:
@@ -85,50 +46,11 @@ def pgn_mask(pgn: int) -> int:
 
 
 def pgn_label(pgn: int) -> str:
-    name = PGN_NAMES.get(pgn)
-    return f"{name} ({pgn})" if name else f"PGN {pgn} (0x{pgn:05X})"
+    """A PGN with no name to go by.  The names live in hooks/j1939.py."""
+    return f"PGN {pgn} (0x{pgn:05X})"
 
 
 # --- DM1 / DM2 -------------------------------------------------------------
-#: What each Failure Mode Identifier means (SAE J1939-73).  Fixed meanings,
-#: the same for every SPN on every ECU, so a fault reads as "voltage below
-#: normal" rather than "FMI 4".  J1939-73 leaves 22 to 30 reserved, so they
-#: are absent here rather than guessed at.
-#:
-#: The SPNs themselves are a different matter: there are thousands, they are
-#: defined in SAE J1939-71, and that document cannot be shipped in an
-#: Apache-2.0 project.  Load a J1939 DBC (File > Load DBC) to name them, or
-#: fill in hooks/j1939.py for the handful you care about.
-FMI_NAMES = {
-    0: "Data valid but above normal operating range (most severe)",
-    1: "Data valid but below normal operating range (most severe)",
-    2: "Data erratic, intermittent or incorrect",
-    3: "Voltage above normal, or shorted to high source",
-    4: "Voltage below normal, or shorted to low source",
-    5: "Current below normal or open circuit",
-    6: "Current above normal or grounded circuit",
-    7: "Mechanical system not responding or out of adjustment",
-    8: "Abnormal frequency, pulse width or period",
-    9: "Abnormal update rate",
-    10: "Abnormal rate of change",
-    11: "Root cause not known",
-    12: "Bad intelligent device or component",
-    13: "Out of calibration",
-    14: "Special instructions",
-    15: "Data valid but above normal operating range (least severe)",
-    16: "Data valid but above normal operating range (moderately severe)",
-    17: "Data valid but below normal operating range (least severe)",
-    18: "Data valid but below normal operating range (moderately severe)",
-    19: "Received network data in error",
-    20: "Data drifted high",
-    21: "Data drifted low",
-    31: "Condition exists",
-}
-
-
-def fmi_name(fmi: int) -> str:
-    """What an FMI means, or "" for the values J1939-73 leaves reserved."""
-    return FMI_NAMES.get(fmi, "")
 
 
 @dataclass(frozen=True, slots=True)

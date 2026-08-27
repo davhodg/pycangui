@@ -5,9 +5,10 @@ left to the hooks -- and the call that fetches the standard answer lives in the
 hook file, so it can be edited or removed.
 """
 
+from pathlib import Path
+
 import pytest
 
-from pycangui.j1939 import FMI_NAMES, fmi_name
 from pycangui.uds.standard import did_name, did_range
 
 
@@ -37,16 +38,21 @@ def test_every_identifier_belongs_to_some_range():
         assert did_range(did), f"0x{did:04X} came back empty"
 
 
-# --- J1939 failure modes: SAE J1939-73 ----------------------------------------------
-def test_fmi_names_cover_the_defined_values():
-    assert fmi_name(4) == "Voltage below normal, or shorted to low source"
-    assert fmi_name(31) == "Condition exists"
-    assert set(FMI_NAMES) <= set(range(32)), "an FMI is five bits"
+# --- J1939 names, which live in the hook file ---------------------------------------
+def test_the_j1939_tables_are_in_the_hook_file_not_the_package():
+    """So that what is known is visible, and adding to it is obvious."""
+    import pycangui.j1939 as pkg
 
+    assert not hasattr(pkg, "FMI_NAMES"), "the table belongs in hooks/j1939.py"
+    assert not hasattr(pkg, "PGN_NAMES"), "and so does this one"
 
-def test_reserved_fmis_say_nothing_rather_than_guess():
-    assert fmi_name(25) == ""
-    assert fmi_name(99) == ""
+    source = (Path(__file__).resolve().parents[1] / "pycangui/hooks/j1939.py").read_text(
+        encoding="utf-8"
+    )
+    assert "FMI_NAMES: dict[int, str] = {" in source
+    assert "PGN_NAMES: dict[int, str] = {" in source
+    assert '4: "Voltage below normal' in source, "filled in, not commented out"
+    assert '65226: "DM1"' in source
 
 
 # --- the hooks carry the defaults ----------------------------------------------------
@@ -60,11 +66,29 @@ def hooks(app, tmp_path, monkeypatch):
 
 
 def test_the_standard_answer_comes_through_the_hook(app, hooks):
-    """The library call is in hooks/uds.py, so a user can change or drop it."""
+    """The lookups are in the hook files, so a user can change or drop them."""
     assert hooks.call("uds", "did_label", 0xF190) == "VIN"
     assert hooks.call("j1939", "fmi_description", 3) == (
         "Voltage above normal, or shorted to high source"
     )
+    assert hooks.call("j1939", "pgn_name", 65226) == "DM1"
+
+
+def test_a_reserved_failure_mode_is_left_for_you_to_fill_in(app, hooks):
+    """22 to 30 are reserved by SAE, so pycangui does not invent them."""
+    assert hooks.call("j1939", "fmi_description", 25) is None
+
+    path = Path(hooks.ctx.hooks_dir, "j1939.py")
+    text = path.read_text(encoding="utf-8")
+    path.write_text(
+        text.replace(
+            "FMI_NAMES: dict[int, str] = {", 'FMI_NAMES: dict[int, str] = {25: "Our own mode",'
+        ),
+        encoding="utf-8",
+    )
+    hooks.reload()
+    assert not hooks.errors(), hooks.errors()
+    assert hooks.call("j1939", "fmi_description", 25) == "Our own mode"
 
 
 def test_a_user_table_wins_over_the_standard_one(app, hooks):
