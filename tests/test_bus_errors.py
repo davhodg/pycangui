@@ -134,7 +134,6 @@ def test_a_silent_bus_says_so_once(app, bus):
 
     bus._drain()
     assert notes and "nothing has been received" in notes[0]
-    assert "bitrate" in notes[0]
 
     bus._drain()
     assert len(notes) == 1, "said once, not every 20 ms"
@@ -148,3 +147,28 @@ def test_a_bus_with_traffic_says_nothing(app, bus):
     bus._drain()
     bus._drain()
     assert notes == []
+
+
+def test_the_advice_for_a_quiet_virtual_bus_is_not_about_wiring(app, bus):
+    """A loopback has no bitrate, wiring or termination to get wrong."""
+    notes = []
+    bus.note.connect(notes.append)
+    bus._connected_at = time.monotonic() - bus.QUIET_WARNING_S - 1
+    bus._seen_a_frame = False
+    bus._drain()
+
+    assert notes, "a silent bus must still say something"
+    assert "loopback" in notes[0] and "Demo CANopen device" in notes[0]
+    assert "termination" not in notes[0], "meaningless for a virtual channel"
+
+
+def test_the_advice_for_a_quiet_real_bus_is_about_wiring(app, bus):
+    bus.interface = "ixxat"  # pretend the adapter is real
+    notes = []
+    bus.note.connect(notes.append)
+    bus._connected_at = time.monotonic() - bus.QUIET_WARNING_S - 1
+    bus._seen_a_frame = False
+    bus._drain()
+
+    assert notes and "bitrate" in notes[0] and "termination" in notes[0]
+    assert "loopback" not in notes[0]

@@ -340,6 +340,28 @@ class BusManager(QObject):
                 f"{self.channel_name}: error frames stopped ({self._error_frames} in total)"
             )
 
+    def _quiet_advice(self) -> str:
+        """Why a connected channel might have heard nothing, for this channel.
+
+        A virtual channel has no bitrate, no wiring and no termination, so
+        offering those as the likely causes -- which is the right answer for
+        an adapter -- is worse than saying nothing.  It carries only what
+        pycangui itself puts on it.
+        """
+        seconds = f"{self.QUIET_WARNING_S:.0f} s"
+        if self.interface == "virtual":
+            return (
+                f"connected to {self.description}, and nothing has been received in "
+                f"{seconds}.  A virtual channel is a loopback inside pycangui: it only "
+                "carries what pycangui puts on it.  Start Tools > Demo CANopen device, "
+                "replay a log onto it, or send something from the Transmit pane."
+            )
+        return (
+            f"connected to {self.description} but nothing has been received in {seconds}.  "
+            "If the bus is not idle, the usual cause is the wrong bitrate; wiring and "
+            "termination are the others."
+        )
+
     def _update_load(self) -> None:
         now = time.monotonic()
         elapsed = now - self._bits_at
@@ -369,11 +391,7 @@ class BusManager(QObject):
             # Said once: after this the flag stops the check, whether or not a
             # frame ever turns up.
             self._seen_a_frame = True
-            self.note.emit(
-                f"{self.channel_name}: connected to {self.description} but nothing has been "
-                f"received in {self.QUIET_WARNING_S:.0f} s.  If the bus is not idle, the "
-                "usual cause is the wrong bitrate; wiring and termination are the others."
-            )
+            self.note.emit(f"{self.channel_name}: {self._quiet_advice()}")
         if self.notifier is not None and self.notifier.exception is not None:
             exc, self.notifier.exception = self.notifier.exception, None
             self.error.emit(f"Bus reader error: {exc}")

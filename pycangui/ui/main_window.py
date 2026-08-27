@@ -260,6 +260,12 @@ class MainWindow(QMainWindow):
                 f"Panes for {', '.join(hidden)} are hidden to start with: "
                 "turn any of them on in the View menu."
             )
+            # The virtual channel is the default, and it is empty until
+            # something fills it -- which is not obvious from looking at it.
+            self.log.appendPlainText(
+                "No hardware?  Connect on the virtual channel and switch on "
+                "Tools > Demo CANopen device to have something to look at."
+            )
         self.scope.restore_state(s.value("scopeSplitter"))
 
     def _reset_layout(self) -> None:
