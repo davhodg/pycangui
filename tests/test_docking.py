@@ -114,3 +114,55 @@ def test_a_pane_docked_before_the_promotion_lands_is_left_alone(app, window):
     settle(app)
     assert not dock.isFloating()
     assert window_type(dock) == Qt.Widget, "it must not be promoted while docked"
+
+
+# --- Qt puts its own flags back, so promotion has to be re-applied -------------------
+def test_the_flags_are_restored_after_qt_resets_them(app, window):
+    """What a real drag does, and what a scripted float does not.
+
+    Qt calls setWindowState again when a drag ends, which put Qt::Tool back
+    over the promotion -- so maximise was greyed out and there was no taskbar
+    entry, however well it worked when floated from code.
+    """
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    assert window_type(dock) == Qt.Window
+
+    # Exactly what Qt does at the end of a drag.
+    dock.setWindowFlags(Qt.Tool | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
+    dock.show()
+    settle(app)
+
+    assert window_type(dock) == Qt.Window, "it has to be put back, not set once"
+    assert dock.windowFlags() & Qt.WindowMaximizeButtonHint
+    assert dock.isVisible()
+
+
+def test_a_pane_being_dragged_is_left_alone(app, window):
+    """Qt carries a dock around as a frameless window while it is dragged.
+
+    Giving it a frame then would take the pane out from under the drag, so a
+    frameless floating pane is not touched.
+    """
+    dock = window._docks["uds"]
+    dock.setVisible(True)
+    dock.setFloating(True)
+    settle(app)
+
+    dock.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)  # mid-drag, as Qt has it
+    dock.show()
+    settle(app)
+    assert dock.windowFlags() & Qt.FramelessWindowHint, "the drag must not be interrupted"
+
+    dock.setWindowFlags(Qt.Tool | Qt.WindowTitleHint)  # dropped
+    dock.show()
+    settle(app)
+    assert window_type(dock) == Qt.Window, "and promoted once it is put down"
+
+
+def test_a_docked_pane_is_never_promoted(app, window):
+    dock = window._docks["canopen"]
+    dock.setVisible(True)
+    settle(app)
+    assert not dock.isFloating()
+    assert window_type(dock) == Qt.Widget

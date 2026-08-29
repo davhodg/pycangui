@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Slot
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDockWidget,
@@ -58,6 +58,16 @@ LAYOUT_VERSION = 3
 #: one.  Nothing is lost by this: a floating dock has already given up Qt's own
 #: title bar, in both cases, and relies on the frame around it.
 FLOATING_WINDOW_FLAGS = Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
+
+#: Events after which Qt may have put its own flags back.  It re-applies them
+#: whenever it moves a dock about -- at the end of a drag above all -- so the
+#: promotion cannot be done once and forgotten, which is why maximise stayed
+#: greyed out when the pane was dragged out rather than floated in code.
+PROMOTE_AFTER = (
+    QEvent.Show,
+    QEvent.WindowActivate,
+    QEvent.NonClientAreaMouseButtonRelease,
+)
 
 #: Open on a first run.  Everything else is one click away in the View menu:
 #: nine panes at once is a wall, and which of the protocol panes you want
@@ -245,6 +255,7 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QScrollArea.NoFrame)
         dock.setWidget(scroll)
         dock.topLevelChanged.connect(lambda floating, d=dock: self._on_dock_floated(d, floating))
+        dock.installEventFilter(self)
         self.addDockWidget(area, dock)
         return dock
 
@@ -261,9 +272,32 @@ class MainWindow(QMainWindow):
         # and needs it shown again -- not something to do underneath Qt.
         QTimer.singleShot(0, lambda: self._promote_floating(dock))
 
+    def eventFilter(self, watched, event) -> bool:
+        """Put the window flags back after Qt has had its way with them."""
+        if isinstance(watched, QDockWidget) and event.type() in PROMOTE_AFTER:
+            # Deferred: Qt is part way through whatever it is doing to this
+            # pane, and setWindowFlags hides and re-shows the widget.
+            QTimer.singleShot(0, lambda d=watched: self._promote_floating(d))
+        return super().eventFilter(watched, event)
+
     def _promote_floating(self, dock: QDockWidget) -> None:
         if not dock.isFloating():
-            return  # docked again in the meantime
+            return  # docked, or docked again in the meantime
+        flags = dock.windowFlags()
+        if flags & Qt.FramelessWindowHint:
+            # Still being dragged.  Qt carries a dock around as a frameless
+            # window and gives it a frame when it is dropped; putting one on
+            # now would take the pane out from under the drag.
+            return
+        if flags & Qt.WindowType_Mask == Qt.Window and flags & FLOATING_WINDOW_FLAGS == (
+            FLOATING_WINDOW_FLAGS
+        ):
+            return  # already what we want: do not hide and show it again
+        # Not enough to ask whether this is a Qt::Window.  With native window
+        # decorations -- Windows, that is -- Qt already floats a dock as one,
+        # with Qt::CustomizeWindowHint and only a title and a close button, so
+        # checking the window *type* saw nothing to do and the maximise button
+        # stayed grey.  What matters is whether the buttons are asked for.
         dock.setWindowFlags(FLOATING_WINDOW_FLAGS)
         dock.show()  # setWindowFlags hides a window
 
