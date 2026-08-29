@@ -77,10 +77,17 @@ VIRTUAL_CHANNELS = (
 #: not require it, but the slcan and serial backends do not work without it).
 SERIAL_BACKENDS = frozenset({"slcan", "serial", "robotell", "seeedstudio", "usb2can"})
 
-#: Keys that identify *which device*, rather than which channel on it.  Only
-#: used to build a readable label; every reported key is passed to the backend
-#: whether it is listed here or not.
-IDENTITY_KEYS = ("unique_hardware_id", "serial", "hw_type", "device", "vid", "pid")
+#: Keys that say *which device*, rather than which channel on it.  Used only
+#: to build a readable label; every reported key is passed to the backend
+#: whether it is listed here or not.  hw_type and the various index fields
+#: are deliberately absent: "55" identifies nothing to a human.
+IDENTITY_KEYS = ("unique_hardware_id", "serial", "device", "vid", "pid")
+
+#: Longest value worth putting in a label.  Backends report objects as well
+#: as numbers -- Vector hands back its entire channel configuration, whose
+#: repr runs to a dozen lines -- and a label is for recognising a device,
+#: not for describing it exhaustively.
+MAX_LABEL_VALUE = 40
 
 
 @dataclass(frozen=True)
@@ -183,16 +190,50 @@ def coerce_channel(interface: str, channel: object) -> object:
     return int(text) if interface in INT_CHANNEL_BACKENDS else text
 
 
+def readable(value) -> str:
+    """A short piece of text for a reported value, or "" if it has none.
+
+    A backend may report an object rather than a number.  Vector reports the
+    whole VectorChannelConfig, and printing it gives a dozen lines of ctypes
+    enums -- but it carries a name, "VN1610 Channel 1", which is exactly the
+    part worth showing.  So: scalars if they are short, otherwise a name if
+    there is one, otherwise nothing.
+    """
+    if isinstance(value, (str, int, float, bool)):
+        text = str(value)
+        return text if len(text) <= MAX_LABEL_VALUE else ""
+    name = getattr(value, "name", None)
+    if isinstance(name, str) and 0 < len(name) <= MAX_LABEL_VALUE:
+        return name
+    return ""
+
+
+def summarise(config: dict) -> str:
+    """The few words that tell one adapter from another.
+
+    Not everything the backend said: a serial number and a product name
+    identify a device, while channel_index=0 and supports_fd=True describe one
+    without distinguishing it, and the configuration object behind them is a
+    paragraph.  The full configuration still goes to can.Bus -- this is only
+    what to call it.
+    """
+    parts = []
+    for key in IDENTITY_KEYS:
+        if text := readable(config.get(key)):
+            parts.append(text)
+    # Names carried by the objects a backend reports, whatever they are called.
+    for key, value in sorted(config.items()):
+        if key in ("channel", "interface", *IDENTITY_KEYS):
+            continue
+        if not isinstance(value, (str, int, float, bool)) and (text := readable(value)):
+            parts.append(text)
+    return ", ".join(dict.fromkeys(parts))  # in order, without repeats
+
+
 def describe(config: dict) -> str:
     """A label for one detected channel, leading with what distinguishes it."""
     channel = config.get("channel", "")
-    identity = [f"{config[key]}" for key in IDENTITY_KEYS if config.get(key) not in (None, "")]
-    rest = [
-        f"{key}={value!r}"
-        for key, value in sorted(config.items())
-        if key not in ("channel", "interface", *IDENTITY_KEYS)
-    ]
-    detail = ", ".join(identity + rest)
+    detail = summarise(config)
     return f"{channel}  ({detail})" if detail else str(channel)
 
 
