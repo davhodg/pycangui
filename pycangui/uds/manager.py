@@ -5,12 +5,14 @@ for the pane, so the pane never touches udsoncan directly."""
 from __future__ import annotations
 
 import struct
+import threading
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import udsoncan
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
-from udsoncan import Request, Response, services
+from udsoncan import DataFormatIdentifier, Filesize, MemoryLocation, Request, Response, services
 from udsoncan.client import Client
 from udsoncan.connections import BaseConnection
 from udsoncan.exceptions import NegativeResponseException, TimeoutException
@@ -21,9 +23,15 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
 from pycangui.uds import UdsConfig
+from pycangui.uds.images import Image, ImageError
+from pycangui.uds.images import write as write_image
 from pycangui.uds.transport import IsoTpTransport
 
 DEFAULT_BACKEND = "can-isotp"
+
+
+class TransferCancelledError(Exception):
+    """Asked to stop, or the ECU stopped first."""
 
 
 class _TransportConnection(BaseConnection):
@@ -60,6 +68,22 @@ class _TransportConnection(BaseConnection):
             self._transport.recv(0)
 
 
+#: RequestFileTransfer modes of operation (ISO 14229-1:2013 Annex G), in the
+#: order worth offering: the ones that write, then the ones that read, then
+#: the two that are neither.
+FILE_MODES = {
+    1: "add file",
+    3: "replace file",
+    4: "read file",
+    5: "read directory",
+    2: "delete file",
+    6: "resume file",
+}
+
+#: Modes that send a local file to the ECU, and modes that bring one back.
+FILE_MODES_SENDING = (1, 3, 6)
+FILE_MODES_RECEIVING = (4, 5)
+
 SESSIONS = {1: "default", 2: "programming", 3: "extended", 4: "safety system"}
 RESETS = {1: "hard reset", 2: "key off/on", 3: "soft reset", 4: "enable rapid power shutdown"}
 
@@ -68,6 +92,8 @@ class UdsManager(QObject):
     result = Signal(str)  # one readable line per request outcome
     opened = Signal(bool)  # client open state changed
     did_value = Signal(int, bytes)  # did, raw data (for scripts / future signal hub use)
+    progress = Signal(str, int, int)  # what, bytes done, bytes expected
+    transferring = Signal(bool)  # a transfer started or finished
 
     def __init__(self, bus: BusManager, hooks: Hooks, ctx: Context) -> None:
         super().__init__()
@@ -79,6 +105,8 @@ class UdsManager(QObject):
         self.backend_name = ctx.settings.get("backends.isotp", DEFAULT_BACKEND)
         self._transport: IsoTpTransport | None = None
         self._worker = Worker()  # starts itself the first time it is used
+        self._cancel = threading.Event()
+        self._busy = False
         self._tp_timer = QTimer(self, timeout=self._tester_present_tick)
         bus.disconnected.connect(self.close)
 
@@ -329,6 +357,246 @@ class UdsManager(QObject):
 
         self._run("Raw", fn)
 
+    # --- transfers (0x34 / 0x35 / 0x36 / 0x37 / 0x38) --------------------------------
+    @property
+    def is_transferring(self) -> bool:
+        return self._busy
+
+    def cancel_transfer(self) -> None:
+        """Stop after the block in flight.
+
+        Not part way through one: the ECU has already been promised a
+        TransferData, and abandoning it half sent leaves the connection out of
+        step for every request after it.
+        """
+        if self._busy:
+            self._cancel.set()
+            self.result.emit("Transfer: stopping after this block")
+
+    def _run_transfer(self, label: str, fn: Callable[[Client], str]) -> None:
+        """Like _run, but for something that takes minutes rather than one reply."""
+        client = self.client
+        if client is None:
+            self.result.emit(f"{label}: UDS not open")
+            return
+        if self._busy:
+            self.result.emit(f"{label}: a transfer is already running")
+            return
+        self._busy = True
+        self._cancel.clear()
+        # Tester present is stopped rather than left ticking.  The worker runs
+        # one job at a time, so every tick raised during a long transfer would
+        # queue behind it and then arrive in a burst once it finished; the
+        # transfer is itself enough to keep the session alive.
+        resume_tester_present = self._tp_timer.isActive()
+        self._tp_timer.stop()
+        self.transferring.emit(True)
+
+        def job() -> str:
+            try:
+                return fn(client)
+            except TransferCancelledError as exc:
+                return f"{label}: cancelled{exc}"
+            except ImageError as exc:
+                return f"{label}: {exc}"
+            except NegativeResponseException as exc:
+                r = exc.response
+                return f"{label}: NRC 0x{r.code:02X} {r.code_name}"
+            except TimeoutException:
+                return f"{label}: timeout (no response)"
+            except OSError as exc:
+                return f"{label}: {exc}"
+
+        def done(text: str | None, error: str | None) -> None:
+            self._busy = False
+            self.transferring.emit(False)
+            if resume_tester_present and self.client is not None:
+                self.set_tester_present(True)
+            self.result.emit(text if error is None else f"{label}: {error}")
+
+        self._worker.submit(job, done)
+
+    @staticmethod
+    def _narrowest(value: int) -> int:
+        """Bits needed to write this number, never fewer than eight.
+
+        udsoncan works this out from the bit length, which makes it zero for
+        the number zero -- and then refuses the zero it just produced.  An
+        image that starts at address 0 is an ordinary thing for a bootloader
+        to be given, so the floor is put in here.
+        """
+        return max(8, ((value.bit_length() + 7) // 8) * 8)
+
+    def _memory(self, address: int, size: int, width: int | None) -> MemoryLocation:
+        """Where to write, and how wide to say it.
+
+        `width` is in bits, or None for the narrowest that fits.  Some
+        bootloaders insist on a fixed width whatever the numbers are, and
+        answer anything else with NRC 0x13.
+        """
+        return MemoryLocation(
+            address=address,
+            memorysize=size,
+            address_format=width or self._narrowest(address),
+            memorysize_format=width or self._narrowest(size),
+        )
+
+    @staticmethod
+    def _block_size(reported: int | None, override: int) -> int:
+        """How many data bytes fit in one TransferData.
+
+        maxNumberOfBlockLength counts the whole request message, so the
+        service id and the block sequence counter come out of it first.  Those
+        two bytes are the usual reason a download runs perfectly until the ECU
+        answers 0x31 to the last block.
+        """
+        if override > 0:
+            return override
+        return max(1, (reported or 4) - 2)
+
+    def _send_blocks(
+        self, c: Client, data: bytes, size: int, label: str, done: int, total: int
+    ) -> int:
+        """TransferData until the bytes run out.  Returns the new running total."""
+        sequence = 1  # ISO 14229: the first block is 1, and 0xFF is followed by 0
+        for start in range(0, len(data), size):
+            if self._cancel.is_set():
+                raise TransferCancelledError(f" after {done} of {total} bytes")
+            block = data[start : start + size]
+            c.transfer_data(sequence, block)
+            sequence = (sequence + 1) % 256
+            done += len(block)
+            self.progress.emit(label, done, total)
+        return done
+
+    def _receive_blocks(self, c: Client, expected: int, label: str) -> bytes:
+        """Empty TransferData requests until the ECU has given `expected` bytes."""
+        chunks: list[bytes] = []
+        got = 0
+        sequence = 1
+        while got < expected:
+            if self._cancel.is_set():
+                raise TransferCancelledError(f" after {got} of {expected} bytes")
+            r = c.transfer_data(sequence)
+            block = bytes(r.service_data.parameter_records or b"")
+            if not block:
+                raise TransferCancelledError(
+                    f": the ECU stopped sending after {got} of {expected} bytes"
+                )
+            chunks.append(block)
+            got += len(block)
+            sequence = (sequence + 1) % 256
+            self.progress.emit(label, min(got, expected), expected)
+        return b"".join(chunks)[:expected]
+
+    def download(
+        self, image: Image, block_size: int = 0, dfi: int = 0, width: int | None = None
+    ) -> None:
+        """Send a firmware image to the ECU: 0x34, 0x36 per block, then 0x37.
+
+        One RequestDownload per segment.  A file with gaps in it has them for a
+        reason, and filling them would write bytes the file never contained
+        over whatever the ECU had at those addresses.
+        """
+        fmt = DataFormatIdentifier(compression=(dfi >> 4) & 0xF, encryption=dfi & 0xF)
+        total = image.size
+        count = len(image.segments)
+
+        def fn(c: Client) -> str:
+            done = 0
+            for index, segment in enumerate(image.segments, 1):
+                r = c.request_download(self._memory(segment.address, len(segment), width), dfi=fmt)
+                size = self._block_size(r.service_data.max_length, block_size)
+                which = f" (segment {index} of {count})" if count > 1 else ""
+                self.result.emit(
+                    f"RequestDownload {segment.address:08X}: "
+                    f"{len(segment)} bytes in blocks of {size}{which}"
+                )
+                done = self._send_blocks(c, segment.data, size, "Download", done, total)
+                c.request_transfer_exit()
+            return f"Download complete: {total} bytes from {Path(image.path).name}"
+
+        self._run_transfer("Download", fn)
+
+    def upload(
+        self,
+        path: str,
+        address: int,
+        size: int,
+        block_size: int = 0,
+        dfi: int = 0,
+        width: int | None = None,
+    ) -> None:
+        """Read memory out of the ECU into a file: 0x35, 0x36, then 0x37.
+
+        What comes back is written exactly as it arrived, at the address it was
+        asked for, in whichever format the chosen name asks for.
+        """
+        fmt = DataFormatIdentifier(compression=(dfi >> 4) & 0xF, encryption=dfi & 0xF)
+
+        def fn(c: Client) -> str:
+            r = c.request_upload(self._memory(address, size, width), dfi=fmt)
+            block = self._block_size(r.service_data.max_length, block_size)
+            self.result.emit(f"RequestUpload {address:08X}: {size} bytes in blocks of {block}")
+            data = self._receive_blocks(c, size, "Upload")
+            c.request_transfer_exit()
+            written = write_image(path, address, data)
+            return f"Upload complete: {len(data)} bytes to {Path(path).name} ({written})"
+
+        self._run_transfer("Upload", fn)
+
+    def file_transfer(
+        self,
+        mode: int,
+        ecu_path: str,
+        local_path: str = "",
+        block_size: int = 0,
+        dfi: int = 0,
+    ) -> None:
+        """RequestFileTransfer (0x38): the ECU's own filesystem, addressed by name.
+
+        No memory address anywhere.  The path on the ECU says what is being
+        written or read, so a raw binary needs nothing else to place it.
+        """
+        name = FILE_MODES.get(mode, str(mode)).capitalize()
+        fmt = DataFormatIdentifier(compression=(dfi >> 4) & 0xF, encryption=dfi & 0xF)
+
+        def fn(c: Client) -> str:
+            payload = Path(local_path).read_bytes() if mode in FILE_MODES_SENDING else b""
+            size_arg = Filesize(uncompressed=len(payload)) if mode in FILE_MODES_SENDING else None
+            r = c.request_file_transfer(moop=mode, path=ecu_path, dfi=fmt, filesize=size_arg)
+            data = r.service_data
+            if mode == 2:  # delete: there is nothing to transfer
+                return f"Deleted {ecu_path}"
+
+            size = self._block_size(data.max_length, block_size)
+            if mode in FILE_MODES_SENDING:
+                # Resume is the whole point of mode 6: the ECU says how much of
+                # the file it already has, and the rest is sent from there.
+                start = (data.fileposition or 0) if mode == 6 else 0
+                if start:
+                    self.result.emit(f"Resuming {ecu_path} at {start} of {len(payload)} bytes")
+                rest = payload[start:]
+                self.result.emit(f"{name} {ecu_path}: {len(rest)} bytes in blocks of {size}")
+                self._send_blocks(c, rest, size, name, start, len(payload))
+                c.request_transfer_exit()
+                return f"{name} complete: {len(payload)} bytes to {ecu_path}"
+
+            expected = (
+                data.dirinfo_length
+                if mode == 5
+                else (data.filesize.uncompressed if data.filesize else 0)
+            ) or 0
+            self.result.emit(f"{name} {ecu_path}: {expected} bytes in blocks of {size}")
+            content = self._receive_blocks(c, expected, name)
+            c.request_transfer_exit()
+            if not local_path:  # a directory listing is read here, not saved
+                return f"{ecu_path}:\n{as_text(content)}"
+            Path(local_path).write_bytes(content)
+            return f"{name} complete: {len(content)} bytes to {Path(local_path).name}"
+
+        self._run_transfer(name, fn)
+
 
 # --- helpers -----------------------------------------------------------------------------
 def parse_bytes(text: str) -> bytes:
@@ -338,6 +606,21 @@ def parse_bytes(text: str) -> bytes:
         return bytes.fromhex(cleaned)
     except ValueError:
         return text.encode("ascii", "replace")
+
+
+def as_text(data: bytes) -> str:
+    """A directory listing as the ECU wrote it, or hex if it is not text.
+
+    ISO 14229-1 Annex G gives directory information as XML, so printing it a
+    byte at a time would be hiding the answer rather than giving it.
+    """
+    try:
+        text = data.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return describe_bytes(data)
+    if text and all(c.isprintable() or c in " \r\n\t" for c in text):
+        return text
+    return describe_bytes(data)
 
 
 def describe_bytes(data: bytes) -> str:

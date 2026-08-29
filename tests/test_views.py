@@ -2,7 +2,8 @@
 
 import time
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtWidgets import QWidget
 
 from pycangui import resources
 from pycangui.canopen.manager import CanopenManager
@@ -11,6 +12,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.hooks import Hooks
 from pycangui.ui.latest_model import LatestModel
+from pycangui.ui.main_window import MainWindow
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, TxView
 
@@ -233,3 +235,26 @@ def test_copy_selection_puts_rows_on_the_clipboard(app, tmp_path, monkeypatch):
     assert lines[1].split("\t")[1] == "CAN 1"
     assert lines[1].split("\t")[3] == "185"
     assert len(lines) == 2  # header plus the one selected row
+
+
+def test_no_pane_hides_a_qwidget_method(app, tmp_path, monkeypatch):
+    """A line edit stored as self.size hides QWidget.size().
+
+    DetachedPane asks the pane it is handed for its size, so a pane with an
+    attribute named after a QWidget method cannot be detached -- and nothing
+    else would have said so until somebody tried it.
+    """
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    hidden = [
+        f"{name}.{attr}"
+        for name, dock in window._docks.items()
+        if (pane := dock.widget()) is not None
+        for attr, value in vars(pane).items()
+        # Qt keeps its own bound signals in here too, and those are meant to be
+        # there; a child widget under one of those names is the mistake.
+        if isinstance(value, QWidget) and callable(getattr(QWidget, attr, None))
+    ]
+    assert not hidden, f"these shadow a QWidget method: {hidden}"
+    window.close()

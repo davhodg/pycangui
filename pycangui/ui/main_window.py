@@ -163,7 +163,7 @@ class MainWindow(QMainWindow):
         self._add_dock("scope", "Signals and Plot", self.scope, Qt.LeftDockWidgetArea)
         self.canopen_view = CanopenView(self.canopen, self.hooks, self.ctx)
         self._add_dock("canopen", "CANopen", self.canopen_view, Qt.RightDockWidgetArea)
-        self.uds_view = UdsView(self.uds, self.ctx)
+        self.uds_view = UdsView(self.uds, self.ctx, self.confirm)
         self._add_dock("uds", "UDS", self.uds_view, Qt.RightDockWidgetArea)
         self.j1939_view = J1939View(self.j1939, self.ctx)
         self._add_dock("j1939", "J1939", self.j1939_view, Qt.RightDockWidgetArea)
