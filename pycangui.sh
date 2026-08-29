@@ -82,6 +82,19 @@ BANNER
  this folder later takes seconds not minutes.
 
 DONE
+elif ! .venv/bin/python build/check_deps.py >/dev/null 2>&1; then
+    # A .venv built before a dependency was added is short of it, and nothing
+    # would say so beyond an ImportError on the way up.  Asked on every start,
+    # because that is when it matters.
+    echo
+    echo "pycangui needs libraries that this folder does not have yet."
+    echo "Installing them; this is much quicker than the first setup was."
+    echo
+    if command -v uv >/dev/null 2>&1; then
+        uv pip install --python .venv/bin/python -e ".[dev]" || exit 1
+    else
+        .venv/bin/python -m pip install -e ".[dev]" || exit 1
+    fi
 fi
 
 exec .venv/bin/python -m pycangui "$@"

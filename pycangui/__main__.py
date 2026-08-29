@@ -4,10 +4,9 @@ import importlib
 import importlib.util
 import sys
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from pycangui import APP_NAME
-from pycangui.ui.main_window import MainWindow
 
 #: Imported by ``--selftest``.  These are the modules a packaged build is most
 #: likely to be missing, because they are loaded by name at run time and so no
@@ -18,6 +17,7 @@ SELFTEST_MODULES = (
     "isotp",
     "j1939",
     "udsoncan",
+    "bincopy",
     "pyqtgraph",
     "numpy",
     "pycangui.canopen.manager",
@@ -75,9 +75,26 @@ def selftest() -> int:
 def main() -> int:
     if "--selftest" in sys.argv:
         return selftest()
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_NAME)  # QSettings uses these two for the registry/ini path
+
+    # Imported here rather than at the top of the file so that a library which
+    # is not installed becomes a dialog.  Started from pycangui.cmd there is no
+    # console -- it runs pythonw -- so an ImportError on the way up is a window
+    # that never appears and not one word about why.
+    try:
+        from pycangui.ui.main_window import MainWindow
+    except ImportError as exc:
+        QMessageBox.critical(
+            None,
+            f"{APP_NAME} cannot start",
+            f"A library {APP_NAME} needs is missing:\n\n    {exc}\n\n"
+            "Start it with pycangui.cmd (or pycangui.sh), which installs "
+            "anything missing before starting.",
+        )
+        return 1
+
     window = MainWindow()
     window.show()
     return app.exec()
