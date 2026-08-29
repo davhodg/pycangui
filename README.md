@@ -71,18 +71,16 @@ Hold **Ctrl** while dragging one, or it will dock again at the first
 opportunity -- the main window is looking for somewhere to put it the whole
 time.  Drag it back to dock it, or use *View > Dock all panes*.
 
-A pane that is out grows a small strip of buttons at its top right, and loses
-it again when it goes back:
+A pane that is out grows two buttons at its top right, and loses them again
+when it goes back.  Each says what pressing it will do, so **Pin** becomes
+**Unpin** and **Detach** becomes **Attach**; hover for what they mean.
 
-* **Pin** keeps it above other windows -- pycangui's and everyone else's.
-* **Detach** takes the pane out of its dock altogether, into a window with no
-  parent: nothing then tries to dock it, it gets a taskbar entry of its own,
-  and it can be sent to another display and left there.
-* **Dock** puts it back in the main window.
-
-Closing a detached window closes the pane, as closing a docked one does, and
-*View* shows it again.  The same three are in *View > Undocked panes*, which
-appears when something is out.
+Pinning keeps a pane above every other window, pycangui's and everyone
+else's.  Detaching takes it out of its dock altogether, into a window with no
+parent: nothing then tries to dock it, it gets a taskbar entry of its own, and
+it can be sent to another display and left there.  Closing that window closes
+the pane, as closing a docked one does, and *View* shows it again.
+*View > Dock all panes* gathers everything up.
 
 **File > Load DBC...** decodes matching frames.  Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
