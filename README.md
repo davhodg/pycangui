@@ -59,8 +59,8 @@ where you like: the arrangement is remembered.
 **File > Load DBC...** decodes matching frames.  Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
 the end of its message, both common in files real tools produce -- is offered
-for loading anyway rather than simply refused; *Tools > Relax DBC checks*
-makes that the default and stops the asking.  Signals with a `VAL_` table can
+for loading anyway rather than simply refused; turning off *Tools > Strict DBC
+checks* stops the asking.  Signals with a `VAL_` table can
 be transmitted by name or by number, and the names are listed in the tooltip.
 
 Once loaded: the trace shows the message
