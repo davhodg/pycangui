@@ -1,4 +1,4 @@
-"""Undocking a pane makes it a window, and docking it again is unchanged."""
+"""Undocked panes: left as Qt makes them, with two things they can be asked."""
 
 import pytest
 from PySide6.QtCore import QSettings, Qt
@@ -18,13 +18,8 @@ def window(app, tmp_path, monkeypatch):
 
 
 def settle(app, times=5):
-    """Promotion is deferred a turn, so let the event loop run."""
     for _ in range(times):
         app.processEvents()
-
-
-def window_type(dock):
-    return dock.windowFlags() & Qt.WindowType_Mask
 
 
 def float_out(app, dock):
@@ -33,120 +28,98 @@ def float_out(app, dock):
     settle(app)
 
 
-# --- undocking -----------------------------------------------------------------------
-def test_an_undocked_pane_becomes_a_real_window(app, window):
-    """Qt floats a dock as a tool window: no maximise button, no taskbar entry."""
-    dock = window._docks["canopen"]
-    float_out(app, dock)
-
-    assert dock.isFloating()
-    assert window_type(dock) == Qt.Window, "a tool window is not what undocking means"
-    flags = dock.windowFlags()
-    assert flags & Qt.WindowMaximizeButtonHint, "the button that was missing"
-    assert flags & Qt.WindowMinimizeButtonHint
-    assert dock.isVisible(), "setWindowFlags hides a window; it has to be shown again"
+def submenu_titles(window):
+    return [action.text() for action in window._undocked_menu.actions() if action.menu()]
 
 
-def test_it_can_actually_maximise(app, window):
-    dock = window._docks["canopen"]
-    float_out(app, dock)
-    dock.showMaximized()
-    settle(app)
-    assert dock.isMaximized()
-    dock.showNormal()
+def entries_for(window, title):
+    for action in window._undocked_menu.actions():
+        if action.text() == title and action.menu():
+            return [a.text() for a in action.menu().actions()]
+    return []
 
 
-# --- docking again, which must be exactly as it was -----------------------------------
-def test_docking_again_needs_nothing_undone(app, window):
-    """The condition on all of this: the way back is unchanged.
+# --- floating is Qt's own, untouched --------------------------------------------------
+def test_floating_is_left_as_qt_makes_it(app, window):
+    """Promotion is gone: Qt's floating pane docks back readily and stays on top.
 
-    Qt reparents the pane and restores the flags itself, so nothing promotion
-    did has to be reversed.
+    Making it a plain window bought a maximise button and cost both of those,
+    which was the wrong trade.  Detaching is where a real window lives now.
     """
     dock = window._docks["canopen"]
     float_out(app, dock)
-    assert window_type(dock) == Qt.Window
+    assert dock.isFloating()
+    assert not dock.windowFlags() & Qt.WindowStaysOnTopHint, "not until it is asked for"
 
+
+def test_docking_again_still_works(app, window):
+    dock = window._docks["canopen"]
+    float_out(app, dock)
     dock.setFloating(False)
     settle(app)
     assert not dock.isFloating()
-    assert window_type(dock) == Qt.Widget, "back to being a child of the main window"
-    assert window.dockWidgetArea(dock) != Qt.NoDockWidgetArea
-    assert dock.isVisible()
-
-
-def test_the_cycle_survives_repeating(app, window):
-    dock = window._docks["uds"]
-    for _ in range(3):
-        float_out(app, dock)
-        assert window_type(dock) == Qt.Window
-        dock.setFloating(False)
-        settle(app)
-        assert window_type(dock) == Qt.Widget
     assert window.dockWidgetArea(dock) != Qt.NoDockWidgetArea
 
 
-def test_dock_all_panes_brings_every_one_back(app, window):
-    """A window of its own can end up behind the main one; this is the way back."""
-    docks = [window._docks[name] for name in ("canopen", "uds", "xcp")]
-    for dock in docks:
-        float_out(app, dock)
-    assert all(d.isFloating() for d in docks)
+# --- the menu appears only when there is something to use it on ----------------------
+def test_the_menu_is_empty_until_a_pane_is_undocked(app, window):
+    assert not window._undocked_menu.isEnabled()
+    assert submenu_titles(window) == []
 
-    window._dock_all()
-    settle(app)
-    assert not any(d.isFloating() for d in docks)
-    assert all(window.dockWidgetArea(d) != Qt.NoDockWidgetArea for d in docks)
-    assert "Docked 3 pane(s)" in window.log.toPlainText()
+    float_out(app, window._docks["canopen"])
+    assert window._undocked_menu.isEnabled()
+    assert submenu_titles(window) == ["CANopen"]
+    assert "Always on top" in entries_for(window, "CANopen")
+    assert "Detach into its own window" in entries_for(window, "CANopen")
 
 
-def test_dock_all_panes_says_so_when_there_is_nothing_to_do(app, window):
-    window._dock_all()
-    assert "No panes are undocked" in window.log.toPlainText()
-
-
-def test_a_pane_docked_before_the_promotion_lands_is_left_alone(app, window):
-    """Promotion is deferred, so the pane may be docked again before it runs."""
-    dock = window._docks["canopen"]
-    dock.setVisible(True)
-    dock.setFloating(True)
-    dock.setFloating(False)  # no event loop in between
-    settle(app)
-    assert not dock.isFloating()
-    assert window_type(dock) == Qt.Widget, "it must not be promoted while docked"
-
-
-# --- Qt puts its own flags back, so promotion has to be re-applied -------------------
-def test_the_flags_are_restored_after_qt_resets_them(app, window):
-    """What a real drag does, and what a scripted float does not.
-
-    Qt calls setWindowState again when a drag ends, which put Qt::Tool back
-    over the promotion -- so maximise was greyed out and there was no taskbar
-    entry, however well it worked when floated from code.
-    """
+def test_it_empties_again_when_the_pane_goes_back(app, window):
     dock = window._docks["canopen"]
     float_out(app, dock)
-    assert window_type(dock) == Qt.Window
+    dock.setFloating(False)
+    settle(app)
+    assert not window._undocked_menu.isEnabled()
 
-    # Exactly what Qt does at the end of a drag.
-    dock.setWindowFlags(Qt.Tool | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
-    dock.show()
+
+def test_the_ctrl_tip_is_said_once(app, window):
+    float_out(app, window._docks["canopen"])
+    assert "Hold Ctrl" in window.log.toPlainText()
+    before = window.log.toPlainText().count("Hold Ctrl")
+
+    float_out(app, window._docks["uds"])
+    assert window.log.toPlainText().count("Hold Ctrl") == before, "said once, not per pane"
+
+
+# --- always on top --------------------------------------------------------------------
+def test_always_on_top_is_applied(app, window):
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    window._set_pane_on_top("canopen", True)
+    settle(app)
+    assert dock.windowFlags() & Qt.WindowStaysOnTopHint
+
+    window._set_pane_on_top("canopen", False)
+    settle(app)
+    assert not dock.windowFlags() & Qt.WindowStaysOnTopHint
+
+
+def test_always_on_top_survives_qt_resetting_the_flags(app, window):
+    """Qt re-applies its own flags at the end of a drag, over the top of ours."""
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    window._set_pane_on_top("canopen", True)
     settle(app)
 
-    assert window_type(dock) == Qt.Window, "it has to be put back, not set once"
-    assert dock.windowFlags() & Qt.WindowMaximizeButtonHint
-    assert dock.isVisible()
+    dock.setWindowFlags(Qt.Tool | Qt.WindowTitleHint)  # what Qt does when a drag ends
+    dock.show()
+    settle(app)
+    assert dock.windowFlags() & Qt.WindowStaysOnTopHint, "it has to be put back"
 
 
 def test_a_pane_being_dragged_is_left_alone(app, window):
-    """Qt carries a dock around as a frameless window while it is dragged.
-
-    Giving it a frame then would take the pane out from under the drag, so a
-    frameless floating pane is not touched.
-    """
-    dock = window._docks["uds"]
-    dock.setVisible(True)
-    dock.setFloating(True)
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    window._set_pane_on_top("canopen", True)
     settle(app)
 
     dock.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)  # mid-drag, as Qt has it
@@ -154,15 +127,81 @@ def test_a_pane_being_dragged_is_left_alone(app, window):
     settle(app)
     assert dock.windowFlags() & Qt.FramelessWindowHint, "the drag must not be interrupted"
 
-    dock.setWindowFlags(Qt.Tool | Qt.WindowTitleHint)  # dropped
-    dock.show()
+
+# --- detaching ------------------------------------------------------------------------
+def test_detaching_gives_the_pane_a_window_with_no_parent(app, window):
+    """An owned window is the thing Windows keeps out of the taskbar."""
+    float_out(app, window._docks["canopen"])
+    window._detach_pane("canopen")
     settle(app)
-    assert window_type(dock) == Qt.Window, "and promoted once it is put down"
+
+    detached = window._detached["canopen"]
+    assert detached.parent() is None, "an owner is what costs it the taskbar entry"
+    assert detached.isVisible()
+    assert detached.pane is window.canopen_view.parent().parent(), "the pane moved, not a copy"
+    assert window._docks["canopen"].widget() is None
+    assert not window._docks["canopen"].isVisible()
 
 
-def test_a_docked_pane_is_never_promoted(app, window):
+def test_closing_a_detached_pane_puts_it_back(app, window):
+    """There is no dock to drag it into while it is out, so closing is the way back."""
+    float_out(app, window._docks["canopen"])
+    window._detach_pane("canopen")
+    settle(app)
+
+    window._detached["canopen"].close()
+    settle(app)
     dock = window._docks["canopen"]
-    dock.setVisible(True)
+    assert "canopen" not in window._detached
+    assert dock.widget() is not None, "the pane came back with it"
+    assert not dock.isFloating() and dock.isVisible()
+    assert window.dockWidgetArea(dock) != Qt.NoDockWidgetArea
+
+
+def test_a_detached_pane_can_be_kept_on_top(app, window):
+    float_out(app, window._docks["canopen"])
+    window._set_pane_on_top("canopen", True)
+    window._detach_pane("canopen")
     settle(app)
-    assert not dock.isFloating()
-    assert window_type(dock) == Qt.Widget
+    assert window._detached["canopen"].windowFlags() & Qt.WindowStaysOnTopHint
+
+
+def test_the_menu_offers_the_way_back_while_detached(app, window):
+    float_out(app, window._docks["canopen"])
+    window._detach_pane("canopen")
+    settle(app)
+    entries = entries_for(window, "CANopen")
+    assert "Put back in the window" in entries
+    assert "Detach into its own window" not in entries, "it already is"
+
+
+def test_dock_all_panes_collects_detached_ones_too(app, window):
+    float_out(app, window._docks["canopen"])
+    float_out(app, window._docks["uds"])
+    window._detach_pane("canopen")
+    settle(app)
+
+    window._dock_all()
+    settle(app)
+    assert not window._detached
+    assert not any(d.isFloating() for d in window._docks.values())
+
+
+def test_closing_the_main_window_closes_detached_panes(app, tmp_path, monkeypatch):
+    """They have no parent, so they would keep the application running."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    win = MainWindow()
+    win.show()
+    app.processEvents()
+    win._docks["canopen"].setVisible(True)
+    win._docks["canopen"].setFloating(True)
+    app.processEvents()
+    win._detach_pane("canopen")
+    app.processEvents()
+    detached = win._detached["canopen"]
+
+    win.close()
+    app.processEvents()
+    assert not detached.isVisible()
+    assert not win._detached
