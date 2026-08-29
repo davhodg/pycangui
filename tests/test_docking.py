@@ -116,7 +116,10 @@ def test_each_button_says_what_pressing_it_will_do(app, window):
     bar.move_button.click()  # Attach
     settle(app)
     assert "canopen" not in window._detached
-    assert not bar.isVisible(), "docked again, so the buttons go"
+    assert bar.move_button.text() == "Detach"
+    # Back where it came from, which was floating, so it is still out and
+    # still carries its buttons.
+    assert bar.isVisible()
 
 
 def test_the_buttons_explain_themselves_on_hover(app, window):
@@ -205,7 +208,7 @@ def test_attaching_from_the_button_shows_it(app, window):
     dock = window._docks["canopen"]
     assert "canopen" not in window._detached
     assert dock.isVisible() and dock.widget().isVisible()
-    assert not dock.isFloating()
+    assert dock.isFloating(), "it was floating before it was detached"
 
 
 def test_the_pane_is_still_shown_after_a_round_trip(app, window):
@@ -296,3 +299,83 @@ def test_pinning_one_of_several_undocked_panes_leaves_the_others(app, window):
     assert canopen.windowFlags() & Qt.WindowStaysOnTopHint
     assert not uds.windowFlags() & Qt.WindowStaysOnTopHint, "one pin, one pane"
     assert window._bars["uds"].isVisible() and not window._bars["uds"].pin.isChecked()
+
+
+# --- what survives a restart ----------------------------------------------------------
+def restart(app, tmp_path, previous=None):
+    """Close a window if given, then open a fresh one on the same settings."""
+    if previous is not None:
+        previous.close()
+        settle(app)
+    window = MainWindow()
+    window.show()
+    settle(app, 10)
+    return window
+
+
+def test_a_pane_restored_floating_has_its_buttons(app, tmp_path, monkeypatch):
+    """A restored pane is shown after topLevelChanged says it is floating.
+
+    Asking then found it invisible and left it with no buttons at all, on a
+    pane sitting in plain sight.
+    """
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = restart(app, tmp_path)
+    float_out(app, first._docks["canopen"])
+    first._bars["canopen"].pin.setChecked(True)
+    settle(app)
+
+    second = restart(app, tmp_path, first)
+    assert second._docks["canopen"].isFloating() and second._docks["canopen"].isVisible()
+    assert second._bars["canopen"].isVisible(), "an undocked pane must carry its buttons"
+    assert second._bars["canopen"].pin.isChecked(), "and remember it was pinned"
+    assert second._bars["canopen"].pin.text() == "Unpin"
+    second.close()
+
+
+def test_a_detached_pane_comes_back_detached(app, tmp_path, monkeypatch):
+    """It came back closed: putting it away on the way out was the last thing
+    saved about it."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = restart(app, tmp_path)
+    float_out(app, first._docks["canopen"])
+    first._detach_pane("canopen")
+    settle(app)
+
+    second = restart(app, tmp_path, first)
+    assert "canopen" in second._detached, "left on another screen, so put it back there"
+    assert second._detached["canopen"].isVisible()
+    assert second._detached["canopen"].pane.isVisible()
+    assert second._bars["canopen"].isVisible()
+    second.close()
+
+
+def test_attaching_returns_a_pane_to_where_it_was(app, window):
+    """It was undocked before it was detached, so that is where it goes back."""
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    window._detach_pane("canopen")
+    settle(app)
+
+    window._bars["canopen"].move_button.click()  # Attach
+    settle(app)
+    assert dock.isFloating(), "the main window is not where it came from"
+    assert dock.isVisible()
+    assert window._bars["canopen"].isVisible(), "still out, so still has its buttons"
+
+
+def test_attaching_a_pane_detached_from_docked_docks_it(app, window):
+    """And one that was docked goes back to being docked."""
+    dock = window._docks["canopen"]
+    dock.setVisible(True)
+    settle(app)
+    window._detach_pane("canopen")
+    settle(app)
+
+    window._restore_pane("canopen")
+    settle(app)
+    assert not dock.isFloating()
+    assert dock.isVisible()
+    assert not window._bars["canopen"].isVisible(), "docked panes carry no buttons"

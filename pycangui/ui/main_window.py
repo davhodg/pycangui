@@ -135,6 +135,10 @@ class MainWindow(QMainWindow):
         self._detached: dict[str, DetachedPane] = {}
         #: Panes asked to stay above other windows.
         self._on_top: set[str] = set()
+        #: Where a detached pane came from: floating or docked, and if it was
+        #: floating, where it was.  Attach puts it back there rather than
+        #: dropping it into the main window, which is not where it was.
+        self._came_from: dict[str, tuple[bool, object]] = {}
         self._said_undock_tip = False
         self.trace = TraceView(self.hooks, self.ctx)
         self.trace.classifiers.append(self.dbc.message_name)
@@ -227,6 +231,7 @@ class MainWindow(QMainWindow):
         self.help_menu = HelpMenu(self)
         self._default_state = self.saveState(LAYOUT_VERSION)
         self._restore_layout()
+        self._restore_pane_state()
 
     # --- helpers -------------------------------------------------------------
     def _console_namespace(self) -> dict:
@@ -302,11 +307,16 @@ class MainWindow(QMainWindow):
         self._show_pane_bar(name)
 
     def eventFilter(self, watched, event) -> bool:
-        """Put "always on top" back after Qt has had its way with the flags."""
+        """Put "always on top" and the buttons back after Qt has moved a pane."""
         if isinstance(watched, QDockWidget) and event.type() in REAPPLY_AFTER:
             # Deferred: Qt is part way through whatever it is doing to this
             # pane, and setWindowFlags hides and re-shows the widget.
             QTimer.singleShot(0, lambda d=watched: self._apply_on_top(d))
+            # A pane restored floating is shown *after* topLevelChanged says so,
+            # so asking then found it invisible and left it without its buttons.
+            name = next((n for n, d in self._docks.items() if d is watched), "")
+            if name:
+                QTimer.singleShot(0, lambda n=name: self._show_pane_bar(n))
         return super().eventFilter(watched, event)
 
     # --- what an undocked pane can be asked to do ------------------------------------
@@ -339,8 +349,31 @@ class MainWindow(QMainWindow):
         if wanted:
             dock.raise_()
 
+    def _save_pane_state(self) -> None:
+        """Which panes are out on their own, and which are pinned.
+
+        Settled choices like any other, so they survive a restart: a pane left
+        on a second monitor came back closed, because putting it away on the
+        way out was the last thing saved about it.
+        """
+        self.ctx.settings.set("panes.detached", sorted(self._detached))
+        self.ctx.settings.set("panes.on_top", sorted(self._on_top))
+
+    def _restore_pane_state(self) -> None:
+        """Detach and pin again whatever was when pycangui last closed."""
+        self._on_top = {
+            name for name in self.ctx.settings.get("panes.on_top", []) if name in self._docks
+        }
+        for name in self.ctx.settings.get("panes.detached", []):
+            if name in self._docks:
+                self._detach_pane(name)
+        for name in self._docks:
+            self._apply_on_top(self._docks[name])
+            self._show_pane_bar(name)
+
     def _set_pane_on_top(self, name: str, on: bool) -> None:
         self._on_top.add(name) if on else self._on_top.discard(name)
+        self._save_pane_state()
         if (window := self._detached.get(name)) is not None:
             window.set_on_top(on)
         elif (dock := self._docks.get(name)) is not None:
@@ -357,6 +390,9 @@ class MainWindow(QMainWindow):
         widget = dock.widget()
         if widget is None:
             return
+        # Where to put it back.  Attaching a pane that was floating should
+        # float it again: the main window is not where it was.
+        self._came_from[name] = (dock.isFloating(), dock.geometry())
         dock.setWidget(None)
         dock.hide()
         window = DetachedPane(name, dock.windowTitle(), widget, on_top=name in self._on_top)
@@ -364,6 +400,7 @@ class MainWindow(QMainWindow):
         self._detached[name] = window
         self._show_pane_bar(name)
         window.show()
+        self._save_pane_state()
 
     @Slot(str)
     def _reattach_pane(self, name: str, show: bool = False) -> None:
@@ -382,9 +419,13 @@ class MainWindow(QMainWindow):
         if (widget := window.release()) is not None:
             dock.setWidget(widget)
             widget.show()  # release() reparented it, which hides it
-        dock.setFloating(False)
+        was_floating, geometry = self._came_from.pop(name, (False, None))
+        dock.setFloating(was_floating)
+        if was_floating and geometry is not None:
+            dock.setGeometry(geometry)
         dock.setVisible(show)
         self._show_pane_bar(name)
+        self._save_pane_state()
 
     def _restore_pane(self, name: str) -> None:
         """Bring a detached pane back into the window, and show it."""
@@ -459,6 +500,10 @@ class MainWindow(QMainWindow):
         s.setValue("geometry", self.saveGeometry())
         s.setValue("windowState", self.saveState(LAYOUT_VERSION))
         s.setValue("scopeSplitter", self.scope.save_state())
+        # Saved before they are closed: closing one puts its pane away, and
+        # what is saved should be how things were left, not how they were
+        # tidied up.
+        self._save_pane_state()
         for name in list(self._detached):
             # Parentless windows of their own, so they would keep the
             # application running after the main window had gone.
