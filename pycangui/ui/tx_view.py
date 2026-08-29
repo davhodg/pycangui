@@ -227,6 +227,10 @@ class TxView(QWidget):
                     )
                     child.setData(0, ROLE_KIND, "signal")
                     child.setFlags(child.flags() | Qt.ItemIsEditable)
+                    if signal.choices:
+                        # Both spellings work, so say what the names are.
+                        names = "\n".join(f"  {v} = {n}" for v, n in sorted(signal.choices.items()))
+                        child.setToolTip(COL_DATA, f"Type a number or a name:\n{names}")
                     item.addChild(child)
                 item.setExpanded(bool(spec.get("expanded", False)))
             # message rows driven by a database are not edited directly
@@ -313,14 +317,24 @@ class TxView(QWidget):
             spec["pdo"] = item.data(0, ROLE_PDO)
         return spec
 
-    def _child_values(self, item: QTreeWidgetItem) -> dict[str, float]:
-        values: dict[str, float] = {}
+    def _child_values(self, item: QTreeWidgetItem, names: bool = False) -> dict[str, object]:
+        """The signal values as typed.
+
+        With ``names``, text that is not a number is passed through as text:
+        a DBC signal with a VAL_ table takes "Run" as readily as 1, and
+        cantools maps it back.  A name that is not in the table then fails the
+        encode and says so, which beats the alternative -- this used to
+        substitute 0.0 for anything it could not parse, so a typo in a signal
+        value silently transmitted zero.
+        """
+        values: dict[str, object] = {}
         for i in range(item.childCount()):
             child = item.child(i)
+            text = child.text(COL_DATA).strip()
             try:
-                values[child.text(COL_NAME)] = float(child.text(COL_DATA))
+                values[child.text(COL_NAME)] = float(text)
             except ValueError:
-                values[child.text(COL_NAME)] = 0.0
+                values[child.text(COL_NAME)] = text if names else 0.0
         return values
 
     def _encode_row(self, row: int) -> None:
@@ -334,7 +348,8 @@ class TxView(QWidget):
                 return
             try:
                 # padding=False: unused bits stay 0 so the hex matches what was typed
-                data = msg.encode(self._child_values(item), padding=False, strict=False)
+                values = self._child_values(item, names=True)
+                data = msg.encode(values, padding=False, strict=False)
             except Exception as exc:  # cantools raises for out-of-range / bad signals
                 self.ctx.log(f"TX {msg.name}: encode failed: {exc}")
                 return
@@ -515,6 +530,13 @@ def _default_value(signal) -> float:
 
 
 def _format(value) -> str:
-    if isinstance(value, str):
-        return value
-    return f"{value:g}"
+    """Text for a signal value.
+
+    A signal with a VAL_ table and a start value hands back cantools'
+    NamedSignalValue -- "Run" rather than 1.  It is not a str subclass and it
+    cannot be formatted as a number, so a bare f"{value:g}" raises on any DBC
+    that names its enumerations, which most real ones do.
+    """
+    if isinstance(value, (int, float)):
+        return f"{value:g}"
+    return str(value)

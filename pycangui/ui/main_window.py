@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QMainWindow,
+    QMessageBox,
     QPlainTextEdit,
     QScrollArea,
     QStatusBar,
@@ -187,6 +188,14 @@ class MainWindow(QMainWindow):
         verbose.setCheckable(True)
         verbose.setToolTip("Relay the CAN libraries' info messages to the event log too")
         verbose.toggled.connect(self._set_verbose_logging)
+        self.relaxed_dbc = tools_menu.addAction("Relax DBC checks")
+        self.relaxed_dbc.setCheckable(True)
+        self.relaxed_dbc.setChecked(bool(self.ctx.settings.get("dbc.relaxed", False)))
+        self.relaxed_dbc.setToolTip(
+            "Load databases that fail cantools' strict check -- overlapping signals, "
+            "a signal past the end of its message -- without being asked each time"
+        )
+        self.relaxed_dbc.toggled.connect(self._set_relaxed_dbc)
 
         self.help_menu = HelpMenu(self)
         self._default_state = self.saveState(LAYOUT_VERSION)
@@ -295,6 +304,15 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_error(self, text: str) -> None:
         self.log.appendPlainText(f"ERROR: {text}")
+
+    @Slot(bool)
+    def _set_relaxed_dbc(self, on: bool) -> None:
+        self.ctx.settings.set("dbc.relaxed", on)
+        self.log.appendPlainText(
+            "DBC files will be loaded with the strict checks relaxed."
+            if on
+            else "DBC files will be checked strictly, and you will be asked if one fails."
+        )
 
     @Slot(bool)
     def _set_verbose_logging(self, on: bool) -> None:
@@ -454,21 +472,57 @@ class MainWindow(QMainWindow):
             str(self.ctx.user_dir),
             "CAN databases (*.dbc *.kcd *.sym *.arxml)",
         )
-        if path and self._load_dbc(path):
+        if path and self._load_dbc(path, offer_relaxing=True):
             paths = list(self.ctx.settings.get("dbc.paths", []))
             if path not in paths:
                 self.ctx.settings.set("dbc.paths", [*paths, path])
 
-    def _load_dbc(self, path: str) -> bool:
+    def _load_dbc(self, path: str, offer_relaxing: bool = False) -> bool:
+        """Load a database, strictly unless told otherwise.
+
+        A strict failure is offered as a question rather than treated as the
+        end of it: the check is about how well formed the file is, and a
+        database that fails it is usually still perfectly usable.  Only when
+        the user asked for this file, though -- the databases restored at
+        startup must not put a dialog in front of a window that is still
+        opening.
+        """
+        relaxed = bool(self.ctx.settings.get("dbc.relaxed", False))
         try:
-            db = self.dbc.load(path)
+            db = self.dbc.load(path, strict=not relaxed)
         except Exception as exc:  # cantools parse errors come in many types
             self.log.appendPlainText(f"DBC load failed: {path}: {exc}")
-            return False
-        self.log.appendPlainText(f"Loaded {path}: {len(db.messages)} messages")
+            if relaxed or not offer_relaxing or not self._offer_relaxed_load(path, exc):
+                return False
+            try:
+                db = self.dbc.load(path, strict=False)
+            except Exception as exc2:
+                self.log.appendPlainText(f"DBC load failed even relaxed: {path}: {exc2}")
+                return False
+            self.log.appendPlainText(f"Loaded {path} with the strict checks relaxed")
+        how = " (strict checks relaxed)" if relaxed else ""
+        self.log.appendPlainText(f"Loaded {path}: {len(db.messages)} messages{how}")
         if hasattr(self, "tx"):
             self.tx.refresh_sources()
         return True
+
+    def _offer_relaxed_load(self, path: str, exc: Exception) -> bool:
+        """Ask whether to load a database that failed cantools' strict check."""
+        return (
+            QMessageBox.question(
+                self,
+                "Load this database anyway?",
+                f"{Path(path).name} did not pass the strict check:\n\n{exc}\n\n"
+                "That check is about how well formed the file is, not about whether "
+                "its messages can be used, and databases that fail it are usually "
+                "still fine to read and transmit.\n\n"
+                "Load it with the check relaxed?  Tools > Relax DBC checks makes "
+                "this the default and stops the asking.",
+                QMessageBox.Yes | QMessageBox.Cancel,
+                QMessageBox.Yes,
+            )
+            == QMessageBox.Yes
+        )
 
     def _unload_dbcs(self) -> None:
         for path in list(self.dbc.databases):

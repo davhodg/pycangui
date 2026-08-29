@@ -24,9 +24,18 @@ class DbcDecoder:
         self.errors = 0
 
     # --- files ---------------------------------------------------------------------
-    def load(self, path: str | Path) -> Database:
+    def load(self, path: str | Path, strict: bool = True) -> Database:
+        """Load a database.
+
+        ``strict`` is cantools' own check that the file is well formed --
+        signals that do not overlap, and none running past the end of its
+        message.  Plenty of working databases fail it: it is a statement about
+        the file, not about whether the messages in it can be used.  So it
+        stays on by default, and relaxing it is offered when a load fails
+        rather than being the silent default.
+        """
         path = str(path)
-        db = cantools.database.load_file(path)
+        db = cantools.database.load_file(path, strict=strict)
         self.databases[path] = db
         self._rebuild()
         return db
