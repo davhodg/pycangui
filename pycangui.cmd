@@ -13,7 +13,7 @@ rem goto; .gitattributes enforces that.
 setlocal
 cd /d "%~dp0"
 
-if exist ".venv\Scripts\python.exe" goto :run
+if exist ".venv\Scripts\python.exe" goto :check
 
 echo.
 echo ============================================================
@@ -78,6 +78,27 @@ if not defined UV (
     echo  rather than minutes the next time you do it.
 )
 echo.
+
+
+rem A .venv built before a dependency was added is short of it, and the
+rem launcher below runs pythonw, which has no console for the ImportError
+rem to appear in: the window would simply never open.  So ask on every
+rem start, not only when .venv is missing altogether.
+:check
+".venv\Scripts\python.exe" "build\check_deps.py" >nul 2>&1
+if not errorlevel 1 goto :run
+echo.
+echo  pycangui needs libraries that this folder does not have yet.
+echo  Installing them; this is much quicker than the first setup was.
+echo.
+set UV=
+where uv >nul 2>&1 && set UV=1
+if defined UV (
+    uv pip install --python ".venv\Scripts\python.exe" -e ".[dev]"
+) else (
+    ".venv\Scripts\python.exe" -m pip install -e ".[dev]"
+)
+if errorlevel 1 goto :fail
 
 :run
 start "" ".venv\Scripts\pythonw.exe" -m pycangui %*
