@@ -66,11 +66,7 @@ REAPPLY_AFTER = (
 #: Said once a session, the first time a pane is undocked.  Qt hit-tests the
 #: dock areas the whole time one is being dragged, so without this a pane
 #: cannot be put in front of the main window at all.
-UNDOCK_TIP = (
-    "Hold Ctrl while dragging an undocked pane to stop it docking again.  "
-    "View > Undocked panes has Always on top, and Detach to give it a window "
-    "of its own with a taskbar entry."
-)
+UNDOCK_TIP = "Hold Ctrl while dragging an undocked pane to stop it docking again."
 
 #: Open on a first run.  Everything else is one click away in the View menu:
 #: nine panes at once is a wall, and which of the protocol panes you want
@@ -204,9 +200,6 @@ class MainWindow(QMainWindow):
         for dock in self.findChildren(QDockWidget):
             view_menu.addAction(dock.toggleViewAction())
         view_menu.addSeparator()
-        self._undocked_menu = view_menu.addMenu("Undocked panes")
-        self._undocked_menu.setToolTipsVisible(True)
-        self._refresh_undocked_menu()
         view_menu.addAction("Dock all panes", self._dock_all)
         view_menu.addAction("Reset layout", self._reset_layout)
 
@@ -276,7 +269,7 @@ class MainWindow(QMainWindow):
         bar.hide()
         bar.pinned.connect(lambda on, n=name: self._set_pane_on_top(n, on))
         bar.detach_requested.connect(lambda n=name: self._detach_pane(n))
-        bar.dock_requested.connect(lambda n=name: self._dock_pane(n))
+        bar.attach_requested.connect(lambda n=name: self._restore_pane(n))
         self._bars[name] = bar
 
         container = QWidget()
@@ -300,11 +293,13 @@ class MainWindow(QMainWindow):
         that come with it.
         """
         name = next((n for n, d in self._docks.items() if d is dock), "")
-        if floating and not self._said_undock_tip:
+        # Visible as well as floating.  A pane that was undocked and then
+        # closed is restored floating but hidden, which said this at every
+        # start-up with nothing on screen to say it about.
+        if floating and dock.isVisible() and not self._said_undock_tip:
             self._said_undock_tip = True
             self.log.appendPlainText(UNDOCK_TIP)
         self._show_pane_bar(name)
-        self._refresh_undocked_menu()
 
     def eventFilter(self, watched, event) -> bool:
         """Put "always on top" back after Qt has had its way with the flags."""
@@ -322,16 +317,9 @@ class MainWindow(QMainWindow):
         if bar is None or dock is None:
             return
         detached = name in self._detached
-        bar.setVisible(dock.isFloating() or detached)
-        bar.detach.setVisible(not detached)  # it already is
+        bar.setVisible((dock.isFloating() and dock.isVisible()) or detached)
+        bar.set_detached(detached)
         bar.set_pinned(name in self._on_top)
-
-    def _dock_pane(self, name: str) -> None:
-        """The Dock button: from floating, or from a window of its own."""
-        if name in self._detached:
-            self._restore_pane(name)
-        elif (dock := self._docks.get(name)) is not None:
-            dock.setFloating(False)
 
     def _apply_on_top(self, dock: QDockWidget) -> None:
         """Keep a floating pane above other windows, if that was asked for."""
@@ -376,8 +364,6 @@ class MainWindow(QMainWindow):
         self._detached[name] = window
         self._show_pane_bar(name)
         window.show()
-        self.log.appendPlainText(f"{dock.windowTitle()} detached.  Close it to put it back.")
-        self._refresh_undocked_menu()
 
     @Slot(str)
     def _reattach_pane(self, name: str, show: bool = False) -> None:
@@ -399,7 +385,6 @@ class MainWindow(QMainWindow):
         dock.setFloating(False)
         dock.setVisible(show)
         self._show_pane_bar(name)
-        self._refresh_undocked_menu()
 
     def _restore_pane(self, name: str) -> None:
         """Bring a detached pane back into the window, and show it."""
@@ -408,42 +393,6 @@ class MainWindow(QMainWindow):
         self._reattach_pane(name, show=True)
         if (dock := self._docks.get(name)) is not None:
             dock.show()
-
-    def _refresh_undocked_menu(self) -> None:
-        """Rebuild the Undocked panes menu.  Empty and disabled when nothing is.
-
-        The options only make sense for a pane that is out of the window, so
-        that is the only time they are offered.
-        """
-        menu = self._undocked_menu
-        menu.clear()
-        out = [
-            (name, dock)
-            for name, dock in self._docks.items()
-            if dock.isFloating() or name in self._detached
-        ]
-        menu.setEnabled(bool(out))
-        if not out:
-            return
-        for name, dock in out:
-            pane = menu.addMenu(dock.windowTitle())
-            on_top = pane.addAction("Always on top")
-            on_top.setCheckable(True)
-            on_top.setChecked(name in self._on_top)
-            on_top.toggled.connect(lambda on, n=name: self._set_pane_on_top(n, on))
-            if name in self._detached:
-                pane.addAction("Put back in the window", lambda n=name: self._restore_pane(n))
-            else:
-                detach = pane.addAction(
-                    "Detach into its own window", lambda n=name: self._detach_pane(n)
-                )
-                detach.setToolTip(
-                    "No dock behind it, so nothing tries to re-dock it, and it gets "
-                    "a taskbar entry of its own"
-                )
-                pane.addAction("Dock", lambda n=name: self._docks[n].setFloating(False))
-        menu.addSeparator()
-        menu.addAction("Hold Ctrl while dragging to stop a pane docking").setEnabled(False)
 
     def _arrange_default(self) -> None:
         """The layout a first run opens with: the trace, the log, and the plot.
