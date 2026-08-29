@@ -50,6 +50,15 @@ from pycangui.xcp.manager import XcpManager
 # default instead of being restored with panes missing.
 LAYOUT_VERSION = 3
 
+#: Flags for a pane that has been undocked.  Qt floats a dock as a Qt::Tool
+#: window, which by design has no minimise or maximise button and no taskbar
+#: entry -- a tool window is meant to hover over the window that owns it.  But
+#: undocking a pane means making it a window, and people expect a window to
+#: maximise and to be reachable from the taskbar, so it is promoted to a real
+#: one.  Nothing is lost by this: a floating dock has already given up Qt's own
+#: title bar, in both cases, and relies on the frame around it.
+FLOATING_WINDOW_FLAGS = Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
+
 #: Open on a first run.  Everything else is one click away in the View menu:
 #: nine panes at once is a wall, and which of the protocol panes you want
 #: depends entirely on what you have plugged in.
@@ -175,6 +184,7 @@ class MainWindow(QMainWindow):
         for dock in self.findChildren(QDockWidget):
             view_menu.addAction(dock.toggleViewAction())
         view_menu.addSeparator()
+        view_menu.addAction("Dock all panes", self._dock_all)
         view_menu.addAction("Reset layout", self._reset_layout)
 
         self._demo: DemoDevice | None = None
@@ -234,8 +244,28 @@ class MainWindow(QMainWindow):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
         dock.setWidget(scroll)
+        dock.topLevelChanged.connect(lambda floating, d=dock: self._on_dock_floated(d, floating))
         self.addDockWidget(area, dock)
         return dock
+
+    def _on_dock_floated(self, dock: QDockWidget, floating: bool) -> None:
+        """Make an undocked pane a proper window.
+
+        Docking again needs nothing undone: Qt reparents the pane and puts the
+        flags back itself, so the way back is exactly what it was.
+        """
+        if not floating:
+            return
+        # Deferred by one turn of the event loop: this arrives in the middle of
+        # Qt's own handling of the undrag, and setWindowFlags hides the widget
+        # and needs it shown again -- not something to do underneath Qt.
+        QTimer.singleShot(0, lambda: self._promote_floating(dock))
+
+    def _promote_floating(self, dock: QDockWidget) -> None:
+        if not dock.isFloating():
+            return  # docked again in the meantime
+        dock.setWindowFlags(FLOATING_WINDOW_FLAGS)
+        dock.show()  # setWindowFlags hides a window
 
     def _arrange_default(self) -> None:
         """The layout a first run opens with: the trace, the log, and the plot.
@@ -277,6 +307,20 @@ class MainWindow(QMainWindow):
                 "Tools > Demo CANopen device to have something to look at."
             )
         self.scope.restore_state(s.value("scopeSplitter"))
+
+    def _dock_all(self) -> None:
+        """Put every undocked pane back.
+
+        A floating pane is a window of its own, so it can end up behind the
+        main one -- the taskbar will find it, but this is the way back that
+        does not depend on knowing where it went.
+        """
+        floating = [dock for dock in self._docks.values() if dock.isFloating()]
+        for dock in floating:
+            dock.setFloating(False)
+        self.log.appendPlainText(
+            f"Docked {len(floating)} pane(s)." if floating else "No panes are undocked."
+        )
 
     def _reset_layout(self) -> None:
         self.restoreState(self._default_state, LAYOUT_VERSION)

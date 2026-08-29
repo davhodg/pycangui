@@ -66,6 +66,13 @@ depends on what you have plugged in; turn any on in the **View** menu, and
 *View > Reset layout* puts everything back.  Panes are dockable, so drag them
 where you like: the arrangement is remembered.
 
+Drag a pane out of the window, or double-click its title bar, and it becomes a
+window of its own -- with minimise and maximise buttons and its own taskbar
+entry, so it can be filled out on a second monitor while the main window keeps
+the trace.  Drag it back to dock it again, or use *View > Dock all panes*,
+which is the way back that does not depend on knowing where the window went:
+unlike Qt's usual floating pane, a real window can end up behind the main one.
+
 **File > Load DBC...** decodes matching frames.  Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
 the end of its message, both common in files real tools produce -- is offered
