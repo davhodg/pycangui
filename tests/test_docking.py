@@ -416,3 +416,62 @@ def test_an_emptied_dock_stays_hidden_however_often_qt_shows_it(app, window):
         dock.show()  # as Qt does while restoring a layout
         settle(app)
         assert not dock.isVisible()
+
+
+# --- a pinned pane must not trap a dialog behind it -----------------------------------
+def open_dialog(app, window, then):
+    """Show a modal dialog the way a confirmation does, and act while it is up."""
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QMessageBox
+
+    box = QMessageBox(
+        QMessageBox.Warning, "Connect?", "...", QMessageBox.Yes | QMessageBox.Cancel, window
+    )
+    QTimer.singleShot(50, lambda: (then(), box.accept()))
+    box.exec()
+    settle(app)
+
+
+def test_a_pinned_detached_pane_stands_down_for_a_dialog(app, window):
+    """It was above everything, the dialog included.
+
+    The dialog could not be read, and the window hiding it could not be moved
+    either, because the dialog was holding the application: a lock-up with
+    nothing on screen to explain it.
+    """
+    float_out(app, window._docks["canopen"])
+    window._bars["canopen"].pin.setChecked(True)
+    window._detach_pane("canopen")
+    settle(app)
+    detached = window._detached["canopen"]
+    on_top = lambda: bool(detached.windowFlags() & Qt.WindowStaysOnTopHint)  # noqa: E731
+    assert on_top()
+
+    seen = []
+    open_dialog(app, window, lambda: seen.append(on_top()))
+    assert seen == [False], "the dialog has to be reachable"
+    assert on_top(), "and the pane goes back on top afterwards"
+    assert detached.isVisible() and detached.pane.isVisible()
+
+
+def test_a_pinned_floating_pane_stands_down_too(app, window):
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    window._bars["canopen"].pin.setChecked(True)
+    settle(app)
+    on_top = lambda: bool(dock.windowFlags() & Qt.WindowStaysOnTopHint)  # noqa: E731
+    assert on_top()
+
+    seen = []
+    open_dialog(app, window, lambda: seen.append(on_top()))
+    assert seen == [False]
+    assert on_top()
+    assert dock.widget().isVisible()
+
+
+def test_an_unpinned_pane_is_left_alone_by_a_dialog(app, window):
+    float_out(app, window._docks["canopen"])
+    settle(app)
+    before = window._docks["canopen"].windowFlags()
+    open_dialog(app, window, lambda: None)
+    assert window._docks["canopen"].windowFlags() == before, "nothing to stand down from"
