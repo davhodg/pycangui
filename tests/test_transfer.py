@@ -59,6 +59,10 @@ class FakeEcu:
         self.written += data
         return reply(sequence_number_echo=sequence_number, parameter_records=b"")
 
+    def routine_control(self, routine_id, control, data=None):
+        self.calls.append(("routine", routine_id, control, bytes(data or b"")))
+        return reply(routine_status_record=b"")
+
     def request_transfer_exit(self, data=None):
         self.calls.append(("exit",))
         return reply(parameter_records=b"")
@@ -421,3 +425,97 @@ def test_cancel_is_only_offered_while_something_is_running(view):
     assert view.stop.isEnabled() and not view.start.isEnabled()
     view.manager.transferring.emit(False)
     assert not view.stop.isEnabled() and view.start.isEnabled()
+
+
+# --- the routines around a download ---------------------------------------------------
+def test_nothing_is_erased_unless_it_is_asked_for(manager, images_dir):
+    manager.client = ecu = FakeEcu()
+    manager.download(images.read(images_dir("a.hex", (0x8000, bytes(8)))))
+    assert not [c for c in ecu.calls if c[0] == "routine"]
+
+
+def test_every_segment_is_erased_before_any_is_written(manager, images_dir):
+    """Two segments can share a flash block, and erasing between them would
+    take the first one back out again."""
+    manager.client = ecu = FakeEcu()
+    image = images.read(images_dir("split.hex", (0x1000, bytes(4)), (0x9000, bytes(4))))
+    manager.download(image, erase=True)
+
+    kinds = [c[0] for c in ecu.calls]
+    assert kinds[:2] == ["routine", "routine"], "both erases, then the first download"
+    assert kinds[2] == "download"
+    assert [c[1] for c in ecu.calls if c[0] == "routine"] == [0xFF00, 0xFF00]
+    assert all(c[2] == 1 for c in ecu.calls if c[0] == "routine"), "startRoutine"
+
+
+def test_the_erase_is_told_which_addresses_to_erase(manager, images_dir):
+    manager.client = ecu = FakeEcu()
+    manager.download(images.read(images_dir("a.hex", (0x8000, bytes(0x10)))), erase=True)
+    record = next(c[3] for c in ecu.calls if c[0] == "routine")
+    # 0x12: the length takes one byte and the address two, then each of them.
+    assert record == bytes([0x12, 0x80, 0x00, 0x10]), "format byte, address, length"
+
+
+def test_a_forced_width_reaches_the_erase_too(manager, images_dir):
+    """An ECU that wants 32-bit addresses wants them in the routine as well."""
+    manager.client = ecu = FakeEcu()
+    manager.download(images.read(images_dir("a.hex", (0x8000, bytes(4)))), erase=True, width=32)
+    record = next(c[3] for c in ecu.calls if c[0] == "routine")
+    assert record[0] == 0x44 and len(record) == 9
+
+
+def test_the_check_routine_runs_after_each_segment(manager, images_dir):
+    manager.client = ecu = FakeEcu()
+    image = images.read(images_dir("split.hex", (0x1000, bytes(4)), (0x9000, bytes(4))))
+    lines = []
+    manager.result.connect(lines.append)
+    manager.download(image, check=0x0202)
+
+    kinds = [c[0] for c in ecu.calls]
+    assert kinds.index("routine") > kinds.index("exit"), "after the transfer, not before it"
+    assert [c[1] for c in ecu.calls if c[0] == "routine"] == [0x0202, 0x0202]
+    assert any("Check memory" in line for line in lines), "named, not just numbered"
+
+
+def test_the_standard_routines_are_named(manager):
+    assert manager.routine_label(0xFF00) == "FF00 (Erase memory)"
+    assert manager.routine_label(0xFF01) == "FF01 (Check programming dependencies)"
+    assert manager.routine_label(0x0202) == "0202 (Check memory)", "a convention, but a known one"
+    assert manager.routine_label(0x1234) == "1234", "nothing to say beyond the number"
+
+
+def test_erase_and_check_are_only_offered_for_a_download(view):
+    assert view.erase.isEnabled() and view.check.isEnabled()
+    assert not view.check_routine.isEnabled(), "nothing to configure until it is wanted"
+    view.check.setChecked(True)
+    assert view.check_routine.isEnabled()
+
+    view.operation.setCurrentIndex(view.operation.findData("upload"))
+    assert not view.erase.isEnabled(), "an upload writes nothing, so erases nothing"
+    assert not view.check.isEnabled()
+
+
+def test_the_pane_passes_them_on(view, images_dir, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    view.manager.client = ecu = FakeEcu()
+    view.local.setText(images_dir("a.hex", (0x8000, bytes(8))))
+    view._reload_image()
+    view.erase.setChecked(True)
+    view.check.setChecked(True)
+    view.check_routine.setText("0301")
+
+    view.start.click()
+    assert [c[1] for c in ecu.calls if c[0] == "routine"] == [0xFF00, 0x0301]
+
+
+def test_the_question_says_the_memory_will_be_erased(view, images_dir, monkeypatch):
+    asked = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *a, **k: (asked.append(a[2]), QMessageBox.Cancel)[1]
+    )
+    view.manager.client = FakeEcu()
+    view.local.setText(images_dir("a.hex", (0x8000, bytes(8))))
+    view._reload_image()
+    view.erase.setChecked(True)
+    view.start.click()
+    assert "erased first" in asked[0]

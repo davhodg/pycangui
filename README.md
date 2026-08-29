@@ -232,6 +232,21 @@ ECU's own `maxNumberOfBlockLength`, less the two bytes the service id and the
 block counter take out of it; both that and the address width can be overridden
 for bootloaders that insist.
 
+A download is rarely just a download.  **Erase first** runs RoutineControl
+0xFF00 over every segment before the first one is written -- all of them first,
+not each before its own download, because two segments can share a flash block
+and erasing between them would take the first one back out again.  **Check
+after** runs a routine once each segment has been sent, so the ECU can check
+what it was given.  Only the erase is standardised: ISO 14229-1 Annex F names
+four routines in all (erase memory 0xFF00, check programming dependencies
+0xFF01, erase mirror memory DTCs 0xFF02, deploy loop 0xE200) and everything
+from 0x0200 to 0xDFFF is manufacturer specific.  The 0x0202 offered for the
+check is the number the HIS/AUTOSAR bootloaders settled on rather than a
+standard, so it is editable.  What either routine is *sent* comes from
+`hooks/uds.py::erase_options` and `::check_options`, which default to an
+address and length in the ISO format; a bootloader wanting a CRC of what it
+was given is a couple of lines there.
+
 The **J1939** pane lists nodes (NAME from address claims), active faults from
 DM1 with lamp status, and reassembled multi-packet messages (TP.BAM / TP.CM via
 can-j1939).  Claim a tester address to send requests and multi-packet PGNs; a
