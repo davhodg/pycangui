@@ -78,9 +78,14 @@ when it goes back.  Each says what pressing it will do, so **Pin** becomes
 Pinning keeps a pane above every other window, pycangui's and everyone
 else's.  Detaching takes it out of its dock altogether, into a window with no
 parent: nothing then tries to dock it, it gets a taskbar entry of its own, and
-it can be sent to another display and left there.  Closing that window closes
-the pane, as closing a docked one does, and *View* shows it again.
-*View > Dock all panes* gathers everything up.
+it can be sent to another display and left there.  Attaching puts it back
+where it came from -- floating if that is where it was, docked if not --
+while closing that window closes the pane, as closing a docked one does, and
+*View* shows it again.  *View > Dock all panes* gathers everything up.
+
+Which panes are out on their own, and which are pinned, are remembered like
+the rest of the settings: a pane left on a second monitor is still there next
+time.
 
 **File > Load DBC...** decodes matching frames.  Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
