@@ -327,6 +327,12 @@ class MainWindow(QMainWindow):
         if bar is None or dock is None:
             return
         detached = name in self._detached
+        if detached and dock.isVisible():
+            # There is nothing in it -- the pane is in a window of its own --
+            # so an empty one must not be left on screen.  Qt shows a restored
+            # floating dock *after* the layout is put back, which is after the
+            # pane was taken out of it, so hiding it once is not enough.
+            dock.hide()
         bar.setVisible((dock.isFloating() and dock.isVisible()) or detached)
         bar.set_detached(detached)
         bar.set_pinned(name in self._on_top)

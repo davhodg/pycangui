@@ -379,3 +379,40 @@ def test_attaching_a_pane_detached_from_docked_docks_it(app, window):
     assert not dock.isFloating()
     assert dock.isVisible()
     assert not window._bars["canopen"].isVisible(), "docked panes carry no buttons"
+
+
+def test_a_detached_pane_leaves_no_empty_dock_behind(app, tmp_path, monkeypatch):
+    """Starting up with a detached pane showed an empty one in the main window.
+
+    Qt shows a restored floating dock *after* the layout is put back, which is
+    after the pane has been taken out of it -- so hiding it once, at the moment
+    of detaching, was not enough.
+    """
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = restart(app, tmp_path)
+    float_out(app, first._docks["canopen"])
+    first._bars["canopen"].pin.setChecked(True)
+    first._detach_pane("canopen")
+    settle(app)
+
+    second = restart(app, tmp_path, first)
+    dock = second._docks["canopen"]
+    assert "canopen" in second._detached
+    assert not dock.isVisible(), "an emptied dock must not be left on screen"
+    assert dock.widget() is None, "because the pane is in the window of its own"
+    assert second._detached["canopen"].pane.isVisible()
+    assert second._bars["canopen"].pin.isChecked(), "and it is still pinned"
+    second.close()
+
+
+def test_an_emptied_dock_stays_hidden_however_often_qt_shows_it(app, window):
+    float_out(app, window._docks["canopen"])
+    window._detach_pane("canopen")
+    settle(app)
+
+    dock = window._docks["canopen"]
+    for _ in range(3):
+        dock.show()  # as Qt does while restoring a layout
+        settle(app)
+        assert not dock.isVisible()
