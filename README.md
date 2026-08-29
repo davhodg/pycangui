@@ -214,6 +214,24 @@ was doing) and raw requests.  Data identifiers are named from ISO 14229-1 --
 `F190 (VIN)` -- and negative responses by their standard code name.  The demo device answers on
 0x7E0/0x7E8 with a byte-invert key.
 
+Its **Transfer** box moves firmware, in either direction.  *Download* sends an
+Intel HEX, S-record or raw binary to the ECU (0x34, a TransferData per block,
+then 0x37); *Upload* reads memory back into a file of whichever of those
+formats the name you choose asks for.  The rest of the list are RequestFileTransfer
+(0x38) operations -- add, replace, resume, read, delete, list a directory -- which
+name a file on the ECU's own filesystem instead of an address.
+
+A hex or S-record file carries its own addresses, so the address box fills itself
+in and stays locked: the file is right, and a typed number could only be wrong.
+A raw binary carries none, so for one of those the address has to be supplied.
+Gaps are left as gaps -- a file with a hole in it gets a RequestDownload each side
+of it rather than being padded, because padding would write bytes the file never
+contained over whatever the ECU had there.  A bootloader that wants one
+contiguous block should be given a contiguous file.  Blocks are sized from the
+ECU's own `maxNumberOfBlockLength`, less the two bytes the service id and the
+block counter take out of it; both that and the address width can be overridden
+for bootloaders that insist.
+
 The **J1939** pane lists nodes (NAME from address claims), active faults from
 DM1 with lamp status, and reassembled multi-packet messages (TP.BAM / TP.CM via
 can-j1939).  Claim a tester address to send requests and multi-packet PGNs; a
@@ -297,6 +315,7 @@ packages, as the LGPL requires.
 | [pywin32](https://github.com/mhammond/pywin32) | Needed by can-j1939 on Windows | PSF-2.0 |
 | [udsoncan](https://github.com/pylessard/python-udsoncan) | UDS client | MIT |
 | [can-isotp](https://github.com/pylessard/python-can-isotp) | ISO-TP transport for UDS | MIT |
+| [bincopy](https://github.com/eerimoq/bincopy) | Intel HEX / S-record / binary firmware files | MIT |
 
 XCP on CAN and its A2L reader are implemented directly in pycangui (no XCP
 library dependency).

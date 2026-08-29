@@ -27,6 +27,9 @@ dependencies = [
     "udsoncan>=1.23",
     "can-isotp>=2.0",
     "can-j1939>=2.0",
+    # Intel HEX, Motorola S-record and raw binary, for UDS transfers.  MIT, by
+    # the author of cantools, which is already here.
+    "bincopy>=20.0",
     "pywin32>=306; sys_platform == 'win32'",  # can-j1939 imports pythoncom on Windows
 ]
 

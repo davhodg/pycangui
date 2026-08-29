@@ -35,6 +35,7 @@ HIDDEN = [
     "isotp",
     "j1939",
     "udsoncan",
+    "bincopy",
     # pywin32 is a distribution, not a module: name the modules it provides
     "pythoncom",  # can-j1939 imports this on Windows
     "win32com",
