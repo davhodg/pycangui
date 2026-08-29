@@ -13,6 +13,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
+from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
 from pycangui.ui.plot_view import PlotView
 from pycangui.ui.signals_view import SignalsView
@@ -22,10 +23,10 @@ LIST_WIDTH = 320
 
 
 class ScopeView(QWidget):
-    def __init__(self, hub: SignalHub, now: callable) -> None:
+    def __init__(self, hub: SignalHub, now: callable, ctx: Context | None = None) -> None:
         super().__init__()
         self.signals_view = SignalsView(hub)
-        self.plot = PlotView(hub, now)
+        self.plot = PlotView(hub, now, ctx)
         self.signals_view.plot_toggled.connect(self.plot.set_plotted)
 
         self.splitter = QSplitter(Qt.Horizontal)

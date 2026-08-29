@@ -117,7 +117,7 @@ class MainWindow(QMainWindow):
         self.trace.classifiers.append(self.j1939.classify)
         self.trace.classifiers.append(self.xcp.classify)
         self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
-        self.scope = ScopeView(self.signals, self.bus.now)
+        self.scope = ScopeView(self.signals, self.bus.now, self.ctx)
         # The two halves stay reachable by name: the Python console and the
         # docs refer to window.signals_view and window.plot.
         self.signals_view = self.scope.signals_view

@@ -18,13 +18,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
+from pycangui.ui.persist import remember
 
 COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
 
 
 class PlotView(QWidget):
-    def __init__(self, hub: SignalHub, now: callable) -> None:
+    def __init__(self, hub: SignalHub, now: callable, ctx: Context | None = None) -> None:
         super().__init__()
         self.hub = hub
         self._now = now  # () -> seconds on the same clock as the hub samples
@@ -57,6 +59,12 @@ class PlotView(QWidget):
         layout.setContentsMargins(2, 2, 2, 2)
         layout.addLayout(bar)
         layout.addWidget(self.plot)
+
+        if ctx is not None:
+            # Not Pause: an application that started up paused, showing a
+            # frozen plot of a live bus, would be reported as a bug.
+            remember(ctx, "plot.window_s", self.window_s)
+            remember(ctx, "plot.follow", self.follow)
 
         self._timer = QTimer(self, interval=50, timeout=self._redraw)
         self._timer.start()
