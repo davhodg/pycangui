@@ -222,20 +222,32 @@ def test_a_typed_channel_still_works(app, bar, monkeypatch):
     assert bar.current_extra() == {}
 
 
-def test_the_box_offers_something_before_anyone_presses_detect(app, bar):
-    """The complaint: picking virtual still left you typing a channel in."""
+def test_the_box_holds_only_what_was_last_used(app, bar):
+    """Nothing is offered until the list is opened.
+
+    Filling it in advance meant showing invented names as though they had been
+    found -- an IXXAT was offered channels 0 to 3 whether or not any existed.
+    """
     labels = [bar.channel.itemText(i) for i in range(bar.channel.count())]
-    # The labels describe what each channel carries, so match the channel.
-    channels = [(bar.channel.itemData(i) or {}).get("channel") for i in range(bar.channel.count())]
-    assert "vcan0" in channels, f"the demo channel must be offered: {labels}"
-    assert any("demo" in x.lower() for x in labels), labels
+    assert labels == ["vcan0"], f"just the remembered channel: {labels}"
+    assert bar.current_channel() == "vcan0", "and it is still what Connect would use"
     assert bar.channel.isEnabled()
 
 
-def test_changing_interface_offers_that_interfaces_channels(app, bar, monkeypatch):
+def test_opening_the_list_is_what_fills_it(app, bar):
+    bar._on_channel_expanded()
+    labels = [bar.channel.itemText(i) for i in range(bar.channel.count())]
+    assert any("demo" in x.lower() for x in labels), labels
+    assert any("empty" in x for x in labels), labels
+
+
+def test_changing_interface_empties_the_list_until_it_is_opened(app, bar, monkeypatch):
     monkeypatch.setattr(can, "detect_available_configs", lambda *_a, **_k: [])
     bar.interface.setCurrentText("pcan")
-    settle(app, lambda: not bar._detecting)
+    app.processEvents()
+    assert bar.channel.count() == 0, "a PEAK has nothing to do with the last channel"
+
+    bar._on_channel_expanded()
     labels = [bar.channel.itemText(i) for i in range(bar.channel.count())]
     assert "PCAN_USBBUS1" in labels, f"PCAN declares that default itself: {labels}"
     assert "vcan0" not in labels, "the virtual channel must not follow you to a PEAK"

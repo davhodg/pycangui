@@ -100,13 +100,12 @@ the second dongle really does connect to the second dongle, not to whichever
 the driver enumerated first.  Which one you chose is saved with the channel and
 shown in its description.
 
-Where an interface cannot enumerate, the box is still a list rather than a
-blank: it offers the conventional names for that interface, the default the
-backend declares in its own signature (PCAN says `PCAN_USBBUS1`, NI-XNET says
-`CAN1`), and for the serial adapters the serial ports actually present.  It
-stays editable, so anything typed in is kept -- including while a detection is
-still running.  An interface with no channel at all would show the box empty
-and greyed.
+Where an interface cannot enumerate, opening the list still offers something
+rather than nothing: the conventional names for that interface, the default
+the backend declares in its own signature (PCAN says `PCAN_USBBUS1`, NI-XNET
+says `CAN1`), and for the serial adapters the serial ports actually present.
+The box stays editable, so anything typed in is kept.  An interface with no
+channel at all shows it empty and greyed.
 
 The status bar shows each channel's state and its **bus load** -- an estimate
 from the frames seen and the configured bitrate, including nominal bit
