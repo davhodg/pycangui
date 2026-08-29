@@ -37,6 +37,7 @@ from pycangui.core.classify import ERROR_GROUP, GROUPS, classify, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.ui.latest_model import ROLE_CHANNEL, ROLE_GROUP, ROLE_SEARCH, LatestModel
+from pycangui.ui.persist import remember
 from pycangui.ui.trace_model import TraceModel
 
 MODES = ("Chronological", "Latest per ID")
@@ -161,6 +162,10 @@ class TraceView(QWidget):
         menu.addAction("Show all", self._show_all)
         self.filter_button.setMenu(menu)
         self._apply_filter(save=False)
+
+        # Settled choices about how to read the trace, not what is in it.
+        remember(ctx, "trace.mode", self.mode)
+        remember(ctx, "trace.autoscroll", self.autoscroll)
 
         clear = QPushButton("Clear")
         clear.clicked.connect(self.clear)

@@ -40,6 +40,16 @@ to name it, ...) with the defaults and commented examples in place; `eds/` is
 scanned for EDS files matching a node's vendor/product; `settings.json` holds
 what the GUI remembers.  Tools > Reload hooks applies edits without a restart.
 
+`settings.json` is sorted, indented JSON with dotted keys, meant to be read and
+hand-edited: the channels and their adapters, the databases loaded, the
+transmit list, which trace groups are hidden, the trace view mode, the plot
+window, the UDS and XCP addresses, whether DBC checks are strict.  Settled
+choices are kept; passing state -- a search box, a paused view, the selected
+row -- is not, because starting up paused would be a bug rather than a
+convenience.  Window geometry and the dock layout go to `QSettings` instead,
+since that is what Qt saves and restores itself; *View > Reset layout* puts
+those back.
+
 **Help > About** shows the version alongside the Python, Qt, python-can and
 canopen versions in a form you can copy into a bug report; **Help > Licences**
 shows pycangui's own Apache-2.0 licence, the NOTICE attributions and the full

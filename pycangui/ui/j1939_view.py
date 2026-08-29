@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from pycangui.core.context import Context
 from pycangui.j1939 import GLOBAL, Dm1, Name, pgn_label
 from pycangui.j1939.manager import J1939Manager
+from pycangui.ui.persist import remember
 
 ROLE_SA = Qt.UserRole
 
@@ -44,6 +45,9 @@ class J1939View(QWidget):
         self.address.setValue(0xF9)
         self.address.setDisplayIntegerBase(16)
         self.address.setPrefix("0x")
+        # Which address this tester claims is a decision about the network,
+        # not about this session.
+        remember(ctx, "j1939.address", self.address)
         self.claim_btn = QPushButton("Claim address")
         self.claim_btn.setCheckable(True)
         self.claim_btn.toggled.connect(self._toggle_claim)
