@@ -138,7 +138,7 @@ def test_detaching_gives_the_pane_a_window_with_no_parent(app, window):
     detached = window._detached["canopen"]
     assert detached.parent() is None, "an owner is what costs it the taskbar entry"
     assert detached.isVisible()
-    assert detached.pane is window.canopen_view.parent().parent(), "the pane moved, not a copy"
+    assert detached.pane.isAncestorOf(window.canopen_view), "the pane moved, not a copy"
     # Checking the window and not the pane inside it is how a window with a
     # title, a taskbar entry and nothing in it got through: Qt hides a widget
     # when its parent changes, and showing the window does not undo that.
@@ -258,3 +258,69 @@ def test_closing_the_main_window_closes_detached_panes(app, tmp_path, monkeypatc
     app.processEvents()
     assert not detached.isVisible()
     assert not win._detached
+
+
+# --- the buttons, where the pane is ---------------------------------------------------
+def test_the_buttons_are_hidden_while_the_pane_is_docked(app, window):
+    """None of them apply to a docked pane, so none of them are shown."""
+    window._docks["canopen"].setVisible(True)
+    settle(app)
+    assert not window._bars["canopen"].isVisible()
+
+
+def test_undocking_shows_them(app, window):
+    float_out(app, window._docks["canopen"])
+    bar = window._bars["canopen"]
+    assert bar.isVisible()
+    assert bar.pin.isVisible() and bar.detach.isVisible() and bar.dock.isVisible()
+
+
+def test_the_pin_button_keeps_the_pane_on_top(app, window):
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    window._bars["canopen"].pin.setChecked(True)
+    settle(app)
+    assert dock.windowFlags() & Qt.WindowStaysOnTopHint
+
+
+def test_the_dock_button_docks_it(app, window):
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    window._bars["canopen"].dock.click()
+    settle(app)
+    assert not dock.isFloating()
+    assert not window._bars["canopen"].isVisible(), "and the buttons go with it"
+
+
+def test_the_detach_button_detaches_it(app, window):
+    float_out(app, window._docks["canopen"])
+    window._bars["canopen"].detach.click()
+    settle(app)
+    assert "canopen" in window._detached
+
+
+def test_the_strip_travels_with_the_pane_and_offers_the_way_back(app, window):
+    """It is part of the pane's own content, so detaching carries it along."""
+    float_out(app, window._docks["canopen"])
+    window._detach_pane("canopen")
+    settle(app)
+
+    bar = window._bars["canopen"]
+    assert bar.isVisible(), "still there in the window of its own"
+    assert not bar.detach.isVisible(), "it already is detached"
+    assert bar.dock.isVisible()
+
+    bar.dock.click()
+    settle(app)
+    assert "canopen" not in window._detached
+    assert window._docks["canopen"].isVisible()
+    assert not bar.isVisible()
+
+
+def test_the_pin_button_follows_the_pane_out_to_its_own_window(app, window):
+    float_out(app, window._docks["canopen"])
+    window._bars["canopen"].pin.setChecked(True)
+    window._detach_pane("canopen")
+    settle(app)
+    assert window._detached["canopen"].windowFlags() & Qt.WindowStaysOnTopHint
+    assert window._bars["canopen"].pin.isChecked()
