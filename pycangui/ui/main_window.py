@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QScrollArea,
     QStatusBar,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pycangui import APP_NAME, __version__
@@ -38,6 +40,7 @@ from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.detached import DetachedPane
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
+from pycangui.ui.pane_bar import PaneBar
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
@@ -130,6 +133,8 @@ class MainWindow(QMainWindow):
 
         # --- docks -----------------------------------------------------------
         self._docks: dict[str, QDockWidget] = {}
+        #: The button strip at the top of each pane, shown when it is out.
+        self._bars: dict[str, PaneBar] = {}
         #: Panes given a window of their own, by name.
         self._detached: dict[str, DetachedPane] = {}
         #: Panes asked to stay above other windows.
@@ -261,17 +266,44 @@ class MainWindow(QMainWindow):
         scroll.setWidget(widget)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
-        dock.setWidget(scroll)
+
+        # The buttons live at the top of the pane's own content rather than in
+        # a title bar: giving a dock a custom title bar makes Qt float it
+        # frameless, which would cost it the native frame and the move, resize
+        # and close that come with it.  Hidden while the pane is docked, since
+        # none of it applies then.
+        bar = PaneBar()
+        bar.hide()
+        bar.pinned.connect(lambda on, n=name: self._set_pane_on_top(n, on))
+        bar.detach_requested.connect(lambda n=name: self._detach_pane(n))
+        bar.dock_requested.connect(lambda n=name: self._dock_pane(n))
+        self._bars[name] = bar
+
+        container = QWidget()
+        stack = QVBoxLayout(container)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(0)
+        stack.addWidget(bar)
+        stack.addWidget(scroll)
+        dock.setWidget(container)
         dock.topLevelChanged.connect(lambda floating, d=dock: self._on_dock_floated(d, floating))
         dock.installEventFilter(self)
         self.addDockWidget(area, dock)
         return dock
 
     def _on_dock_floated(self, dock: QDockWidget, floating: bool) -> None:
-        """An undocked pane is left as Qt makes it, and offered its options."""
+        """An undocked pane is left as Qt makes it, and given its buttons.
+
+        The buttons are at the top of the pane's own content, not in a title
+        bar: giving a dock a custom title bar makes Qt float it frameless, and
+        that costs it the native frame along with the move, resize and close
+        that come with it.
+        """
+        name = next((n for n, d in self._docks.items() if d is dock), "")
         if floating and not self._said_undock_tip:
             self._said_undock_tip = True
             self.log.appendPlainText(UNDOCK_TIP)
+        self._show_pane_bar(name)
         self._refresh_undocked_menu()
 
     def eventFilter(self, watched, event) -> bool:
@@ -283,6 +315,24 @@ class MainWindow(QMainWindow):
         return super().eventFilter(watched, event)
 
     # --- what an undocked pane can be asked to do ------------------------------------
+    def _show_pane_bar(self, name: str) -> None:
+        """Show the strip while the pane is out, and say what it can do."""
+        bar = self._bars.get(name)
+        dock = self._docks.get(name)
+        if bar is None or dock is None:
+            return
+        detached = name in self._detached
+        bar.setVisible(dock.isFloating() or detached)
+        bar.detach.setVisible(not detached)  # it already is
+        bar.set_pinned(name in self._on_top)
+
+    def _dock_pane(self, name: str) -> None:
+        """The Dock button: from floating, or from a window of its own."""
+        if name in self._detached:
+            self._restore_pane(name)
+        elif (dock := self._docks.get(name)) is not None:
+            dock.setFloating(False)
+
     def _apply_on_top(self, dock: QDockWidget) -> None:
         """Keep a floating pane above other windows, if that was asked for."""
         name = next((n for n, d in self._docks.items() if d is dock), "")
@@ -317,6 +367,7 @@ class MainWindow(QMainWindow):
         window = DetachedPane(name, dock.windowTitle(), widget, on_top=name in self._on_top)
         window.closed.connect(self._reattach_pane)
         self._detached[name] = window
+        self._show_pane_bar(name)
         window.show()
         self.log.appendPlainText(f"{dock.windowTitle()} detached.  Close it to put it back.")
         self._refresh_undocked_menu()
@@ -340,6 +391,7 @@ class MainWindow(QMainWindow):
             widget.show()  # release() reparented it, which hides it
         dock.setFloating(False)
         dock.setVisible(show)
+        self._show_pane_bar(name)
         self._refresh_undocked_menu()
 
     def _restore_pane(self, name: str) -> None:

@@ -71,14 +71,18 @@ Hold **Ctrl** while dragging one, or it will dock again at the first
 opportunity -- the main window is looking for somewhere to put it the whole
 time.  Drag it back to dock it, or use *View > Dock all panes*.
 
-*View > Undocked panes* appears when something is out, with two things per
-pane.  **Always on top** keeps it above other windows, pycangui's and
-everyone else's.  **Detach into its own window** goes further and takes the
-pane out of its dock altogether, into a window with no parent: nothing then
-tries to dock it, it gets a taskbar entry of its own, and it can be sent to
-another display and left there.  Closing it closes the pane, as closing a
-docked one does -- *View* shows it again -- while *Put back in the window*
-returns it to the main window.
+A pane that is out grows a small strip of buttons at its top right, and loses
+it again when it goes back:
+
+* **Pin** keeps it above other windows -- pycangui's and everyone else's.
+* **Detach** takes the pane out of its dock altogether, into a window with no
+  parent: nothing then tries to dock it, it gets a taskbar entry of its own,
+  and it can be sent to another display and left there.
+* **Dock** puts it back in the main window.
+
+Closing a detached window closes the pane, as closing a docked one does, and
+*View* shows it again.  The same three are in *View > Undocked panes*, which
+appears when something is out.
 
 **File > Load DBC...** decodes matching frames.  Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
