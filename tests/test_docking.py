@@ -139,12 +139,22 @@ def test_detaching_gives_the_pane_a_window_with_no_parent(app, window):
     assert detached.parent() is None, "an owner is what costs it the taskbar entry"
     assert detached.isVisible()
     assert detached.pane is window.canopen_view.parent().parent(), "the pane moved, not a copy"
+    # Checking the window and not the pane inside it is how a window with a
+    # title, a taskbar entry and nothing in it got through: Qt hides a widget
+    # when its parent changes, and showing the window does not undo that.
+    assert detached.pane.isVisible(), "a detached pane must not be a blank window"
+    assert not detached.pane.isHidden()
     assert window._docks["canopen"].widget() is None
     assert not window._docks["canopen"].isVisible()
 
 
-def test_closing_a_detached_pane_puts_it_back(app, window):
-    """There is no dock to drag it into while it is out, so closing is the way back."""
+def test_closing_a_detached_pane_closes_it(app, window):
+    """Closing a window means closing it, as it does for a docked pane.
+
+    The widget still goes home to its dock, so the View menu can show it
+    again -- but a pane that reappeared in the main window because you had
+    shut it would be answering a question nobody asked.
+    """
     float_out(app, window._docks["canopen"])
     window._detach_pane("canopen")
     settle(app)
@@ -153,9 +163,52 @@ def test_closing_a_detached_pane_puts_it_back(app, window):
     settle(app)
     dock = window._docks["canopen"]
     assert "canopen" not in window._detached
-    assert dock.widget() is not None, "the pane came back with it"
-    assert not dock.isFloating() and dock.isVisible()
+    assert not dock.isVisible(), "closed means closed, not docked"
+    assert not dock.toggleViewAction().isChecked(), "and the View menu agrees"
+    assert dock.widget() is not None, "the pane went home even so"
+    assert not dock.isFloating()
+
+
+def test_the_view_menu_can_show_it_again_after_that(app, window):
+    float_out(app, window._docks["canopen"])
+    window._detach_pane("canopen")
+    settle(app)
+    window._detached["canopen"].close()
+    settle(app)
+
+    dock = window._docks["canopen"]
+    dock.toggleViewAction().trigger()
+    settle(app)
+    assert dock.isVisible()
+    assert dock.widget().isVisible(), "and the pane inside it, not a blank dock"
     assert window.dockWidgetArea(dock) != Qt.NoDockWidgetArea
+
+
+def test_putting_it_back_from_the_menu_shows_it(app, window):
+    """Unlike closing: asking for it back means you want to see it."""
+    float_out(app, window._docks["canopen"])
+    window._detach_pane("canopen")
+    settle(app)
+
+    window._restore_pane("canopen")
+    settle(app)
+    dock = window._docks["canopen"]
+    assert "canopen" not in window._detached
+    assert dock.isVisible() and dock.widget().isVisible()
+    assert not dock.isFloating()
+    assert window.dockWidgetArea(dock) != Qt.NoDockWidgetArea
+
+
+def test_the_pane_is_still_shown_after_a_round_trip(app, window):
+    """Out and back twice: each reparent hides it again, so each needs undoing."""
+    for _ in range(2):
+        float_out(app, window._docks["canopen"])
+        window._detach_pane("canopen")
+        settle(app)
+        assert window._detached["canopen"].pane.isVisible()
+        window._restore_pane("canopen")
+        settle(app)
+        assert window._docks["canopen"].widget().isVisible()
 
 
 def test_a_detached_pane_can_be_kept_on_top(app, window):

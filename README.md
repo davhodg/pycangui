@@ -76,7 +76,9 @@ pane.  **Always on top** keeps it above other windows, pycangui's and
 everyone else's.  **Detach into its own window** goes further and takes the
 pane out of its dock altogether, into a window with no parent: nothing then
 tries to dock it, it gets a taskbar entry of its own, and it can be sent to
-another display and left there.  Close it to put the pane back.
+another display and left there.  Closing it closes the pane, as closing a
+docked one does -- *View* shows it again -- while *Put back in the window*
+returns it to the main window.
 
 **File > Load DBC...** decodes matching frames.  Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
