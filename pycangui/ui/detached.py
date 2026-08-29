@@ -52,9 +52,23 @@ class DetachedPane(QWidget):
         """Above every other window, not just above pycangui's."""
         if bool(self.windowFlags() & Qt.WindowStaysOnTopHint) == on:
             return
+        # Asked before the flag is changed, because changing one hides the
+        # window: asking afterwards is always told it is hidden, so nothing
+        # was ever shown again and pinning a window emptied it for good.
+        was_visible = not self.isHidden()
         self.setWindowFlag(Qt.WindowStaysOnTopHint, on)
-        if not self.isHidden():
-            self.show()  # changing a window flag hides the window
+        if not was_visible:
+            return
+        # Changing a flag makes Qt build the window again, which hides it and
+        # everything in it: without showing the pane as well, pinning a window
+        # emptied it, taking the button that had just been pressed with it.
+        self.show()
+        if (pane := self.pane) is not None:
+            pane.show()
+        # And bring it forward, or asking for a window to be above the others
+        # leaves it wherever it was until something else disturbs it.
+        self.raise_()
+        self.activateWindow()
 
     def release(self) -> QWidget | None:
         """Hand the pane back, so it can go into its dock again."""

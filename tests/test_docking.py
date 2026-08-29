@@ -324,3 +324,52 @@ def test_the_pin_button_follows_the_pane_out_to_its_own_window(app, window):
     settle(app)
     assert window._detached["canopen"].windowFlags() & Qt.WindowStaysOnTopHint
     assert window._bars["canopen"].pin.isChecked()
+
+
+# --- pinning must not empty the window it is pinning ----------------------------------
+def test_pinning_a_detached_pane_keeps_its_contents(app, window):
+    """Changing a window flag rebuilds the window and hides what is in it.
+
+    Worse, it hides the window itself, so a visibility check *after* the change
+    is always told it is hidden -- nothing was shown again, and pressing Pin
+    emptied the window, taking the button that had just been pressed with it.
+    """
+    float_out(app, window._docks["canopen"])
+    window._detach_pane("canopen")
+    settle(app)
+    detached = window._detached["canopen"]
+    bar = window._bars["canopen"]
+
+    for wanted in (True, False, True):
+        bar.pin.setChecked(wanted)
+        settle(app)
+        assert bool(detached.windowFlags() & Qt.WindowStaysOnTopHint) is wanted
+        assert detached.isVisible(), "the window itself must survive being pinned"
+        assert detached.pane.isVisible(), "and what is in it"
+        assert bar.isVisible(), "including the button that was just pressed"
+        assert bar.pin.isVisible() and bar.dock.isVisible()
+
+
+def test_pinning_a_floating_pane_keeps_its_contents(app, window):
+    dock = window._docks["canopen"]
+    float_out(app, dock)
+    bar = window._bars["canopen"]
+
+    for wanted in (True, False, True):
+        bar.pin.setChecked(wanted)
+        settle(app)
+        assert bool(dock.windowFlags() & Qt.WindowStaysOnTopHint) is wanted
+        assert dock.widget().isVisible()
+        assert bar.isVisible()
+
+
+def test_pinning_one_of_several_undocked_panes_leaves_the_others(app, window):
+    canopen, uds = window._docks["canopen"], window._docks["uds"]
+    float_out(app, canopen)
+    float_out(app, uds)
+
+    window._bars["canopen"].pin.setChecked(True)
+    settle(app)
+    assert canopen.windowFlags() & Qt.WindowStaysOnTopHint
+    assert not uds.windowFlags() & Qt.WindowStaysOnTopHint, "one pin, one pane"
+    assert window._bars["uds"].isVisible() and not window._bars["uds"].pin.isChecked()

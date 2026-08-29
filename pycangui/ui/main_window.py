@@ -346,6 +346,10 @@ class MainWindow(QMainWindow):
             flags | Qt.WindowStaysOnTopHint if wanted else flags & ~Qt.WindowStaysOnTopHint
         )
         dock.show()
+        if (widget := dock.widget()) is not None:
+            widget.show()  # the window was rebuilt, so its contents are hidden
+        if wanted:
+            dock.raise_()
 
     def _set_pane_on_top(self, name: str, on: bool) -> None:
         self._on_top.add(name) if on else self._on_top.discard(name)
@@ -353,6 +357,9 @@ class MainWindow(QMainWindow):
             window.set_on_top(on)
         elif (dock := self._docks.get(name)) is not None:
             self._apply_on_top(dock)
+        # Rebuilding a window hides what is in it, the button strip included,
+        # so put it back rather than leave the pane without its buttons.
+        self._show_pane_bar(name)
 
     def _detach_pane(self, name: str) -> None:
         """Give a pane a window of its own, with no dock behind it."""
