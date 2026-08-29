@@ -80,6 +80,7 @@ def test_disconnecting_stops_the_demo(app, window):
 
 
 def test_the_channel_list_says_what_each_one_carries(app, window):
+    window.connect_bar._on_channel_expanded()  # opening the list is what fills it
     labels = [
         window.connect_bar.channel.itemText(i) for i in range(window.connect_bar.channel.count())
     ]

@@ -23,7 +23,6 @@ from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.detect import (
     Channel,
-    channel_suggestions,
     channels_for,
     takes_a_channel,
 )
@@ -163,20 +162,22 @@ class ConnectBar(QToolBar):
             return
         self._detected_for = ""
         # A channel belongs to its interface -- "can0" means nothing to an
-        # IXXAT -- so the old one goes rather than lingering in the list.
+        # IXXAT -- so the old one goes, and nothing takes its place until the
+        # list is opened.  Filling it in advance meant showing invented names
+        # as though they had been found: an IXXAT was offered channels 0 to 3
+        # whether or not any of them existed.
         interface = self.interface.currentText()
-        self._fill_channels(channel_suggestions(interface))
+        self._fill_channels([])
         self._set_channel_enabled(interface)
-        # Someone picking an interface wants to know what is attached to it.
-        # Not on startup, though: enumerating adapters can take seconds and is
-        # nobody's idea of a launch.
-        self.detect_channels(keep_typed=False)
 
     def _on_channel_expanded(self) -> None:
-        """Fill the list as it opens, if the background detection has not.
+        """Fill the list as it opens.  Nothing else fills it.
 
-        Opening the list is the moment somebody wants to know what is there,
-        so that is where the work belongs rather than on a button of its own.
+        Opening the list is the moment somebody wants to know what is
+        attached, so that is where the looking belongs -- not on a button of
+        its own, and not in advance, which meant offering invented names as
+        though they had been found.  It is done once per interface; the list
+        stays as it was until the interface changes.
         """
         interface = self.interface.currentText()
         if self._detected_for == interface or self._detecting:
@@ -334,17 +335,10 @@ class ConnectBar(QToolBar):
         self.interface.setCurrentText(saved.get("interface", "virtual"))
         channel = saved.get("channel", "vcan0")
         interface = saved.get("interface", "virtual")
-        # The saved channel is only worth its own entry if nothing already
-        # offers it: otherwise "vcan0" would sit next to the same channel
-        # described properly as "vcan0  (CANopen demo device)".
-        offered = channel_suggestions(interface)
-        known = {entry.text for entry in offered}
-        saved_entry = (
-            []
-            if channel in known
-            else [Channel(config={"channel": channel, **saved.get("extra", {})}, label=channel)]
-        )
-        self._fill_channels([*saved_entry, *offered], select=channel)
+        # Only what was last used.  What else is available is a question for
+        # the drop-down, which answers it by looking when it is opened.
+        remembered = Channel(config={"channel": channel, **saved.get("extra", {})}, label=channel)
+        self._fill_channels([remembered] if channel else [], select=channel)
         self._set_channel_enabled(interface)
         index = self.bitrate.findData(saved.get("bitrate", 500_000))
         self.bitrate.setCurrentIndex(index if index >= 0 else 2)
