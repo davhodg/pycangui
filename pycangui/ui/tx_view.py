@@ -149,6 +149,11 @@ class TxView(QWidget):
         self.tree.header().setStretchLastSection(True)
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.itemDoubleClicked.connect(self._on_double_clicked)
+        self.tree.setToolTip(
+            "Double-click a message to send it once.\n"
+            "Tick Cyclic to send it over and over at its period.\n"
+            "Expand a DBC or RPDO row to edit its signals in physical units."
+        )
 
         send = QPushButton("Send selected")
         send.clicked.connect(self.send_selected)
@@ -157,16 +162,21 @@ class TxView(QWidget):
         add_dbc = QPushButton("Add from DBC...")
         add_dbc.clicked.connect(self._add_from_dbc)
         add_rpdo = QPushButton("Add CANopen RPDO...")
+        add_rpdo.setToolTip(
+            "Send a node's receive PDO, filling in its mapped objects by name.\n"
+            "The node's PDO configuration has to be known first: load its EDS,\n"
+            "or press Read from node in the CANopen pane."
+        )
         add_rpdo.clicked.connect(self._add_rpdo)
         remove = QPushButton("Remove")
         remove.clicked.connect(self.remove_selected)
         stop_all = QPushButton("Stop all cyclic")
+        stop_all.setToolTip("Stop every repeating transmission at once")
         stop_all.clicked.connect(self.stop_all)
         bar = QHBoxLayout()
         for b in (send, add_raw, add_dbc, add_rpdo, remove, stop_all):
             bar.addWidget(b)
         bar.addStretch()
-        bar.addWidget(QLabel("Double-click a message to send it once"))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)

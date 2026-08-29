@@ -114,6 +114,11 @@ class CanopenView(QWidget):
         apply_dcf.setToolTip("Write the parameter values from a .dcf file into the node")
         apply_dcf.clicked.connect(self._apply_dcf)
         load_btn = QPushButton("Load EDS...")
+        load_btn.setToolTip(
+            "Choose the EDS for the selected node by hand.  Normally one is\n"
+            "found by itself from the node's identity, or by\n"
+            "hooks/canopen.py::eds_for_node."
+        )
         load_btn.clicked.connect(self._load_eds_clicked)
         for b in (store_btn, restore_btn, save_dcf, apply_dcf, load_btn):
             file_bar.addWidget(b)
@@ -127,10 +132,17 @@ class CanopenView(QWidget):
         self.od.header().setStretchLastSection(True)
         self.od.itemDoubleClicked.connect(self._on_od_double_clicked)
         self.od.itemChanged.connect(self._on_od_item_changed)
+        self.od.setToolTip(
+            "Double-click an entry to read it from the node.\nEdit a value to write it back."
+        )
         od_bar = QHBoxLayout()
-        od_bar.addWidget(QLabel("Object dictionary (double-click to read, edit value to write)"))
+        od_bar.addWidget(QLabel("Object dictionary"))
         od_bar.addStretch()
         read_all = QPushButton("Read all")
+        read_all.setToolTip(
+            "Read every readable entry in the dictionary, one SDO at a time.\n"
+            "It can take a while on a large node."
+        )
         read_all.clicked.connect(self._read_all)
         od_bar.addWidget(read_all)
 
@@ -185,10 +197,12 @@ class CanopenView(QWidget):
         emcy_l = QVBoxLayout(emcy_box)
         emcy_l.setContentsMargins(0, 0, 0, 0)
         emcy_l.addWidget(self.emcy)
-        emcy_bar = QHBoxLayout()
-        emcy_bar.addWidget(
-            QLabel("Manufacturer bytes are decoded by hooks/canopen.py::emcy_manufacturer")
+        self.emcy.setToolTip(
+            "Emergencies as the nodes report them (CiA 301).\n"
+            "The five manufacturer bytes mean whatever the maker says they do,\n"
+            "so they are decoded by hooks/canopen.py::emcy_manufacturer."
         )
+        emcy_bar = QHBoxLayout()
         emcy_bar.addStretch()
         clear_emcy = QPushButton("Clear")
         clear_emcy.clicked.connect(self.clear_emergencies)

@@ -89,6 +89,12 @@ Which panes are out on their own, and which are pinned, are remembered like
 the rest of the settings: a pane left on a second monitor is still there next
 time.
 
+Controls whose effect is not written on them explain themselves on hover: the
+UDS service behind a button, what a routine's Start actually sends, that
+clearing DTCs takes the freeze frames with them, that an RPDO needs the node's
+configuration read first.  The obvious ones -- Clear, Remove, Connect -- are
+left alone, since a tooltip repeating its label is noise.
+
 **File > Load DBC...** decodes matching frames.  Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
 the end of its message, both common in files real tools produce -- is offered

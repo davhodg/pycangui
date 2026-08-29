@@ -108,10 +108,16 @@ class PdoConfigView(QWidget):
         self.tree.itemChanged.connect(self._on_item_changed)
 
         read = QPushButton("Read from node")
+        read.setToolTip(
+            "Read what the node is actually configured to send and receive,\n"
+            "rather than what its EDS says it was built with."
+        )
         read.clicked.connect(self._read)
         add = QPushButton("Map object...")
+        add.setToolTip("Add an object from the dictionary to this PDO's contents")
         add.clicked.connect(self._add_entry)
         remove = QPushButton("Unmap")
+        remove.setToolTip("Take the selected object out of this PDO")
         remove.clicked.connect(self._remove_entry)
         write = QPushButton("Write to node")
         write.setToolTip("Write the selected PDO's communication and mapping parameters")
