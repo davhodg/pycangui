@@ -76,7 +76,9 @@ when it goes back.  Each says what pressing it will do, so **Pin** becomes
 **Unpin** and **Detach** becomes **Attach**; hover for what they mean.
 
 Pinning keeps a pane above every other window, pycangui's and everyone
-else's.  Detaching takes it out of its dock altogether, into a window with no
+else's -- except while pycangui is asking a question, when a pinned pane
+stands down so the dialog can be seen and answered, and goes back on top
+afterwards.  Detaching takes it out of its dock altogether, into a window with no
 parent: nothing then tries to dock it, it gets a taskbar entry of its own, and
 it can be sent to another display and left there.  Attaching puts it back
 where it came from -- floating if that is where it was, docked if not --

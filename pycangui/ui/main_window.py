@@ -63,6 +63,13 @@ REAPPLY_AFTER = (
     QEvent.NonClientAreaMouseButtonRelease,
 )
 
+#: Qt sends these to every window of the application when a modal dialog opens
+#: and when it closes.  A pinned pane has to stand down in between: it is above
+#: everything, the dialog included, and a dialog nobody can see or reach --
+#: while the window hiding it cannot be moved, because the dialog is holding
+#: the application -- is indistinguishable from a lock-up.
+BLOCKED, UNBLOCKED = QEvent.WindowBlocked, QEvent.WindowUnblocked
+
 #: Said once a session, the first time a pane is undocked.  Qt hit-tests the
 #: dock areas the whole time one is being dragged, so without this a pane
 #: cannot be put in front of the main window at all.
@@ -135,6 +142,8 @@ class MainWindow(QMainWindow):
         self._detached: dict[str, DetachedPane] = {}
         #: Panes asked to stay above other windows.
         self._on_top: set[str] = set()
+        #: Pinned panes standing down while a dialog is waiting for an answer.
+        self._suspended: set[str] = set()
         #: Where a detached pane came from: floating or docked, and if it was
         #: floating, where it was.  Attach puts it back there rather than
         #: dropping it into the main window, which is not where it was.
@@ -308,6 +317,8 @@ class MainWindow(QMainWindow):
 
     def eventFilter(self, watched, event) -> bool:
         """Put "always on top" and the buttons back after Qt has moved a pane."""
+        if event.type() in (BLOCKED, UNBLOCKED):
+            self._suspend_on_top(watched, event.type() == BLOCKED)
         if isinstance(watched, QDockWidget) and event.type() in REAPPLY_AFTER:
             # Deferred: Qt is part way through whatever it is doing to this
             # pane, and setWindowFlags hides and re-shows the widget.
@@ -337,10 +348,37 @@ class MainWindow(QMainWindow):
         bar.set_detached(detached)
         bar.set_pinned(name in self._on_top)
 
+    def _suspend_on_top(self, watched, blocked: bool) -> None:
+        """Stand a pinned pane down while a dialog waits, and put it back after.
+
+        Without this a warning can open behind a pinned window, where it
+        cannot be read, and the window cannot be moved out of the way either,
+        because the dialog is holding the application.  Nothing on screen says
+        why, which is worse than the warning going unread.
+        """
+        name = next(
+            (
+                n
+                for n in self._docks
+                if watched is self._docks[n] or watched is self._detached.get(n)
+            ),
+            "",
+        )
+        if not name or name not in self._on_top:
+            return
+        if blocked:
+            self._suspended.add(name)
+        else:
+            self._suspended.discard(name)
+        if (window := self._detached.get(name)) is not None:
+            window.set_on_top(not blocked)
+        else:
+            self._apply_on_top(self._docks[name])
+
     def _apply_on_top(self, dock: QDockWidget) -> None:
         """Keep a floating pane above other windows, if that was asked for."""
         name = next((n for n, d in self._docks.items() if d is dock), "")
-        wanted = dock.isFloating() and name in self._on_top
+        wanted = dock.isFloating() and name in self._on_top and name not in self._suspended
         flags = dock.windowFlags()
         if flags & Qt.FramelessWindowHint:
             return  # still being dragged; Qt gives it a frame when it lands
@@ -403,6 +441,7 @@ class MainWindow(QMainWindow):
         dock.hide()
         window = DetachedPane(name, dock.windowTitle(), widget, on_top=name in self._on_top)
         window.closed.connect(self._reattach_pane)
+        window.installEventFilter(self)  # so a dialog can get in front of it
         self._detached[name] = window
         self._show_pane_bar(name)
         window.show()
