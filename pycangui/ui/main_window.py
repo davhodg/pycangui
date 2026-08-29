@@ -35,6 +35,7 @@ from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
+from pycangui.ui.detached import DetachedPane
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.replay_action import ReplayAction
@@ -50,23 +51,22 @@ from pycangui.xcp.manager import XcpManager
 # default instead of being restored with panes missing.
 LAYOUT_VERSION = 3
 
-#: Flags for a pane that has been undocked.  Qt floats a dock as a Qt::Tool
-#: window, which by design has no minimise or maximise button and no taskbar
-#: entry -- a tool window is meant to hover over the window that owns it.  But
-#: undocking a pane means making it a window, and people expect a window to
-#: maximise and to be reachable from the taskbar, so it is promoted to a real
-#: one.  Nothing is lost by this: a floating dock has already given up Qt's own
-#: title bar, in both cases, and relies on the frame around it.
-FLOATING_WINDOW_FLAGS = Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint
-
-#: Events after which Qt may have put its own flags back.  It re-applies them
-#: whenever it moves a dock about -- at the end of a drag above all -- so the
-#: promotion cannot be done once and forgotten, which is why maximise stayed
-#: greyed out when the pane was dragged out rather than floated in code.
-PROMOTE_AFTER = (
+#: Events after which Qt may have put its own window flags back.  It does that
+#: whenever it moves a dock about -- at the end of a drag above all -- so
+#: "always on top" cannot be set once and forgotten.
+REAPPLY_AFTER = (
     QEvent.Show,
     QEvent.WindowActivate,
     QEvent.NonClientAreaMouseButtonRelease,
+)
+
+#: Said once a session, the first time a pane is undocked.  Qt hit-tests the
+#: dock areas the whole time one is being dragged, so without this a pane
+#: cannot be put in front of the main window at all.
+UNDOCK_TIP = (
+    "Hold Ctrl while dragging an undocked pane to stop it docking again.  "
+    "View > Undocked panes has Always on top, and Detach to give it a window "
+    "of its own with a taskbar entry."
 )
 
 #: Open on a first run.  Everything else is one click away in the View menu:
@@ -130,6 +130,11 @@ class MainWindow(QMainWindow):
 
         # --- docks -----------------------------------------------------------
         self._docks: dict[str, QDockWidget] = {}
+        #: Panes given a window of their own, by name.
+        self._detached: dict[str, DetachedPane] = {}
+        #: Panes asked to stay above other windows.
+        self._on_top: set[str] = set()
+        self._said_undock_tip = False
         self.trace = TraceView(self.hooks, self.ctx)
         self.trace.classifiers.append(self.dbc.message_name)
         self.trace.classifiers.append(self.uds.classify)
@@ -194,6 +199,9 @@ class MainWindow(QMainWindow):
         for dock in self.findChildren(QDockWidget):
             view_menu.addAction(dock.toggleViewAction())
         view_menu.addSeparator()
+        self._undocked_menu = view_menu.addMenu("Undocked panes")
+        self._undocked_menu.setToolTipsVisible(True)
+        self._refresh_undocked_menu()
         view_menu.addAction("Dock all panes", self._dock_all)
         view_menu.addAction("Reset layout", self._reset_layout)
 
@@ -260,46 +268,106 @@ class MainWindow(QMainWindow):
         return dock
 
     def _on_dock_floated(self, dock: QDockWidget, floating: bool) -> None:
-        """Make an undocked pane a proper window.
-
-        Docking again needs nothing undone: Qt reparents the pane and puts the
-        flags back itself, so the way back is exactly what it was.
-        """
-        if not floating:
-            return
-        # Deferred by one turn of the event loop: this arrives in the middle of
-        # Qt's own handling of the undrag, and setWindowFlags hides the widget
-        # and needs it shown again -- not something to do underneath Qt.
-        QTimer.singleShot(0, lambda: self._promote_floating(dock))
+        """An undocked pane is left as Qt makes it, and offered its options."""
+        if floating and not self._said_undock_tip:
+            self._said_undock_tip = True
+            self.log.appendPlainText(UNDOCK_TIP)
+        self._refresh_undocked_menu()
 
     def eventFilter(self, watched, event) -> bool:
-        """Put the window flags back after Qt has had its way with them."""
-        if isinstance(watched, QDockWidget) and event.type() in PROMOTE_AFTER:
+        """Put "always on top" back after Qt has had its way with the flags."""
+        if isinstance(watched, QDockWidget) and event.type() in REAPPLY_AFTER:
             # Deferred: Qt is part way through whatever it is doing to this
             # pane, and setWindowFlags hides and re-shows the widget.
-            QTimer.singleShot(0, lambda d=watched: self._promote_floating(d))
+            QTimer.singleShot(0, lambda d=watched: self._apply_on_top(d))
         return super().eventFilter(watched, event)
 
-    def _promote_floating(self, dock: QDockWidget) -> None:
-        if not dock.isFloating():
-            return  # docked, or docked again in the meantime
+    # --- what an undocked pane can be asked to do ------------------------------------
+    def _apply_on_top(self, dock: QDockWidget) -> None:
+        """Keep a floating pane above other windows, if that was asked for."""
+        name = next((n for n, d in self._docks.items() if d is dock), "")
+        wanted = dock.isFloating() and name in self._on_top
         flags = dock.windowFlags()
         if flags & Qt.FramelessWindowHint:
-            # Still being dragged.  Qt carries a dock around as a frameless
-            # window and gives it a frame when it is dropped; putting one on
-            # now would take the pane out from under the drag.
+            return  # still being dragged; Qt gives it a frame when it lands
+        if bool(flags & Qt.WindowStaysOnTopHint) == wanted:
+            return  # nothing to do, and setWindowFlags would hide the window
+        dock.setWindowFlags(
+            flags | Qt.WindowStaysOnTopHint if wanted else flags & ~Qt.WindowStaysOnTopHint
+        )
+        dock.show()
+
+    def _set_pane_on_top(self, name: str, on: bool) -> None:
+        self._on_top.add(name) if on else self._on_top.discard(name)
+        if (window := self._detached.get(name)) is not None:
+            window.set_on_top(on)
+        elif (dock := self._docks.get(name)) is not None:
+            self._apply_on_top(dock)
+
+    def _detach_pane(self, name: str) -> None:
+        """Give a pane a window of its own, with no dock behind it."""
+        dock = self._docks.get(name)
+        if dock is None or name in self._detached:
             return
-        if flags & Qt.WindowType_Mask == Qt.Window and flags & FLOATING_WINDOW_FLAGS == (
-            FLOATING_WINDOW_FLAGS
-        ):
-            return  # already what we want: do not hide and show it again
-        # Not enough to ask whether this is a Qt::Window.  With native window
-        # decorations -- Windows, that is -- Qt already floats a dock as one,
-        # with Qt::CustomizeWindowHint and only a title and a close button, so
-        # checking the window *type* saw nothing to do and the maximise button
-        # stayed grey.  What matters is whether the buttons are asked for.
-        dock.setWindowFlags(FLOATING_WINDOW_FLAGS)
-        dock.show()  # setWindowFlags hides a window
+        widget = dock.widget()
+        if widget is None:
+            return
+        dock.setWidget(None)
+        dock.hide()
+        window = DetachedPane(name, dock.windowTitle(), widget, on_top=name in self._on_top)
+        window.closed.connect(self._reattach_pane)
+        self._detached[name] = window
+        window.show()
+        self.log.appendPlainText(f"{dock.windowTitle()} detached.  Close it to put it back.")
+        self._refresh_undocked_menu()
+
+    @Slot(str)
+    def _reattach_pane(self, name: str) -> None:
+        window = self._detached.pop(name, None)
+        dock = self._docks.get(name)
+        if window is None or dock is None:
+            return
+        if (widget := window.release()) is not None:
+            dock.setWidget(widget)
+        dock.setFloating(False)
+        dock.show()
+        self._refresh_undocked_menu()
+
+    def _refresh_undocked_menu(self) -> None:
+        """Rebuild the Undocked panes menu.  Empty and disabled when nothing is.
+
+        The options only make sense for a pane that is out of the window, so
+        that is the only time they are offered.
+        """
+        menu = self._undocked_menu
+        menu.clear()
+        out = [
+            (name, dock)
+            for name, dock in self._docks.items()
+            if dock.isFloating() or name in self._detached
+        ]
+        menu.setEnabled(bool(out))
+        if not out:
+            return
+        for name, dock in out:
+            pane = menu.addMenu(dock.windowTitle())
+            on_top = pane.addAction("Always on top")
+            on_top.setCheckable(True)
+            on_top.setChecked(name in self._on_top)
+            on_top.toggled.connect(lambda on, n=name: self._set_pane_on_top(n, on))
+            if name in self._detached:
+                pane.addAction("Put back in the window", lambda n=name: self._detached[n].close())
+            else:
+                detach = pane.addAction(
+                    "Detach into its own window", lambda n=name: self._detach_pane(n)
+                )
+                detach.setToolTip(
+                    "No dock behind it, so nothing tries to re-dock it, and it gets "
+                    "a taskbar entry of its own"
+                )
+                pane.addAction("Dock", lambda n=name: self._docks[n].setFloating(False))
+        menu.addSeparator()
+        menu.addAction("Hold Ctrl while dragging to stop a pane docking").setEnabled(False)
 
     def _arrange_default(self) -> None:
         """The layout a first run opens with: the trace, the log, and the plot.
@@ -349,6 +417,8 @@ class MainWindow(QMainWindow):
         main one -- the taskbar will find it, but this is the way back that
         does not depend on knowing where it went.
         """
+        for name in list(self._detached):
+            self._detached[name].close()
         floating = [dock for dock in self._docks.values() if dock.isFloating()]
         for dock in floating:
             dock.setFloating(False)
@@ -364,6 +434,10 @@ class MainWindow(QMainWindow):
         s.setValue("geometry", self.saveGeometry())
         s.setValue("windowState", self.saveState(LAYOUT_VERSION))
         s.setValue("scopeSplitter", self.scope.save_state())
+        for name in list(self._detached):
+            # Parentless windows of their own, so they would keep the
+            # application running after the main window had gone.
+            self._detached.pop(name).close()
         self.replay.stop()
         self.help_menu.shutdown()
         self.connect_bar.shutdown()

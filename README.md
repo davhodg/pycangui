@@ -66,12 +66,17 @@ depends on what you have plugged in; turn any on in the **View** menu, and
 *View > Reset layout* puts everything back.  Panes are dockable, so drag them
 where you like: the arrangement is remembered.
 
-Drag a pane out of the window, or double-click its title bar, and it becomes a
-window of its own -- with minimise and maximise buttons and its own taskbar
-entry, so it can be filled out on a second monitor while the main window keeps
-the trace.  Drag it back to dock it again, or use *View > Dock all panes*,
-which is the way back that does not depend on knowing where the window went:
-unlike Qt's usual floating pane, a real window can end up behind the main one.
+Drag a pane out of the window, or double-click its title bar, and it floats.
+Hold **Ctrl** while dragging one, or it will dock again at the first
+opportunity -- the main window is looking for somewhere to put it the whole
+time.  Drag it back to dock it, or use *View > Dock all panes*.
+
+*View > Undocked panes* appears when something is out, with two things per
+pane.  **Always on top** keeps it above other windows, pycangui's and
+everyone else's.  **Detach into its own window** goes further and takes the
+pane out of its dock altogether, into a window with no parent: nothing then
+tries to dock it, it gets a taskbar entry of its own, and it can be sent to
+another display and left there.  Close it to put the pane back.
 
 **File > Load DBC...** decodes matching frames.  Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
