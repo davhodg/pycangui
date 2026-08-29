@@ -28,6 +28,8 @@ from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
 from pycangui.uds import UdsConfig, images
 from pycangui.uds.manager import (
+    CHECK_MEMORY,
+    ERASE_MEMORY,
     FILE_MODES,
     FILE_MODES_SENDING,
     RESETS,
@@ -314,6 +316,33 @@ class UdsView(QWidget):
         x.addWidget(QLabel("On ECU"), 2, 5)
         x.addWidget(self.ecu_path, 2, 6, 1, 3)
 
+        # A flash sequence is an erase, then the blocks, then something that
+        # has the ECU check what it was given.  Only the erase is standardised.
+        self.erase = QCheckBox("Erase first")
+        self.erase.setToolTip(
+            f"RoutineControl start {ERASE_MEMORY:04X} over every segment before\n"
+            "the first one is written.  Flash has to be erased before it can be\n"
+            "written, and this is the one routine ISO 14229-1 names for it.\n"
+            "All of them first, not each before its own download: two segments\n"
+            "can share a flash block, and erasing between them would take the\n"
+            "first one back out again."
+        )
+        self.check = QCheckBox("Check after")
+        self.check.setToolTip(
+            "Run a routine once each segment has been sent, to have the ECU\n"
+            "check what it was given.  Unlike the erase this one has no\n"
+            "standard behind it -- the number beside it is the one the\n"
+            "HIS/AUTOSAR bootloaders settled on, and yours may differ.\n"
+            "What it is sent comes from hooks/uds.py::check_options."
+        )
+        self.check_routine = _hex_edit(f"{CHECK_MEMORY:04X}", 50)
+        self.check_routine.setToolTip("Which routine to run afterwards")
+        self.erase.toggled.connect(self._on_operation)
+        self.check.toggled.connect(self._on_operation)
+        x.addWidget(self.erase, 3, 0, 1, 2)
+        x.addWidget(self.check, 3, 2)
+        x.addWidget(self.check_routine, 3, 3)
+
         self.start = QPushButton("Download")
         self.start.clicked.connect(self._start)
         self.bar = QProgressBar()
@@ -326,15 +355,18 @@ class UdsView(QWidget):
         )
         self.stop.setEnabled(False)
         self.stop.clicked.connect(manager.cancel_transfer)
-        x.addWidget(self.start, 3, 0, 1, 2)
-        x.addWidget(self.bar, 3, 2, 1, 6)
-        x.addWidget(self.stop, 3, 8)
+        x.addWidget(self.start, 4, 0, 1, 2)
+        x.addWidget(self.bar, 4, 2, 1, 6)
+        x.addWidget(self.stop, 4, 8)
 
         for key, widget in (
             ("uds.transfer.block", self.block),
             ("uds.transfer.width", self.width_bits),
             ("uds.transfer.dfi", self.dfi),
             ("uds.transfer.ecu_path", self.ecu_path),
+            ("uds.transfer.erase", self.erase),
+            ("uds.transfer.check", self.check),
+            ("uds.transfer.check_routine", self.check_routine),
         ):
             remember(ctx, key, widget)
         self._on_operation()
@@ -442,6 +474,11 @@ class UdsView(QWidget):
         self.ecu_path.setEnabled(not memory)
         self.block.setEnabled(op != 2)
         self.width_bits.setEnabled(memory)
+        # Only a download writes memory, so only a download has anything to
+        # erase first or to have checked afterwards.
+        self.erase.setEnabled(op == "download")
+        self.check.setEnabled(op == "download")
+        self.check_routine.setEnabled(op == "download" and self.check.isChecked())
         labels = {"download": "Download", "upload": "Upload"}
         self.start.setText(labels.get(op) or FILE_MODES[op].capitalize())
         self.start.setToolTip(
@@ -507,7 +544,14 @@ class UdsView(QWidget):
             if self._image is None:
                 self._append("Download: no file to send")
                 return
-            self.manager.download(self._image, block, dfi, self._width())
+            self.manager.download(
+                self._image,
+                block,
+                dfi,
+                self._width(),
+                erase=self.erase.isChecked(),
+                check=self._int(self.check_routine) if self.check.isChecked() else 0,
+            )
         elif op == "upload":
             if not self.local.text():
                 self._append("Upload: nowhere to put it -- choose a file first")
@@ -533,8 +577,9 @@ class UdsView(QWidget):
         """
         if op == "download":
             what = self._image.summary() if self._image else self.local.text()
+            erasing = "\nThe memory it goes in is erased first." if self.erase.isChecked() else ""
             text = (
-                f"About to write to the ECU's memory:\n\n{what}\n\n"
+                f"About to write to the ECU's memory:\n\n{what}\n{erasing}\n"
                 "An interrupted or wrong image can leave the ECU unable to start."
             )
         elif op == 2:

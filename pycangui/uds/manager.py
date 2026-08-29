@@ -23,8 +23,9 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
 from pycangui.uds import UdsConfig
-from pycangui.uds.images import Image, ImageError
+from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
+from pycangui.uds.standard import memory_record
 from pycangui.uds.transport import IsoTpTransport
 
 DEFAULT_BACKEND = "can-isotp"
@@ -83,6 +84,13 @@ FILE_MODES = {
 #: Modes that send a local file to the ECU, and modes that bring one back.
 FILE_MODES_SENDING = (1, 3, 6)
 FILE_MODES_RECEIVING = (4, 5)
+
+#: RoutineControl identifiers that go with a memory download.  Erase is the
+#: one ISO 14229-1 names (Annex F); what to run afterwards to have the ECU
+#: check what it was given is manufacturer specific, and 0x0202 is only the
+#: number the HIS/AUTOSAR flash bootloaders settled on.
+ERASE_MEMORY = 0xFF00
+CHECK_MEMORY = 0x0202
 
 SESSIONS = {1: "default", 2: "programming", 3: "extended", 4: "safety system"}
 RESETS = {1: "hard reset", 2: "key off/on", 3: "soft reset", 4: "enable rapid power shutdown"}
@@ -286,6 +294,11 @@ class UdsManager(QObject):
         name = self._hooks.call("uds", "did_label", did)
         return f"{did:04X} ({name})" if name else f"{did:04X}"
 
+    def routine_label(self, routine_id: int) -> str:
+        """ "FF00 (Erase memory)" -- the number, and what the routine is."""
+        name = self._hooks.call("uds", "routine_label", routine_id)
+        return f"{routine_id:04X} ({name})" if name else f"{routine_id:04X}"
+
     def read_did(self, did: int) -> None:
         def fn(c: Client) -> str:
             req = Request(services.ReadDataByIdentifier, data=struct.pack(">H", did))
@@ -340,7 +353,7 @@ class UdsManager(QObject):
             r = c.routine_control(routine_id, control, data or None)
             status = bytes(r.service_data.routine_status_record or b"")
             verb = names.get(control, control)
-            return f"Routine {routine_id:04X} {verb}: OK {describe_bytes(status)}"
+            return f"Routine {self.routine_label(routine_id)} {verb}: OK {describe_bytes(status)}"
 
         self._run(f"RoutineControl {routine_id:04X}", fn)
 
@@ -489,14 +502,65 @@ class UdsManager(QObject):
             self.progress.emit(label, min(got, expected), expected)
         return b"".join(chunks)[:expected]
 
+    def _erase(self, c: Client, segment: Segment, width: int | None) -> None:
+        """RoutineControl start 0xFF00 over one segment's addresses.
+
+        Flash has to be erased before it can be written, and ISO 14229-1 names
+        this routine for the purpose.  What goes in the option record is not
+        standardised; an address and length in the usual format is what most
+        bootloaders expect, and hooks/uds.py::erase_options is where to change
+        it for one that does not.
+        """
+        options = self._hooks.call("uds", "erase_options", segment.address, len(segment), width)
+        record = (
+            bytes(options)
+            if options is not None
+            else memory_record(segment.address, len(segment), width)
+        )
+        self.result.emit(
+            f"Erase {segment.address:08X}+{len(segment)}: "
+            f"routine {self.routine_label(ERASE_MEMORY)}"
+        )
+        c.routine_control(ERASE_MEMORY, 1, record or None)
+
+    def _check(self, c: Client, routine: int, segment: Segment, width: int | None) -> str:
+        """Whatever the ECU is asked to run once a segment has been sent."""
+        options = self._hooks.call(
+            "uds", "check_options", routine, segment.address, len(segment), segment.data, width
+        )
+        record = (
+            bytes(options)
+            if options is not None
+            else memory_record(segment.address, len(segment), width)
+        )
+        r = c.routine_control(routine, 1, record or None)
+        status = bytes(r.service_data.routine_status_record or b"")
+        return f"Check {segment.address:08X}: routine {self.routine_label(routine)} " + (
+            f"OK {describe_bytes(status)}" if status else "OK"
+        )
+
     def download(
-        self, image: Image, block_size: int = 0, dfi: int = 0, width: int | None = None
+        self,
+        image: Image,
+        block_size: int = 0,
+        dfi: int = 0,
+        width: int | None = None,
+        erase: bool = False,
+        check: int = 0,
     ) -> None:
         """Send a firmware image to the ECU: 0x34, 0x36 per block, then 0x37.
 
         One RequestDownload per segment.  A file with gaps in it has them for a
         reason, and filling them would write bytes the file never contained
         over whatever the ECU had at those addresses.
+
+        `erase` runs the erase routine over every segment *before* the first
+        one is written, rather than each just before its own download: two
+        segments can share a flash block, and erasing between them would take
+        the first one back out again.
+
+        `check` is the routine to run after each segment has been sent, or 0
+        for none.
         """
         fmt = DataFormatIdentifier(compression=(dfi >> 4) & 0xF, encryption=dfi & 0xF)
         total = image.size
@@ -504,6 +568,9 @@ class UdsManager(QObject):
 
         def fn(c: Client) -> str:
             done = 0
+            if erase:
+                for segment in image.segments:
+                    self._erase(c, segment, width)
             for index, segment in enumerate(image.segments, 1):
                 r = c.request_download(self._memory(segment.address, len(segment), width), dfi=fmt)
                 size = self._block_size(r.service_data.max_length, block_size)
@@ -514,6 +581,8 @@ class UdsManager(QObject):
                 )
                 done = self._send_blocks(c, segment.data, size, "Download", done, total)
                 c.request_transfer_exit()
+                if check:
+                    self.result.emit(self._check(c, check, segment, width))
             return f"Download complete: {total} bytes from {Path(image.path).name}"
 
         self._run_transfer("Download", fn)

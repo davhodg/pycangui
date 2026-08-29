@@ -27,7 +27,7 @@ ECU actually raises, or read them out of its ODX.
 from __future__ import annotations
 
 from pycangui.core.hooks import hook
-from pycangui.uds.standard import did_name
+from pycangui.uds.standard import did_name, memory_record, routine_name
 
 #: Your names for data identifiers, tried before the ISO ones.  Anything below
 #: 0xF180 is manufacturer specific, so ISO can only say "manufacturer
@@ -43,6 +43,17 @@ DID_NAMES: dict[int, str] = {
 DTC_DESCRIPTIONS: dict[int, str] = {
     # 0x0123: "Throttle position sensor range",
     # 0x9A01: "CAN bus off",
+}
+
+#: Your names for routines, tried before the ISO ones.  ISO 14229-1 names only
+#: four routines: erase memory (0xFF00), check programming dependencies
+#: (0xFF01), erase mirror memory DTCs (0xFF02) and the deploy loop (0xE200).
+#: Everything from 0x0200 to 0xDFFF is manufacturer specific, which is where
+#: the rest of a flash sequence lives -- 0x0202 below is the number the
+#: HIS/AUTOSAR bootloaders use to have the ECU check what it was just given,
+#: and it is a convention rather than a standard.
+ROUTINE_NAMES: dict[int, str] = {
+    0x0202: "Check memory",
 }
 
 
@@ -133,3 +144,60 @@ def dtc_description(dtc: int, *, ctx) -> str | None:
     unknown DTC shows its code and nothing else.
     """
     return DTC_DESCRIPTIONS.get(dtc >> 8) or DTC_DESCRIPTIONS.get(dtc)
+
+
+@hook
+def routine_label(routine_id: int, *, ctx) -> str | None:
+    """What a routine is called, shown beside its number.
+
+    ROUTINE_NAMES first, then the four ISO 14229-1 names.  Unlike data
+    identifiers there is no range fallback here: saying "manufacturer
+    specific" of a routine number would be true of almost all of them.
+    """
+    return ROUTINE_NAMES.get(routine_id) or routine_name(routine_id) or None
+
+
+@hook
+def erase_options(address: int, size: int, width, *, ctx) -> bytes | None:
+    """The option record sent with the erase routine (0xFF00) before a download.
+
+    ISO 14229-1 names the routine but says nothing about what to give it.  An
+    address and a length in the usual format -- a byte saying how wide each
+    is, then the two numbers -- is what most bootloaders expect, and is what
+    ``memory_record`` builds.
+
+    Return b"" for a bootloader that erases a fixed region and wants no
+    arguments at all, or build whatever yours does want:
+
+        # A block number rather than an address
+        # return bytes([address >> 16])
+
+        # Address and length, always 32 bits each, whatever the numbers are
+        # return memory_record(address, size, 32)
+    """
+    return memory_record(address, size, width)
+
+
+@hook
+def check_options(
+    routine: int, address: int, size: int, data: bytes, width, *, ctx
+) -> bytes | None:
+    """The option record sent with the check routine after a download.
+
+    This one has no standard behind it at all -- the routine itself is
+    manufacturer specific -- so the default is the same address and length
+    record as the erase, which is the most common shape.  Many bootloaders
+    want a checksum of what was sent instead, or as well:
+
+        # CRC32 of the segment, appended to the address and length
+        # import zlib
+        # return memory_record(address, size, width) + zlib.crc32(data).to_bytes(4, "big")
+
+        # The CRC on its own, which is what the HIS bootloaders ask for
+        # import zlib
+        # return zlib.crc32(data).to_bytes(4, "big")
+
+    ``data`` is the segment that was just sent, so a checksum can be worked
+    out here rather than read back off the disk.
+    """
+    return memory_record(address, size, width)
