@@ -23,7 +23,7 @@ from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
-from pycangui.core.detect import DEMO_CHANNEL
+from pycangui.core.detect import DEMO_CHANNEL, summarise
 from pycangui.core.excepthook import ExceptionLogger
 from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
@@ -414,13 +414,17 @@ class MainWindow(QMainWindow):
         """
         if not is_real(interface):
             return True
-        # The device identity is part of the key: with two adapters attached,
-        # agreeing to channel 0 on one is not agreeing to channel 0 on the other.
+        # The whole configuration goes into the key, since that is what makes
+        # two otherwise identical adapters different and nobody has to read it.
+        # What is *shown* is the few words that tell them apart: a Vector
+        # reports its entire channel configuration, and printing that put a
+        # dozen lines of ctypes enums in front of the question being asked.
         identity = ":".join(f"{k}={v}" for k, v in sorted((extra or {}).items()))
-        where = f"{interface}:{channel}" + (f" [{identity}]" if identity else "")
+        shown = summarise(extra or {})
+        where = f"{interface}:{channel}" + (f" [{shown}]" if shown else "")
         return self.confirm.ask(
             self,
-            f"connect:{name}:{where}:{bitrate}:{fd}",
+            f"connect:{name}:{interface}:{channel}:{identity}:{bitrate}:{fd}",
             "Connect to a real CAN bus?",
             f"{name} is about to join {where} at "
             f"{bitrate // 1000} kbit/s.\n\n"

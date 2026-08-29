@@ -258,3 +258,69 @@ def test_the_declared_default_is_used_where_we_have_no_opinion():
     assert detect.channel_default("pcan") == "PCAN_USBBUS1"
     assert detect.channel_default("nixnet") == "CAN1"
     assert [c.label for c in detect.channel_suggestions("nixnet")] == ["CAN1"]
+
+
+# --- labels stay readable ------------------------------------------------------------
+class _VectorChannelConfig:
+    """What the Vector backend puts in its detected configuration.
+
+    The real one's repr runs to a dozen lines of ctypes enums; it also carries
+    a name, which is the part worth showing.
+    """
+
+    name = "VN1610 Channel 1"
+
+    def __repr__(self):
+        return (
+            "VectorChannelConfig(" + ", ".join(f"field_{i}=<XL_Enum: {i}>" for i in range(40)) + ")"
+        )
+
+
+VECTOR = {
+    "interface": "vector",
+    "channel": 0,
+    "channel_index": 0,
+    "hw_channel": 0,
+    "hw_index": 0,
+    "hw_type": 55,
+    "serial": 20551,
+    "supports_fd": True,
+    "vector_channel_config": _VectorChannelConfig(),
+}
+
+
+def test_a_vector_label_is_a_few_words_not_a_paragraph():
+    """This filled a dialog with ctypes enums and buried the question in it."""
+    label = detect.describe(VECTOR)
+    assert len(label) < 60, label
+    assert "20551" in label, "the serial is what tells two of them apart"
+    assert "VN1610 Channel 1" in label, "and the name is what a person recognises"
+    assert "XL_Enum" not in label and "channel_index" not in label
+
+
+def test_the_whole_configuration_still_reaches_can_bus(app, captured):
+    """Shortening the label must not shorten what the adapter is opened with."""
+    bus = BusManager()
+    extra = {k: v for k, v in VECTOR.items() if k not in ("interface", "channel")}
+    bus.connect_bus("vector", "0", 500000, False, extra)
+    assert captured["serial"] == 20551
+    assert captured["hw_type"] == 55, "dropped from the label, not from the call"
+    assert "vector_channel_config" in captured
+
+
+def test_an_object_with_no_name_is_left_out_rather_than_printed():
+    class Opaque:
+        def __repr__(self):
+            return "x" * 500
+
+    assert detect.readable(Opaque()) == ""
+    assert "x" * 50 not in detect.describe({"channel": 0, "thing": Opaque()})
+
+
+def test_a_long_string_is_left_out_too():
+    assert detect.readable("y" * 500) == ""
+    assert detect.readable("short") == "short"
+
+
+def test_nothing_to_say_leaves_a_bare_channel():
+    assert detect.describe({"interface": "socketcan", "channel": "can0"}) == "can0"

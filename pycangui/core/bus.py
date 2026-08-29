@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import can
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
-from pycangui.core.detect import IDENTITY_KEYS, coerce_channel
+from pycangui.core.detect import coerce_channel, summarise
 
 
 def frame_bits(dlc: int, extended: bool, fd: bool) -> int:
@@ -223,7 +223,7 @@ class BusManager(QObject):
         fd_text = " FD" if fd else ""
         # The identifying part of extra belongs in the description: with two
         # adapters attached, "ixxat:0" alone does not say which one.
-        identity = " ".join(f"{v}" for k, v in sorted((extra or {}).items()) if k in IDENTITY_KEYS)
+        identity = summarise(extra or {})
         where = f"{interface}:{channel_value}" + (f" [{identity}]" if identity else "")
         self.description = f"{where} @ {bitrate} bit/s{fd_text}"
         self.connected.emit(self.description)
