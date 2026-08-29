@@ -36,6 +36,11 @@ class DetachedPane(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(widget)
+        # Qt hides a widget when its parent changes, and adding it to a layout
+        # is a change of parent.  Showing this window will not undo that: an
+        # explicitly hidden child stays hidden, which is a window with a title,
+        # a taskbar entry and nothing in it.
+        widget.show()
         self.set_on_top(on_top)
 
     @property

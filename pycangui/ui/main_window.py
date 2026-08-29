@@ -322,16 +322,33 @@ class MainWindow(QMainWindow):
         self._refresh_undocked_menu()
 
     @Slot(str)
-    def _reattach_pane(self, name: str) -> None:
+    def _reattach_pane(self, name: str, show: bool = False) -> None:
+        """Put a detached pane back in its dock.
+
+        Hidden unless asked otherwise: closing a window means closing it,
+        exactly as closing a docked pane does, and a pane that reappeared in
+        the main window because you had shut it would be answering a question
+        nobody asked.  The widget goes home either way, so the View menu can
+        show it again.
+        """
         window = self._detached.pop(name, None)
         dock = self._docks.get(name)
         if window is None or dock is None:
             return
         if (widget := window.release()) is not None:
             dock.setWidget(widget)
+            widget.show()  # release() reparented it, which hides it
         dock.setFloating(False)
-        dock.show()
+        dock.setVisible(show)
         self._refresh_undocked_menu()
+
+    def _restore_pane(self, name: str) -> None:
+        """Bring a detached pane back into the window, and show it."""
+        if (window := self._detached.get(name)) is not None:
+            window.close()  # its closed signal hands the widget back
+        self._reattach_pane(name, show=True)
+        if (dock := self._docks.get(name)) is not None:
+            dock.show()
 
     def _refresh_undocked_menu(self) -> None:
         """Rebuild the Undocked panes menu.  Empty and disabled when nothing is.
@@ -356,7 +373,7 @@ class MainWindow(QMainWindow):
             on_top.setChecked(name in self._on_top)
             on_top.toggled.connect(lambda on, n=name: self._set_pane_on_top(n, on))
             if name in self._detached:
-                pane.addAction("Put back in the window", lambda n=name: self._detached[n].close())
+                pane.addAction("Put back in the window", lambda n=name: self._restore_pane(n))
             else:
                 detach = pane.addAction(
                     "Detach into its own window", lambda n=name: self._detach_pane(n)
@@ -418,7 +435,7 @@ class MainWindow(QMainWindow):
         does not depend on knowing where it went.
         """
         for name in list(self._detached):
-            self._detached[name].close()
+            self._restore_pane(name)
         floating = [dock for dock in self._docks.values() if dock.isFloating()]
         for dock in floating:
             dock.setFloating(False)
