@@ -143,15 +143,24 @@ def test_startup_never_asks(app, tmp_path, dbc_file, monkeypatch):
     window.close()
 
 
-def test_the_tools_switch_stops_the_asking(app, tmp_path, dbc_file, monkeypatch):
+def test_strict_is_on_by_default(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    assert window.strict_dbc.isChecked(), "a database should be checked unless you say not to"
+    assert window.strict_dbc.text() == "Strict DBC checks"
+    window.close()
+
+
+def test_turning_the_check_off_stops_the_asking(app, tmp_path, dbc_file, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
     monkeypatch.setattr(
         QMessageBox, "question", lambda *a, **k: pytest.fail("it should not need to ask")
     )
-    window.relaxed_dbc.setChecked(True)
+    window.strict_dbc.setChecked(False)
     assert window._load_dbc(dbc_file(OVERLAPPING), offer_relaxing=True)
     assert window.dbc.loaded
-    assert "relaxed" in window.log.toPlainText()
+    assert "strict checks off" in window.log.toPlainText()
     window.close()

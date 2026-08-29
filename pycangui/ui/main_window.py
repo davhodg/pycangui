@@ -188,14 +188,15 @@ class MainWindow(QMainWindow):
         verbose.setCheckable(True)
         verbose.setToolTip("Relay the CAN libraries' info messages to the event log too")
         verbose.toggled.connect(self._set_verbose_logging)
-        self.relaxed_dbc = tools_menu.addAction("Relax DBC checks")
-        self.relaxed_dbc.setCheckable(True)
-        self.relaxed_dbc.setChecked(bool(self.ctx.settings.get("dbc.relaxed", False)))
-        self.relaxed_dbc.setToolTip(
-            "Load databases that fail cantools' strict check -- overlapping signals, "
-            "a signal past the end of its message -- without being asked each time"
+        self.strict_dbc = tools_menu.addAction("Strict DBC checks")
+        self.strict_dbc.setCheckable(True)
+        self.strict_dbc.setChecked(bool(self.ctx.settings.get("dbc.strict", True)))
+        self.strict_dbc.setToolTip(
+            "Check that a database is well formed -- no overlapping signals, none "
+            "running past the end of its message -- and ask before loading one that "
+            "is not.  Turn it off to load them without being asked."
         )
-        self.relaxed_dbc.toggled.connect(self._set_relaxed_dbc)
+        self.strict_dbc.toggled.connect(self._set_strict_dbc)
 
         self.help_menu = HelpMenu(self)
         self._default_state = self.saveState(LAYOUT_VERSION)
@@ -306,12 +307,12 @@ class MainWindow(QMainWindow):
         self.log.appendPlainText(f"ERROR: {text}")
 
     @Slot(bool)
-    def _set_relaxed_dbc(self, on: bool) -> None:
-        self.ctx.settings.set("dbc.relaxed", on)
+    def _set_strict_dbc(self, on: bool) -> None:
+        self.ctx.settings.set("dbc.strict", on)
         self.log.appendPlainText(
-            "DBC files will be loaded with the strict checks relaxed."
+            "DBC files will be checked strictly, and you will be asked about one that fails."
             if on
-            else "DBC files will be checked strictly, and you will be asked if one fails."
+            else "DBC files will be loaded without the strict checks."
         )
 
     @Slot(bool)
@@ -487,20 +488,20 @@ class MainWindow(QMainWindow):
         startup must not put a dialog in front of a window that is still
         opening.
         """
-        relaxed = bool(self.ctx.settings.get("dbc.relaxed", False))
+        strict = bool(self.ctx.settings.get("dbc.strict", True))
         try:
-            db = self.dbc.load(path, strict=not relaxed)
+            db = self.dbc.load(path, strict=strict)
         except Exception as exc:  # cantools parse errors come in many types
             self.log.appendPlainText(f"DBC load failed: {path}: {exc}")
-            if relaxed or not offer_relaxing or not self._offer_relaxed_load(path, exc):
+            if not strict or not offer_relaxing or not self._offer_relaxed_load(path, exc):
                 return False
             try:
                 db = self.dbc.load(path, strict=False)
             except Exception as exc2:
-                self.log.appendPlainText(f"DBC load failed even relaxed: {path}: {exc2}")
+                self.log.appendPlainText(f"DBC load failed even unchecked: {path}: {exc2}")
                 return False
-            self.log.appendPlainText(f"Loaded {path} with the strict checks relaxed")
-        how = " (strict checks relaxed)" if relaxed else ""
+            self.log.appendPlainText(f"Loaded {path} without the strict checks")
+        how = "" if strict else " (strict checks off)"
         self.log.appendPlainText(f"Loaded {path}: {len(db.messages)} messages{how}")
         if hasattr(self, "tx"):
             self.tx.refresh_sources()
@@ -516,8 +517,8 @@ class MainWindow(QMainWindow):
                 "That check is about how well formed the file is, not about whether "
                 "its messages can be used, and databases that fail it are usually "
                 "still fine to read and transmit.\n\n"
-                "Load it with the check relaxed?  Tools > Relax DBC checks makes "
-                "this the default and stops the asking.",
+                "Load it anyway?  Turning off Tools > Strict DBC checks stops the "
+                "asking.",
                 QMessageBox.Yes | QMessageBox.Cancel,
                 QMessageBox.Yes,
             )
