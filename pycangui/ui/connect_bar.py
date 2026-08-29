@@ -97,6 +97,11 @@ class ConnectBar(QToolBar):
         self.bitrate.setCurrentIndex(2)
         self.bitrate.currentIndexChanged.connect(lambda _i: self._save_settings())
         self.fd = QCheckBox("FD")
+        self.fd.setToolTip(
+            "Open the channel as CAN FD.  The adapter and every node on the\n"
+            "bus have to agree; a classic controller treats an FD frame as an\n"
+            "error."
+        )
         self.fd.toggled.connect(lambda _c: self._save_settings())
         self.button = QPushButton("Connect")
         self.button.setCheckable(True)

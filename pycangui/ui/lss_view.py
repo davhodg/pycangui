@@ -102,6 +102,10 @@ class LssView(QWidget):
         self.node_id.setValue(1)
         row.addWidget(self.node_id)
         set_id = QPushButton("Set node-ID")
+        set_id.setToolTip(
+            "Give the selected node a new node-ID.  It does not take effect\n"
+            "until the node is reset, and is only kept if you store it."
+        )
         set_id.clicked.connect(lambda: manager.lss_set_node_id(self.node_id.value()))
         row.addWidget(set_id)
         row.addSpacing(16)
@@ -112,6 +116,11 @@ class LssView(QWidget):
         self.bit_rate.setCurrentIndex(2)  # 500 kbit/s
         row.addWidget(self.bit_rate)
         set_rate = QPushButton("Set bit rate")
+        set_rate.setToolTip(
+            "Change the node's bit rate.  It keeps the old one until Activate,\n"
+            "and every node on the bus has to be changed together or the ones\n"
+            "left behind will no longer be able to talk to it."
+        )
         set_rate.clicked.connect(lambda: manager.lss_set_bit_timing(self.bit_rate.currentData()))
         row.addWidget(set_rate)
         activate = QPushButton("Activate")

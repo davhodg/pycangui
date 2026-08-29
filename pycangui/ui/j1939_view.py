@@ -49,6 +49,10 @@ class J1939View(QWidget):
         # not about this session.
         remember(ctx, "j1939.address", self.address)
         self.claim_btn = QPushButton("Claim address")
+        self.claim_btn.setToolTip(
+            "Take this address on the bus (J1939-81).  Needed before pycangui\n"
+            "can be sent messages of its own or send multi-packet ones."
+        )
         self.claim_btn.setCheckable(True)
         self.claim_btn.toggled.connect(self._toggle_claim)
         g.addWidget(QLabel("Address"), 0, 0)
@@ -62,6 +66,7 @@ class J1939View(QWidget):
         self.req_dest.setFont(mono)
         self.req_dest.setFixedWidth(40)
         req_btn = QPushButton("Request PGN")
+        req_btn.setToolTip("Ask a node to send a parameter group (request PGN 59904)")
         req_btn.clicked.connect(self._request)
         g.addWidget(QLabel("PGN (hex)"), 1, 0)
         g.addWidget(self.req_pgn, 1, 1)

@@ -48,8 +48,13 @@ class UdsView(QWidget):
         self.tx_id = _hex_edit(f"{cfg.tx_id:X}")
         self.rx_id = _hex_edit(f"{cfg.rx_id:X}")
         self.ext = QCheckBox("29-bit")
+        self.ext.setToolTip("Address the ECU with 29-bit identifiers rather than 11-bit")
         self.ext.setChecked(cfg.extended_id)
         self.padding = QCheckBox("Pad")
+        self.padding.setToolTip(
+            "Pad every frame out to 8 bytes.  Some ECUs require it and ignore\n"
+            "anything shorter; others do not mind either way."
+        )
         self.padding.setChecked(cfg.padding is not None)
         self.transport = QComboBox()
         self.transport.setToolTip("ISO-TP implementation (add your own in the backends folder)")
@@ -61,6 +66,10 @@ class UdsView(QWidget):
             self.transport.setCurrentIndex(index)
         self.transport.currentTextChanged.connect(manager.set_backend)
         self.open_btn = QPushButton("Open")
+        self.open_btn.setToolTip(
+            "Open an ISO-TP connection on the addresses above.\n"
+            "Nothing else on this pane works until it is open."
+        )
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
         for col, (label, w) in enumerate(
@@ -80,6 +89,10 @@ class UdsView(QWidget):
             if code == 4:
                 continue
             b = QPushButton(name.capitalize())
+            b.setToolTip(
+                f"DiagnosticSessionControl (0x10): move the ECU into its {name} session.\n"
+                "Most services are only allowed in some of them."
+            )
             b.clicked.connect(lambda _=False, c=code: self.manager.change_session(c))
             h.addWidget(b)
         h.addSpacing(12)
@@ -89,9 +102,19 @@ class UdsView(QWidget):
         self.level.setSingleStep(2)
         h.addWidget(self.level)
         unlock = QPushButton("Unlock")
+        unlock.setToolTip(
+            "SecurityAccess (0x27): ask for a seed and answer it with a key.\n"
+            "There is no standard algorithm -- the key comes from\n"
+            "hooks/uds.py::security_key, which you write."
+        )
         unlock.clicked.connect(lambda: self.manager.unlock(self.level.value()))
         h.addWidget(unlock)
         self.tp = QCheckBox("Tester present")
+        self.tp.setToolTip(
+            "Send TesterPresent (0x3E) every couple of seconds.\n"
+            "Without it the ECU drops back to the default session, and any\n"
+            "unlock with it, after a few seconds of quiet."
+        )
         self.tp.toggled.connect(self.manager.set_tester_present)
         h.addWidget(self.tp)
         h.addStretch()
@@ -107,6 +130,10 @@ class UdsView(QWidget):
         r.addWidget(QLabel("Type"))
         r.addWidget(self.reset_type)
         reset = QPushButton("Reset")
+        reset.setToolTip(
+            "ECUReset (0x11).  The ECU restarts, so the session and any\n"
+            "security unlock are lost with it."
+        )
         reset.clicked.connect(lambda: self.manager.ecu_reset(self.reset_type.currentData()))
         r.addWidget(reset)
         r.addStretch()
@@ -118,8 +145,13 @@ class UdsView(QWidget):
         self.did_value = QLineEdit()
         self.did_value.setFont(QFont("Consolas", 9))
         read_did = QPushButton("Read DID")
+        read_did.setToolTip("ReadDataByIdentifier (0x22)")
         read_did.clicked.connect(lambda: self.manager.read_did(self._int(self.did)))
         write_did = QPushButton("Write DID")
+        write_did.setToolTip(
+            "WriteDataByIdentifier (0x2E).  What you type is turned into bytes\n"
+            "by hooks/uds.py::did_encode -- hex by default."
+        )
         write_did.clicked.connect(
             lambda: self.manager.write_did(self._int(self.did), self.did_value.text())
         )
@@ -131,8 +163,13 @@ class UdsView(QWidget):
 
         self.dtc_mask = _hex_edit("FF", 50)
         read_dtc = QPushButton("Read DTCs")
+        read_dtc.setToolTip("ReadDTCInformation (0x19), for the faults matching the status mask")
         read_dtc.clicked.connect(lambda: self.manager.read_dtcs(self._int(self.dtc_mask)))
         clear_dtc = QPushButton("Clear DTCs")
+        clear_dtc.setToolTip(
+            "ClearDiagnosticInformation (0x14).  The ECU's stored faults are\n"
+            "erased, along with the freeze frames that go with them."
+        )
         clear_dtc.clicked.connect(lambda: self.manager.clear_dtcs())
         g.addWidget(QLabel("Status mask"), 1, 0)
         g.addWidget(self.dtc_mask, 1, 1)
@@ -146,6 +183,10 @@ class UdsView(QWidget):
         rbox = QHBoxLayout()
         for label, control in (("Start", 1), ("Stop", 2), ("Result", 3)):
             b = QPushButton(label)
+            b.setToolTip(
+                f"RoutineControl (0x31), sub-function {control}: {label.lower()} the routine\n"
+                "whose identifier is on the left."
+            )
             b.clicked.connect(
                 lambda _=False, c=control: self.manager.routine(
                     c, self._int(self.routine), parse_bytes(self.routine_data.text())
@@ -161,6 +202,10 @@ class UdsView(QWidget):
         self.raw.setFont(QFont("Consolas", 9))
         self.raw.returnPressed.connect(self._send_raw)
         raw_btn = QPushButton("Send raw")
+        raw_btn.setToolTip(
+            "Send these bytes as a request, with no help: the first byte is the\n"
+            "service id and the rest is whatever that service expects."
+        )
         raw_btn.clicked.connect(self._send_raw)
         g.addWidget(QLabel("Raw"), 3, 0)
         g.addWidget(self.raw, 3, 1, 1, 3)

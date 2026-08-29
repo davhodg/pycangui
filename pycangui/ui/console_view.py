@@ -86,6 +86,10 @@ class ConsoleView(QWidget):
         self.input.setFont(mono)
         self.input.returnPressed.connect(self._on_enter)
         run_btn = QPushButton("Run script...")
+        run_btn.setToolTip(
+            "Run a Python file here, with the same names this console has:\n"
+            "ctx, bus, channels, canopen, uds, j1939, xcp, window, send."
+        )
         run_btn.clicked.connect(self._run_script_dialog)
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self.output.clear)

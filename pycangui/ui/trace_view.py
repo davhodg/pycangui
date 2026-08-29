@@ -122,6 +122,11 @@ class TraceView(QWidget):
         self.stack.addWidget(self.latest_table)
 
         self.mode = QComboBox()
+        self.mode.setToolTip(
+            "Chronological lists every frame as it arrives.\n"
+            "Latest per ID keeps one row per identifier, showing its newest\n"
+            "data with how often it has been seen and how fast."
+        )
         self.mode.addItems(MODES)
         self.mode.currentIndexChanged.connect(self._on_mode_changed)
         self.autoscroll = QCheckBox("Autoscroll")
@@ -145,6 +150,10 @@ class TraceView(QWidget):
         # Filter menu: one checkable action per group, all shown by default
         self.filter_button = QToolButton()
         self.filter_button.setText("Filter")
+        self.filter_button.setToolTip(
+            "Hide whole protocol groups or channels.  Nothing is discarded:\n"
+            "the count reads shown of captured, and unhiding brings it back."
+        )
         self.filter_button.setPopupMode(QToolButton.InstantPopup)
         menu = QMenu(self.filter_button)
         self._group_actions: dict[str, QAction] = {}

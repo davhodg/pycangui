@@ -49,13 +49,27 @@ class XcpView(QWidget):
         self.res_id.setFont(mono)
         self.res_id.setFixedWidth(70)
         self.ext = QCheckBox("29-bit")
+        self.ext.setToolTip("Address the slave with 29-bit identifiers rather than 11-bit")
         self.ext.setChecked(cfg.get("ext", False))
         self.connect_btn = QPushButton("Connect")
+        self.connect_btn.setToolTip(
+            "XCP CONNECT to the slave on the identifiers above.\n"
+            "This is the XCP session, not the CAN channel."
+        )
         self.connect_btn.setCheckable(True)
         self.connect_btn.toggled.connect(self._toggle_connect)
         unlock = QPushButton("Unlock CAL")
+        unlock.setToolTip(
+            "GET_SEED and UNLOCK for the calibration resource, which most\n"
+            "slaves want before a value can be written.  The key comes from\n"
+            "hooks/xcp.py::compute_key."
+        )
         unlock.clicked.connect(lambda: self.manager.unlock(RESOURCE_CAL))
         load = QPushButton("Load A2L...")
+        load.setToolTip(
+            "Read the measurements and characteristics out of an A2L, so they\n"
+            "can be used by name and in physical units rather than by address."
+        )
         load.clicked.connect(self._load_a2l)
         self.backend = QComboBox()
         self.backend.setToolTip("XCP implementation (add your own in the backends folder)")
@@ -91,11 +105,13 @@ class XcpView(QWidget):
         self._updating = False
 
         read_btn = QPushButton("Read selected")
+        read_btn.setToolTip(
+            "Read the selected measurements once.  Tick Poll to keep reading\n"
+            "them into the signal hub, where they can be plotted."
+        )
         read_btn.clicked.connect(self._read_selected)
         row = QHBoxLayout()
-        row.addWidget(
-            QLabel("Double-click a value to read; edit a characteristic's value to write")
-        )
+
         row.addStretch()
         row.addWidget(read_btn)
 
