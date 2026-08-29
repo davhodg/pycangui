@@ -189,6 +189,29 @@ def diagnostics(window) -> str:
             f"load={bus.load_percent:.1f}% error frames={bus._error_frames}"
         )
 
+    floating = [(n, d) for n, d in window._docks.items() if d.isFloating()]
+    if floating:
+        from PySide6.QtCore import Qt
+
+        lines += ["", "Undocked panes"]
+        for name, dock in floating:
+            flags = dock.windowFlags()
+            kind = {Qt.Widget: "Widget", Qt.Window: "Window", Qt.Tool: "Tool"}.get(
+                flags & Qt.WindowType_Mask, "?"
+            )
+            hints = [
+                label
+                for hint, label in (
+                    (Qt.WindowMaximizeButtonHint, "maximise"),
+                    (Qt.WindowMinimizeButtonHint, "minimise"),
+                    (Qt.WindowCloseButtonHint, "close"),
+                    (Qt.CustomizeWindowHint, "customised"),
+                    (Qt.FramelessWindowHint, "frameless"),
+                )
+                if flags & hint
+            ]
+            lines.append(f"  {name}: {kind}, {', '.join(hints) or 'no hints'}")
+
     trace = window.trace
     hidden_groups = sorted(trace.hidden_groups())
     hidden_channels = sorted(trace.hidden_channels())
