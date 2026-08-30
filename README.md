@@ -182,8 +182,14 @@ The **Transmit** pane holds one list of everything being sent, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded
 database and edit its signals in physical units), and **CANopen RPDO** (pick a
 node's RPDO -- press *Read RPDO config* in the CANopen pane first -- and edit
-its mapped variables).  Expand a row to see its signals; the encoded bytes
-update as you type, and a message that is already cycling is updated live.
+its mapped variables).  All three are behind one *Add* button, since the
+choice is which source rather than which button.  Expand a row to see its
+signals; the encoded bytes update as you type, and a message that is already
+cycling is updated live.
+
+Select several rows -- Ctrl+A takes the lot -- and *Send selected*, *Remove
+selected* and the space bar all work on the whole selection, so starting or
+stopping a set of cyclic messages is one keypress rather than one tick per row.
 
 The **CANopen** pane also configures a node: the *PDO configuration* tab shows
 every TPDO and RPDO with its COB-ID, transmission type, inhibit time, event
