@@ -155,8 +155,13 @@ class TxView(QWidget):
             "Expand a DBC or RPDO row to edit its signals in physical units."
         )
 
+        # Send and Stop all are the two buttons that put something on the bus
+        # or take it off again; the rest only edit the list, so they follow.
         send = QPushButton("Send selected")
         send.clicked.connect(self.send_selected)
+        stop_all = QPushButton("Stop all cyclic")
+        stop_all.setToolTip("Stop every repeating transmission at once")
+        stop_all.clicked.connect(self.stop_all)
         add_raw = QPushButton("Add raw")
         add_raw.clicked.connect(lambda: self.add_message(dict(DEFAULT_RAW)))
         add_dbc = QPushButton("Add from DBC...")
@@ -170,11 +175,8 @@ class TxView(QWidget):
         add_rpdo.clicked.connect(self._add_rpdo)
         remove = QPushButton("Remove")
         remove.clicked.connect(self.remove_selected)
-        stop_all = QPushButton("Stop all cyclic")
-        stop_all.setToolTip("Stop every repeating transmission at once")
-        stop_all.clicked.connect(self.stop_all)
         bar = QHBoxLayout()
-        for b in (send, add_raw, add_dbc, add_rpdo, remove, stop_all):
+        for b in (send, stop_all, add_raw, add_dbc, add_rpdo, remove):
             bar.addWidget(b)
         bar.addStretch()
 
