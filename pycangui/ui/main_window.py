@@ -203,6 +203,7 @@ class MainWindow(QMainWindow):
         self.channels.state_changed.connect(lambda *_a: self._sync_demo(), Qt.QueuedConnection)
         self.channels.error.connect(self._on_error)
         self.channels.note.connect(self.events.information)
+        self.channels.warning.connect(self.events.warning)
 
         # --- menus & layout persistence --------------------------------------
         file_menu = self.menuBar().addMenu("&File")
@@ -684,7 +685,13 @@ class MainWindow(QMainWindow):
 
     # --- channels ------------------------------------------------------------
     def _connect_active(
-        self, interface: str, channel: str, bitrate: int, fd: bool, extra: dict | None = None
+        self,
+        interface: str,
+        channel: str,
+        bitrate: int,
+        fd: bool,
+        data_bitrate: int = 0,
+        extra: dict | None = None,
     ) -> None:
         bus = self.channels.active_bus()
         if bus is None:
@@ -693,7 +700,7 @@ class MainWindow(QMainWindow):
         if not self._may_connect(bus.channel_name, interface, channel, bitrate, fd, extra):
             self.connect_bar.set_connected(False)
             return
-        bus.connect_bus(interface, channel, bitrate, fd, extra)
+        bus.connect_bus(interface, channel, bitrate, fd, extra, data_bitrate)
         if not bus.is_connected:
             # connect_bus reports the reason and returns; without this the
             # button stays reading "Disconnect" for a bus we never joined.
