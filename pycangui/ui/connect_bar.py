@@ -35,7 +35,15 @@ DEFAULT_BITRATE = 500_000
 
 #: Data phase rates for CAN FD.  The data phase is the point of FD: the
 #: arbitration phase still runs at the bitrate above, so both are chosen.
-DATA_BITRATES = (500_000, 1_000_000, 2_000_000, 4_000_000, 5_000_000, 8_000_000)
+DATA_BITRATES = (
+    500_000,
+    1_000_000,
+    2_000_000,
+    4_000_000,
+    5_000_000,
+    8_000_000,
+    10_000_000,
+)
 DEFAULT_DATA_BITRATE = 2_000_000
 #: Detecting while the list opens blocks the window, so it is capped well
 #: below the background timeout.

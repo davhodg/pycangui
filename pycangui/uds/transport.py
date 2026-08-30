@@ -74,7 +74,13 @@ class CanIsoTpTransport(IsoTpTransport):
                 "tx_padding": config.padding,
                 "rx_flowcontrol_timeout": 1000,
                 "rx_consecutive_frame_timeout": 1000,
-                "can_fd": False,
+                "can_fd": config.can_fd,
+                # CAN_DL: 8 on a classic bus, and one of the FD lengths -- 12,
+                # 16, 20, 24, 32, 48, 64 -- on one that opened as FD.  A long
+                # frame is the whole point of running UDS over FD: 64 bytes a
+                # frame is eight times fewer flow control rounds.
+                "tx_data_length": config.tx_data_length if config.can_fd else 8,
+                "bitrate_switch": config.bitrate_switch and config.can_fd,
             },
         )
 

@@ -147,6 +147,7 @@ class BusManager(QObject):
         self.channel = ""
         self.description = ""
         self.bitrate = 0
+        self.fd = False
         #: Percentage of the bus's capacity used, refreshed every LOAD_PERIOD_MS.
         self.load_percent = 0.0
         self._bits = 0
@@ -237,6 +238,9 @@ class BusManager(QObject):
         self.notifier = can.Notifier(self.bus, [self._collector], timeout=0.02)
         self._timer.start()
         self.bitrate = bitrate
+        # The virtual bus carries whatever it is handed, FD frames included,
+        # so trying UDS over FD without hardware is possible there.
+        self.fd = fd and (interface == "virtual" or takes_fd(interface))
         self.interface = interface
         self.channel = str(channel_value)
         self._connected_at = time.monotonic()
@@ -260,6 +264,10 @@ class BusManager(QObject):
     def disconnect_bus(self) -> None:
         if self.bus is None:
             return
+        # Cleared before the signal, not after: anything that listens for the
+        # disconnection and then asks what the channel was would otherwise be
+        # told it is still an FD channel that no longer exists.
+        self.fd = False
         self.disconnected.emit()  # protocol stacks detach their listeners first
         self.bus.stop_all_periodic_tasks()
         self._timer.stop()
