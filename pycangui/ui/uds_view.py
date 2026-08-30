@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
-from pycangui.uds import UdsConfig, images
+from pycangui.uds import CAN_DL, UdsConfig, images
 from pycangui.uds.dtc import (
     DEFAULT_STANDARD,
     DTC,
@@ -128,6 +128,25 @@ class UdsView(QWidget):
         if index >= 0:
             self.transport.setCurrentIndex(index)
         self.transport.currentTextChanged.connect(manager.set_backend)
+        self.can_dl = QComboBox()
+        self.can_dl.setToolTip(
+            "CAN_DL: how many bytes go in one ISO-TP frame.  Eight is all a\n"
+            "classic bus can carry; the longer lengths need a channel opened as\n"
+            "CAN FD, and are what makes running UDS over FD worth the trouble --\n"
+            "at 64 there are eight times fewer flow control rounds.\n"
+            "Only 8, 12, 16, 20, 24, 32, 48 and 64 exist: CAN FD has no lengths\n"
+            "in between, so a shorter message is padded up to the next one."
+        )
+        for length in CAN_DL:
+            self.can_dl.addItem(str(length), length)
+        self.can_dl.setCurrentText(str(cfg.tx_data_length))
+        self.brs = QCheckBox("BRS")
+        self.brs.setToolTip(
+            "Switch to the faster data rate for the data phase of each FD\n"
+            "frame.  Without it an FD frame runs end to end at the arbitration\n"
+            "bitrate, so the data rate chosen on the toolbar never gets used."
+        )
+        self.brs.setChecked(cfg.bitrate_switch)
         self.open_btn = QPushButton("Open")
         self.open_btn.setToolTip(
             "Open an ISO-TP connection on the addresses above.\n"
@@ -143,7 +162,10 @@ class UdsView(QWidget):
             g.addWidget(w, 0, col * 2 + 1)
         g.addWidget(QLabel(" Transport"), 0, 9)
         g.addWidget(self.transport, 0, 10)
-        g.addWidget(self.open_btn, 0, 11)
+        g.addWidget(QLabel(" CAN-DL"), 0, 11)
+        g.addWidget(self.can_dl, 0, 12)
+        g.addWidget(self.brs, 0, 13)
+        g.addWidget(self.open_btn, 0, 14)
 
         # --- session / security ----------------------------------------------
         sess = QGroupBox("Session and security")
@@ -581,6 +603,11 @@ class UdsView(QWidget):
 
         manager.result.connect(self._append)
         manager.opened.connect(self._on_opened)
+        # Which lengths are allowed is the channel's business, not this pane's,
+        # so follow it rather than asking the user to keep the two in step.
+        manager.bus.connected.connect(lambda _d: self._on_fd_changed())
+        manager.bus.disconnected.connect(self._on_fd_changed)
+        self._on_fd_changed()
         manager.progress.connect(self._on_progress)
         manager.transferring.connect(self._on_transferring)
 
@@ -595,6 +622,9 @@ class UdsView(QWidget):
             rx_id=self._int(self.rx_id),
             extended_id=self.ext.isChecked(),
             padding=0xCC if self.padding.isChecked() else None,
+            can_fd=self.manager.bus.fd,
+            tx_data_length=self.can_dl.currentData() or 8,
+            bitrate_switch=self.brs.isChecked(),
         )
         self.ctx.settings.set("uds.config", cfg.to_dict())
         return cfg
@@ -609,6 +639,15 @@ class UdsView(QWidget):
                 self.open_btn.setChecked(False)
         else:
             self.manager.close()
+
+    @Slot()
+    def _on_fd_changed(self) -> None:
+        """Offer the long frame lengths only on a channel that opened as FD."""
+        fd = self.manager.bus.fd
+        self.can_dl.setEnabled(fd)
+        self.brs.setEnabled(fd)
+        if not fd:
+            self.can_dl.setCurrentText("8")
 
     @Slot(bool)
     def _on_opened(self, opened: bool) -> None:

@@ -121,6 +121,11 @@ class UdsManager(QObject):
 
     # --- lifecycle -------------------------------------------------------------
     @property
+    def bus(self) -> BusManager:
+        """The channel underneath, so the pane can follow what it opened as."""
+        return self._bus
+
+    @property
     def is_open(self) -> bool:
         return self.client is not None
 

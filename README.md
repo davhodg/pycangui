@@ -158,6 +158,16 @@ controller's clock frequency and cannot be worked out from a bitrate.  Where
 the choice cannot be sent, the Event Log says so rather than letting the
 channel open as classic CAN with FD ticked on screen.
 
+On an FD channel the **UDS** pane offers **CAN-DL** beside the transport:
+how many bytes go in one ISO-TP frame.  Eight is all a classic bus can
+carry, and the FD lengths -- 12, 16, 20, 24, 32, 48, 64 -- are what makes
+running UDS over FD worth the trouble, since at 64 there are eight times
+fewer flow control rounds.  **BRS** beside it switches the data phase to
+the faster rate; without it an FD frame runs end to end at the arbitration
+bitrate and the data rate never gets used.  Both follow the channel rather
+than the box that was ticked: a channel that opened classic offers 8 and
+nothing else.
+
 The trace narrows down in three ways, none of which discard anything: the
 **filter box** matches text against the id, the decoded name, the channel and
 the data (`185`, `txpdo`, `drive bus`, `de ad`; several words must all match),

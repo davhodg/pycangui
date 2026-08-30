@@ -221,6 +221,15 @@ class ActiveBus(QObject):
         return self._bound.interface if self._bound else ""
 
     @property
+    def fd(self) -> bool:
+        """Whether this channel actually opened as CAN FD.
+
+        Not what was asked for: a backend that cannot be told about FD opens
+        classic, and the protocol stacks above have to know which it is.
+        """
+        return bool(self._bound and self._bound.fd)
+
+    @property
     def description(self) -> str:
         return self._bound.description if self._bound else ""
 
