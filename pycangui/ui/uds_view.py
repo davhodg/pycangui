@@ -27,6 +27,20 @@ from PySide6.QtWidgets import (
 from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
 from pycangui.uds import UdsConfig, images
+from pycangui.uds.dtc import (
+    DEFAULT_STANDARD,
+    DTC,
+    EXTENDED,
+    GROUP,
+    MEMORY,
+    RECORDS,
+    REPORTS,
+    SEVERITY,
+    SNAPSHOT,
+    STANDARDS,
+    STATUS,
+    STATUS_BITS,
+)
 from pycangui.uds.manager import (
     CHECK_MEMORY,
     ERASE_MEMORY,
@@ -160,7 +174,7 @@ class UdsView(QWidget):
         r.addStretch()
 
         # --- data ----------------------------------------------------------------
-        data = QGroupBox("Data, DTCs, routines")
+        data = QGroupBox("Data and routines")
         g = QGridLayout(data)
         self.did = _hex_edit("F190")
         self.did_value = QLineEdit()
@@ -182,21 +196,6 @@ class UdsView(QWidget):
         g.addWidget(self.did_value, 0, 3)
         g.addWidget(write_did, 0, 4)
 
-        self.dtc_mask = _hex_edit("FF", 50)
-        read_dtc = QPushButton("Read DTCs")
-        read_dtc.setToolTip("ReadDTCInformation (0x19), for the faults matching the status mask")
-        read_dtc.clicked.connect(lambda: self.manager.read_dtcs(self._int(self.dtc_mask)))
-        clear_dtc = QPushButton("Clear DTCs")
-        clear_dtc.setToolTip(
-            "ClearDiagnosticInformation (0x14).  The ECU's stored faults are\n"
-            "erased, along with the freeze frames that go with them."
-        )
-        clear_dtc.clicked.connect(lambda: self.manager.clear_dtcs())
-        g.addWidget(QLabel("Status mask"), 1, 0)
-        g.addWidget(self.dtc_mask, 1, 1)
-        g.addWidget(read_dtc, 1, 2)
-        g.addWidget(clear_dtc, 1, 4)
-
         self.routine = _hex_edit("0203")
         self.routine_data = QLineEdit()
         self.routine_data.setFont(QFont("Consolas", 9))
@@ -214,10 +213,10 @@ class UdsView(QWidget):
                 )
             )
             rbox.addWidget(b)
-        g.addWidget(QLabel("Routine"), 2, 0)
-        g.addWidget(self.routine, 2, 1)
-        g.addLayout(rbox, 2, 2)
-        g.addWidget(self.routine_data, 2, 3, 1, 2)
+        g.addWidget(QLabel("Routine"), 1, 0)
+        g.addWidget(self.routine, 1, 1)
+        g.addLayout(rbox, 1, 2)
+        g.addWidget(self.routine_data, 1, 3, 1, 2)
 
         self.raw = QLineEdit("22 F1 90")
         self.raw.setFont(QFont("Consolas", 9))
@@ -228,9 +227,118 @@ class UdsView(QWidget):
             "service id and the rest is whatever that service expects."
         )
         raw_btn.clicked.connect(self._send_raw)
-        g.addWidget(QLabel("Raw"), 3, 0)
-        g.addWidget(self.raw, 3, 1, 1, 3)
-        g.addWidget(raw_btn, 3, 4)
+        g.addWidget(QLabel("Raw"), 2, 0)
+        g.addWidget(self.raw, 2, 1, 1, 3)
+        g.addWidget(raw_btn, 2, 4)
+
+        # --- DTCs ------------------------------------------------------------------
+        # ReadDTCInformation is twenty-odd reports wearing one service number,
+        # and each takes a different set of parameters.  Choosing the report
+        # first and letting it decide which boxes are live is the only way to
+        # offer all of them without offering nonsense.
+        dtc_box = QGroupBox("DTCs")
+        d = QGridLayout(dtc_box)
+
+        self.report = QComboBox()
+        self.report.setToolTip(
+            "Which ReadDTCInformation (0x19) report to ask for.\n"
+            "The boxes below light up according to what it takes; an ECU\n"
+            "answers the wrong ones with NRC 0x13 and no explanation."
+        )
+        for report in REPORTS:
+            self.report.addItem(report.label, report.subfunction)
+            if report.note:
+                self.report.setItemData(self.report.count() - 1, report.note, Qt.ToolTipRole)
+        self.report.currentIndexChanged.connect(self._on_report)
+        read_dtc = QPushButton("Read")
+        read_dtc.setToolTip("Send the report chosen on the left")
+        read_dtc.clicked.connect(self._read_dtcs)
+        d.addWidget(QLabel("Report"), 0, 0)
+        d.addWidget(self.report, 0, 1, 1, 10)
+        d.addWidget(read_dtc, 0, 11)
+
+        self.dtc_mask = _hex_edit("FF", 50)
+        self.dtc_mask.setToolTip(
+            "Which faults to ask about.  A bit set means "
+            + "include it:\n  "
+            + "\n  ".join(STATUS_BITS)
+            + "\nFF is everything; 08 is only the confirmed ones."
+        )
+        self.severity = _hex_edit("FF", 50)
+        self.severity.setToolTip(
+            "Severity bits (ISO 14229-1): 0x20 maintenance only,\n"
+            "0x40 check at next halt, 0x80 check immediately."
+        )
+        self.dtc_number = _hex_edit("000000", 70)
+        self.dtc_number.setToolTip("The three-byte DTC the report is about, in hex")
+        self.record = _hex_edit("FF", 50)
+        self.record.setToolTip("Which record to read.  FF asks for all of them.")
+        self.memory = _hex_edit("00", 50)
+        self.memory.setToolTip("Which user-defined DTC memory to read from")
+        self.functional_group = _hex_edit("33", 50)
+        self.functional_group.setToolTip(
+            "WWH-OBD functional group: 33 is emissions, FE all groups, FF the VOBD system"
+        )
+        self.record_label = QLabel("Record")
+        for column, (label, widget) in enumerate(
+            (
+                (QLabel("Status"), self.dtc_mask),
+                (QLabel("Severity"), self.severity),
+                (QLabel("DTC"), self.dtc_number),
+                (self.record_label, self.record),
+                (QLabel("Memory"), self.memory),
+                (QLabel("Group"), self.functional_group),
+            )
+        ):
+            d.addWidget(label, 1, column * 2)
+            d.addWidget(widget, 1, column * 2 + 1)
+
+        self.dtc_setting = QCheckBox("DTC setting on")
+        self.dtc_setting.setToolTip(
+            "ControlDTCSetting (0x85).  Untick to stop the ECU recording new\n"
+            "faults while you work on it, so that pulling a connector does not\n"
+            "leave one behind.  The ECU turns it back on itself when the\n"
+            "session ends, which is worth remembering when it looks as though\n"
+            "the setting did not take.  The tick says what was last asked for,\n"
+            "not what the ECU has done about it."
+        )
+        self.dtc_setting.setChecked(True)
+        self.dtc_setting.toggled.connect(self.manager.set_dtc_setting)
+        self.clear_group = _hex_edit("FFFFFF", 70)
+        self.clear_group.setToolTip(
+            "Which faults to erase.  FFFFFF is all of them; a group such as\n"
+            "FFFF33 is emissions related only."
+        )
+        clear_dtc = QPushButton("Clear")
+        clear_dtc.setToolTip(
+            "ClearDiagnosticInformation (0x14).  The ECU's stored faults are\n"
+            "erased, along with the freeze frames that go with them."
+        )
+        clear_dtc.clicked.connect(lambda: self.manager.clear_dtcs(self._int(self.clear_group)))
+        self.standard = QComboBox()
+        self.standard.setToolTip(
+            "Which edition of ISO 14229-1 requests are built to.  It applies to\n"
+            "every service, but it shows up here: the 2020 edition withdrew the\n"
+            "mirror memory reports, and they cannot be sent while it is chosen."
+        )
+        for year in STANDARDS:
+            self.standard.addItem(str(year), year)
+        self.standard.setCurrentText(str(DEFAULT_STANDARD))
+        self.standard.currentTextChanged.connect(lambda text: self.manager.set_standard(int(text)))
+        d.addWidget(self.dtc_setting, 2, 0, 1, 3)
+        d.addWidget(QLabel("Clear group"), 2, 3)
+        d.addWidget(self.clear_group, 2, 4)
+        d.addWidget(clear_dtc, 2, 5)
+        d.addWidget(QLabel("Standard"), 2, 10)
+        d.addWidget(self.standard, 2, 11)
+
+        for key, widget in (
+            ("uds.dtc.report", self.report),
+            ("uds.dtc.status", self.dtc_mask),
+            ("uds.dtc.standard", self.standard),
+        ):
+            remember(ctx, key, widget)
+        self._on_report()
 
         # --- transfer -------------------------------------------------------------
         # Its own box because it is the one thing here that runs for minutes
@@ -382,7 +490,7 @@ class UdsView(QWidget):
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        for w in (addr, sess, reset_box, data, xfer):
+        for w in (addr, sess, reset_box, data, dtc_box, xfer):
             controls_layout.addWidget(w)
         controls_layout.addStretch()
         scroll = QScrollArea()
@@ -605,6 +713,53 @@ class UdsView(QWidget):
         if not running:
             self.bar.reset()
             self.bar.setFormat("")
+
+    # --- DTCs -------------------------------------------------------------------------
+    def _report(self):
+        from pycangui.uds.dtc import BY_SUBFUNCTION
+
+        return BY_SUBFUNCTION[self.report.currentData()]
+
+    @Slot()
+    def _on_report(self) -> None:
+        """Only the boxes this report actually takes are live.
+
+        Greyed out rather than hidden: which parameters a report wants is
+        half of what the pane is here to teach, and an empty gap teaches
+        nothing.
+        """
+        needs = self._report().needs
+        for field, widget in (
+            (STATUS, self.dtc_mask),
+            (SEVERITY, self.severity),
+            (DTC, self.dtc_number),
+            (MEMORY, self.memory),
+            (GROUP, self.functional_group),
+        ):
+            widget.setEnabled(field in needs)
+        record = next((field for field in RECORDS if field in needs), None)
+        self.record.setEnabled(record is not None)
+        self.record_label.setText(
+            "Snapshot" if record == SNAPSHOT else "Ext data" if record == EXTENDED else "Record"
+        )
+
+    def _read_dtcs(self) -> None:
+        report = self._report()
+        values = {
+            STATUS: lambda: self._int(self.dtc_mask),
+            SEVERITY: lambda: self._int(self.severity),
+            DTC: lambda: self._int(self.dtc_number),
+            SNAPSHOT: lambda: self._int(self.record),
+            EXTENDED: lambda: self._int(self.record),
+            MEMORY: lambda: self._int(self.memory),
+            GROUP: lambda: self._int(self.functional_group),
+        }
+        try:
+            params = {field: values[field]() for field in report.needs}
+        except ValueError as exc:
+            self._append(f"DTC: {exc}")
+            return
+        self.manager.read_dtc_information(report.subfunction, **params)
 
     @Slot(str)
     def _append(self, text: str) -> None:

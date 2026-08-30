@@ -224,7 +224,23 @@ is `hooks/uds.py::security_key`), tester present, DID read/write, DTC read and
 clear, routines, ECU reset (its own box, since it interrupts whatever the ECU
 was doing) and raw requests.  Data identifiers are named from ISO 14229-1 --
 `F190 (VIN)` -- and negative responses by their standard code name.  The demo device answers on
-0x7E0/0x7E8 with a byte-invert key.
+0x7E0/0x7E8 with a byte-invert key.  *Send raw* is the escape hatch: type the
+bytes of a request -- service id first, then whatever that service expects --
+and they go out as they are, for the services with no button of their own and
+for reproducing a sequence out of a trace or a specification.
+
+**DTCs** have a box to themselves, because ReadDTCInformation (0x19) is
+twenty-odd reports wearing one service number.  Choose the report and the
+boxes below light up according to what it takes -- status mask, severity, a
+DTC number, a record number, a user memory, a WWH-OBD functional group -- since
+an ECU answers the wrong parameters with NRC 0x13 and no explanation.  Which
+report takes what is checked against the bytes udsoncan actually builds, so
+the pane cannot disagree with the wire.  *DTC setting on* is ControlDTCSetting
+(0x85): untick it so that working on a vehicle does not leave faults behind,
+remembering that the ECU turns it back on itself when the session ends.
+*Clear* takes a group, so it need not be all of them.  *Standard* is the
+edition of ISO 14229-1 requests are built to; it matters here because the 2020
+edition withdrew the mirror memory reports.
 
 Its **Transfer** box moves firmware, in either direction.  *Download* sends an
 Intel HEX, S-record or raw binary to the ECU (0x34, a TransferData per block,
