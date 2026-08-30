@@ -23,6 +23,7 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
 from pycangui.uds import UdsConfig
+from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD
 from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
 from pycangui.uds.standard import memory_record
@@ -115,6 +116,7 @@ class UdsManager(QObject):
         self._worker = Worker()  # starts itself the first time it is used
         self._cancel = threading.Event()
         self._busy = False
+        self.standard_version = DEFAULT_STANDARD
         self._tp_timer = QTimer(self, timeout=self._tester_present_tick)
         bus.disconnected.connect(self.close)
 
@@ -146,6 +148,7 @@ class UdsManager(QObject):
                 "security_algo": self._security_algo,
                 "exception_on_negative_response": True,
                 "exception_on_unexpected_response": False,
+                "standard_version": self.standard_version,
             }
         )
         self.client = Client(conn, config=cfg)
@@ -323,21 +326,84 @@ class UdsManager(QObject):
         self._run(f"WriteDID {did:04X}", fn)
 
     def read_dtcs(self, status_mask: int) -> None:
-        def fn(c: Client) -> str:
-            r = c.get_dtc_by_status_mask(status_mask)
-            dtcs = r.service_data.dtcs
-            if not dtcs:
-                return f"DTCs (mask 0x{status_mask:02X}): none"
-            lines = [f"DTCs (mask 0x{status_mask:02X}): {len(dtcs)}"]
-            for d in dtcs:
-                desc = self._hooks.call("uds", "dtc_description", d.id)
-                lines.append(
-                    f"  {dtc_code(d.id)} ({d.id:06X}) status 0x{d.status.get_byte_as_int():02X}"
-                    f" {status_flags(d.status)}{' - ' + desc if desc else ''}"
-                )
-            return "\n".join(lines)
+        """The everyday one: every DTC matching a status mask."""
+        self.read_dtc_information(0x02, status_mask=status_mask)
 
-        self._run("ReadDTCInformation", fn)
+    def read_dtc_information(self, subfunction: int, **params: int) -> None:
+        """Any of the reports ReadDTCInformation (0x19) offers.
+
+        `params` are the ones that report takes, named as udsoncan names them
+        -- see pycangui.uds.dtc, which is also what the pane uses to decide
+        which boxes to leave enabled.
+        """
+        report = BY_SUBFUNCTION.get(subfunction)
+        name = report.name if report else f"subfunction 0x{subfunction:02X}"
+
+        def fn(c: Client) -> str:
+            r = c.read_dtc_information(subfunction, **params)
+            return self._describe_dtc_report(name, r.service_data, params)
+
+        def job(client: Client) -> str:
+            try:
+                return fn(client)
+            except NotImplementedError as exc:
+                # udsoncan refuses the mirror memory reports unless the client
+                # is told to encode to an older edition.  Its own message says
+                # so, and is better than anything invented here.
+                return f"{name}: {exc}"
+
+        self._run(f"ReadDTCInformation 0x{subfunction:02X}", job)
+
+    def _describe_dtc_report(self, name: str, data: Any, asked: dict | None = None) -> str:
+        """One report, said in whatever terms it answered in.
+
+        The reports do not share a shape: some come back with a count, some
+        with a list, some with a record and nothing else.  Printing only the
+        fields that are actually set is what keeps a count from being reported
+        as "0 DTCs".
+        """
+        # What was asked for, on the same line as what came back: two
+        # reports of the same name with different masks are otherwise
+        # indistinguishable once they are in the log.
+        wanted = ", ".join(
+            f"{key.replace('_', ' ')} 0x{value:06X}"
+            if key == "dtc"
+            else f"{key.replace('_', ' ')} 0x{value:02X}"
+            for key, value in (asked or {}).items()
+        )
+        lines = [f"{name}" + (f" ({wanted})" if wanted else "") + ":"]
+        if (count := getattr(data, "dtc_count", None)) is not None:
+            lines[0] += f" {count} DTC(s)"
+        if (available := getattr(data, "status_availability", None)) is not None:
+            byte = available.get_byte_as_int()
+            lines.append(f"  status bits the ECU supports: 0x{byte:02X} {status_flags(available)}")
+        if (memory := getattr(data, "memory_selection_echo", None)) is not None:
+            lines.append(f"  memory selection {memory:02X}")
+        if (group := getattr(data, "functional_group_id", None)) is not None:
+            lines.append(f"  functional group {group:02X}")
+        for record in getattr(data, "extended_data", None) or []:
+            lines.append(f"  extended data: {describe_bytes(bytes(record))}")
+
+        dtcs = getattr(data, "dtcs", None) or []
+        for d in dtcs:
+            lines.extend(self._describe_dtc(d))
+        if len(lines) == 1 and not dtcs:
+            lines[0] += " nothing reported"
+        return "\n".join(lines)
+
+    def _describe_dtc(self, d: Any) -> list[str]:
+        desc = self._hooks.call("uds", "dtc_description", d.id)
+        status = f" status 0x{d.status.get_byte_as_int():02X} {status_flags(d.status)}"
+        lines = [f"  {dtc_code(d.id)} ({d.id:06X}){status}{' - ' + desc if desc else ''}".rstrip()]
+        if getattr(d, "severity", None) is not None and d.severity.get_byte_as_int():
+            lines.append(f"    severity 0x{d.severity.get_byte_as_int():02X}")
+        if getattr(d, "fault_counter", None) is not None:
+            lines.append(f"    fault detection counter {d.fault_counter}")
+        for snapshot in getattr(d, "snapshots", None) or []:
+            lines.append(f"    snapshot {_snapshot_text(snapshot)}")
+        for record in getattr(d, "extended_data", None) or []:
+            lines.append(f"    extended data {_record_text(record)}")
+        return lines
 
     def clear_dtcs(self, group: int = 0xFFFFFF) -> None:
         def fn(c: Client) -> str:
@@ -345,6 +411,33 @@ class UdsManager(QObject):
             return f"DTCs cleared (group {group:06X})"
 
         self._run("ClearDiagnosticInformation", fn)
+
+    def set_standard(self, year: int) -> None:
+        """Which edition of ISO 14229-1 requests are built to.
+
+        udsoncan enforces it: the 2020 edition withdrew the mirror memory
+        reports, and it refuses to build one while 2020 is chosen.
+        """
+        self.standard_version = year
+        if self.client is not None:
+            self.client.config["standard_version"] = year
+        self.result.emit(f"UDS: building requests to ISO 14229-1:{year}")
+
+    def set_dtc_setting(self, on: bool) -> None:
+        """ControlDTCSetting (0x85): whether the ECU may record new DTCs.
+
+        Turned off while working on a vehicle, so that pulling a connector
+        does not leave a fault behind.  The ECU turns it back on by itself when
+        the session ends, which is a thing worth remembering when it looks as
+        though the setting did not take.
+        """
+        setting = 1 if on else 2  # ISO 14229-1: on = 1, off = 2
+
+        def fn(c: Client) -> str:
+            c.control_dtc_setting(setting)
+            return f"DTC setting {'on' if on else 'off'}"
+
+        self._run("ControlDTCSetting", fn)
 
     def routine(self, control: int, routine_id: int, data: bytes) -> None:
         names = {1: "start", 2: "stop", 3: "result"}
@@ -675,6 +768,25 @@ def parse_bytes(text: str) -> bytes:
         return bytes.fromhex(cleaned)
     except ValueError:
         return text.encode("ascii", "replace")
+
+
+def _snapshot_text(snapshot: Any) -> str:
+    """A snapshot is a record number and either raw bytes or decoded data."""
+    number = getattr(snapshot, "record_number", None)
+    head = f"{number:02X}" if isinstance(number, int) else "?"
+    if data := getattr(snapshot, "raw_data", None):
+        return f"{head}: {describe_bytes(bytes(data))}"
+    if (data := getattr(snapshot, "data", None)) is not None:
+        return f"{head}: {data}"
+    return head
+
+
+def _record_text(record: Any) -> str:
+    number = getattr(record, "record_number", None)
+    head = f"{number:02X}" if isinstance(number, int) else "?"
+    if data := getattr(record, "raw_data", None):
+        return f"{head}: {describe_bytes(bytes(data))}"
+    return head
 
 
 def as_text(data: bytes) -> str:

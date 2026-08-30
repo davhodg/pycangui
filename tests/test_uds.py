@@ -89,13 +89,14 @@ def test_uds_services_against_demo_ecu(stack):
 
     manager.read_dtcs(0xFF)
     text = last_after(n)
-    assert "DTCs (mask 0xFF): 2" in text and "P0123-45" in text and "confirmed" in text
+    assert "DTCs by status mask (status mask 0xFF): 2 DTC(s)" in text, text
+    assert "P0123-45" in text and "confirmed" in text
     n += 1
     manager.clear_dtcs()
     last_after(n)
     n += 1
     manager.read_dtcs(0xFF)
-    assert last_after(n).endswith("none")
+    assert "0 DTC(s)" in last_after(n), "cleared, so the count is nought"
     n += 1
 
     manager.routine(1, 0x0203, b"")

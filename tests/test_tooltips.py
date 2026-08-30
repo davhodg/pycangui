@@ -48,11 +48,12 @@ def control(window, view_name, text):
         # A service number is the thing the label cannot carry.
         ("uds_view", "Unlock", "0x27"),
         ("uds_view", "Read DID", "0x22"),
-        ("uds_view", "Clear DTCs", "0x14"),
+        ("uds_view", "Clear", "0x14"),
         ("uds_view", "Tester present", "0x3E"),
         # A consequence worth knowing before pressing, not after.
         ("uds_view", "Reset", "lost"),
-        ("uds_view", "Clear DTCs", "erased"),
+        ("uds_view", "Clear", "erased"),
+        ("uds_view", "DTC setting on", "0x85"),
         ("xcp_view", "Unlock CAL", "compute_key"),
         # A precondition: pressing it without this gets you nowhere.
         ("tx", "CANopen RPDO...", "EDS"),
