@@ -304,11 +304,13 @@ address and length in the ISO format; a bootloader wanting a CRC of what it
 was given is a couple of lines there.
 
 The **ASCII** pane reads a CAN id as text.  Some devices use an id as a
-console and print into the data bytes a few characters at a time; CANopen
-has an object for it -- CiA 301 gives every node 0x1026, *OS prompt*, whose
-StdOut and StdErr sub-indices are PDO mappable -- but the standard never
-says which COB-ID that PDO ends up on, and plenty of devices that are not
-CANopen do the same thing with an id of their own.  So you give it the ids.
+console and print into the data bytes a few characters at a time.  CANopen
+gives you an *object* rather than an id -- CiA 301 has 0x1026, *OS prompt*,
+whose StdIn, StdOut and StdErr sub-indices are PDO mappable -- and never says
+which COB-ID it comes out on.  In practice devices pick one, most often
+`0x780 + node-ID`, the range just above the heartbeats; and plenty of devices
+that are not CANopen do the same on an id of their own.  So you give it the
+ids.
 Several at once, each in its own tab, each with its own *Skip* for devices
 that put a length or a sequence number in the first byte or two.  NUL
 padding and carriage returns are dropped, newlines and tabs kept, and
