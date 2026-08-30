@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import can
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
-from pycangui.core.detect import coerce_channel, summarise
+from pycangui.core.detect import coerce_channel, summarise, takes_data_bitrate, takes_fd
 
 
 def frame_bits(dlc: int, extended: bool, fd: bool) -> int:
@@ -121,6 +121,7 @@ class BusManager(QObject):
     frames = Signal(list)
     error = Signal(str)
     note = Signal(str)  # worth saying, but not a failure
+    warning = Signal(str)  # what was asked for did not happen
 
     DRAIN_PERIOD_MS = 20
     LOAD_PERIOD_MS = 500
@@ -179,6 +180,7 @@ class BusManager(QObject):
         bitrate: int,
         fd: bool,
         extra: dict | None = None,
+        data_bitrate: int = 0,
     ) -> None:
         """Join a bus.
 
@@ -200,7 +202,28 @@ class BusManager(QObject):
         }
         if interface != "virtual":
             kwargs["bitrate"] = bitrate
-            kwargs["fd"] = fd
+            # Only what the backend declares.  Handing fd=True to one that does
+            # not take it is swallowed by its **kwargs, and the channel opens
+            # as classic CAN while everything on screen says FD.
+            if fd:
+                if takes_fd(interface):
+                    kwargs["fd"] = True
+                if data_bitrate and takes_data_bitrate(interface):
+                    kwargs["data_bitrate"] = data_bitrate
+                if not takes_fd(interface):
+                    self.warning.emit(
+                        f"{self.channel_name}: python-can's {interface} backend takes no "
+                        "FD setting -- it wants a timing object, which needs the "
+                        "controller's clock -- so this channel will open as classic CAN. "
+                        "Set FD in the adapter's own driver."
+                    )
+                elif data_bitrate and not takes_data_bitrate(interface):
+                    self.warning.emit(
+                        f"{self.channel_name}: the {interface} backend takes no data "
+                        f"bitrate, so the {data_bitrate // 1000} kbit/s asked for is not "
+                        "being sent; the data phase will run at whatever the driver is "
+                        "set to."
+                    )
         # Ours win: bitrate and FD are the user's choice, not the adapter's.
         kwargs.update({k: v for k, v in (extra or {}).items() if k not in kwargs})
         try:
@@ -220,7 +243,12 @@ class BusManager(QObject):
         self._seen_a_frame = False
         self._error_frames = 0
         self._state = self._read_state()
-        fd_text = " FD" if fd else ""
+        self.data_bitrate = data_bitrate if fd else 0
+        fd_text = ""
+        if fd:
+            fd_text = " FD"
+            if data_bitrate and takes_data_bitrate(interface):
+                fd_text += f" (data {data_bitrate // 1000} kbit/s)"
         # The identifying part of extra belongs in the description: with two
         # adapters attached, "ixxat:0" alone does not say which one.
         identity = summarise(extra or {})

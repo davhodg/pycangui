@@ -205,7 +205,7 @@ def test_picking_the_second_dongle_connects_to_that_one(app, bar, monkeypatch):
 
     bar.button.setChecked(True)
     assert requests, "connecting must emit a request"
-    interface, channel, _bitrate, _fd, extra = requests[0]
+    interface, channel, _bitrate, _fd, _data_bitrate, extra = requests[0]
     assert (interface, channel) == ("ixxat", "0")
     assert extra == {"unique_hardware_id": "HW-B"}, "the chosen dongle must reach can.Bus"
 
@@ -336,3 +336,60 @@ def test_a_long_string_is_left_out_too():
 
 def test_nothing_to_say_leaves_a_bare_channel():
     assert detect.describe({"interface": "socketcan", "channel": "can0"}) == "can0"
+
+
+# --- CAN FD ---------------------------------------------------------------------------
+def test_the_data_rate_appears_only_when_fd_is_asked_for(bar):
+    """A data rate on a classic channel is a control with nothing to do."""
+    assert not any(action.isVisible() for action in bar._data_widgets)
+    bar.fd.setChecked(True)
+    assert all(action.isVisible() for action in bar._data_widgets)
+    bar.fd.setChecked(False)
+    assert not any(action.isVisible() for action in bar._data_widgets)
+
+
+def test_the_slow_bitrates_are_offered(bar):
+    """50 and 100 kbit/s are ordinary on machinery and marine buses."""
+    offered = [bar.bitrate.itemData(i) for i in range(bar.bitrate.count())]
+    assert offered == [50_000, 100_000, 125_000, 250_000, 500_000, 1_000_000]
+    assert bar.bitrate.currentData() == 500_000, "still the one to start on"
+
+
+def test_the_data_rate_is_only_sent_when_fd_is_ticked(bar):
+    requests = []
+    bar.connect_requested.connect(lambda *a: requests.append(a))
+
+    bar.button.setChecked(True)
+    assert requests[-1][4] == 0, "classic: there is no data phase to have a rate"
+
+    bar.set_connected(False)
+    bar.fd.setChecked(True)
+    bar.button.setChecked(True)
+    assert requests[-1][3] is True
+    assert requests[-1][4] == 2_000_000
+
+
+def test_which_backends_can_be_told_about_fd(app):
+    """pcan, kvaser and slcan take no fd keyword: FD is a timing object to
+    them, and one that needs the controller's clock frequency.
+
+    Passing fd=True to those is swallowed by their **kwargs, so the channel
+    opens as classic CAN with nothing on screen to say so.
+    """
+    from pycangui.core.detect import takes_data_bitrate, takes_fd
+
+    assert takes_fd("socketcan"), "declares fd, though its data rate comes from ip link"
+    assert not takes_fd("pcan"), "wants a BitTimingFd instead"
+    assert not takes_fd("virtual")
+    assert takes_data_bitrate("ixxat") == ("ixxat" in _importable_or_known())
+    assert not takes_data_bitrate("pcan")
+
+
+def _importable_or_known():
+    """ixxat and vector answer from their signature where the driver is
+    installed, and from the fallback table where it is not."""
+    from pycangui.core.detect import DATA_BITRATE_BACKENDS, bus_parameters
+
+    return {name for name in DATA_BITRATE_BACKENDS if "data_bitrate" in bus_parameters(name)} or (
+        DATA_BITRATE_BACKENDS
+    )

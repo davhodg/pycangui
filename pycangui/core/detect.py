@@ -133,6 +133,52 @@ def channel_annotation(interface: str) -> str:
     return str(parameter.annotation)
 
 
+#: Backends that take ``fd`` or ``data_bitrate`` but cannot be imported on
+#: the machine doing the asking -- no vendor driver here, so no signature to
+#: read.  Same reason as INT_CHANNEL_BACKENDS above: a Linux build must not
+#: decide that a Windows-only adapter has no FD support.
+FD_BACKENDS = frozenset({"ixxat", "vector", "socketcan", "nixnet", "udp_multicast"})
+DATA_BITRATE_BACKENDS = frozenset({"ixxat", "vector"})
+
+
+def bus_parameters(interface: str) -> frozenset[str]:
+    """The parameters a backend's Bus declares, or nothing if it cannot be asked."""
+    try:
+        module_name, class_name = can.interfaces.BACKENDS[interface]
+        bus_class = getattr(importlib.import_module(module_name), class_name)
+        return frozenset(inspect.signature(bus_class.__init__).parameters)
+    except Exception:  # the vendor library is not installed here
+        return frozenset()
+
+
+def takes_fd(interface: str) -> bool:
+    """Whether python-can can put this backend into FD mode from a keyword.
+
+    Several cannot.  pcan, kvaser and slcan take no ``fd`` at all: FD is
+    expressed to them as a ``can.BitTimingFd``, which needs the controller's
+    clock frequency and so cannot be guessed from a bitrate.  Passing fd=True
+    to one of those is swallowed by its **kwargs and the channel opens as
+    classic CAN, which is worth saying out loud rather than discovering from
+    the traffic.
+    """
+    parameters = bus_parameters(interface)
+    if parameters:
+        return "fd" in parameters or "data_bitrate" in parameters
+    return interface in FD_BACKENDS
+
+
+def takes_data_bitrate(interface: str) -> bool:
+    """Whether the data phase rate can be set from here.
+
+    Only ixxat and vector.  socketcan takes fd=True but its data rate comes
+    from ``ip link`` rather than from python-can.
+    """
+    parameters = bus_parameters(interface)
+    if parameters:
+        return "data_bitrate" in parameters
+    return interface in DATA_BITRATE_BACKENDS
+
+
 def channel_parameter(interface: str):
     """The backend's ``channel`` parameter, or None if it has none."""
     entry = can.interfaces.BACKENDS.get(interface)

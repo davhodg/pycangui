@@ -28,7 +28,15 @@ from pycangui.core.detect import (
 )
 from pycangui.core.worker import Worker
 
-BITRATES = (125_000, 250_000, 500_000, 1_000_000)
+#: Arbitration bitrates, slowest first.  50 and 100 kbit/s are ordinary on
+#: machinery and marine buses, where a long backbone costs more than speed.
+BITRATES = (50_000, 100_000, 125_000, 250_000, 500_000, 1_000_000)
+DEFAULT_BITRATE = 500_000
+
+#: Data phase rates for CAN FD.  The data phase is the point of FD: the
+#: arbitration phase still runs at the bitrate above, so both are chosen.
+DATA_BITRATES = (500_000, 1_000_000, 2_000_000, 4_000_000, 5_000_000, 8_000_000)
+DEFAULT_DATA_BITRATE = 2_000_000
 #: Detecting while the list opens blocks the window, so it is capped well
 #: below the background timeout.
 EXPAND_TIMEOUT_S = 2.0
@@ -52,9 +60,10 @@ class ChannelBox(QComboBox):
 
 
 class ConnectBar(QToolBar):
-    # interface, channel, bitrate, fd, extra (the rest of a detected adapter's
-    # configuration -- an IXXAT's unique_hardware_id, a Vector's serial)
-    connect_requested = Signal(str, str, int, bool, object)
+    # interface, channel, bitrate, fd, data bitrate, extra (the rest of a
+    # detected adapter's configuration -- an IXXAT's unique_hardware_id, a
+    # Vector's serial)
+    connect_requested = Signal(str, str, int, bool, int, object)
     disconnect_requested = Signal()
 
     def __init__(self, channels: Channels, ctx: Context) -> None:
@@ -92,17 +101,32 @@ class ConnectBar(QToolBar):
         self.channel.currentTextChanged.connect(lambda _t: self._save_settings())
         self.channel.expanded.connect(self._on_channel_expanded)
         self.bitrate = QComboBox()
+        self.bitrate.setToolTip(
+            "The arbitration bitrate, which every node on the bus has to agree\n"
+            "on.  Getting it wrong is the usual reason a bus looks idle."
+        )
         for b in BITRATES:
             self.bitrate.addItem(f"{b // 1000} kbit/s", b)
-        self.bitrate.setCurrentIndex(2)
+        self.bitrate.setCurrentIndex(self.bitrate.findData(DEFAULT_BITRATE))
         self.bitrate.currentIndexChanged.connect(lambda _i: self._save_settings())
+        self.data_bitrate = QComboBox()
+        self.data_bitrate.setToolTip(
+            "The rate the data phase of an FD frame runs at, once the\n"
+            "arbitration phase above has settled who is talking.\n"
+            "python-can can only be told this for some adapters; where it\n"
+            "cannot, the Event Log says so rather than letting it look set."
+        )
+        for b in DATA_BITRATES:
+            self.data_bitrate.addItem(f"{b // 1000} kbit/s", b)
+        self.data_bitrate.setCurrentIndex(self.data_bitrate.findData(DEFAULT_DATA_BITRATE))
+        self.data_bitrate.currentIndexChanged.connect(lambda _i: self._save_settings())
         self.fd = QCheckBox("FD")
         self.fd.setToolTip(
             "Open the channel as CAN FD.  The adapter and every node on the\n"
             "bus have to agree; a classic controller treats an FD frame as an\n"
             "error."
         )
-        self.fd.toggled.connect(lambda _c: self._save_settings())
+        self.fd.toggled.connect(self._on_fd_toggled)
         self.button = QPushButton("Connect")
         self.button.setCheckable(True)
         self.button.toggled.connect(self._on_toggled)
@@ -121,6 +145,10 @@ class ConnectBar(QToolBar):
         self.addWidget(QLabel(" Bitrate: "))
         self.addWidget(self.bitrate)
         self.addWidget(self.fd)
+        # Shown only when FD is asked for: a data rate on a classic channel is
+        # a control with nothing to do, and the toolbar is short of room.
+        self._data_widgets = (self.addWidget(QLabel(" Data: ")), self.addWidget(self.data_bitrate))
+        self._on_fd_toggled(self.fd.isChecked())
         self.addSeparator()
         self.addWidget(self.button)
 
@@ -328,6 +356,7 @@ class ConnectBar(QToolBar):
                 "extra": self.current_extra(),
                 "bitrate": self.bitrate.currentData(),
                 "fd": self.fd.isChecked(),
+                "data_bitrate": self.data_bitrate.currentData(),
             },
         )
 
@@ -345,9 +374,15 @@ class ConnectBar(QToolBar):
         remembered = Channel(config={"channel": channel, **saved.get("extra", {})}, label=channel)
         self._fill_channels([remembered] if channel else [], select=channel)
         self._set_channel_enabled(interface)
-        index = self.bitrate.findData(saved.get("bitrate", 500_000))
-        self.bitrate.setCurrentIndex(index if index >= 0 else 2)
+        index = self.bitrate.findData(saved.get("bitrate", DEFAULT_BITRATE))
+        if index < 0:
+            index = self.bitrate.findData(DEFAULT_BITRATE)
+        self.bitrate.setCurrentIndex(index)
+        data = self.data_bitrate.findData(saved.get("data_bitrate", DEFAULT_DATA_BITRATE))
+        if data >= 0:
+            self.data_bitrate.setCurrentIndex(data)
         self.fd.setChecked(bool(saved.get("fd", False)))
+        self._on_fd_toggled(self.fd.isChecked())
         self._loading = False
         bus = self.channels.get(name)
         self.set_connected(bool(bus and bus.is_connected))
@@ -364,10 +399,18 @@ class ConnectBar(QToolBar):
                 self.current_channel(),
                 self.bitrate.currentData(),
                 self.fd.isChecked(),
+                self.data_bitrate.currentData() if self.fd.isChecked() else 0,
                 self.current_extra(),
             )
         else:
             self.disconnect_requested.emit()
+
+    @Slot(bool)
+    def _on_fd_toggled(self, on: bool) -> None:
+        for action in self._data_widgets:
+            action.setVisible(on)
+        if not self._loading:
+            self._save_settings()
 
     @Slot(str, bool)
     def _on_state_changed(self, name: str, connected: bool) -> None:
@@ -380,7 +423,7 @@ class ConnectBar(QToolBar):
         self._loading = True
         self.button.setChecked(connected)
         self.button.setText("Disconnect" if connected else "Connect")
-        for w in (self.interface, self.channel, self.bitrate, self.fd):
+        for w in (self.interface, self.channel, self.bitrate, self.fd, self.data_bitrate):
             w.setEnabled(not connected)
         if not connected:
             self._set_channel_enabled(self.interface.currentText())

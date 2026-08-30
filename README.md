@@ -146,6 +146,18 @@ can be watched from both sides with comparable timestamps.  The channel picked
 in the toolbar is the one the protocol panes (CANopen, UDS, J1939, XCP) work
 with; switching channel looks to them like a disconnect and a reconnect.
 
+Bitrates run from 50 kbit/s to 1 Mbit/s -- 50 and 100 are ordinary on
+machinery and marine buses, where a long backbone costs more than speed.
+Ticking **FD** adds a **Data** rate beside it, since the arbitration phase
+still runs at the bitrate on the left.  python-can has no way to ask an
+adapter which rates it supports, and no common way to set an FD data rate
+either: only the IXXAT and Vector backends take a `data_bitrate`, socketcan
+takes `fd=True` and gets its data rate from `ip link`, and PCAN, Kvaser and
+slcan take neither -- FD is a `can.BitTimingFd` to them, which needs the
+controller's clock frequency and cannot be worked out from a bitrate.  Where
+the choice cannot be sent, the Event Log says so rather than letting the
+channel open as classic CAN with FD ticked on screen.
+
 The trace narrows down in three ways, none of which discard anything: the
 **filter box** matches text against the id, the decoded name, the channel and
 the data (`185`, `txpdo`, `drive bus`, `de ad`; several words must all match),
