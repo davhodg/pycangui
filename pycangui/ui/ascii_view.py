@@ -9,8 +9,14 @@ PDO mappable, and 0x1023 to 0x1025 for whole commands.  It never says which
 COB-ID any of that comes out on, so there is nothing to decode by default.
 
 In practice devices pick an id, and the one seen most often is 0x780 +
-node-ID: the range immediately above the heartbeats, which the predefined
-connection set otherwise leaves alone apart from LSS at 0x7E4 and 0x7E5.
+node-ID.  That is not a CANopen service either -- the predefined connection
+set stops at the heartbeats, 0x701 to 0x77F, and everything from 0x780 up is
+listed as unused apart from LSS at 0x7E4 and 0x7E5.  Being unused is exactly
+what recommends it: CiA 301 also has 0x780 to 0x7FF among its restricted
+CAN-IDs, which means no conforming PDO or SDO will ever be configured onto
+one, so a maker can take the range for something of their own and know
+nothing standard will collide with it.
+
 Plenty of devices that are not CANopen at all do the same thing on an id of
 their own choosing.
 
