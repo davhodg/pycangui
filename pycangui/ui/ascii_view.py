@@ -3,18 +3,22 @@
 Some devices use a CAN id as a console: ASCII in the data bytes of an ordinary
 frame, a few characters at a time, printf fashion.
 
-CANopen has an object for exactly this -- CiA 301 gives every node 0x1026,
-"OS prompt", whose StdOut and StdErr sub-indices are single bytes and are PDO
-mappable, so a device maps StdOut into a TPDO and its output comes out on that
-PDO's COB-ID.  What the standard does *not* do is say which COB-ID that ends
-up being: it is whichever PDO the maker chose, so there is no id to decode by
-default.  Plenty of devices that are not CANopen at all do the same thing with
-an id of their own choosing.
+What CANopen gives you is an *object*, not an id.  CiA 301 has 0x1026, "OS
+prompt", whose StdIn, StdOut and StdErr sub-indices are single bytes and are
+PDO mappable, and 0x1023 to 0x1025 for whole commands.  It never says which
+COB-ID any of that comes out on, so there is nothing to decode by default.
 
-So this decodes whatever ids it is pointed at, several at once, each with its
-own tab -- and any one of them can be given a window of its own, which is the
-useful arrangement when the point of the exercise is to watch a device talk
-while doing something else with pycangui.
+In practice devices pick an id, and the one seen most often is 0x780 +
+node-ID: the range immediately above the heartbeats, which the predefined
+connection set otherwise leaves alone apart from LSS at 0x7E4 and 0x7E5.
+Plenty of devices that are not CANopen at all do the same thing on an id of
+their own choosing.
+
+Which is why the ids here are yours to give.  It decodes whatever it is
+pointed at, several at once, each with its own tab -- and any one of them can
+be given a window of its own, which is the useful arrangement when the point
+of the exercise is to watch a device talk while doing something else with
+pycangui.
 """
 
 from __future__ import annotations
@@ -192,8 +196,10 @@ class AsciiView(QWidget):
         self.tabs.tabCloseRequested.connect(self._close_tab)
         self.empty = QLabel(
             "No ids yet.  Type one above and press Add.\n\n"
-            "A CANopen device that maps object 0x1026 (OS prompt) into a TPDO\n"
-            "sends its output on that PDO's COB-ID."
+            "There is no standard id for this.  A CANopen device most often\n"
+            "uses 0x780 + node-ID -- 0x785 for node 5 -- which is the range\n"
+            "just above the heartbeats; a device that maps object 0x1026\n"
+            "(OS prompt) into a TPDO sends on that PDO's COB-ID instead."
         )
         self.empty.setAlignment(Qt.AlignCenter)
         self.empty.setEnabled(False)
