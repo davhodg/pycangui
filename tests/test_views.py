@@ -258,3 +258,19 @@ def test_no_pane_hides_a_qwidget_method(app, tmp_path, monkeypatch):
     ]
     assert not hidden, f"these shadow a QWidget method: {hidden}"
     window.close()
+
+
+def test_the_transmit_buttons_are_grouped_by_what_they_do(app, tmp_path, monkeypatch):
+    """Send and Stop all touch the bus; the rest only edit the list."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    bar = window.tx.layout().itemAt(0).layout()
+    buttons = [
+        bar.itemAt(i).widget().text()
+        for i in range(bar.count())
+        if bar.itemAt(i).widget() is not None
+    ]
+    assert buttons[:2] == ["Send selected", "Stop all cyclic"]
+    assert buttons[2:] == ["Add raw", "Add from DBC...", "Add CANopen RPDO...", "Remove"]
+    window.close()
