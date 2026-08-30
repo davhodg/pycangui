@@ -14,20 +14,25 @@ from pycangui.core.events import ERROR, INFORMATION, WARNING, EventLog
 from pycangui.ui.main_window import MainWindow
 
 
+def settle(app, times=5):
+    for _ in range(times):
+        app.processEvents()
+
+
 @pytest.fixture
 def window(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     win = MainWindow()
     win.show()
-    app.processEvents()
+    # Settled, not a single turn: the pane is shown a turn of the event loop
+    # after a problem, so anything the platform said while the window was
+    # being built has to land before a test starts closing things.  Otherwise
+    # a Qt critical from a plugin reopens the pane in the middle of a test
+    # about whether notes reopen it.
+    settle(app)
     yield win
     win.close()
-
-
-def settle(app, times=5):
-    for _ in range(times):
-        app.processEvents()
 
 
 # --- the levels themselves ------------------------------------------------------------

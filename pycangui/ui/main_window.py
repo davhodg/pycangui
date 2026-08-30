@@ -121,7 +121,9 @@ class MainWindow(QMainWindow):
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
         self.confirm = Confirmations()
-        BACKENDS.load_user_backends(self.ctx.backends_dir, self.events.warning)
+        BACKENDS.load_user_backends(
+            self.ctx.backends_dir, self.events.information, self.events.warning
+        )
 
         # --- toolbar ---------------------------------------------------------
         self.connect_bar = ConnectBar(self.channels, self.ctx)
