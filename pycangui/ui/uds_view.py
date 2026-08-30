@@ -47,7 +47,6 @@ from pycangui.uds.manager import (
     FILE_MODES,
     FILE_MODES_SENDING,
     RESETS,
-    SESSIONS,
     UdsManager,
     parse_bytes,
 )
@@ -64,6 +63,35 @@ def _hex_edit(text: str, width: int = 70) -> QLineEdit:
     e.setFont(QFont("Consolas", 9))
     e.setFixedWidth(width)
     return e
+
+
+def _picker(known: dict[int, str], digits: int, describe=None) -> QComboBox:
+    """A dropdown of the numbers somebody has a name for, that can still be typed in.
+
+    Editable on purpose.  A shortlist that will not let you send anything else
+    would be worse than no list at all: most of the identifiers and all of the
+    interesting routines on a real ECU are manufacturer specific and will
+    never be on it.
+    """
+    combo = QComboBox()
+    combo.setEditable(True)
+    combo.setInsertPolicy(QComboBox.NoInsert)
+    combo.lineEdit().setFont(QFont("Consolas", 9))
+    for number, name in sorted(known.items()):
+        combo.addItem(f"{number:0{digits}X}  {name}", number)
+        if describe and (text := describe(number)):
+            combo.setItemData(combo.count() - 1, text, Qt.ToolTipRole)
+    return combo
+
+
+def _picked(combo: QComboBox) -> int:
+    """The number out of a picker, whether it was chosen or typed.
+
+    The text of a chosen entry is "F190  VIN", so the number is the first
+    word of it; a typed one is only the number.
+    """
+    text = combo.currentText().strip().split()
+    return int(text[0], 16) if text else 0
 
 
 class UdsView(QWidget):
@@ -120,16 +148,22 @@ class UdsView(QWidget):
         # --- session / security ----------------------------------------------
         sess = QGroupBox("Session and security")
         h = QHBoxLayout(sess)
-        for code, name in SESSIONS.items():
-            if code == 4:
-                continue
-            b = QPushButton(name.capitalize())
-            b.setToolTip(
-                f"DiagnosticSessionControl (0x10): move the ECU into its {name} session.\n"
-                "Most services are only allowed in some of them."
-            )
-            b.clicked.connect(lambda _=False, c=code: self.manager.change_session(c))
-            h.addWidget(b)
+        self.session = QComboBox()
+        self.session.setToolTip(
+            "DiagnosticSessionControl (0x10).  Most services are only allowed\n"
+            "in some sessions, and an ECU drops back to the default one after a\n"
+            "few seconds of quiet unless Tester present is ticked.\n"
+            "0x40 to 0x5F belong to the manufacturer and 0x60 to 0x7E to the\n"
+            "supplier: name yours in hooks/uds.py::sessions and they appear here."
+        )
+        for code, name in sorted(manager.sessions().items()):
+            self.session.addItem(f"0x{code:02X}  {name.capitalize()}", code)
+        change = QPushButton("Change")
+        change.setToolTip("Move the ECU into the session on the left")
+        change.clicked.connect(lambda: self.manager.change_session(self.session.currentData()))
+        h.addWidget(QLabel("Session"))
+        h.addWidget(self.session)
+        h.addWidget(change)
         h.addSpacing(12)
         h.addWidget(QLabel("Level"))
         self.level = QSpinBox()
@@ -176,19 +210,25 @@ class UdsView(QWidget):
         # --- data ----------------------------------------------------------------
         data = QGroupBox("Data and routines")
         g = QGridLayout(data)
-        self.did = _hex_edit("F190")
+        self.did = _picker(manager.did_choices(), 4, manager.did_description)
+        self.did.setToolTip(
+            "The identifier to read or write.  The list is what ISO 14229-1\n"
+            "names plus your own DID_NAMES; anything else can be typed.\n"
+            "Hover an entry for what it holds."
+        )
+        self.did.setCurrentText("F190")
         self.did_value = QLineEdit()
         self.did_value.setFont(QFont("Consolas", 9))
         read_did = QPushButton("Read DID")
         read_did.setToolTip("ReadDataByIdentifier (0x22)")
-        read_did.clicked.connect(lambda: self.manager.read_did(self._int(self.did)))
+        read_did.clicked.connect(lambda: self.manager.read_did(_picked(self.did)))
         write_did = QPushButton("Write DID")
         write_did.setToolTip(
             "WriteDataByIdentifier (0x2E).  What you type is turned into bytes\n"
             "by hooks/uds.py::did_encode -- hex by default."
         )
         write_did.clicked.connect(
-            lambda: self.manager.write_did(self._int(self.did), self.did_value.text())
+            lambda: self.manager.write_did(_picked(self.did), self.did_value.text())
         )
         g.addWidget(QLabel("DID"), 0, 0)
         g.addWidget(self.did, 0, 1)
@@ -196,7 +236,13 @@ class UdsView(QWidget):
         g.addWidget(self.did_value, 0, 3)
         g.addWidget(write_did, 0, 4)
 
-        self.routine = _hex_edit("0203")
+        self.routine = _picker(manager.routine_choices(), 4, manager.routine_description)
+        self.routine.setToolTip(
+            "The routine to run.  ISO 14229-1 names four; everything from 0200\n"
+            "to DFFF is the manufacturer's, which is where the rest of a flash\n"
+            "sequence lives, so type those or add them to ROUTINE_NAMES."
+        )
+        self.routine.setCurrentText("0203")
         self.routine_data = QLineEdit()
         self.routine_data.setFont(QFont("Consolas", 9))
         self.routine_data.setPlaceholderText("option bytes (hex)")
@@ -209,7 +255,7 @@ class UdsView(QWidget):
             )
             b.clicked.connect(
                 lambda _=False, c=control: self.manager.routine(
-                    c, self._int(self.routine), parse_bytes(self.routine_data.text())
+                    c, _picked(self.routine), parse_bytes(self.routine_data.text())
                 )
             )
             rbox.addWidget(b)
@@ -333,6 +379,9 @@ class UdsView(QWidget):
         d.addWidget(self.standard, 2, 11)
 
         for key, widget in (
+            ("uds.session", self.session),
+            ("uds.did", self.did),
+            ("uds.routine", self.routine),
             ("uds.dtc.report", self.report),
             ("uds.dtc.status", self.dtc_mask),
             ("uds.dtc.standard", self.standard),

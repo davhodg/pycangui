@@ -22,6 +22,8 @@ from an ODX or a DBC, is the right source and only its owner has it.
 
 from __future__ import annotations
 
+import re
+
 from udsoncan import DataIdentifier, Routine
 
 #: Names that are worth shortening.  udsoncan spells the ISO identifiers out in
@@ -47,10 +49,48 @@ SHORTER = {
 }
 
 
+#: The sessions ISO 14229-1 names.  0x40 to 0x5F are the manufacturer's own
+#: and 0x60 to 0x7E the supplier's, which is what hooks/uds.py::sessions is
+#: for -- only the people who built the ECU know what those are called.
+SESSIONS = {1: "default", 2: "programming", 3: "extended", 4: "safety system"}
+
+
+def _numbers(holder) -> dict[str, int]:
+    """The integer constants on a udsoncan class, and nothing else.
+
+    ``vars()`` on a class also hands back Python's own attributes, and some of
+    those are integers: ``__firstlineno__`` is 18, which was quietly making
+    identifier 0x0012 and routine 0x0057 look as though the standard named
+    them individually.
+    """
+    return {
+        name: value
+        for name, value in vars(holder).items()
+        if isinstance(value, int) and not name.startswith("_")
+    }
+
+
+def _pretty(name: str) -> str:
+    """ "ECUSerialNumberDataIdentifier" -> "ECU serial number".
+
+    udsoncan spells the ISO names out in full and runs the words together,
+    which is right for a constant and unreadable in a dropdown.  Acronyms are
+    left in capitals; everything else is a sentence.
+    """
+    name = re.sub(r"DataIdentifier$|RoutineID$", "", name)
+    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ", name).split()
+    if not words:
+        return ""
+    return " ".join(
+        word if word.isupper() else word.lower() if index else word.capitalize()
+        for index, word in enumerate(words)
+    )
+
+
 #: The identifiers ISO 14229-1 names one by one, as opposed to the ranges it
 #: only gives a meaning to.  udsoncan holds the named ones as class
 #: attributes, so this is exact rather than a guess at which is which.
-NAMED = {value for value in vars(DataIdentifier).values() if isinstance(value, int)}
+NAMED = set(_numbers(DataIdentifier).values())
 
 
 def did_name(did: int) -> str:
@@ -67,7 +107,12 @@ def did_name(did: int) -> str:
         name = DataIdentifier.name_from_id(did)
     except Exception:  # an identifier outside anything udsoncan knows
         return ""
-    return SHORTER.get(name, name)
+    return SHORTER.get(name) or _pretty(name)
+
+
+def did_names() -> dict[int, str]:
+    """Every identifier ISO 14229-1 names individually, for the DID dropdown."""
+    return {did: did_name(did) for did in sorted(NAMED) if did_name(did)}
 
 
 def did_range(did: int) -> str:
@@ -81,7 +126,7 @@ def did_range(did: int) -> str:
         name = DataIdentifier.name_from_id(did)
     except Exception:
         return ""
-    return SHORTER.get(name, name)
+    return SHORTER.get(name) or _pretty(name)
 
 
 #: The routine identifiers ISO 14229-1 Annex F names one by one.  There are
@@ -89,7 +134,7 @@ def did_range(did: int) -> str:
 #: DTCs and the deploy loop.  Everything else in the space is a range, most of
 #: it manufacturer specific -- which is why a flash sequence is never quite
 #: the same twice.
-NAMED_ROUTINES = {value for value in vars(Routine).values() if isinstance(value, int)}
+NAMED_ROUTINES = set(_numbers(Routine).values())
 
 
 def routine_name(routine_id: int) -> str:
@@ -102,6 +147,11 @@ def routine_name(routine_id: int) -> str:
     if routine_id not in NAMED_ROUTINES:
         return ""
     return SHORTER.get(Routine.name_from_id(routine_id) or "", "")
+
+
+def routine_names() -> dict[int, str]:
+    """The four routines ISO 14229-1 names, for the routine dropdown."""
+    return {r: routine_name(r) for r in sorted(NAMED_ROUTINES) if routine_name(r)}
 
 
 def routine_range(routine_id: int) -> str:

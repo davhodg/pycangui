@@ -222,7 +222,13 @@ The **UDS** pane talks ISO 14229 over ISO-TP (udsoncan + can-isotp): set the
 tester/ECU ids, Open, then sessions, SecurityAccess (the seed-to-key algorithm
 is `hooks/uds.py::security_key`), tester present, DID read/write, DTC read and
 clear, routines, ECU reset (its own box, since it interrupts whatever the ECU
-was doing) and raw requests.  Data identifiers are named from ISO 14229-1 --
+was doing) and raw requests.  Sessions, identifiers and routines are chosen
+from dropdowns of the ones somebody has a name for -- ISO 14229-1's, plus
+whatever you add to `DID_NAMES`, `ROUTINE_NAMES` and `SESSION_NAMES` in
+`hooks/uds.py` -- and every one stays typeable, because most of the
+identifiers and all of the interesting routines on a real ECU are
+manufacturer specific and will never be on anybody's list.  Hovering an entry
+gives its description, which is where "17 characters (ISO 3779)" lives.  Data identifiers are named from ISO 14229-1 --
 `F190 (VIN)` -- and negative responses by their standard code name.  The demo device answers on
 0x7E0/0x7E8 with a byte-invert key.  *Send raw* is the escape hatch: type the
 bytes of a request -- service id first, then whatever that service expects --
