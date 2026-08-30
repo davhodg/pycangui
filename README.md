@@ -303,6 +303,20 @@ standard, so it is editable.  What either routine is *sent* comes from
 address and length in the ISO format; a bootloader wanting a CRC of what it
 was given is a couple of lines there.
 
+The **ASCII** pane reads a CAN id as text.  Some devices use an id as a
+console and print into the data bytes a few characters at a time; CANopen
+has an object for it -- CiA 301 gives every node 0x1026, *OS prompt*, whose
+StdOut and StdErr sub-indices are PDO mappable -- but the standard never
+says which COB-ID that PDO ends up on, and plenty of devices that are not
+CANopen do the same thing with an id of their own.  So you give it the ids.
+Several at once, each in its own tab, each with its own *Skip* for devices
+that put a length or a sequence number in the first byte or two.  NUL
+padding and carriage returns are dropped, newlines and tabs kept, and
+anything else shown as a dot -- a stream of dots is how you find out the id
+is wrong.  **Own window** gives one stream a top-level window with a taskbar
+entry, for watching a device talk while doing something else here; closing
+that window brings it back as a tab with its text intact.
+
 The **J1939** pane lists nodes (NAME from address claims), active faults from
 DM1 with lamp status, and reassembled multi-packet messages (TP.BAM / TP.CM via
 can-j1939).  Claim a tester address to send requests and multi-packet PGNs; a

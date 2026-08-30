@@ -34,6 +34,7 @@ from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.signals import SignalHub
 from pycangui.j1939.manager import J1939Manager
 from pycangui.uds.manager import UdsManager
+from pycangui.ui.ascii_view import AsciiView
 from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.connect_bar import ConnectBar
@@ -53,7 +54,7 @@ from pycangui.xcp.manager import XcpManager
 # Bumped whenever the set of docks changes.  restoreState declines a state
 # saved under a different version, so an old layout is replaced by the current
 # default instead of being restored with panes missing.
-LAYOUT_VERSION = 3
+LAYOUT_VERSION = 4
 
 #: Events after which Qt may have put its own window flags back.  It does that
 #: whenever it moves a dock about -- at the end of a drag above all -- so
@@ -181,6 +182,8 @@ class MainWindow(QMainWindow):
         self._add_dock("log", "Event Log", self.log, Qt.BottomDockWidgetArea)
         self.console = ConsoleView(self._console_namespace(), self.ctx)
         self._add_dock("console", "Python Console", self.console, Qt.BottomDockWidgetArea)
+        self.ascii = AsciiView(self.channels, self.ctx)
+        self._add_dock("ascii", "ASCII", self.ascii, Qt.BottomDockWidgetArea)
         self._arrange_default()
 
         self.setStatusBar(QStatusBar())
@@ -561,6 +564,8 @@ class MainWindow(QMainWindow):
             # Parentless windows of their own, so they would keep the
             # application running after the main window had gone.
             self._detached.pop(name).close()
+        # And the same for any ASCII stream popped out into a window.
+        self.ascii.shutdown()
         self.replay.stop()
         self.help_menu.shutdown()
         self.connect_bar.shutdown()
