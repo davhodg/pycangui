@@ -8,11 +8,15 @@ pressing rather than after.
 
 import pytest
 from PySide6.QtCore import QSettings
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QAbstractItemView, QCheckBox, QComboBox, QPushButton, QToolButton
 
 from pycangui.ui.main_window import MainWindow
 
-KINDS = (QPushButton, QCheckBox, QToolButton, QComboBox, QAbstractItemView)
+# QAction is in here because a menu entry is a control like any other:
+# putting the three Add buttons behind one menu must not lose what they
+# had to say for themselves.
+KINDS = (QPushButton, QCheckBox, QToolButton, QComboBox, QAbstractItemView, QAction)
 
 
 @pytest.fixture(scope="module")
@@ -51,7 +55,8 @@ def control(window, view_name, text):
         ("uds_view", "Clear DTCs", "erased"),
         ("xcp_view", "Unlock CAL", "compute_key"),
         # A precondition: pressing it without this gets you nowhere.
-        ("tx", "Add CANopen RPDO...", "EDS"),
+        ("tx", "CANopen RPDO...", "EDS"),
+        ("tx", "Add", "raw bytes"),
         ("uds_view", "Open", "until it is open"),
         # And what a choice actually means.
         ("connect_bar", "FD", "classic controller"),
@@ -63,8 +68,15 @@ def test_the_tooltip_says_what_the_label_cannot(window, view, label, expected):
 
 def test_the_obvious_ones_are_left_alone(window):
     """A tooltip that repeats the label is noise, not help."""
-    for view, label in (("trace", "Clear"), ("tx", "Remove"), ("tx", "Add raw")):
-        assert not control(window, view, label).toolTip()
+    for view, label in (
+        ("trace", "Clear"),
+        ("tx", "Remove selected"),
+        ("tx", "Raw message"),
+    ):
+        tip = control(window, view, label).toolTip()
+        # A QAction with no tooltip of its own hands back its own text as one,
+        # so "nothing to add" is a tip that says only what the label said.
+        assert not tip or tip == label, tip
 
 
 def test_the_hint_text_moved_off_the_window(window):

@@ -17,9 +17,10 @@ The list is saved in settings.json ("tx.messages") and restored on start.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import QEvent, Qt, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMenu,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -147,11 +149,18 @@ class TxView(QWidget):
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tree.header().setSectionResizeMode(COL_DATA, QHeaderView.Stretch)
         self.tree.header().setStretchLastSection(True)
+        # Send selected and Remove selected were always written to work on
+        # several rows; the tree was left on single selection, so they never
+        # could.  Ticking Cyclic in bulk is the same selection, one key.
+        self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.tree.installEventFilter(self)
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.itemDoubleClicked.connect(self._on_double_clicked)
         self.tree.setToolTip(
             "Double-click a message to send it once.\n"
             "Tick Cyclic to send it over and over at its period.\n"
+            "Select several rows and press space to tick or untick them together;\n"
+            "Ctrl+A selects the lot.\n"
             "Expand a DBC or RPDO row to edit its signals in physical units."
         )
 
@@ -162,21 +171,29 @@ class TxView(QWidget):
         stop_all = QPushButton("Stop all cyclic")
         stop_all.setToolTip("Stop every repeating transmission at once")
         stop_all.clicked.connect(self.stop_all)
-        add_raw = QPushButton("Add raw")
-        add_raw.clicked.connect(lambda: self.add_message(dict(DEFAULT_RAW)))
-        add_dbc = QPushButton("Add from DBC...")
-        add_dbc.clicked.connect(self._add_from_dbc)
-        add_rpdo = QPushButton("Add CANopen RPDO...")
-        add_rpdo.setToolTip(
+        # Three buttons that differed only in where the message came from are
+        # one button and a menu: the choice is which source, not which button.
+        add = QPushButton("Add")
+        add.setToolTip("Add a message: raw bytes, one from the DBC, or a CANopen RPDO")
+        self.add_menu = QMenu(add)
+        self.add_menu.setToolTipsVisible(True)
+        raw_action = self.add_menu.addAction("Raw message")
+        raw_action.triggered.connect(lambda _=False: self.add_message(dict(DEFAULT_RAW)))
+        dbc_action = self.add_menu.addAction("From DBC...")
+        dbc_action.setToolTip("Pick a message from the loaded database and edit it by signal")
+        dbc_action.triggered.connect(lambda _=False: self._add_from_dbc())
+        rpdo_action = self.add_menu.addAction("CANopen RPDO...")
+        rpdo_action.setToolTip(
             "Send a node's receive PDO, filling in its mapped objects by name.\n"
             "The node's PDO configuration has to be known first: load its EDS,\n"
             "or press Read from node in the CANopen pane."
         )
-        add_rpdo.clicked.connect(self._add_rpdo)
-        remove = QPushButton("Remove")
+        rpdo_action.triggered.connect(lambda _=False: self._add_rpdo())
+        add.setMenu(self.add_menu)
+        remove = QPushButton("Remove selected")
         remove.clicked.connect(self.remove_selected)
         bar = QHBoxLayout()
-        for b in (send, stop_all, add_raw, add_dbc, add_rpdo, remove):
+        for b in (send, stop_all, add, remove):
             bar.addWidget(b)
         bar.addStretch()
 
@@ -431,6 +448,40 @@ class TxView(QWidget):
             {r for i in self.tree.selectedItems() if (r := self._row_of(i)) is not None}
         ):
             self.send_row(row)
+
+    def eventFilter(self, watched, event):
+        """Space over the list ticks or unticks Cyclic on everything selected.
+
+        Qt's own space toggles one checkbox, and only when the cursor happens
+        to be in the Cyclic column.  Selecting a run of rows and pressing space
+        is how you start or stop a whole set of messages at once.
+        """
+        if (
+            watched is self.tree
+            and event.type() == QEvent.KeyPress
+            and event.key() == Qt.Key_Space
+            and self._toggle_selected_cyclic()
+        ):
+            return True
+        return super().eventFilter(watched, event)
+
+    def _toggle_selected_cyclic(self) -> bool:
+        rows = sorted({r for i in self.tree.selectedItems() if (r := self._row_of(i)) is not None})
+        if not rows:
+            return False
+        # One unticked row among them means "tick them all", so select-all then
+        # space starts everything and pressing it again stops everything --
+        # rather than inverting each row and leaving a mixture either way.
+        state = (
+            Qt.Checked
+            if any(self.item(r).checkState(COL_CYCLIC) != Qt.Checked for r in rows)
+            else Qt.Unchecked
+        )
+        for row in rows:
+            if self.item(row).checkState(COL_CYCLIC) != state:
+                # Not _set_cyclic: that suppresses the change so nothing starts.
+                self.item(row).setCheckState(COL_CYCLIC, state)
+        return True
 
     def _start_row(self, row: int) -> None:
         if not self._may_transmit():

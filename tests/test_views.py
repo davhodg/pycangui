@@ -2,6 +2,7 @@
 
 import time
 
+import pytest
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QWidget
 
@@ -271,6 +272,65 @@ def test_the_transmit_buttons_are_grouped_by_what_they_do(app, tmp_path, monkeyp
         for i in range(bar.count())
         if bar.itemAt(i).widget() is not None
     ]
-    assert buttons[:2] == ["Send selected", "Stop all cyclic"]
-    assert buttons[2:] == ["Add raw", "Add from DBC...", "Add CANopen RPDO...", "Remove"]
+    assert buttons == ["Send selected", "Stop all cyclic", "Add", "Remove selected"]
+    sources = [a.text() for a in window.tx.add_menu.actions()]
+    assert sources == ["Raw message", "From DBC...", "CANopen RPDO..."], "the three, in a menu"
     window.close()
+
+
+@pytest.fixture
+def tx(app, tmp_path, monkeypatch):
+    """A transmit pane with three rows, on a virtual bus so cyclic can start."""
+    from pycangui.ui.tx_view import DEFAULT_RAW, TxView
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    bus.connect_bus("virtual", "vcan_tx_view", 500000, False)
+    view = TxView(bus, Context(log=print), DbcDecoder(), CanopenManager(bus))
+    for _ in range(3):
+        view.add_message(dict(DEFAULT_RAW))
+    yield view
+    view.stop_all()
+    bus.disconnect_bus()
+
+
+def space_over(view):
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent
+
+    return view.eventFilter(view.tree, QKeyEvent(QEvent.KeyPress, Qt.Key_Space, Qt.NoModifier, " "))
+
+
+def cyclic_states(view):
+    from pycangui.ui.tx_view import COL_CYCLIC
+
+    return [view.item(r).checkState(COL_CYCLIC) == Qt.Checked for r in range(view.message_count())]
+
+
+def test_several_rows_can_be_selected_at_once(tx):
+    """Send selected and Remove selected always looped over the selection.
+
+    The tree was left on single selection, so they never got more than one.
+    """
+    tx.tree.selectAll()
+    assert len(tx.tree.selectedItems()) == 3
+
+
+def test_space_ticks_cyclic_on_everything_selected(tx):
+    assert cyclic_states(tx) == [False, False, False]
+    tx.tree.selectAll()
+
+    space_over(tx)
+    assert cyclic_states(tx) == [True] * 3, "one unticked among them means tick them all"
+    space_over(tx)
+    assert cyclic_states(tx) == [False] * 3, "and pressing it again stops them"
+
+
+def test_space_with_nothing_selected_is_left_to_qt(tx):
+    tx.tree.clearSelection()
+    assert not space_over(tx), "not swallowed, so Qt still gets it"
+
+
+def test_the_tooltip_says_how_to_tick_them_all(tx):
+    assert "press space" in tx.tree.toolTip()
+    assert "Ctrl+A" in tx.tree.toolTip(), "and how to select them in the first place"
