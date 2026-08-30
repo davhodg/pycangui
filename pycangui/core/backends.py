@@ -75,8 +75,20 @@ class BackendRegistry:
             spec = available[0]
         return spec.factory(*args, **kwargs)
 
-    def load_user_backends(self, folder: Path, log: Callable[[str], None]) -> None:
-        """Import every module in *folder* so it can register back ends."""
+    def load_user_backends(
+        self,
+        folder: Path,
+        log: Callable[[str], None],
+        warn: Callable[[str], None] | None = None,
+    ) -> None:
+        """Import every module in *folder* so it can register back ends.
+
+        Two sinks, because the two things this says are not the same
+        thing: "loaded x.py" is a note and "x.py failed to load" is a
+        warning, and sending both to one place made every successful
+        load look like a problem.
+        """
+        warn = warn or log
         self.errors.clear()
         if not folder.is_dir():
             return
@@ -94,7 +106,7 @@ class BackendRegistry:
                     spec.loader.exec_module(module)
                 except Exception:  # user code may fail in any way
                     self.errors[str(path)] = traceback.format_exc()
-                    log(f"Backend file {path} failed to load:\n{traceback.format_exc()}")
+                    warn(f"Backend file {path} failed to load:\n{traceback.format_exc()}")
                 else:
                     log(f"Loaded backend module {path.name}")
         finally:

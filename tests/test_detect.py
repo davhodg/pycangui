@@ -369,27 +369,44 @@ def test_the_data_rate_is_only_sent_when_fd_is_ticked(bar):
     assert requests[-1][4] == 2_000_000
 
 
-def test_which_backends_can_be_told_about_fd(app):
-    """pcan, kvaser and slcan take no fd keyword: FD is a timing object to
-    them, and one that needs the controller's clock frequency.
+@pytest.mark.parametrize(
+    "interface", ["socketcan", "pcan", "kvaser", "slcan", "vector", "ixxat", "virtual"]
+)
+def test_fd_support_is_read_from_the_backend_where_it_can_be(interface):
+    """Whether a backend can be told about FD comes from its own signature.
 
-    Passing fd=True to those is swallowed by their **kwargs, so the channel
-    opens as classic CAN with nothing on screen to say so.
+    Asserted as the rule rather than as a list of answers: which backends can
+    even be imported depends on which vendor libraries are installed on the
+    machine running this, so a test naming answers passes on one and fails on
+    the next.
     """
-    from pycangui.core.detect import takes_data_bitrate, takes_fd
-
-    assert takes_fd("socketcan"), "declares fd, though its data rate comes from ip link"
-    assert not takes_fd("pcan"), "wants a BitTimingFd instead"
-    assert not takes_fd("virtual")
-    assert takes_data_bitrate("ixxat") == ("ixxat" in _importable_or_known())
-    assert not takes_data_bitrate("pcan")
-
-
-def _importable_or_known():
-    """ixxat and vector answer from their signature where the driver is
-    installed, and from the fallback table where it is not."""
-    from pycangui.core.detect import DATA_BITRATE_BACKENDS, bus_parameters
-
-    return {name for name in DATA_BITRATE_BACKENDS if "data_bitrate" in bus_parameters(name)} or (
-        DATA_BITRATE_BACKENDS
+    from pycangui.core.detect import (
+        DATA_BITRATE_BACKENDS,
+        FD_BACKENDS,
+        bus_parameters,
+        takes_data_bitrate,
+        takes_fd,
     )
+
+    parameters = bus_parameters(interface)
+    if parameters:
+        assert takes_fd(interface) == ("fd" in parameters or "data_bitrate" in parameters)
+        assert takes_data_bitrate(interface) == ("data_bitrate" in parameters)
+    else:  # no vendor library here, so the fallback table answers
+        assert takes_fd(interface) == (interface in FD_BACKENDS)
+        assert takes_data_bitrate(interface) == (interface in DATA_BITRATE_BACKENDS)
+
+
+def test_the_backends_that_take_no_fd_keyword_are_left_out():
+    """The fact all of this was for: pcan, kvaser and slcan express FD as a
+    can.BitTimingFd, which needs the controller's clock frequency and cannot
+    be worked out from a bitrate.
+
+    fd=True handed to one of those is swallowed by its **kwargs and the
+    channel opens as classic CAN with nothing on screen to say so.
+    """
+    from pycangui.core.detect import DATA_BITRATE_BACKENDS, FD_BACKENDS
+
+    assert {"pcan", "kvaser", "slcan"}.isdisjoint(FD_BACKENDS)
+    assert {"socketcan", "ixxat", "vector"} <= FD_BACKENDS
+    assert DATA_BITRATE_BACKENDS == frozenset({"ixxat", "vector"})

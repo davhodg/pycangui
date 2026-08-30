@@ -236,7 +236,12 @@ class AsciiView(QWidget):
         window = self._windows.pop(key, None)
         if window is not None:
             window.blockSignals(True)  # it is going for good, not coming back
+            window.release()  # take the text out before the window goes
             window.close()
+            # Deleted by Qt rather than by Python letting go of the last
+            # reference: a parentless window dropped while Qt still has work
+            # queued for it is the access violation this project has met before.
+            window.deleteLater()
         text = self._texts.pop(key, None)
         if text is not None:
             index = self.tabs.indexOf(text)
@@ -322,6 +327,7 @@ class AsciiView(QWidget):
         if window is None:
             return
         widget = window.release()
+        window.deleteLater()  # it is mid-closeEvent; let Qt do the freeing
         if isinstance(widget, StreamText):
             stream = widget.stream
             index = self.tabs.addTab(widget, stream.title)
@@ -351,5 +357,7 @@ class AsciiView(QWidget):
         """Close any windows that are out, so none are left behind."""
         for window in list(self._windows.values()):
             window.blockSignals(True)
+            window.release()
             window.close()
+            window.deleteLater()
         self._windows.clear()
