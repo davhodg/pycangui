@@ -294,7 +294,7 @@ class CanopenView(QWidget):
             if Path(path).exists():
                 self.manager.load_eds(identity.node_id, str(path))
             else:
-                self.ctx.log(f"Node {identity.node_id}: EDS not found: {path}")
+                self.ctx.warn(f"Node {identity.node_id}: EDS not found: {path}")
 
     def _ask_for_eds(self, identity: NodeIdentity) -> str | None:
         if identity.key in self._asked:
@@ -514,7 +514,7 @@ class CanopenView(QWidget):
     @Slot(int, int, int, object, object)
     def on_sdo_result(self, node_id: int, index: int, sub: int, value, error) -> None:
         if error:
-            self.ctx.log(f"Node {node_id}: SDO {index:04X}:{sub:02X} failed: {error}")
+            self.ctx.warn(f"Node {node_id}: SDO {index:04X}:{sub:02X} failed: {error}")
         if node_id != self.selected_node():
             return
         item = self._od_item(index, sub)

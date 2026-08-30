@@ -223,4 +223,4 @@ class ReplayAction(QObject):
         if reason in ("end", "stopped"):
             self.ctx.log(f"Replay {reason}: {name}")
         else:
-            self.ctx.log(f"Replay failed: {reason}")
+            self.ctx.warn(f"Replay failed: {reason}")

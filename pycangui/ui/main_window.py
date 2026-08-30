@@ -26,6 +26,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.demo import DemoDevice
 from pycangui.core.detect import DEMO_CHANNEL, summarise
+from pycangui.core.events import PROBLEMS, EventLog
 from pycangui.core.excepthook import ExceptionLogger
 from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
@@ -98,22 +99,28 @@ class MainWindow(QMainWindow):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
+        #: Every line said to the user arrives here with a level, and this is
+        #: the only thing that writes to the pane.  Warnings and errors open it
+        #: if it has been closed; notes do not.
+        self.events = EventLog()
+        self._surfacing = False
+        self.events.posted.connect(self._on_event)
 
         # --- user context, hooks, protocol managers -------------------------
-        self.ctx = Context(log=self.log.appendPlainText)
+        self.ctx = Context(events=self.events)
         #: python-can says everything through the logging module and nothing
         #: through return values -- a wrong bitrate is reported there and
         #: nowhere else, so without this it looks like an idle bus.
-        self.log_bridge = LogBridge(self.log.appendPlainText)
+        self.log_bridge = LogBridge(self.events.post)
         #: Started with pythonw, which has no console, so a traceback from a
         #: Qt slot would otherwise go nowhere at all -- see the module.
-        self.exceptions = ExceptionLogger(self.log.appendPlainText)
+        self.exceptions = ExceptionLogger(self.events.post)
         self.exceptions.install()
         self.hooks = Hooks(self.ctx)
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
         self.confirm = Confirmations()
-        BACKENDS.load_user_backends(self.ctx.backends_dir, self.log.appendPlainText)
+        BACKENDS.load_user_backends(self.ctx.backends_dir, self.events.warning)
 
         # --- toolbar ---------------------------------------------------------
         self.connect_bar = ConnectBar(self.channels, self.ctx)
@@ -185,8 +192,8 @@ class MainWindow(QMainWindow):
         self.channels.frames.connect(self.trace.on_frames)
         self.channels.frames.connect(self._decode_frames)
         self.recorder.state.connect(self._on_record_state)
-        self.recorder.error.connect(self.log.appendPlainText)
-        self.recorder.note.connect(self.log.appendPlainText)
+        self.recorder.error.connect(self.events.error)
+        self.recorder.note.connect(self.events.information)
         self.canopen.rpdos_read.connect(lambda _n: self.tx.refresh_sources())
         self.canopen.pdo_update.connect(self._on_pdo_update)
         self.channels.frames.connect(self._count_frames)
@@ -195,7 +202,7 @@ class MainWindow(QMainWindow):
         # asking straight away would still see it connected.
         self.channels.state_changed.connect(lambda *_a: self._sync_demo(), Qt.QueuedConnection)
         self.channels.error.connect(self._on_error)
-        self.channels.note.connect(self.log.appendPlainText)
+        self.channels.note.connect(self.events.information)
 
         # --- menus & layout persistence --------------------------------------
         file_menu = self.menuBar().addMenu("&File")
@@ -207,7 +214,7 @@ class MainWindow(QMainWindow):
             try:
                 self.xcp.load_a2l(a2l)
             except Exception as exc:
-                self.log.appendPlainText(f"A2L load failed: {exc}")
+                self.events.warning(f"A2L load failed: {exc}")
 
         view_menu = self.menuBar().addMenu("&View")
         for dock in self.findChildren(QDockWidget):
@@ -312,7 +319,7 @@ class MainWindow(QMainWindow):
         # start-up with nothing on screen to say it about.
         if floating and dock.isVisible() and not self._said_undock_tip:
             self._said_undock_tip = True
-            self.log.appendPlainText(UNDOCK_TIP)
+            self.events.information(UNDOCK_TIP)
         self._show_pane_bar(name)
 
     def eventFilter(self, watched, event) -> bool:
@@ -509,13 +516,13 @@ class MainWindow(QMainWindow):
         # which leaves the default in place -- the same as never having run.
         if state is None or not self.restoreState(state, LAYOUT_VERSION):
             hidden = [d.windowTitle() for n, d in self._docks.items() if n not in DEFAULT_VISIBLE]
-            self.log.appendPlainText(
+            self.events.information(
                 f"Panes for {', '.join(hidden)} are hidden to start with: "
                 "turn any of them on in the View menu."
             )
             # The virtual channel is the default, and it is empty until
             # something fills it -- which is not obvious from looking at it.
-            self.log.appendPlainText(
+            self.events.information(
                 "No hardware?  Connect on the virtual channel and switch on "
                 "Tools > Demo CANopen device to have something to look at."
             )
@@ -533,7 +540,7 @@ class MainWindow(QMainWindow):
         floating = [dock for dock in self._docks.values() if dock.isFloating()]
         for dock in floating:
             dock.setFloating(False)
-        self.log.appendPlainText(
+        self.events.information(
             f"Docked {len(floating)} pane(s)." if floating else "No panes are undocked."
         )
 
@@ -569,14 +576,48 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     # --- slots ---------------------------------------------------------------
+    @Slot(str, str)
+    def _on_event(self, message: str, level: str) -> None:
+        """The only thing that writes to the Event Log pane.
+
+        Which makes it the only place that would have to change to give
+        warnings and errors a colour of their own.
+        """
+        self.log.appendPlainText(message)
+        if level in PROBLEMS:
+            self._surface_log()
+
+    def _surface_log(self) -> None:
+        """Open the Event Log, because something in it needs reading.
+
+        Deferred by a turn of the event loop for two reasons: a problem raised
+        while the window is still being built would otherwise be undone by the
+        saved layout, which is restored afterwards; and a burst of them -- one
+        per row, when Cyclic is ticked on a selection with no bus connected --
+        should cost one show rather than twenty.
+        """
+        if self._surfacing:
+            return
+        self._surfacing = True
+        QTimer.singleShot(0, self._show_log)
+
+    def _show_log(self) -> None:
+        self._surfacing = False
+        dock = getattr(self, "_docks", {}).get("log")
+        if dock is None or "log" in getattr(self, "_detached", {}):
+            return  # too early to have a pane, or it has a window of its own
+        if not dock.isVisible():
+            dock.show()
+        dock.raise_()  # it may be docked but tabbed behind another pane
+
     @Slot(str)
     def _on_error(self, text: str) -> None:
-        self.log.appendPlainText(f"ERROR: {text}")
+        self.events.error(f"ERROR: {text}")
 
     @Slot(bool)
     def _set_strict_dbc(self, on: bool) -> None:
         self.ctx.settings.set("dbc.strict", on)
-        self.log.appendPlainText(
+        self.events.information(
             "DBC files will be checked strictly, and you will be asked about one that fails."
             if on
             else "DBC files will be loaded without the strict checks."
@@ -585,7 +626,7 @@ class MainWindow(QMainWindow):
     @Slot(bool)
     def _set_verbose_logging(self, on: bool) -> None:
         self.log_bridge.set_verbose(on)
-        self.log.appendPlainText(
+        self.events.information(
             f"Verbose CAN logging {'on' if on else 'off'}: the CAN libraries' "
             f"{'info messages are' if on else 'warnings and errors are still'} relayed here."
         )
@@ -599,18 +640,17 @@ class MainWindow(QMainWindow):
     def _reload_hooks(self) -> None:
         self.hooks.reload()
         bad = self.hooks.errors()
-        self.log.appendPlainText(
-            "Hooks reloaded" + (f" ({len(bad)} file(s) failed, see above)" if bad else "")
-        )
+        say = self.events.warning if bad else self.events.information
+        say("Hooks reloaded" + (f" ({len(bad)} file(s) failed, see above)" if bad else ""))
 
     def _update_hook_stubs(self) -> None:
         added = self.hooks.update_stubs()
         if added:
             for module, names in added.items():
-                self.log.appendPlainText(f"hooks/{module}.py: added {', '.join(names)}")
+                self.events.information(f"hooks/{module}.py: added {', '.join(names)}")
             self.hooks.reload()
         else:
-            self.log.appendPlainText("Hook files already up to date")
+            self.events.information("Hook files already up to date")
 
     def _sync_demo(self) -> None:
         """Run the demo device exactly while a channel is connected to its bus.
@@ -628,9 +668,9 @@ class MainWindow(QMainWindow):
             try:
                 self._demo = DemoDevice(DEMO_CHANNEL, self)
             except Exception as exc:
-                self.log.appendPlainText(f"Demo device failed to start: {exc}")
+                self.events.warning(f"Demo device failed to start: {exc}")
                 return
-            self.log.appendPlainText(
+            self.events.information(
                 f"Demo CANopen device running on {DEMO_CHANNEL}: "
                 "node 5, heartbeat 500 ms, TPDO1 100 ms"
             )
@@ -648,7 +688,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         bus = self.channels.active_bus()
         if bus is None:
-            self.log.appendPlainText("No channel selected")
+            self.events.warning("No channel selected")
             return
         if not self._may_connect(bus.channel_name, interface, channel, bitrate, fd, extra):
             self.connect_bar.set_connected(False)
@@ -712,9 +752,9 @@ class MainWindow(QMainWindow):
     def _on_channel_state(self, name: str, connected: bool) -> None:
         bus = self.channels.get(name)
         if connected and bus is not None:
-            self.log.appendPlainText(f"{name} connected: {bus.description}")
+            self.events.information(f"{name} connected: {bus.description}")
         else:
-            self.log.appendPlainText(f"{name} disconnected")
+            self.events.information(f"{name} disconnected")
 
     # --- recording -----------------------------------------------------------
     @Slot(bool)
@@ -734,7 +774,7 @@ class MainWindow(QMainWindow):
         self.record_action.setChecked(recording)
         self.record_action.setText("Recording..." if recording else "Record")
         self.record_action.blockSignals(False)
-        self.log.appendPlainText(f"Recording to {path}" if recording else "Recording stopped")
+        self.events.information(f"Recording to {path}" if recording else "Recording stopped")
 
     # --- DBC / signals -------------------------------------------------------
     def _load_dbc_dialog(self) -> None:
@@ -763,17 +803,17 @@ class MainWindow(QMainWindow):
         try:
             db = self.dbc.load(path, strict=strict)
         except Exception as exc:  # cantools parse errors come in many types
-            self.log.appendPlainText(f"DBC load failed: {path}: {exc}")
+            self.events.warning(f"DBC load failed: {path}: {exc}")
             if not strict or not offer_relaxing or not self._offer_relaxed_load(path, exc):
                 return False
             try:
                 db = self.dbc.load(path, strict=False)
             except Exception as exc2:
-                self.log.appendPlainText(f"DBC load failed even unchecked: {path}: {exc2}")
+                self.events.warning(f"DBC load failed even unchecked: {path}: {exc2}")
                 return False
-            self.log.appendPlainText(f"Loaded {path} without the strict checks")
+            self.events.information(f"Loaded {path} without the strict checks")
         how = "" if strict else " (strict checks off)"
-        self.log.appendPlainText(f"Loaded {path}: {len(db.messages)} messages{how}")
+        self.events.information(f"Loaded {path}: {len(db.messages)} messages{how}")
         if hasattr(self, "tx"):
             self.tx.refresh_sources()
         return True
@@ -801,7 +841,7 @@ class MainWindow(QMainWindow):
             self.dbc.unload(path)
         self.ctx.settings.set("dbc.paths", [])
         self.tx.refresh_sources()
-        self.log.appendPlainText("DBC databases unloaded")
+        self.events.information("DBC databases unloaded")
 
     @Slot(list)
     def _decode_frames(self, frames: list) -> None:

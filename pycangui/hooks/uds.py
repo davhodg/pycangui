@@ -6,6 +6,8 @@ that raises is reported in the Event Log pane and ignored.  Tools > Reload hooks
 picks up changes without a restart.
 
 ``ctx`` is the pycangui context: ctx.log("text"), ctx.settings.get(key), ...
+ctx.warn("text") says the same thing but opens the Event Log if it has been
+closed, which is what to use when somebody is waiting on an answer.
 
 Where a standard answer exists, the call that fetches it is *in this file*:
 your own table is consulted first, and the library is the fallback.  The

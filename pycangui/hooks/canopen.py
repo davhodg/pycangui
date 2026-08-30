@@ -8,7 +8,9 @@ restart; Tools > Update hook stubs appends any new hooks added by a newer
 pycangui version.
 
 ``ctx`` is the pycangui context:
-    ctx.log("text")          write to the Event Log pane
+    ctx.log("text")          write a line to the Event Log pane
+    ctx.warn("text")         the same, but open the pane if it is closed
+    ctx.error("text")        for something that went wrong unasked
     ctx.eds_dir              Path of your EDS folder
     ctx.user_dir             Path of the pycangui user folder
     ctx.settings.get(key)    values pycangui remembers (see settings.json)

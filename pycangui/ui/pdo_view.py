@@ -217,14 +217,14 @@ class PdoConfigView(QWidget):
             elif column == COL_TIMER:
                 config.event_timer_ms = _optional_int(item.text(COL_TIMER))
         except ValueError:
-            self.ctx.log(f"PDO: {item.text(column)!r} is not a valid number")
+            self.ctx.warn(f"PDO: {item.text(column)!r} is not a valid number")
             self.refresh()
         self._updating = False
 
     def _add_entry(self) -> None:
         item = self._selected_row()
         if item is None or self.node_id is None:
-            self.ctx.log("PDO: select a PDO first")
+            self.ctx.warn("PDO: select a PDO first")
             return
         dialog = ObjectPicker(self.manager, self.node_id, self)
         if dialog.exec() == QDialog.Accepted and (entry := dialog.chosen()):

@@ -160,7 +160,7 @@ class Hooks:
                 spec.loader.exec_module(mod)
             except Exception:
                 um.error = traceback.format_exc()
-                self.ctx.log(f"Hook file {path} failed to load, using defaults:\n{um.error}")
+                self.ctx.warn(f"Hook file {path} failed to load, using defaults:\n{um.error}")
                 continue
             um.functions = {
                 name: fn
