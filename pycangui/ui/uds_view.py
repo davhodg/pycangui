@@ -299,9 +299,11 @@ class UdsView(QWidget):
         read_dtc = QPushButton("Read")
         read_dtc.setToolTip("Send the report chosen on the left")
         read_dtc.clicked.connect(self._read_dtcs)
-        d.addWidget(QLabel("Report"), 0, 0)
-        d.addWidget(self.report, 0, 1, 1, 10)
-        d.addWidget(read_dtc, 0, 11)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("Report"))
+        top.addWidget(self.report, 1)
+        top.addWidget(read_dtc)
+        d.addLayout(top, 0, 0, 1, 7)
 
         self.dtc_mask = _hex_edit("FF", 50)
         self.dtc_mask.setToolTip(
@@ -315,8 +317,13 @@ class UdsView(QWidget):
             "Severity bits (ISO 14229-1): 0x20 maintenance only,\n"
             "0x40 check at next halt, 0x80 check immediately."
         )
-        self.dtc_number = _hex_edit("000000", 70)
-        self.dtc_number.setToolTip("The three-byte DTC the report is about, in hex")
+        self.dtc_number = _hex_edit("FFFFFF", 70)
+        self.dtc_number.setToolTip(
+            "The three-byte DTC the report is about, in hex.\n"
+            "FFFFFF is how most ECUs are asked for all of them -- a convention\n"
+            "rather than something ISO 14229-1 defines for these reports, so an\n"
+            "ECU is within its rights to want one particular fault instead."
+        )
         self.record = _hex_edit("FF", 50)
         self.record.setToolTip("Which record to read.  FF asks for all of them.")
         self.memory = _hex_edit("00", 50)
@@ -325,19 +332,33 @@ class UdsView(QWidget):
         self.functional_group.setToolTip(
             "WWH-OBD functional group: 33 is emissions, FE all groups, FF the VOBD system"
         )
-        self.record_label = QLabel("Record")
-        for column, (label, widget) in enumerate(
+        # A label to the left of its box is only unambiguous while the columns
+        # stay narrow; six pairs across a stretched row put every label nearer
+        # its neighbour's box than its own.  Above it, in the same column,
+        # cannot come apart however the pane is resized.
+        #
+        # ``field`` is the parameter the box fills in, or None for the record
+        # box, which serves two of them and takes its name from the report.
+        self._dtc_fields: list[tuple[str | None, QLabel, QLineEdit]] = []
+        for column, (field, text, widget) in enumerate(
             (
-                (QLabel("Status"), self.dtc_mask),
-                (QLabel("Severity"), self.severity),
-                (QLabel("DTC"), self.dtc_number),
-                (self.record_label, self.record),
-                (QLabel("Memory"), self.memory),
-                (QLabel("Group"), self.functional_group),
+                (STATUS, "Status mask", self.dtc_mask),
+                (SEVERITY, "Severity mask", self.severity),
+                (DTC, "DTC", self.dtc_number),
+                (None, "Record", self.record),
+                (MEMORY, "Memory", self.memory),
+                (GROUP, "Group", self.functional_group),
             )
         ):
-            d.addWidget(label, 1, column * 2)
-            d.addWidget(widget, 1, column * 2 + 1)
+            label = QLabel(text)
+            label.setBuddy(widget)
+            d.addWidget(label, 1, column, alignment=Qt.AlignBottom | Qt.AlignLeft)
+            d.addWidget(widget, 2, column, alignment=Qt.AlignLeft)
+            self._dtc_fields.append((field, label, widget))
+        self.record_label = self._dtc_fields[3][1]
+        # The spare column takes the slack, so the six stay together on the
+        # left rather than drifting apart as the pane widens.
+        d.setColumnStretch(6, 1)
 
         self.dtc_setting = QCheckBox("DTC setting on")
         self.dtc_setting.setToolTip(
@@ -371,12 +392,16 @@ class UdsView(QWidget):
             self.standard.addItem(str(year), year)
         self.standard.setCurrentText(str(DEFAULT_STANDARD))
         self.standard.currentTextChanged.connect(lambda text: self.manager.set_standard(int(text)))
-        d.addWidget(self.dtc_setting, 2, 0, 1, 3)
-        d.addWidget(QLabel("Clear group"), 2, 3)
-        d.addWidget(self.clear_group, 2, 4)
-        d.addWidget(clear_dtc, 2, 5)
-        d.addWidget(QLabel("Standard"), 2, 10)
-        d.addWidget(self.standard, 2, 11)
+        bottom = QHBoxLayout()
+        bottom.addWidget(self.dtc_setting)
+        bottom.addSpacing(16)
+        bottom.addWidget(QLabel("Clear group"))
+        bottom.addWidget(self.clear_group)
+        bottom.addWidget(clear_dtc)
+        bottom.addStretch()
+        bottom.addWidget(QLabel("Standard"))
+        bottom.addWidget(self.standard)
+        d.addLayout(bottom, 3, 0, 1, 7)
 
         for key, widget in (
             ("uds.session", self.session),
@@ -778,19 +803,16 @@ class UdsView(QWidget):
         nothing.
         """
         needs = self._report().needs
-        for field, widget in (
-            (STATUS, self.dtc_mask),
-            (SEVERITY, self.severity),
-            (DTC, self.dtc_number),
-            (MEMORY, self.memory),
-            (GROUP, self.functional_group),
-        ):
-            widget.setEnabled(field in needs)
         record = next((field for field in RECORDS if field in needs), None)
-        self.record.setEnabled(record is not None)
         self.record_label.setText(
             "Snapshot" if record == SNAPSHOT else "Ext data" if record == EXTENDED else "Record"
         )
+        for field, label, widget in self._dtc_fields:
+            live = (record is not None) if field is None else (field in needs)
+            # The label goes grey with its box: a live-looking name over a dead
+            # box is the thing that makes a form look broken.
+            label.setEnabled(live)
+            widget.setEnabled(live)
 
     def _read_dtcs(self) -> None:
         report = self._report()

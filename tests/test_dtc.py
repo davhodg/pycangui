@@ -274,3 +274,31 @@ def test_a_typed_identifier_is_remembered(app, tmp_path, monkeypatch):
 
     second = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), Context(log=print))
     assert second.did.currentText() == "0101"
+
+
+# --- the layout -----------------------------------------------------------------------
+def test_each_label_sits_directly_above_its_own_box(view):
+    """Six label-and-box pairs across a stretched row put every label nearer
+    its neighbour's box than its own, which is the confusing part."""
+    grid = view.dtc_mask.parentWidget().layout()
+    for _field, label, widget in view._dtc_fields:
+        label_row, label_column, _, _ = grid.getItemPosition(grid.indexOf(label))
+        box_row, box_column, _, _ = grid.getItemPosition(grid.indexOf(widget))
+        assert label_column == box_column, f"{label.text()} is not over its box"
+        assert box_row == label_row + 1
+
+
+def test_a_greyed_box_takes_its_label_with_it(view):
+    """A live-looking name over a dead box is what makes a form look broken."""
+    choose(view, 0x0A)  # supported DTCs: no parameters at all
+    assert not any(label.isEnabled() for _f, label, _w in view._dtc_fields)
+    choose(view, 0x02)  # by status mask
+    live = {label.text() for _f, label, _w in view._dtc_fields if label.isEnabled()}
+    assert live == {"Status mask"}
+
+
+def test_the_dtc_box_starts_at_all_of_them(view):
+    """FFFFFF is how most ECUs are asked for every fault they hold."""
+    assert view.dtc_number.text() == "FFFFFF"
+    assert "FFFFFF" in view.dtc_number.toolTip()
+    assert "convention" in view.dtc_number.toolTip(), "and it is not in the standard"
