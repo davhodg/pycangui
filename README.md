@@ -191,6 +191,12 @@ Select several rows -- Ctrl+A takes the lot -- and *Send selected*, *Remove
 selected* and the space bar all work on the whole selection, so starting or
 stopping a set of cyclic messages is one keypress rather than one tick per row.
 
+Everything pycangui says goes to the **Event Log** with a level: information,
+warning or error.  A warning or an error opens the pane if it has been closed,
+a plain note does not, so closing it means "stop chattering at me" rather than
+"hide failures from me".  Hooks and console scripts get the same three:
+`ctx.log(text)`, `ctx.warn(text)`, `ctx.error(text)`.
+
 The **CANopen** pane also configures a node: the *PDO configuration* tab shows
 every TPDO and RPDO with its COB-ID, transmission type, inhibit time, event
 timer and mapped objects; edit a cell or map/unmap objects and *Write to node*

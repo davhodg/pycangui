@@ -17,6 +17,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
+from pycangui.core.events import ERROR, INFORMATION, WARNING
+
 #: The loggers worth relaying.  python-can names its loggers "can.<backend>",
 #: so this covers every backend including ones installed later.
 LOGGERS = ("can", "canopen", "j1939", "udsoncan", "isotp")
@@ -24,9 +26,18 @@ LOGGERS = ("can", "canopen", "j1939", "udsoncan", "isotp")
 QUIET_LEVEL = logging.WARNING
 VERBOSE_LEVEL = logging.INFO
 
+#: A library that says "error" means it, and the Event Log should open for it.
+#: This is the whole reason the bridge exists: the IXXAT backend reports a
+#: wrong bitrate as a stream of log warnings and in no other way.
+LEVEL_NAMES = {
+    logging.CRITICAL: ERROR,
+    logging.ERROR: ERROR,
+    logging.WARNING: WARNING,
+}
+
 
 class _Bridge(logging.Handler):
-    def __init__(self, sink: Callable[[str], None]) -> None:
+    def __init__(self, sink: Callable[[str, str], None]) -> None:
         super().__init__(level=QUIET_LEVEL)
         self._sink = sink
 
@@ -37,13 +48,16 @@ class _Bridge(logging.Handler):
             text = record.msg
         # The logger name says which backend spoke, which is the useful part
         # when two adapters are connected at once.
-        self._sink(f"{record.levelname.title()} [{record.name}]: {text}")
+        self._sink(
+            f"{record.levelname.title()} [{record.name}]: {text}",
+            LEVEL_NAMES.get(record.levelno, INFORMATION),
+        )
 
 
 class LogBridge:
     """Attaches to the library loggers for as long as it is wanted."""
 
-    def __init__(self, sink: Callable[[str], None]) -> None:
+    def __init__(self, sink: Callable[[str, str], None]) -> None:
         self._handler = _Bridge(sink)
         self._loggers = [logging.getLogger(name) for name in LOGGERS]
         for logger in self._loggers:

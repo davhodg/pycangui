@@ -193,7 +193,7 @@ class ConnectBar(QToolBar):
             found = channels_for(interface, timeout=EXPAND_TIMEOUT_S)
         except Exception as exc:  # a driver that objects must not stop the popup
             self._detected_for = ""
-            self.ctx.log(f"Looking for {interface} adapters failed: {exc}")
+            self.ctx.warn(f"Looking for {interface} adapters failed: {exc}")
             return
         finally:
             QApplication.restoreOverrideCursor()
@@ -231,7 +231,7 @@ class ConnectBar(QToolBar):
         self._detecting = False
         if error is not None:
             self._detected_for = ""  # let opening the list try again
-            self.ctx.log(f"Looking for {interface} adapters failed: {error}")
+            self.ctx.warn(f"Looking for {interface} adapters failed: {error}")
             return
         # Whatever was typed into the box while detection was out also counts:
         # it runs in the background, and someone who started typing a channel

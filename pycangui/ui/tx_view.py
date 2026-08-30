@@ -71,6 +71,14 @@ class MessagePicker(QDialog):
         for msg in dbc.messages():
             ident = f"{msg.frame_id:08X}" if msg.is_extended_frame else f"{msg.frame_id:03X}"
             self.list.addItem(f"{msg.name}  [{ident}]  {len(msg.signals)} signals")
+        if not self.list.count():
+            # Said here rather than in the Event Log.  A button that opens
+            # nothing and writes a line into a pane you may have closed looks
+            # from the outside exactly like a button that does not work.
+            self.list.addItem("No database loaded.")
+            self.list.addItem("File > Load DBC... to load one, then try again.")
+            self.list.setEnabled(False)
+            self.search.setEnabled(False)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
@@ -86,6 +94,8 @@ class MessagePicker(QDialog):
             item.setHidden(needle not in item.text().lower())
 
     def chosen(self) -> str | None:
+        if not self.list.isEnabled():  # the list is holding an explanation
+            return None
         item = self.list.currentItem()
         return item.text().split(" ")[0] if item is not None else None
 
@@ -292,9 +302,6 @@ class TxView(QWidget):
         return self.tree.indexOfTopLevelItem(item)
 
     def _add_from_dbc(self) -> None:
-        if not self.dbc.loaded:
-            self.ctx.log("TX: load a DBC first (File > Load DBC)")
-            return
         dialog = MessagePicker(self.dbc, self)
         if dialog.exec() == QDialog.Accepted and (name := dialog.chosen()):
             self.add_message({"kind": "dbc", "message": name, "period": 100, "expanded": True})
@@ -380,7 +387,7 @@ class TxView(QWidget):
                 values = self._child_values(item, names=True)
                 data = msg.encode(values, padding=False, strict=False)
             except Exception as exc:  # cantools raises for out-of-range / bad signals
-                self.ctx.log(f"TX {msg.name}: encode failed: {exc}")
+                self.ctx.warn(f"TX {msg.name}: encode failed: {exc}")
                 return
         elif kind == "rpdo":
             encoded = self.canopen.encode_rpdo(
@@ -438,7 +445,7 @@ class TxView(QWidget):
         try:
             can_id, data, ext, fd, _ = self._message(row)
         except ValueError as exc:
-            self.ctx.log(f"TX {exc}")
+            self.ctx.warn(f"TX {exc}")
             return
         self.bus.send(can_id, data, extended=ext, fd=fd)
 
@@ -492,7 +499,7 @@ class TxView(QWidget):
             if period <= 0:
                 raise ValueError(f"row {row + 1}: period must be > 0 for cyclic")
         except ValueError as exc:
-            self.ctx.log(f"TX {exc}")
+            self.ctx.warn(f"TX {exc}")
             self._set_cyclic(row, False)
             return
         task = self.bus.send_periodic(can_id, data, period, extended=ext, fd=fd)

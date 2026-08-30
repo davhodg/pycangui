@@ -6,13 +6,21 @@ import time
 import pytest
 from PySide6.QtCore import QTimer
 
-from pycangui.core.excepthook import ExceptionLogger
+from pycangui.core.events import ERROR, INFORMATION
+from pycangui.core.excepthook import BUG, ExceptionLogger
 
 
 @pytest.fixture
 def logger(app):
     seen = []
-    hook = ExceptionLogger(seen.append)
+    levels = []
+
+    def sink(message, level):
+        seen.append(message)
+        levels.append(level)
+
+    hook = ExceptionLogger(sink)
+    hook.levels = levels  # so a test can ask how loudly it was said
     hook.install()
     yield hook, seen
     hook.remove()
@@ -78,9 +86,42 @@ def test_removing_the_hook_restores_what_was_there(app):
     import sys
 
     before, before_thread = sys.excepthook, threading.excepthook
-    hook = ExceptionLogger(lambda _t: None)
+    hook = ExceptionLogger(lambda _t, _level: None)
     hook.install()
     assert sys.excepthook is not before
     hook.remove()
     assert sys.excepthook is before
     assert threading.excepthook is before_thread
+
+
+def test_a_python_traceback_is_called_a_bug_and_a_qt_warning_is_not(app, logger):
+    """Qt complains through the same handler about things pycangui did not do.
+
+    A platform plugin that will not resize a window is not this application's
+    bug, and saying it is would be both wrong and, now that a warning opens
+    the Event Log, a pane that springs open at every start on some machines.
+    """
+    from PySide6.QtCore import QtMsgType
+
+    hook, seen = logger
+    hook._qt_hook(QtMsgType.QtWarningMsg, None, "this plugin does not support something")
+    drain(app, lambda: seen)
+    assert BUG not in seen[0]
+    assert hook.levels[0] == INFORMATION, "recorded, not interrupted for"
+
+    hook._qt_hook(QtMsgType.QtCriticalMsg, None, "something actually broke")
+    drain(app, lambda: len(seen) > 1)
+    assert hook.levels[1] == ERROR
+    assert BUG not in seen[1], "Qt's problem is not automatically ours"
+
+
+def test_an_unhandled_exception_still_says_it_is_a_bug(app, logger):
+    hook, seen = logger
+
+    def boom():
+        raise RuntimeError("a slot fell over")
+
+    QTimer.singleShot(0, boom)
+    drain(app, lambda: seen)
+    assert BUG in seen[0]
+    assert hook.levels[0] == ERROR
