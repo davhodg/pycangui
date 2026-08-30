@@ -29,7 +29,14 @@ ECU actually raises, or read them out of its ODX.
 from __future__ import annotations
 
 from pycangui.core.hooks import hook
-from pycangui.uds.standard import did_name, memory_record, routine_name
+from pycangui.uds.standard import (
+    SESSIONS,
+    did_name,
+    did_names,
+    memory_record,
+    routine_name,
+    routine_names,
+)
 
 #: Your names for data identifiers, tried before the ISO ones.  Anything below
 #: 0xF180 is manufacturer specific, so ISO can only say "manufacturer
@@ -56,6 +63,44 @@ DTC_DESCRIPTIONS: dict[int, str] = {
 #: and it is a convention rather than a standard.
 ROUTINE_NAMES: dict[int, str] = {
     0x0202: "Check memory",
+}
+
+#: Sessions beyond the four ISO 14229-1 names.  0x40 to 0x5F belong to the
+#: vehicle manufacturer and 0x60 to 0x7E to the system supplier, so only the
+#: people who built the ECU know what is in there or what it is called.  Fill
+#: these in and they appear in the Session dropdown.
+SESSION_NAMES: dict[int, str] = {
+    # 0x40: "End of line",
+    # 0x4F: "Development",
+}
+
+#: What an identifier actually holds, shown when one is chosen.  A name says
+#: which identifier it is; a description says what you will get back and in
+#: what form, which is the part worth writing down.  The few below are from
+#: ISO 14229-1; the ones you care about will be your own.
+DID_DESCRIPTIONS: dict[int, str] = {
+    0xF186: "The session the ECU is in now: one byte, numbered as DiagnosticSessionControl.",
+    0xF187: "Manufacturer's spare part number for this ECU, as text.",
+    0xF188: "Manufacturer's software number, as text.",
+    0xF189: "Manufacturer's software version, as text.",
+    0xF18C: "ECU serial number, as text.",
+    0xF190: "Vehicle identification number: 17 characters (ISO 3779).",
+}
+
+#: What a routine does.  The four ISO 14229-1 names are described here rather
+#: than in pycangui so that they can be corrected: an ECU is free to make
+#: 0xFF00 mean something narrower than the standard's wording.
+ROUTINE_DESCRIPTIONS: dict[int, str] = {
+    0xFF00: (
+        "Erase the memory the option record covers, before it is written. "
+        "The option record is usually an address and a length."
+    ),
+    0xFF01: "Check that the software and calibrations the ECU now holds fit together.",
+    0xFF02: "Erase the mirror of the fault memory, leaving the primary memory alone.",
+    0x0202: (
+        "Have the ECU check what it was just given, usually against a checksum. "
+        "A HIS/AUTOSAR convention rather than a standard, so the number varies."
+    ),
 }
 
 
@@ -203,3 +248,51 @@ def check_options(
     out here rather than read back off the disk.
     """
     return memory_record(address, size, width)
+
+
+@hook
+def sessions(*, ctx) -> dict[int, str] | None:
+    """Which sessions the Session dropdown offers.
+
+    The four ISO 14229-1 names, plus SESSION_NAMES above.  Yours win, so an
+    ECU that calls 0x03 something of its own can say so.
+    """
+    return {**SESSIONS, **SESSION_NAMES}
+
+
+@hook
+def did_choices(*, ctx) -> dict[int, str] | None:
+    """Which identifiers the DID dropdown offers.
+
+    The ones ISO 14229-1 names individually, plus DID_NAMES.  The box stays
+    typeable, so this is a shortlist rather than a restriction -- return only
+    DID_NAMES to have it offer nothing but your own.
+    """
+    return {**did_names(), **DID_NAMES}
+
+
+@hook
+def did_description(did: int, *, ctx) -> str | None:
+    """What the identifier holds, shown beside it in the dropdown.
+
+    Longer than the name and worth more: "17 characters (ISO 3779)" is the
+    difference between reading a response and guessing at it.  There is no
+    standard list of these, so DID_DESCRIPTIONS is all there is.
+    """
+    return DID_DESCRIPTIONS.get(did)
+
+
+@hook
+def routine_choices(*, ctx) -> dict[int, str] | None:
+    """Which routines the Routine dropdown offers.
+
+    ISO 14229-1 names four; everything from 0x0200 to 0xDFFF is the
+    manufacturer's, which is where the rest of a flash sequence lives.
+    """
+    return {**routine_names(), **ROUTINE_NAMES}
+
+
+@hook
+def routine_description(routine_id: int, *, ctx) -> str | None:
+    """What the routine does, shown beside it in the dropdown."""
+    return ROUTINE_DESCRIPTIONS.get(routine_id)

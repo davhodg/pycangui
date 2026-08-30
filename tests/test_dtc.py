@@ -209,3 +209,68 @@ def test_a_withdrawn_report_is_refused_with_the_reason(app, tmp_path, monkeypatc
     assert "not allowed by ISO-14229:2020" in lines[-1]
     assert "Mirror memory" in lines[-1], "and which report it was"
     manager.client = None
+
+
+# --- choosing rather than typing -------------------------------------------------------
+def test_a_session_can_be_chosen_including_one_of_your_own(view, monkeypatch):
+    """0x40 to 0x5F are the manufacturer's, so only a hook can name them."""
+    codes = [view.session.itemData(i) for i in range(view.session.count())]
+    assert codes == [1, 2, 3, 4], "ISO's four to begin with"
+
+    asked = []
+    monkeypatch.setattr(view.manager, "change_session", asked.append)
+    view.session.setCurrentIndex(codes.index(2))
+    for button in view.findChildren(type(view.open_btn)):
+        if button.text() == "Change":
+            button.click()
+    assert asked == [2]
+
+
+def test_the_did_box_offers_the_named_ones_and_still_takes_anything(view):
+    from pycangui.ui.uds_view import _picked
+
+    assert view.did.isEditable(), "most identifiers on a real ECU are not on any list"
+    labels = [view.did.itemText(i) for i in range(view.did.count())]
+    assert any(label.startswith("F190  VIN") for label in labels)
+    assert _picked(view.did) == 0xF190, "a chosen entry is 'F190  VIN', so take the number"
+
+    view.did.setCurrentText("0101")
+    assert _picked(view.did) == 0x0101, "and a typed one is just the number"
+
+
+def test_a_did_entry_explains_itself_on_hover(view):
+    from PySide6.QtCore import Qt
+
+    row = next(i for i in range(view.did.count()) if view.did.itemData(i) == 0xF190)
+    assert "ISO 3779" in view.did.itemData(row, Qt.ToolTipRole)
+
+
+def test_the_routine_box_offers_the_four_iso_names_and_yours(view):
+    from pycangui.ui.uds_view import _picked
+
+    numbers = [view.routine.itemData(i) for i in range(view.routine.count())]
+    assert 0xFF00 in numbers, "erase memory is the one ISO names for flashing"
+    assert 0x0202 in numbers, "and check memory comes from ROUTINE_NAMES"
+    view.routine.setCurrentText("0203")
+    assert _picked(view.routine) == 0x0203
+
+
+def test_a_routine_entry_explains_itself_on_hover(view):
+    from PySide6.QtCore import Qt
+
+    row = next(i for i in range(view.routine.count()) if view.routine.itemData(i) == 0xFF00)
+    assert "Erase the memory" in view.routine.itemData(row, Qt.ToolTipRole)
+
+
+def test_a_typed_identifier_is_remembered(app, tmp_path, monkeypatch):
+    """An editable list is only useful if what you typed comes back."""
+    from PySide6.QtCore import QSettings
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    ctx = Context(log=print)
+    first = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), ctx)
+    first.did.setCurrentText("0101")
+
+    second = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), Context(log=print))
+    assert second.did.currentText() == "0101"

@@ -42,8 +42,10 @@ def remember(ctx: Context, key: str, widget, default=None) -> None:
 
     elif isinstance(widget, QComboBox):
         # Stored by text, not by index: a list that gains an entry would
-        # otherwise silently change what was chosen.
-        if saved is not None and widget.findText(str(saved)) >= 0:
+        # otherwise silently change what was chosen.  An editable one takes
+        # any text back, because the whole point of it is that what you want
+        # may not be on the list.
+        if saved is not None and (widget.isEditable() or widget.findText(str(saved)) >= 0):
             widget.setCurrentText(str(saved))
         widget.currentTextChanged.connect(lambda text: ctx.settings.set(key, text))
 

@@ -26,7 +26,7 @@ from pycangui.uds import UdsConfig
 from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD
 from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
-from pycangui.uds.standard import memory_record
+from pycangui.uds.standard import SESSIONS, memory_record
 from pycangui.uds.transport import IsoTpTransport
 
 DEFAULT_BACKEND = "can-isotp"
@@ -93,7 +93,6 @@ FILE_MODES_RECEIVING = (4, 5)
 ERASE_MEMORY = 0xFF00
 CHECK_MEMORY = 0x0202
 
-SESSIONS = {1: "default", 2: "programming", 3: "extended", 4: "safety system"}
 RESETS = {1: "hard reset", 2: "key off/on", 3: "soft reset", 4: "enable rapid power shutdown"}
 
 
@@ -296,6 +295,25 @@ class UdsManager(QObject):
         """ "F190 (VIN)" -- the number, and what the identifier is called."""
         name = self._hooks.call("uds", "did_label", did)
         return f"{did:04X} ({name})" if name else f"{did:04X}"
+
+    def sessions(self) -> dict[int, str]:
+        """The sessions the pane offers: ISO's four, plus whatever the hook adds."""
+        offered = self._hooks.call("uds", "sessions")
+        return dict(offered) if offered else dict(SESSIONS)
+
+    def did_choices(self) -> dict[int, str]:
+        offered = self._hooks.call("uds", "did_choices")
+        return dict(offered) if offered else {}
+
+    def did_description(self, did: int) -> str:
+        return self._hooks.call("uds", "did_description", did) or ""
+
+    def routine_choices(self) -> dict[int, str]:
+        offered = self._hooks.call("uds", "routine_choices")
+        return dict(offered) if offered else {}
+
+    def routine_description(self, routine_id: int) -> str:
+        return self._hooks.call("uds", "routine_description", routine_id) or ""
 
     def routine_label(self, routine_id: int) -> str:
         """ "FF00 (Erase memory)" -- the number, and what the routine is."""

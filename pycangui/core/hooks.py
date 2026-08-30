@@ -228,14 +228,17 @@ def _missing_constants(module: str, text: str) -> list[tuple[str, str]]:
 
 
 def _import_lines(module: str) -> list[str]:
-    """The import statements at the top of a defaults module."""
-    lines = []
-    for line in _defaults_path(module).read_text(encoding="utf-8").splitlines():
-        if line.startswith(("import ", "from ")):
-            lines.append(line)
-        elif line.startswith(("@hook", "def ", "class ")):
-            break
-    return lines
+    """The import statements of a defaults module, one statement per line.
+
+    Parsed rather than read off the top of the file.  Reading lines took the
+    first line of a parenthesised import and left the rest behind, which put
+    "from pycangui.uds.standard import (" into somebody's hook file and broke
+    every hook in it.
+    """
+    tree = ast.parse(_defaults_path(module).read_text(encoding="utf-8"))
+    return [
+        ast.unparse(node) for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))
+    ]
 
 
 def _with_imports_for(module: str, text: str) -> str:

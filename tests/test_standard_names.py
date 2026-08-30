@@ -18,7 +18,10 @@ from pycangui.uds.standard import did_name, did_range
     [
         (0xF190, "VIN"),
         (0xF186, "Active diagnostic session"),
-        (0xF18C, "ECUSerialNumberDataIdentifier"),
+        # udsoncan spells the ISO names out and runs the words together,
+        # which is right for a constant and unreadable in a dropdown.
+        (0xF18C, "ECU serial number"),
+        (0xF180, "Boot software identification"),
     ],
 )
 def test_did_name(did, expected):
@@ -108,7 +111,7 @@ def test_a_user_table_wins_over_the_standard_one(app, hooks):
     assert not hooks.errors(), hooks.errors()
     assert hooks.call("uds", "did_label", 0xF190) == "Chassis number", "mine beats ISO's"
     assert hooks.call("uds", "did_label", 0x0101) == "Battery volts", "and names one ISO cannot"
-    assert hooks.call("uds", "did_label", 0xF18C) == "ECUSerialNumberDataIdentifier"
+    assert hooks.call("uds", "did_label", 0xF18C) == "ECU serial number"
 
 
 def test_an_empty_string_suppresses_the_standard_name(app, hooks):
@@ -175,3 +178,50 @@ def test_an_old_hook_file_gains_the_tables_it_needs(app, hooks):
     assert not hooks.errors(), hooks.errors()
     assert hooks.call("uds", "did_label", 0xF190) == "VIN"
     assert hooks.call("uds", "security_key", 1, b"\x01") == b"\xfe"
+
+
+def test_a_multi_line_import_survives_being_copied_into_a_hook_file(app, hooks):
+    """The stub updater used to take the first line of one and drop the rest.
+
+    That put "from pycangui.uds.standard import (" into the user's file and
+    broke every hook in it, which is a poor reward for pressing Update.
+    """
+    from pathlib import Path
+
+    path = Path(hooks.ctx.hooks_dir, "uds.py")
+    path.write_text(
+        '"""mine"""\n'
+        "from pycangui.core.hooks import hook\n\n\n"
+        "@hook\n"
+        "def security_key(level, seed, *, ctx):\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+    hooks.update_stubs()
+    text = path.read_text(encoding="utf-8")
+    compile(text, str(path), "exec")  # the whole point: it still parses
+    assert "import (" not in text, "an import was cut in half"
+
+    hooks.reload()
+    assert not hooks.errors(), hooks.errors()
+    assert hooks.call("uds", "did_label", 0xF190) == "VIN"
+
+
+def test_the_names_python_puts_on_a_class_are_not_mistaken_for_identifiers(app):
+    """vars() on a udsoncan class hands back __firstlineno__, which is 18.
+
+    That was quietly making identifier 0x0012 and routine 0x0057 look as
+    though ISO 14229-1 named them individually.
+    """
+    from pycangui.uds.standard import did_name, routine_name
+
+    assert did_name(0x0012) == ""
+    assert routine_name(0x0057) == ""
+
+
+def test_the_dropdown_lists_are_the_ones_iso_names(app):
+    from pycangui.uds.standard import did_names, routine_names
+
+    dids = did_names()
+    assert dids[0xF190] == "VIN" and 0x0012 not in dids
+    assert set(routine_names()) == {0xE200, 0xFF00, 0xFF01, 0xFF02}
