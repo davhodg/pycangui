@@ -3,28 +3,17 @@
 Some devices use a CAN id as a console: ASCII in the data bytes of an ordinary
 frame, a few characters at a time, printf fashion.
 
-What CANopen gives you is an *object*, not an id.  CiA 301 has 0x1026, "OS
-prompt", whose StdIn, StdOut and StdErr sub-indices are single bytes and are
-PDO mappable, and 0x1023 to 0x1025 for whole commands.  It never says which
-COB-ID any of that comes out on, so there is nothing to decode by default.
+No protocol says which identifier that happens on.  CANopen comes closest --
+it has objects for a console, and they are PDO mappable -- but an object is
+not an identifier, and nothing standard settles which one a device ends up
+printing on.  Devices that are not CANopen at all do the same thing on an
+identifier of their own choosing.
 
-In practice devices pick an id, and the one seen most often is 0x780 +
-node-ID.  That is not a CANopen service either -- the predefined connection
-set stops at the heartbeats, 0x701 to 0x77F, and everything from 0x780 up is
-listed as unused apart from LSS at 0x7E4 and 0x7E5.  Being unused is exactly
-what recommends it: CiA 301 also has 0x780 to 0x7FF among its restricted
-CAN-IDs, which means no conforming PDO or SDO will ever be configured onto
-one, so a maker can take the range for something of their own and know
-nothing standard will collide with it.
-
-Plenty of devices that are not CANopen at all do the same thing on an id of
-their own choosing.
-
-Which is why the ids here are yours to give.  It decodes whatever it is
-pointed at, several at once, each with its own tab -- and any one of them can
-be given a window of its own, which is the useful arrangement when the point
-of the exercise is to watch a device talk while doing something else with
-pycangui.
+Which is why the identifiers here are yours to give.  It decodes whatever it
+is pointed at, several at once, each with its own tab -- and any one of them
+can be given a window of its own, which is the useful arrangement when the
+point of the exercise is to watch a device talk while doing something else
+with pycangui.
 """
 
 from __future__ import annotations
@@ -202,10 +191,8 @@ class AsciiView(QWidget):
         self.tabs.tabCloseRequested.connect(self._close_tab)
         self.empty = QLabel(
             "No ids yet.  Type one above and press Add.\n\n"
-            "There is no standard id for this.  A CANopen device most often\n"
-            "uses 0x780 + node-ID -- 0x785 for node 5 -- which is the range\n"
-            "just above the heartbeats; a device that maps object 0x1026\n"
-            "(OS prompt) into a TPDO sends on that PDO's COB-ID instead."
+            "There is no standard identifier for this, so it will be in the\n"
+            "documentation for whatever you are listening to."
         )
         self.empty.setAlignment(Qt.AlignCenter)
         self.empty.setEnabled(False)
