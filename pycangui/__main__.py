@@ -53,6 +53,16 @@ def selftest() -> int:
     except Exception as exc:
         failures.append(f"can.interfaces: {exc}")
 
+    # The manual is package data, so it is exactly the kind of file a build
+    # drops silently -- which is what happened to the demo EDS for months.
+    try:
+        from pycangui.help import manual_text
+
+        if not manual_text().strip():
+            failures.append("pycangui/help/manual.md: not shipped with this build")
+    except Exception as exc:
+        failures.append(f"pycangui.help: {exc}")
+
     # Help > Licences reads these at run time from beside the executable.  A
     # build that ships them where _find cannot see them would show three empty
     # tabs, and no import check would notice.

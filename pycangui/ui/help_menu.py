@@ -1,8 +1,9 @@
-"""The Help menu: what this is, what it is licensed under, and is it current.
+"""The Help menu: how to drive it, what it is, what it is licensed under.
 
-Deliberately small.  Real help -- how to drive the panes, what the CANopen
-workflow is -- is a job of its own; for now Documentation opens the README,
-which is where that material already lives.
+Documentation shows the manual that ships inside the package, rendered here
+rather than opened in a browser.  A Help menu that needs the internet is worth
+nothing on a bench or a production line, which is where it is most wanted; the
+web copy is the fallback for a build that somehow arrived without one.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from PySide6.QtCore import QObject, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication
+from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication, QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QTabWidget,
+    QTextBrowser,
     QVBoxLayout,
 )
 
@@ -29,6 +31,7 @@ from pycangui import APP_NAME, __version__
 from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Release, latest_release
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
+from pycangui.help import manual_text
 
 
 class LicenceFile(NamedTuple):
@@ -108,6 +111,29 @@ def missing_licence_files(frozen: bool) -> list[str]:
         for entry in LICENCE_FILES
         if (frozen or not entry.generated) and _find(entry.filename) is None
     ]
+
+
+class ManualDialog(QDialog):
+    """The shipped manual, rendered.
+
+    Qt reads Markdown itself, so this is the same file the repository serves
+    on the web with no conversion step to go stale.  The GitHub dialect is
+    asked for by name because the manual is full of tables, and the CommonMark
+    default does not have them.
+    """
+
+    def __init__(self, parent: QMainWindow, text: str) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"{APP_NAME} manual")
+        self.resize(860, 700)
+        self.view = QTextBrowser()
+        self.view.setOpenExternalLinks(True)
+        self.view.document().setMarkdown(text, QTextDocument.MarkdownDialectGitHub)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.view)
+        layout.addWidget(buttons)
 
 
 class LicenceDialog(QDialog):
@@ -254,7 +280,12 @@ class HelpMenu(QObject):
         self._worker.stop()
 
     def _open_docs(self) -> None:
-        QDesktopServices.openUrl(QUrl(README_PAGE))
+        """The shipped manual, or the web page if this build has none."""
+        text = manual_text()
+        if text:
+            ManualDialog(self.window, text).exec()
+        else:
+            QDesktopServices.openUrl(QUrl(README_PAGE))
 
     def _show_diagnostics(self) -> None:
         """Report the state of the window, and put it on the clipboard."""
