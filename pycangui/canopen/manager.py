@@ -15,6 +15,7 @@ Threads, and why:
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 import canopen
@@ -23,7 +24,9 @@ from canopen.nmt import NMT_COMMANDS, NMT_STATES
 from canopen.objectdictionary import ODArray, ODRecord, ODVariable, datatypes, eds
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
-from pycangui.canopen import NodeIdentity, PdoConfig, PdoEntry
+from pycangui.canopen import NodeIdentity, PdoConfig, PdoEntry, eds_extras
+from pycangui.canopen.dcf import values_from, write_dcf
+from pycangui.canopen.display import Display, from_variable, with_overrides
 from pycangui.canopen.emcy import Emcy
 from pycangui.core.bus import BusManager
 from pycangui.core.worker import Worker
@@ -73,6 +76,11 @@ class CanopenManager(QObject):
         super().__init__()
         self._bus = bus
         self._hooks = hooks
+        #: node -> (index, sub) -> the EDS keys and comments the parser dropped.
+        self._extras: dict[int, dict[tuple[int, int], dict[str, str]]] = {}
+        #: node -> the EDS it was loaded from, so a DCF can be written
+        #: through it rather than rebuilt from the parsed dictionary.
+        self._eds_path: dict[int, str] = {}
         self.emcy_history: list[Emcy] = []
         #: node_id -> when its last heartbeat arrived, and the interval between
         #: the last two.  A node is called lost after MISSED_HEARTBEATS of them.
@@ -261,13 +269,19 @@ class CanopenManager(QObject):
         if self.network is None:
             return
 
-        def job() -> canopen.RemoteNode:
-            return canopen.RemoteNode(node_id, path)  # parses the EDS, may raise
+        def job() -> tuple[canopen.RemoteNode, dict]:
+            # The extras are read from the same file in the same breath: what
+            # the parser kept and what it threw away describe one object each,
+            # and letting them arrive separately is how they get out of step.
+            return canopen.RemoteNode(node_id, path), eds_extras(path)
 
-        def done(node: canopen.RemoteNode | None, error: str | None) -> None:
+        def done(loaded: tuple | None, error: str | None) -> None:
             if error or self.network is None:
                 self.message.emit(f"Node {node_id}: EDS load failed ({error})")
                 return
+            node, extras = loaded
+            self._extras[node_id] = extras
+            self._eds_path[node_id] = path
             self.network.add_node(node)  # replaces any existing node object
             node.emcy.add_callback(lambda err, n=node_id: self._on_emcy(n, err))
             self.eds_loaded.emit(
@@ -277,6 +291,34 @@ class CanopenManager(QObject):
             self.subscribe_pdos(node_id)
 
         self._worker.submit(job, done)
+
+    # --- how an object is shown ------------------------------------------------
+    def extras(self, node_id: int, index: int, sub: int) -> dict[str, str]:
+        """What this node's EDS said about the object that the parser dropped."""
+        return self._extras.get(node_id, {}).get((index, sub), {})
+
+    def display(self, node_id: int, index: int, sub: int) -> Display:
+        """Name, unit, scaling, choices and limits for one object.
+
+        The EDS first, through whatever the ``canopen`` package managed to
+        parse, then the hook over the top of it -- because the file is very
+        often silent about everything except the limits, and the hook is
+        written by somebody holding the documentation.
+        """
+        node = self.node(node_id)
+        var = None
+        if node is not None:
+            try:
+                var = node.object_dictionary.get_variable(index, sub)
+            except Exception:  # not in this EDS, or no EDS at all
+                var = None
+        base = from_variable(var)
+        overrides = None
+        if self._hooks is not None:
+            overrides = self._hooks.call(
+                "canopen", "object_display", index, sub, self.extras(node_id, index, sub), None
+            )
+        return with_overrides(base, overrides if isinstance(overrides, dict) else None)
 
     # --- SDO -----------------------------------------------------------------
     @staticmethod
@@ -638,15 +680,12 @@ class CanopenManager(QObject):
                 if var.readable and var.index >= 0x1000 and var.data_type != datatypes.DOMAIN
             ]
             read = 0
+            values: dict[tuple[int, int], object] = {}
             for i, var in enumerate(variables):
                 try:
                     value = self._variable(node, var.index, var.subindex).raw
+                    values[(var.index, var.subindex)] = value
                     var.value = value
-                    # canopen writes value_raw verbatim, and formats negative
-                    # numbers as "0x-4D2", which its own reader then rejects.
-                    # Write plain decimal for numbers so DCFs round trip.
-                    if isinstance(value, int | float) and not isinstance(value, bool):
-                        var.value_raw = str(value)
                     read += 1
                 except Exception:  # not implemented by this node: leave it out
                     var.value = None
@@ -654,9 +693,28 @@ class CanopenManager(QObject):
                 if i % 10 == 0:
                     self.dcf_progress.emit(i, len(variables))
             self.dcf_progress.emit(len(variables), len(variables))
-            node.object_dictionary.node_id = node_id
-            with open(path, "w", encoding="utf-8", newline="") as f:
-                eds.export_dcf(node.object_dictionary, f)  # wants a file, not a path
+
+            source = self._eds_path.get(node_id)
+            text = None
+            if source:
+                try:
+                    text = Path(source).read_text(encoding="utf-8-sig", errors="replace")
+                except OSError:
+                    text = None
+            if text is not None:
+                # A DCF is an EDS with the values filled in, so it is written
+                # by filling them in -- which keeps the comments carrying the
+                # units, the scaling and the descriptions.  Rebuilding it from
+                # the parsed dictionary loses every one of them.
+                out = write_dcf(text, values_from(values), node_id)
+                Path(path).write_text(out, encoding="utf-8", newline="")
+            else:
+                node.object_dictionary.node_id = node_id
+                for var in variables:
+                    if isinstance(var.value, int | float) and not isinstance(var.value, bool):
+                        var.value_raw = str(var.value)
+                with open(path, "w", encoding="utf-8", newline="") as f:
+                    eds.export_dcf(node.object_dictionary, f)  # wants a file, not a path
             return read, len(variables)
 
         def done(counts: tuple[int, int] | None, error: str | None) -> None:

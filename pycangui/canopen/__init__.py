@@ -4,6 +4,7 @@ hooks see live here so they are importable from user code."""
 from __future__ import annotations
 
 import configparser
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -44,6 +45,90 @@ def eds_identity(path: Path) -> tuple[int | None, int | None, int | None]:
             return None
 
     return (num("VendorNumber"), num("ProductNumber"), num("RevisionNumber"))
+
+
+#: The keys the ``canopen`` package reads out of an object section and keeps
+#: on the parsed variable.  Everything else in the section is discarded, and
+#: :func:`eds_extras` is what picks it up.  Lower case because an EDS is an
+#: INI file and configparser folds keys.
+PARSED_KEYS = frozenset(
+    {
+        "parametername",
+        "objecttype",
+        "datatype",
+        "accesstype",
+        "pdomapping",
+        "lowlimit",
+        "highlimit",
+        "defaultvalue",
+        "subnumber",
+        "compactsubobj",
+        "parametervalue",  # a DCF rather than an EDS
+        "unit",
+        "factor",
+        "description",
+        "storagelocation",
+    }
+)
+
+#: ``[1018]`` or ``[1018sub2]``, which is how an EDS names an object.
+_OBJECT_SECTION = re.compile(r"^([0-9A-Fa-f]{4})(?:sub([0-9A-Fa-f]+))?$")
+
+
+def eds_extras(path: Path | str) -> dict[tuple[int, int], dict[str, str]]:
+    """Whatever the EDS says about an object that the parser did not keep.
+
+    Read as text rather than through configparser, because the interesting
+    part is not a key the parser failed to recognise -- it is a *comment*.
+    CiA 306 defines no key for a unit or for scaling, so a vendor with that to
+    say has two choices: invent a key, or hide it in a comment where no
+    conforming reader will trip over it.  The second is commoner than the
+    first, and configparser discards those lines before it looks at anything.
+
+    Both are collected.  An ordinary ``Key=value`` the ``canopen`` package
+    does not read, and a comment of the form::
+
+        ;VENDORTAG FIELD_NAME=value
+
+    which becomes the key ``"VENDORTAG FIELD_NAME"``.  The tag is kept because
+    it is part of what distinguishes one vendor's convention from another, and
+    because pycangui is not the thing that should be deciding what any of it
+    means -- ``hooks/canopen.py::object_display`` is.
+
+    Keys keep the case the file wrote them in.  Keyed by (index, subindex),
+    and an object with no sub-index is sub 0.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return {}
+
+    extras: dict[tuple[int, int], dict[str, str]] = {}
+    where: tuple[int, int] | None = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            match = _OBJECT_SECTION.match(line[1:-1])
+            where = None
+            if match is not None:
+                sub = int(match.group(2), 16) if match.group(2) else 0
+                where = (int(match.group(1), 16), sub)
+            continue
+        if where is None:
+            continue  # [FileInfo], [DeviceInfo] and the object lists
+
+        if line.startswith(";"):
+            key, sep, value = line[1:].strip().partition("=")
+        else:
+            key, sep, value = line.partition("=")
+            if key.strip().lower() in PARSED_KEYS:
+                continue  # the parser kept this one; it is on the variable
+        if not sep or not key.strip() or not value.strip():
+            continue
+        extras.setdefault(where, {})[key.strip()] = value.strip()
+    return extras
 
 
 def find_eds(identity: NodeIdentity, folders: list[Path]) -> Path | None:
