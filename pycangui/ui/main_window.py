@@ -28,6 +28,7 @@ from pycangui.core.demo import DemoDevice
 from pycangui.core.detect import DEMO_CHANNEL, summarise
 from pycangui.core.events import PROBLEMS, EventLog
 from pycangui.core.excepthook import ExceptionLogger
+from pycangui.core.export import write_csv
 from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
@@ -214,6 +215,14 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu("&File")
         file_menu.addAction("Load DBC...", self._load_dbc_dialog)
         file_menu.addAction("Unload all DBCs", self._unload_dbcs)
+        file_menu.addSeparator()
+        export = file_menu.addAction("Export signals...", self._export_signals)
+        export.setToolTip(
+            "Write every decoded signal to a CSV: DBC signals, CANopen PDO\n"
+            "values and XCP measurements alike.  Recording writes raw CAN,\n"
+            "which means decoding it again elsewhere to get back what is\n"
+            "already on screen here."
+        )
         for path in self.ctx.settings.get("dbc.paths", []):
             self._load_dbc(path)
         if (a2l := self.ctx.settings.get("xcp.a2l")) and Path(a2l).exists():
@@ -621,6 +630,29 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_error(self, text: str) -> None:
         self.events.error(f"ERROR: {text}")
+
+    def _export_signals(self) -> None:
+        """Write the captured signal values where a spreadsheet can read them."""
+        if not self.signals.keys():
+            self.events.warning("Export signals: nothing has been decoded yet")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export signals", "signals.csv", "CSV (*.csv);;All files (*)"
+        )
+        if not path:
+            return
+        series = [s for key in self.signals.keys() if (s := self.signals.get(key)) is not None]
+        try:
+            count, rows = write_csv(path, series)
+        except OSError as exc:
+            self.events.warning(f"Export signals failed: {exc}")
+            return
+        if not count:
+            # Signals exist but none has a value yet: an empty file with a row
+            # of headings looks like a successful export of nothing.
+            self.events.warning("Export signals: no samples to write yet")
+            return
+        self.events.information(f"Exported {count} signal(s), {rows} row(s) to {path}")
 
     @Slot(bool)
     def _set_strict_dbc(self, on: bool) -> None:
