@@ -13,7 +13,8 @@ and Python scripting, on any adapter supported by python-can.  Apache-2.0.
 - **UDS** over ISO-TP: sessions, security access, DIDs, the whole of
   ReadDTCInformation, routines, and firmware transfer in either direction.
 - **J1939** and **XCP on CAN**, and a pane that reads any identifier as text.
-- **Signals and Plot** from DBC decode, CANopen TPDOs or XCP polling.
+- **Signals and Plot** from DBC decode, CANopen TPDOs or XCP polling,
+  and out to CSV for whatever you analyse with.
 - **Python** hooks with hot reload, replaceable protocol back ends, a live
   console and *Run script*.
 
