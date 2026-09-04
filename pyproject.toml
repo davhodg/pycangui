@@ -47,6 +47,20 @@ pycangui = "pycangui.__main__:main"
 [tool.setuptools.packages.find]
 include = ["pycangui*"]
 
+# Without this a wheel carries only the .py files: setuptools ships modules and
+# drops everything else, so `pip install pycangui` produced a tool whose own
+# demo walkthrough could not find demo.eds.  Nobody noticed because the
+# launchers install editable, which reads the source tree, and the frozen build
+# copies these folders explicitly in build/pycangui.spec.
+#
+# Whole folders rather than a list of extensions: resources and help exist to
+# hold files that are not code, so the next thing put in one should ship
+# without anyone having to remember this.  tests/test_packaging.py checks that
+# every non-Python file under pycangui/ is covered by a pattern here.
+[tool.setuptools.package-data]
+"pycangui.resources" = ["*"]
+"pycangui.help" = ["*"]
+
 [tool.ruff]
 line-length = 100
 # Matches requires-python: ruff formats to the newest syntax the floor allows,
