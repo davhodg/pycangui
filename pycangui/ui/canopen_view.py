@@ -34,7 +34,15 @@ from PySide6.QtWidgets import (
 
 from pycangui import resources
 from pycangui.canopen import NodeIdentity, find_eds
-from pycangui.canopen.manager import CanopenManager, format_value, od_entries, type_name
+from pycangui.canopen.display import (
+    Display,
+    as_number,
+    format_number,
+    limits_text,
+    out_of_range,
+)
+from pycangui.canopen.display import text as value_text
+from pycangui.canopen.manager import CanopenManager, od_entries, type_name
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.ui.lss_view import LssView
@@ -497,10 +505,57 @@ class CanopenView(QWidget):
         if self._updating or column != 4:
             return
         node_id = self.selected_node()
-        if node_id is not None:
-            self.manager.sdo_write(
-                node_id, item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0, item.text(4)
-            )
+        if node_id is None:
+            return
+        index, sub = item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0
+        text = item.text(4)
+        display = self.manager.display(node_id, index, sub)
+        # A scaled object is shown in its own units, so it has to be *read*
+        # in them too, or typing what you see back would write a number the
+        # factor away from what you meant.
+        if display.scaled:
+            try:
+                text = str(display.raw(float(text.split()[0])))
+            except (ValueError, IndexError):
+                self.ctx.warn(f"Node {node_id}: {item.text(4)!r} is not a number")
+                return
+        raw = as_number(text)
+        if raw is not None and (why := out_of_range(display, raw)):
+            # The EDS states limits for nearly every object on a real device,
+            # and a node is free to clamp a bad value silently -- which reads
+            # as a parameter that took when it did not.
+            self.ctx.warn(f"Node {node_id}: {index:04X}:{sub:02X} not written, {why}")
+            return
+        self.manager.sdo_write(node_id, index, sub, text)
+
+    def _object_tooltip(self, node_id: int, index: int, sub: int, raw=None) -> str:
+        """Everything the EDS said about this object that the columns cannot.
+
+        Including the value as it came off the wire, when the cell above is
+        showing a converted one -- a scaled reading is a claim made in a hook,
+        and the number it was made from should be somewhere.
+
+        And the vendor's own fields, listed exactly as the file wrote them.
+        That is what tells somebody which field holds their units, which is
+        what they need before they can write a line of
+        hooks/canopen.py::object_display; without it the mechanism is only
+        usable by whoever already knew the answer.
+        """
+        display = self.manager.display(node_id, index, sub)
+        lines = [f"{index:04X}:{sub:02X}  {display.name}".rstrip()]
+        if display.description:
+            lines.append(display.description)
+        if raw is not None and display.scaled:
+            lines.append(f"Raw: {format_number(raw, None)}")
+        if limits := limits_text(display):
+            lines.append(f"Range: {limits}")
+        for value, meaning in sorted(display.choices.items()):
+            lines.append(f"  {value} = {meaning}")
+        if extras := self.manager.extras(node_id, index, sub):
+            lines.append("")
+            lines.append("From the EDS:")
+            lines += [f"  {key} = {value}" for key, value in extras.items()]
+        return "\n".join(lines)
 
     def _read_all(self) -> None:
         node_id = self.selected_node()
@@ -520,10 +575,12 @@ class CanopenView(QWidget):
         item = self._od_item(index, sub)
         if item is None:
             return
-        node = self.manager.node(node_id)
-        var = node.object_dictionary.get_variable(index, sub) if node else None
         self._updating = True
-        item.setText(4, "error" if error else format_value(value, var))
+        display = self.manager.display(node_id, index, sub)
+        item.setText(4, "error" if error else value_text(display, value))
+        tip = self._object_tooltip(node_id, index, sub, None if error else value)
+        item.setToolTip(4, tip)
+        item.setToolTip(1, tip)
         self._updating = False
 
     # --- PDOs -----------------------------------------------------------------
@@ -548,7 +605,7 @@ class CanopenView(QWidget):
                 item = QTreeWidgetItem([var_name, "", "", ""])
                 parent.addChild(item)
                 self._pdo_items[key] = item
-            item.setText(1, format_value(value, None))
+            item.setText(1, value_text(Display(), value))
 
     def _refresh_pdo_rates(self) -> None:
         """Rate over the refresh interval, so the figure reads steadily."""
