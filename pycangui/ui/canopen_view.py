@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -50,6 +51,15 @@ from pycangui.ui.pdo_view import PdoConfigView
 
 ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
+#: The text a row is filtered on, built once when the tree is filled.
+ROLE_SEARCH = Qt.UserRole + 2
+
+COL_VALUE = 4
+#: A tick against the objects worth coming back to.  A real device offers
+#: fifteen hundred of them and a job uses eight, so the list you build is
+#: worth more than the search that built it -- and it is the shape a
+#: user-composed panel will need later.
+COL_WATCH = 5
 ERROR_COLOUR = QColor(200, 40, 40)
 LOST_COLOUR = QColor(150, 150, 150)
 ALIVE_BRUSH = QBrush()  # an empty brush restores the theme's normal colour
@@ -71,6 +81,10 @@ class CanopenView(QWidget):
         self.ctx = ctx
         self._identities: dict[int, NodeIdentity] = {}
         self._asked: set[str] = set()  # identity keys we already prompted for
+        #: Which node the object tree currently holds.  Not the node-list
+        #: selection: the rows belong to whoever they were filled for, and
+        #: a tick has to be recorded against that device and no other.
+        self._od_node: int | None = None
         self._updating = False  # guard against itemChanged during programmatic edits
         self._pdo_items: dict[tuple[str, str], QTreeWidgetItem] = {}
         mono = QFont("Consolas", 9)
@@ -134,18 +148,37 @@ class CanopenView(QWidget):
 
         # --- object dictionary ---------------------------------------------
         self.od = QTreeWidget()
-        self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value"])
+        self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value", "Watch"])
         self.od.setFont(mono)
         self.od.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.od.header().setStretchLastSection(True)
+        self.od.header().setStretchLastSection(False)
+        self.od.header().setSectionResizeMode(COL_VALUE, QHeaderView.Stretch)
         self.od.itemDoubleClicked.connect(self._on_od_double_clicked)
         self.od.itemChanged.connect(self._on_od_item_changed)
         self.od.setToolTip(
             "Double-click an entry to read it from the node.\nEdit a value to write it back."
         )
+        self.od_search = QLineEdit()
+        self.od_search.setPlaceholderText("filter objects...")
+        self.od_search.setToolTip(
+            "Match on the index or the name; several words must all match.\n"
+            "A record that matches shows its sub-indices, and nothing is\n"
+            "discarded -- clearing the box brings the rest back."
+        )
+        self.od_search.textChanged.connect(lambda _t: self._apply_od_filter())
+        self.watched_only = QPushButton("Watched")
+        self.watched_only.setCheckable(True)
+        self.watched_only.setToolTip(
+            "Show only the objects ticked in the Watch column.\n"
+            "The list is kept per device, so the next controller of the same\n"
+            "kind opens with the objects you were using on the last one."
+        )
+        self.watched_only.toggled.connect(lambda _on: self._apply_od_filter())
+
         od_bar = QHBoxLayout()
         od_bar.addWidget(QLabel("Object dictionary"))
-        od_bar.addStretch()
+        od_bar.addWidget(self.od_search, 1)
+        od_bar.addWidget(self.watched_only)
         read_all = QPushButton("Read all")
         read_all.setToolTip(
             "Read every readable entry in the dictionary, one SDO at a time.\n"
@@ -463,8 +496,10 @@ class CanopenView(QWidget):
 
     def _populate_od(self, node_id: int | None) -> None:
         self._updating = True
+        self._od_node = node_id
         self.od.clear()
         node = None if node_id is None else self.manager.node(node_id)
+        watched = self._watched(node_id)
         if node is not None:
             parent_items: dict[int, QTreeWidgetItem] = {}
             for index, sub, var, name in od_entries(node.object_dictionary):
@@ -477,9 +512,95 @@ class CanopenView(QWidget):
                     parent_items[index].addChild(item)
                 item.setData(0, ROLE_INDEX, index)
                 item.setData(0, ROLE_SUB, sub)
+                # What a row can be searched by, worked out once: a dictionary
+                # runs to fifteen hundred rows and filtering happens on every
+                # keystroke.  The parent's name is folded into each child so
+                # that searching for a record reveals what is inside it.
+                parent_name = "" if sub is None else parent_items[index].text(1)
+                sub_text = "" if sub is None else f"{sub:02X}"
+                item.setData(
+                    0,
+                    ROLE_SEARCH,
+                    f"{index:04X} {sub_text} {name} {parent_name}".lower(),
+                )
+                if var is not None:
+                    item.setCheckState(
+                        COL_WATCH,
+                        Qt.Checked if (index, sub or 0) in watched else Qt.Unchecked,
+                    )
                 if var is not None and var.writable:
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
         self._updating = False
+        self._apply_od_filter()
+
+    # --- finding one of fifteen hundred -------------------------------------------
+    def _watch_key(self, node_id: int | None) -> str:
+        """Which device this watch list belongs to.
+
+        The identity where the node has told us one, so the same kind of
+        controller opens with the same list next time; the node id only as a
+        fallback, since two different devices can sit at the same address on
+        different days.
+        """
+        if node_id is None:
+            return ""
+        identity = self._identities.get(node_id)
+        return identity.key if identity is not None else f"node{node_id}"
+
+    def _watched(self, node_id: int | None) -> set[tuple[int, int]]:
+        key = self._watch_key(node_id)
+        if not key:
+            return set()
+        stored = self.ctx.settings.get("canopen.watch", {}).get(key, [])
+        return {(int(i), int(s)) for i, s in stored}
+
+    def _save_watched(self, node_id: int, watched: set[tuple[int, int]]) -> None:
+        all_lists = dict(self.ctx.settings.get("canopen.watch", {}))
+        key = self._watch_key(node_id)
+        if watched:
+            all_lists[key] = sorted([index, sub] for index, sub in watched)
+        else:
+            all_lists.pop(key, None)  # an empty list is the same as no list
+        self.ctx.settings.set("canopen.watch", all_lists)
+
+    def _on_watch_toggled(self, item: QTreeWidgetItem) -> None:
+        node_id = self._od_node
+        if node_id is None:
+            return
+        where = (item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+        watched = self._watched(node_id)
+        watched.add(where) if item.checkState(COL_WATCH) == Qt.Checked else watched.discard(where)
+        self._save_watched(node_id, watched)
+        if self.watched_only.isChecked():
+            self._apply_od_filter()
+
+    def _apply_od_filter(self) -> None:
+        """Hide what does not match.  Nothing is discarded and nothing is read.
+
+        A record is shown when any of its sub-indices is -- and every child
+        carries its parent's name in what it is searched by, so a search for
+        the record shows the whole of it.
+        """
+        needles = self.od_search.text().lower().split()
+        only_watched = self.watched_only.isChecked()
+
+        def keep(item: QTreeWidgetItem) -> bool:
+            if only_watched and item.checkState(COL_WATCH) != Qt.Checked:
+                return False
+            haystack = item.data(0, ROLE_SEARCH) or ""
+            return all(needle in haystack for needle in needles)
+
+        for i in range(self.od.topLevelItemCount()):
+            top = self.od.topLevelItem(i)
+            if top.childCount() == 0:
+                top.setHidden(not keep(top))
+                continue
+            shown = 0
+            for j in range(top.childCount()):
+                child = top.child(j)
+                child.setHidden(not keep(child))
+                shown += not child.isHidden()
+            top.setHidden(shown == 0)
 
     def _od_item(self, index: int, sub: int) -> QTreeWidgetItem | None:
         for i in range(self.od.topLevelItemCount()):
@@ -502,7 +623,12 @@ class CanopenView(QWidget):
             self.manager.sdo_read(node_id, item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
 
     def _on_od_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        if self._updating or column != 4:
+        if self._updating:
+            return
+        if column == COL_WATCH:
+            self._on_watch_toggled(item)
+            return
+        if column != COL_VALUE:
             return
         node_id = self.selected_node()
         if node_id is None:
