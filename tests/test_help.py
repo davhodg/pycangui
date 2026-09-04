@@ -191,3 +191,76 @@ def test_a_newer_release_offers_the_download_page(app, window, monkeypatch):
     )
     window.help_menu._report(updates.Release(version="99.0.0", url="https://example/99"), "")
     assert asked and "99.0.0" in asked[0]
+
+
+# --- the shipped manual ----------------------------------------------------------------
+def test_the_manual_ships_with_the_package():
+    """Package data, which is exactly the kind of file a build drops silently."""
+    from pycangui.help import manual_text
+
+    text = manual_text()
+    assert text.startswith("# pycangui manual")
+    assert len(text.splitlines()) > 100, "a stub is not a manual"
+
+
+def test_the_manual_is_read_through_the_package_not_a_path():
+    """importlib.resources, so it is found in a wheel as well as a checkout.
+
+    A path relative to __file__ works from the source tree and fails in the
+    one place that matters, which is somebody else's installation.
+    """
+    import inspect
+
+    import pycangui.help
+
+    source = inspect.getsource(pycangui.help)
+    assert "resources.files" in source
+    assert "__file__" not in source
+
+
+def test_every_pane_is_documented(app, window):
+    """A pane added without a word about it is a pane nobody will find."""
+    from pycangui.help import manual_text
+
+    text = manual_text().lower()
+    for dock in window._docks.values():
+        assert dock.windowTitle().lower() in text, f"{dock.windowTitle()} is not in the manual"
+
+
+def test_documentation_shows_the_manual_rather_than_a_browser(app, window, monkeypatch):
+    """On a bench with no network, a Help menu that opens a browser is nothing."""
+    from PySide6.QtGui import QDesktopServices
+
+    from pycangui.ui import help_menu as module
+
+    monkeypatch.setattr(
+        QDesktopServices, "openUrl", lambda _url: pytest.fail("it went to the internet")
+    )
+    shown = []
+    monkeypatch.setattr(module.ManualDialog, "exec", lambda self: shown.append(self))
+    window.help_menu._open_docs()
+
+    assert shown, "no manual window"
+    assert "pycangui manual" in shown[0].view.toPlainText().lower(), "rendered, not raw markdown"
+    assert "#" not in shown[0].view.toPlainText()[:40], "the markdown was not parsed"
+
+
+def test_a_build_without_the_manual_falls_back_to_the_web(app, window, monkeypatch):
+    from PySide6.QtGui import QDesktopServices
+
+    from pycangui.ui import help_menu as module
+
+    monkeypatch.setattr(module, "manual_text", lambda: "")
+    opened = []
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
+    window.help_menu._open_docs()
+    assert opened and "github" in opened[0].lower()
+
+
+def test_the_selftest_notices_a_missing_manual(monkeypatch):
+    """So a build that forgot it fails where it can still be fixed."""
+    import pycangui.__main__ as entry
+    import pycangui.help as help_package
+
+    monkeypatch.setattr(help_package, "manual_text", lambda: "")
+    assert entry.selftest() == 1

@@ -97,6 +97,7 @@ EXCLUDED = [
 DATA = [
     # Sample device files, read as files at run time.
     (str(PROJECT / "pycangui" / "resources"), "pycangui/resources"),
+    (str(PROJECT / "pycangui" / "help"), "pycangui/help"),
     # Hook templates: copied *as source* into the user's folder on first run,
     # so they must exist as real files, not only as compiled modules.
     (str(PROJECT / "pycangui" / "hooks"), "pycangui/hooks"),
