@@ -631,7 +631,7 @@ class CanopenView(QWidget):
 
         Here rather than in a dialog with an index box in it, because this is
         where the objects can be searched for and where their names already
-        are.  Typing 0x2001 into a form is what custom_panes exist to avoid.
+        are.  Typing 0x2001 into a form is what these exist to avoid.
         """
         chosen = self._picked_fields()
         if not chosen:
