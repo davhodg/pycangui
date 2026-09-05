@@ -123,15 +123,15 @@ class PluginApp:
         self._labellers.append(labeller)
         self.window.add_trace_labeller(labeller)
 
-    def add_panel_widget(self, kind: str, widget_class: type) -> None:
-        """An eighth way for a panel to show an object.
+    def add_field_widget(self, kind: str, widget_class: type) -> None:
+        """An eighth way for a pane to show an object.
 
         The seven built in cover every configuration screen we know of, which
         is not the same as every screen there will ever be.
         """
-        from pycangui.ui import panel_widgets
+        from pycangui.ui import field_widgets
 
-        panel_widgets.BY_KIND[kind] = widget_class
+        field_widgets.BY_KIND[kind] = widget_class
         self._widget_kinds.append(kind)
 
     # --- doing something slow --------------------------------------------------------------
@@ -168,9 +168,9 @@ class PluginApp:
         for labeller in self._labellers:
             self.window.remove_trace_labeller(labeller)
         self._labellers.clear()
-        from pycangui.ui import panel_widgets
+        from pycangui.ui import field_widgets
 
         for kind in self._widget_kinds:
-            panel_widgets.BY_KIND.pop(kind, None)
+            field_widgets.BY_KIND.pop(kind, None)
         self._widget_kinds.clear()
         self.window.drop_plugin_menu(self.plugin)

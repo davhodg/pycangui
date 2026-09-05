@@ -4,7 +4,7 @@ The docks used to be a fixed list built in the main window's constructor, and
 nineteen places in it named one by a string constant.  That is fine while
 there is exactly one of everything and impossible the moment there are two:
 a second trace with a different filter, two plots watching different signals,
-and -- the case this exists for -- two of a user's own panels side by side,
+and -- the case this exists for -- two of a user's own custom_panes side by side,
 one per node.
 
 So a pane has a *kind* and an *instance*.  The kind knows its title, where it
@@ -61,7 +61,7 @@ UNDOCK_TIP = "Hold Ctrl while dragging an undocked pane to stop it docking again
 
 #: A pane opened now is opened floating, in front of the window.  Docking
 #: it takes the room the panes already on screen were using, and somebody
-#: asking for a second trace or a panel wants to look at it beside what is
+#: asking for a second trace or a pane wants to look at it beside what is
 #: there rather than instead of it.  Dragging it in is one gesture; finding
 #: where it landed and dragging it out is two.
 #: The size it opens at, unless the pane asks for more.
@@ -69,7 +69,7 @@ NEW_PANE_SIZE = (620, 460)
 #: Down and right of the main window's corner, so it is obviously in front
 #: of it rather than lost behind it...
 NEW_PANE_OFFSET = 64
-#: ...and each one after that steps again, so opening three panels gives
+#: ...and each one after that steps again, so opening three custom_panes gives
 #: three windows rather than one window with two hidden underneath.
 CASCADE = 28
 CASCADE_BEFORE_WRAPPING = 6
@@ -90,8 +90,8 @@ class PaneKind:
     #: many windows you point at it; a trace is not.
     several: bool = False
     #: Instances are named by whoever opens them rather than numbered, and so
-    #: are not offered as "another one of these".  A panel is the case: there
-    #: is no such thing as Panel 2, there is the panel called Battery limits,
+    #: are not offered as "another one of these".  A pane is the case: there
+    #: is no such thing as CustomPane 2, there is the pane called Battery limits,
     #: and it is opened by name from its own menu.
     named: bool = False
     #: Undo whatever ``build`` wired up, when an instance is removed.

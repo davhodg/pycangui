@@ -1,6 +1,6 @@
-"""What a panel is, and the file it is kept in.
+"""What a custom pane is, and the file it is kept in.
 
-A panel is a title and a list of fields; a field is one object dictionary
+A custom pane is a title and a list of fields; a field is one object dictionary
 entry with a label and a way of being shown.  The seven ways are the whole
 vocabulary, and they are enough to express every configuration screen in a
 manufacturer's tool: a range-checked number, a hex code, a named choice, a
@@ -8,7 +8,7 @@ word of flags, a field packed into some bits of a larger object, an XY map,
 and a value that is only read.
 
 Kept as indented JSON in the workspace, beside the hooks that say what the
-objects mean.  That is deliberate: a panel is knowledge about a product, the
+objects mean.  That is deliberate: a custom pane is knowledge about a product, the
 same as the hooks and the EDS, and all three should travel together.  It is
 also why the index is written as ``"0x2001"`` rather than as 8193 -- nobody
 speaks about a CANopen object in decimal, and the file is meant to be opened
@@ -39,7 +39,7 @@ KINDS = ("value", "number", "hex", "enum", "flags", "bits", "map")
 
 MAX_INDEX = 0xFFFF
 MAX_SUB = 0xFF
-#: A panel name is a file name, so it has to survive being one.
+#: A pane name is a file name, so it has to survive being one.
 _ALLOWED_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]*$")
 MAX_NAME = 64
 SUFFIX = ".json"
@@ -47,7 +47,7 @@ SUFFIX = ".json"
 
 @dataclass(frozen=True)
 class Field:
-    """One object on a panel, and how it is shown."""
+    """One object on a pane, and how it is shown."""
 
     index: int
     sub: int = 0
@@ -56,10 +56,10 @@ class Field:
     #: called, which is usually right and occasionally unreadable.
     label: str = ""
 
-    # --- meaning, where the panel knows better than the file ---------------------
+    # --- meaning, where the pane knows better than the file ---------------------
     #: These sit on top of whatever the EDS and the display hook produced, for
     #: the case the hook cannot cover: one object that means something
-    #: particular *on this panel*.  Left unset, the source's answer stands.
+    #: particular *on this pane*.  Left unset, the source's answer stands.
     unit: str = ""
     factor: float | None = None
     offset: float | None = None
@@ -103,7 +103,7 @@ class Field:
         """The object with this field replaced.
 
         Read-modify-write, and there is no other way: three bits of a 32 bit
-        word cannot be written without the other twenty-nine, so a panel that
+        word cannot be written without the other twenty-nine, so a pane that
         did not read first would zero everything it was not showing.
         """
         if not self.width:
@@ -112,18 +112,18 @@ class Field:
 
 
 @dataclass
-class Panel:
+class CustomPane:
     """A named group of objects, laid out as a form."""
 
     title: str = ""
     description: str = ""
     fields: list[Field] = field(default_factory=list)
-    #: The node this panel opens against, where it has a usual one.  A panel is
-    #: bound to a *source* rather than to a node -- the same panel serves a
+    #: The node this pane opens against, where it has a usual one.  A pane is
+    #: bound to a *source* rather than to a node -- the same pane serves a
     #: live node, a DCF and an EDS's defaults -- so this is only a default.
     node: int | None = None
 
-    def with_field(self, new: Field) -> Panel:
+    def with_field(self, new: Field) -> CustomPane:
         return replace(self, fields=[*self.fields, new])
 
 
@@ -154,7 +154,7 @@ def field_from_dict(data: dict) -> Field:
     """One field, forgiving of a hand-edited file.
 
     Anything unreadable falls back to the default rather than raising: a typo
-    in one field of one panel should cost that field, not the panel and not
+    in one field of one pane should cost that field, not the pane and not
     the window that was opening it.
     """
     kind = str(data.get("kind", "number"))
@@ -218,9 +218,9 @@ def field_to_dict(item: Field) -> dict:
     return out
 
 
-def panel_from_dict(data: dict) -> Panel:
+def pane_from_dict(data: dict) -> CustomPane:
     raw_fields = data.get("fields")
-    return Panel(
+    return CustomPane(
         title=str(data.get("title", "")),
         description=str(data.get("description", "")),
         node=None if data.get("node") is None else _number(data.get("node")),
@@ -230,23 +230,23 @@ def panel_from_dict(data: dict) -> Panel:
     )
 
 
-def panel_to_dict(panel: Panel) -> dict:
-    out: dict[str, Any] = {"title": panel.title}
-    if panel.description:
-        out["description"] = panel.description
-    if panel.node is not None:
-        out["node"] = panel.node
-    out["fields"] = [field_to_dict(f) for f in panel.fields]
+def pane_to_dict(pane: CustomPane) -> dict:
+    out: dict[str, Any] = {"title": pane.title}
+    if pane.description:
+        out["description"] = pane.description
+    if pane.node is not None:
+        out["node"] = pane.node
+    out["fields"] = [field_to_dict(f) for f in pane.fields]
     return out
 
 
 def display_for(item: Field, base: Display) -> Display:
-    """What the source said about the object, with the panel's word on top.
+    """What the source said about the object, with the pane's word on top.
 
-    The panel wins where it speaks, because it is the more specific statement:
-    the hook says what an object means on this product, and the panel says what
+    The pane wins where it speaks, because it is the more specific statement:
+    the hook says what an object means on this product, and the pane says what
     it means *on this screen*, which is occasionally narrower.  Everything the
-    panel leaves unset keeps whatever the EDS and the hook produced, so naming
+    pane leaves unset keeps whatever the EDS and the hook produced, so naming
     a field does not silently discard the limits the file declared.
     """
     overrides: dict[str, object] = {}
@@ -263,7 +263,7 @@ def display_for(item: Field, base: Display) -> Display:
 
 # --- where they are kept ------------------------------------------------------------------
 def directory() -> Path:
-    return workspaces.panels_dir()
+    return workspaces.custom_panes_dir()
 
 
 def path_for(name: str) -> Path:
@@ -271,40 +271,40 @@ def path_for(name: str) -> Path:
 
 
 def names() -> list[str]:
-    """Every panel in the workspace, by name."""
+    """Every pane in the workspace, by name."""
     return sorted(p.stem for p in directory().glob(f"*{SUFFIX}") if p.is_file())
 
 
 def why_not(name: str) -> str:
-    """Why this panel cannot be called that, or "" if it can."""
+    """Why this pane cannot be called that, or "" if it can."""
     name = name.strip()
     if not name:
-        return "A panel needs a name."
+        return "A pane needs a name."
     if len(name) > MAX_NAME:
         return f"Names are at most {MAX_NAME} characters."
     if not _ALLOWED_NAME.match(name) or name.endswith((" ", ".")):
         return (
-            "A panel name is also a file name: letters, digits, spaces, dots, "
+            "A pane name is also a file name: letters, digits, spaces, dots, "
             "dashes and underscores, starting with a letter or a digit."
         )
     if path_for(name).exists():
-        return f"There is already a panel called {name}."
+        return f"There is already a pane called {name}."
     return ""
 
 
-def load(name: str) -> Panel | None:
-    """A panel by name, or None if there is no readable file for it."""
+def load(name: str) -> CustomPane | None:
+    """A pane by name, or None if there is no readable file for it."""
     try:
         data = json.loads(path_for(name).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    return panel_from_dict(data) if isinstance(data, dict) else None
+    return pane_from_dict(data) if isinstance(data, dict) else None
 
 
-def save(name: str, panel: Panel) -> Path:
+def save(name: str, pane: CustomPane) -> Path:
     path = path_for(name)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(panel_to_dict(panel), indent=2), encoding="utf-8")
+    path.write_text(json.dumps(pane_to_dict(pane), indent=2), encoding="utf-8")
     return path
 
 
@@ -313,18 +313,18 @@ def delete(name: str) -> None:
 
 
 # --- is it usable -----------------------------------------------------------------------------
-def problems(panel: Panel) -> list[str]:
-    """What is wrong with this panel, said in the terms it was written in.
+def problems(pane: CustomPane) -> list[str]:
+    """What is wrong with this pane, said in the terms it was written in.
 
-    Reported rather than raised.  A panel with one bad field is still a panel,
+    Reported rather than raised.  A pane with one bad field is still a pane,
     and refusing to open it would leave somebody with no way to see which
     field was the problem.
     """
     found: list[str] = []
-    if not panel.title.strip():
-        found.append("The panel has no title.")
+    if not pane.title.strip():
+        found.append("The pane has no title.")
     seen: set[tuple[int, int, int, int]] = set()
-    for item in panel.fields:
+    for item in pane.fields:
         where = f"0x{item.index:04X}:{item.sub:02X}"
         if not 0 <= item.index <= MAX_INDEX:
             found.append(f"{where}: an index is 0 to 0xFFFF.")

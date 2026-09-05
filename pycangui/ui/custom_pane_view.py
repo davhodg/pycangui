@@ -1,16 +1,16 @@
-"""A panel on screen: a named group of objects, laid out as a form.
+"""A custom pane on screen: a named group of objects, laid out as a form.
 
 The pane is thin on purpose.  It builds a widget per field, points every one
-of them at whatever source the panel is bound to, and gets out of the way --
+of them at whatever source the pane is bound to, and gets out of the way --
 the refusing, the scaling and the read-modify-write all belong to the widgets,
 and where the values come from belongs to the source.  What is left here is
 the layout, the source selector, and Read.
 
-Which source is the one thing on screen that a panel does not carry in its
-file.  A panel is a statement about a *product*, and which controller you are
+Which source is the one thing on screen that a pane does not carry in its
+file.  A custom pane is a statement about a *product*, and which controller you are
 pointing it at this afternoon is not.  So the file names a node as a default
 and the selector at the top overrides it, including with a file -- the same
-panel over a DCF is how you build a configuration at a desk.
+pane over a DCF is how you build a configuration at a desk.
 """
 
 from __future__ import annotations
@@ -42,53 +42,53 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.context import Context
-from pycangui.panels import model
-from pycangui.panels.model import Field, Panel
-from pycangui.panels.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
-from pycangui.panels.source import FileSource, NodeSource, Source
-from pycangui.ui import folders, panel_widgets
+from pycangui.custom_panes import model
+from pycangui.custom_panes.model import CustomPane, Field
+from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
+from pycangui.custom_panes.source import FileSource, NodeSource, Source
+from pycangui.ui import field_widgets, folders
 from pycangui.ui.persist import remember
 
 #: Offered in the source selector, above whatever nodes are on the bus.
 FILE_ENTRY = "Open a DCF or EDS..."
 
-READ_TIP = "Read every object on this panel again."
+READ_TIP = "Read every object on this pane again."
 EDIT_TIP = (
-    "Add objects to this panel, and change their labels, their order and\n"
+    "Add objects to this pane, and change their labels, their order and\n"
     "how each one is shown.  Objects can also be picked in the CANopen\n"
-    "pane's object dictionary, with Add to panel."
+    "pane's object dictionary, with Add to pane."
 )
 SOURCE_TIP = (
     "Where the values come from and go to: a node on the bus, or a DCF or\n"
-    "EDS file.  The same panel over a file is how a configuration is built\n"
+    "EDS file.  The same pane over a file is how a configuration is built\n"
     "at a desk and taken to the machine."
 )
 POLL_TIP = (
-    "Read every object on this panel over and over, so the values follow\n"
+    "Read every object on this pane over and over, so the values follow\n"
     "the controller.  The figure beside the box is the rate actually being\n"
     "achieved, which for SDO reads is often well below the one asked for.\n"
     "Numeric values go to Signals and Plot while this is on, so a polled\n"
     "object plots and exports like any other signal."
 )
 RATE_TIP = (
-    "How often to read the whole panel, at most.  A round only starts when\n"
+    "How often to read the whole pane, at most.  A round only starts when\n"
     "the last one has finished, so asking for more than the bus can do gets\n"
     "you as fast as it can rather than a backlog of stale values."
 )
 
 
-class PanelView(QWidget):
-    """One panel, bound to one source at a time."""
+class CustomPaneView(QWidget):
+    """One pane, bound to one source at a time."""
 
-    #: The panel was edited here and should be written back.
+    #: The pane was edited here and should be written back.
     changed = Signal()
 
     def __init__(
-        self, name: str, panel: Panel, manager, ctx: Context, signals=None, now=None
+        self, name: str, pane: CustomPane, manager, ctx: Context, signals=None, now=None
     ) -> None:
         super().__init__()
         self.name = name
-        self.panel = panel
+        self.pane = pane
         self.manager = manager
         self.ctx = ctx
         #: Where polled values go, so that one plots and exports like any other
@@ -96,7 +96,7 @@ class PanelView(QWidget):
         self.signals = signals
         self._now = now or time.monotonic
         self.source: Source | None = None
-        self._widgets: list[panel_widgets.FieldWidget] = []
+        self._widgets: list[field_widgets.FieldWidget] = []
         self.poller = Poller(self)
         self.poller.read.connect(self._on_read_requested)
         # rate is connected once the label it writes to exists, below.
@@ -126,14 +126,14 @@ class PanelView(QWidget):
         self.poll_hz.setSingleStep(0.5)
         self.poll_hz.setSuffix(" Hz")
         self.poll_hz.setToolTip(RATE_TIP)
-        remember(self.ctx, f"panel.{self.name}.poll_hz", self.poll_hz, DEFAULT_HZ)
+        remember(self.ctx, f"pane.{self.name}.poll_hz", self.poll_hz, DEFAULT_HZ)
         self.poll_hz.valueChanged.connect(self.poller.set_rate)
         self.poller.set_rate(self.poll_hz.value())
         #: The rate actually being managed.  Shown rather than the requested
         #: one, because a value read at 12 Hz that looks like it was read at
         #: 100 is the sort of thing people build conclusions on.
         self.poll_rate = QLabel("")
-        self.poll_rate.setToolTip("The rate this panel is actually being read at.")
+        self.poll_rate.setToolTip("The rate this pane is actually being read at.")
         self.poller.rate.connect(self._on_rate)
 
         bar = QHBoxLayout()
@@ -163,9 +163,9 @@ class PanelView(QWidget):
     # --- the form ------------------------------------------------------------------
     def rebuild(self) -> None:
         """Build a widget per field, and say what is wrong where anything is."""
-        self.heading.setText(self.panel.title or self.name)
-        problems = model.problems(self.panel)
-        self.note.setText("\n".join([self.panel.description, *problems]).strip())
+        self.heading.setText(self.pane.title or self.name)
+        problems = model.problems(self.pane)
+        self.note.setText("\n".join([self.pane.description, *problems]).strip())
         self.note.setVisible(bool(self.note.text()))
         self.note.setStyleSheet("color: #c02020" if problems else "")
 
@@ -175,16 +175,16 @@ class PanelView(QWidget):
                 widget.deleteLater()
         self._widgets.clear()
 
-        for item in self.panel.fields:
+        for item in self.pane.fields:
             display = self.source.display(item.index, item.sub) if self.source else None
-            widget = panel_widgets.build(item, display or _no_display())
+            widget = field_widgets.build(item, display or _no_display())
             widget.read_requested.connect(self._on_read_requested)
             widget.write_requested.connect(self._on_write_requested)
             widget.message.connect(self.ctx.warn)
             self.form.addRow(QLabel(widget.label_text() + ":"), widget)
             self._widgets.append(widget)
         self._apply_writable()
-        self.poller.set_objects(f.where for f in self.panel.fields)
+        self.poller.set_objects(f.where for f in self.pane.fields)
         self._fill_sources()
 
     def refresh(self) -> None:
@@ -198,14 +198,14 @@ class PanelView(QWidget):
         self.sources.blockSignals(True)
         self.sources.clear()
         nodes = sorted(self.manager.nodes()) if hasattr(self.manager, "nodes") else []
-        if self.panel.node is not None and self.panel.node not in nodes:
-            nodes = sorted({*nodes, self.panel.node})
+        if self.pane.node is not None and self.pane.node not in nodes:
+            nodes = sorted({*nodes, self.pane.node})
         for node_id in nodes:
             self.sources.addItem(f"Node {node_id}", node_id)
         if isinstance(self.source, FileSource):
             self.sources.addItem(self.source.label, str(self.source.path))
         self.sources.addItem(FILE_ENTRY, FILE_ENTRY)
-        at = self.sources.findData(current if current is not None else self.panel.node)
+        at = self.sources.findData(current if current is not None else self.pane.node)
         self.sources.setCurrentIndex(max(at, 0))
         self.sources.blockSignals(False)
 
@@ -234,7 +234,7 @@ class PanelView(QWidget):
         self.bind(FileSource(path, hooks=getattr(self.manager, "_hooks", None)))
 
     def bind(self, source: Source | None) -> None:
-        """Point this panel at a node, a file, or nothing at all."""
+        """Point this pane at a node, a file, or nothing at all."""
         if self.source is not None:
             try:
                 self.source.value.disconnect(self._on_value)
@@ -269,7 +269,7 @@ class PanelView(QWidget):
     # --- polling ------------------------------------------------------------------------
     def _on_poll_toggled(self, on: bool) -> None:
         if on and self.source is None:
-            self.ctx.warn(f"{self.panel.title or self.name}: no node or file selected")
+            self.ctx.warn(f"{self.pane.title or self.name}: no node or file selected")
             self.poll.setChecked(False)
             return
         self.poller.start(self.poll_hz.value()) if on else self.poller.stop()
@@ -280,13 +280,13 @@ class PanelView(QWidget):
     # --- and back again ------------------------------------------------------------------
     def _on_read_requested(self, index: int, sub: int) -> None:
         if self.source is None:
-            self.ctx.warn(f"{self.panel.title or self.name}: no node or file selected")
+            self.ctx.warn(f"{self.pane.title or self.name}: no node or file selected")
             return
         self.source.request(index, sub)
 
     def _on_write_requested(self, index: int, sub: int, raw: Any) -> None:
         if self.source is None:
-            self.ctx.warn(f"{self.panel.title or self.name}: no node or file selected")
+            self.ctx.warn(f"{self.pane.title or self.name}: no node or file selected")
             return
         self.source.write(index, sub, raw)
 
@@ -319,22 +319,22 @@ class PanelView(QWidget):
         self.signals.push(group, widget.label_text(), self._now(), float(value), display.unit)
         self.signals.updated.emit()
 
-    # --- changing the panel itself ----------------------------------------------------------
+    # --- changing the pane itself ----------------------------------------------------------
     def _edit(self) -> None:
-        dialog = PanelEditor(self, self.panel, self.source)
+        dialog = CustomPaneEditor(self, self.pane, self.source)
         if dialog.exec() != QDialog.Accepted:
             return
-        self.panel = dialog.result_panel()
-        model.save(self.name, self.panel)
+        self.pane = dialog.result_pane()
+        model.save(self.name, self.pane)
         self.rebuild()
         if self.source is not None:
             self.refresh()
         self.changed.emit()
 
     def add_field(self, item: Field) -> None:
-        """Put another object on this panel, from wherever it was picked."""
-        self.panel = self.panel.with_field(item)
-        model.save(self.name, self.panel)
+        """Put another object on this pane, from wherever it was picked."""
+        self.pane = self.pane.with_field(item)
+        model.save(self.name, self.pane)
         self.rebuild()
         if self.source is not None:
             self.refresh()
@@ -347,32 +347,32 @@ def _no_display():
     return Display()
 
 
-class PanelEditor(QDialog):
-    """The objects on a panel, what they are called, and how each is shown.
+class CustomPaneEditor(QDialog):
+    """The objects on a pane, what they are called, and how each is shown.
 
     Objects are usually picked in the CANopen pane's object dictionary, which
     is where they can be searched for and where their names already are.  Add
     is here as well because that route needs a node on the bus with an EDS
     loaded, and the two cases it does not cover are ordinary ones: building a
-    panel at a desk against a DCF, and adding an object whose index you
+    pane at a desk against a DCF, and adding an object whose index you
     already have in front of you.
     """
 
     COLUMNS = ("Object", "Label", "Shown as")
 
-    def __init__(self, parent: QWidget | None, panel: Panel, source=None) -> None:
+    def __init__(self, parent: QWidget | None, pane: CustomPane, source=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Edit panel")
+        self.setWindowTitle("Edit pane")
         self.resize(560, 460)
         self.source = source
-        self._fields = list(panel.fields)
+        self._fields = list(pane.fields)
 
-        self.title = QLineEdit(panel.title)
-        self.description = QLineEdit(panel.description)
-        self.node = QLineEdit("" if panel.node is None else str(panel.node))
+        self.title = QLineEdit(pane.title)
+        self.description = QLineEdit(pane.description)
+        self.node = QLineEdit("" if pane.node is None else str(pane.node))
         self.node.setToolTip(
-            "The node this panel usually opens against.  Only a default -- the\n"
-            "selector on the panel itself decides where the values come from."
+            "The node this pane usually opens against.  Only a default -- the\n"
+            "selector on the pane itself decides where the values come from."
         )
 
         details = QFormLayout()
@@ -389,7 +389,7 @@ class PanelEditor(QDialog):
 
         add = QPushButton("Add...")
         add.setToolTip(
-            "Add objects to this panel.  Pick them from whatever it is bound\n"
+            "Add objects to this pane.  Pick them from whatever it is bound\n"
             "to -- a node's dictionary or an EDS -- or type an index."
         )
         add.clicked.connect(self._add)
@@ -414,7 +414,7 @@ class PanelEditor(QDialog):
         layout.addLayout(buttons)
         note = QLabel(
             "Anything this dialog does not cover -- named bits, map axes -- "
-            "is in the panel's file, which is JSON and meant to be edited."
+            "is in the pane's file, which is JSON and meant to be edited."
         )
         note.setWordWrap(True)
         layout.addWidget(note)
@@ -478,13 +478,13 @@ class PanelEditor(QDialog):
     def _accept(self) -> None:
         self._collect()
         if not self.title.text().strip():
-            QMessageBox.warning(self, "The panel needs a title", "It is what names its window.")
+            QMessageBox.warning(self, "The pane needs a title", "It is what names its window.")
             return
         self.accept()
 
-    def result_panel(self) -> Panel:
+    def result_pane(self) -> CustomPane:
         node = self.node.text().strip()
-        return Panel(
+        return CustomPane(
             title=self.title.text().strip(),
             description=self.description.text().strip(),
             fields=list(self._fields),
@@ -493,11 +493,11 @@ class PanelEditor(QDialog):
 
 
 class AddObjects(QDialog):
-    """Pick objects out of whatever the panel is bound to, or type an index.
+    """Pick objects out of whatever the pane is bound to, or type an index.
 
     Both, rather than either.  A list to search is how somebody who does not
     know the index finds it, and typing one is how somebody who does gets on
-    with it -- and there is no list at all when the panel is bound to a node
+    with it -- and there is no list at all when the pane is bound to a node
     that has no EDS, which must not be a dead end.
     """
 
@@ -543,7 +543,7 @@ class AddObjects(QDialog):
             layout.addWidget(self.list, 1)
         else:
             missing = QLabel(
-                "Nothing to pick from: this panel is not bound to a node with an "
+                "Nothing to pick from: this pane is not bound to a node with an "
                 "EDS loaded, or to a file.  Type an index instead."
             )
             missing.setWordWrap(True)

@@ -33,8 +33,8 @@ from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.plugins import Plugins
 from pycangui.core.plugins import builtin_dir as builtin_plugins_dir
 from pycangui.core.signals import SignalHub
+from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
-from pycangui.panels import model as panel_model
 from pycangui.uds.manager import UdsManager
 from pycangui.ui import folders
 from pycangui.ui.ascii_view import AsciiView
@@ -42,9 +42,9 @@ from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
+from pycangui.ui.custom_pane_view import CustomPaneView
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
-from pycangui.ui.panel_view import PanelView
 from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.plugin_app import PluginApp
 from pycangui.ui.replay_action import ReplayAction
@@ -68,17 +68,17 @@ def window_title() -> str:
     return f"{APP_NAME} {__version__}" + ("" if name == workspaces.DEFAULT else f" - {name}")
 
 
-#: A panel pane is named after the panel it shows, so that reopening the
-#: workspace reopens the same panels and two panels are two docks.
-PANEL_PREFIX = "panel:"
+#: A pane pane is named after the pane it shows, so that reopening the
+#: workspace reopens the same custom_panes and two custom_panes are two docks.
+CUSTOM_PREFIX = "custom:"
 
 
-def panel_instance(name: str) -> str:
-    return f"{PANEL_PREFIX}{name}"
+def custom_instance(name: str) -> str:
+    return f"{CUSTOM_PREFIX}{name}"
 
 
-def panel_name(instance: str) -> str:
-    return instance[len(PANEL_PREFIX) :] if instance.startswith(PANEL_PREFIX) else instance
+def custom_name(instance: str) -> str:
+    return instance[len(CUSTOM_PREFIX) :] if instance.startswith(CUSTOM_PREFIX) else instance
 
 
 # Bumped whenever the set of docks changes.  restoreState declines a state
@@ -187,7 +187,7 @@ class MainWindow(QMainWindow):
         self.signals_view = self.scope.signals_view
         self.plot = self.scope.plot
         self.canopen_view = self.panes.view(self.panes.add("canopen"))
-        self.canopen_view.add_to_panel.connect(self._add_to_panel)
+        self.canopen_view.add_to_custom_pane.connect(self._add_to_custom_pane)
         self.uds_view = self.panes.view(self.panes.add("uds"))
         self.j1939_view = self.panes.view(self.panes.add("j1939"))
         self.xcp_view = self.panes.view(self.panes.add("xcp"))
@@ -387,10 +387,10 @@ class MainWindow(QMainWindow):
                 several=True,
             ),
             PaneKind(
-                "panel",
-                "Panel",
+                "custom",
+                "Custom pane",
                 Qt.RightDockWidgetArea,
-                self._new_panel,
+                self._new_custom_pane,
                 several=True,
                 named=True,
             ),
@@ -441,80 +441,80 @@ class MainWindow(QMainWindow):
             if view is not None and labeller in view.classifiers:
                 view.classifiers.remove(labeller)
 
-    def _new_panel(self, instance: str) -> PanelView:
-        """One panel, by the name its file is kept under.
+    def _new_custom_pane(self, instance: str) -> CustomPaneView:
+        """One custom pane, by the name its file is kept under.
 
-        The instance name carries it -- ``panel:Battery limits`` -- so that the
-        workspace reopens the same panels it was closed with, and two panels
+        The instance name carries it -- ``pane:Battery limits`` -- so that the
+        workspace reopens the same custom_panes it was closed with, and two custom_panes
         are two docks rather than one pane with a selector in it.
         """
-        name = panel_name(instance)
-        panel = panel_model.load(name) or panel_model.Panel(title=name)
-        view = PanelView(
-            name, panel, self.canopen, self.ctx, signals=self.signals, now=self.bus.now
+        name = custom_name(instance)
+        pane = custom_model.load(name) or custom_model.CustomPane(title=name)
+        view = CustomPaneView(
+            name, pane, self.canopen, self.ctx, signals=self.signals, now=self.bus.now
         )
-        view.changed.connect(lambda n=name: self._on_panel_changed(n))
+        view.changed.connect(lambda n=name: self._on_custom_pane_changed(n))
         return view
 
-    def open_panel(self, name: str) -> str:
-        """Open a panel by name, making an empty one if there is no file yet."""
-        panel = panel_model.load(name)
-        if panel is None:
-            panel = panel_model.Panel(title=name)
-            panel_model.save(name, panel)
+    def open_custom_pane(self, name: str) -> str:
+        """Open a custom pane by name, making an empty one if there is no file yet."""
+        pane = custom_model.load(name)
+        if pane is None:
+            pane = custom_model.CustomPane(title=name)
+            custom_model.save(name, pane)
         return self.panes.add(
-            "panel",
-            name=panel_instance(name),
-            title=panel.title or name,
+            "custom",
+            name=custom_instance(name),
+            title=pane.title or name,
             show=True,
             floating=True,
         )
 
-    def _panel_view(self, name: str) -> PanelView | None:
-        view = self.panes.view(panel_instance(name))
-        return view if isinstance(view, PanelView) else None
+    def _custom_pane_view(self, name: str) -> CustomPaneView | None:
+        view = self.panes.view(custom_instance(name))
+        return view if isinstance(view, CustomPaneView) else None
 
-    def _on_panel_changed(self, name: str) -> None:
-        """A panel renamed itself, so its dock should say so too."""
-        view = self._panel_view(name)
-        dock = self.panes.docks.get(panel_instance(name))
+    def _on_custom_pane_changed(self, name: str) -> None:
+        """A custom pane renamed itself, so its dock should say so too."""
+        view = self._custom_pane_view(name)
+        dock = self.panes.docks.get(custom_instance(name))
         if view is not None and dock is not None:
-            dock.setWindowTitle(view.panel.title or name)
+            dock.setWindowTitle(view.pane.title or name)
 
-    def _new_panel_dialog(self) -> None:
-        name, chose = QInputDialog.getText(self, "New panel", "A name for it:")
+    def _new_custom_pane_dialog(self) -> None:
+        name, chose = QInputDialog.getText(self, "New custom pane", "A name for it:")
         if not chose:
             return
-        if (reason := panel_model.why_not(name)) != "":
-            self.events.warning(f"New panel: {reason}")
+        if (reason := custom_model.why_not(name)) != "":
+            self.events.warning(f"New custom pane: {reason}")
             return
-        self.open_panel(name.strip())
+        self.open_custom_pane(name.strip())
         self.events.information(
-            f"Panel {name.strip()} created.  Add objects to it from the CANopen "
-            "pane: select them in the object dictionary and use Add to panel."
+            f"Custom pane {name.strip()} created.  Add objects to it from the CANopen "
+            "pane: select them in the object dictionary and use Add to a custom pane."
         )
 
     @Slot(str, object)
-    def _add_to_panel(self, name: str, chosen) -> None:
-        """Put the objects picked in the object dictionary onto a panel.
+    def _add_to_custom_pane(self, name: str, chosen) -> None:
+        """Put the objects picked in the object dictionary onto a custom pane.
 
         Asked once for the whole selection: somebody adding six related
-        parameters means one panel, and being asked six times what to call it
+        parameters means one pane, and being asked six times what to call it
         would be its own argument against the feature.
         """
         items = list(chosen or [])
         if not items:
             return
         if not name:
-            new, chose = QInputDialog.getText(self, "New panel", "A name for it:")
+            new, chose = QInputDialog.getText(self, "New custom pane", "A name for it:")
             if not chose:
                 return
-            if (reason := panel_model.why_not(new)) != "":
-                self.events.warning(f"New panel: {reason}")
+            if (reason := custom_model.why_not(new)) != "":
+                self.events.warning(f"New custom pane: {reason}")
                 return
             name = new.strip()
-        self.open_panel(name)
-        view = self._panel_view(name)
+        self.open_custom_pane(name)
+        view = self._custom_pane_view(name)
         if view is None:
             return
         for item in items:
@@ -592,20 +592,22 @@ class MainWindow(QMainWindow):
             self.view_menu.addAction(self.panes.docks[name].toggleViewAction())
         self.view_menu.addSeparator()
 
-        # "Custom panels" rather than "Panels", which is one letter from
-        # "panes" and means something else entirely.
-        panels_menu = self.view_menu.addMenu("Custom panels")
-        panels_menu.setToolTipsVisible(True)
-        for name in panel_model.names():
-            action = panels_menu.addAction(name, lambda n=name: self.open_panel(n))
-            action.setToolTip("Open this panel, as a dock like any other pane.")
-        if panel_model.names():
-            panels_menu.addSeparator()
-        made = panels_menu.addAction("New panel...", self._new_panel_dialog)
+        # They are panes -- they open as docks and they are removed under
+        # Remove pane -- and the only thing worth saying about them is that
+        # you made them rather than the tool shipping them.  Hence "custom",
+        # and no second word for a second concept that does not exist.
+        custom_menu = self.view_menu.addMenu("Custom panes")
+        custom_menu.setToolTipsVisible(True)
+        for name in custom_model.names():
+            action = custom_menu.addAction(name, lambda n=name: self.open_custom_pane(n))
+            action.setToolTip("Open this custom pane, as a dock like any other.")
+        if custom_model.names():
+            custom_menu.addSeparator()
+        made = custom_menu.addAction("New custom pane...", self._new_custom_pane_dialog)
         made.setToolTip(
             "A named group of objects laid out as a form.  Objects are added\n"
             "from the CANopen pane: select them in the object dictionary and\n"
-            "use Add to panel."
+            "use Add to a custom pane."
         )
 
         # "Another" rather than "New": what it opens is a second Trace or a

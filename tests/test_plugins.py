@@ -37,7 +37,7 @@ def register(app):
     app.add_menu_action("Say hello", lambda: app.log("hello"), "a tooltip")
     app.add_toolbar_button("Demo", lambda: None)
     app.add_trace_labeller(lambda frame: "Demo" if frame.can_id == 0x123 else None)
-    app.add_panel_widget("gauge", QLabel)
+    app.add_field_widget("gauge", QLabel)
 """
 
 QUIET = """
@@ -198,12 +198,12 @@ def test_a_plugin_can_name_frames_in_every_trace(app, window):
 def test_a_plugin_can_add_a_way_to_show_an_object(app, window):
     """The seven built in cover every screen we know of, which is not the same
     as every screen there will ever be."""
-    from pycangui.ui import panel_widgets
+    from pycangui.ui import field_widgets
 
     write_plugin(window, "demo", EVERYTHING)
     window._reload_plugins()
     settle(app)
-    assert "gauge" in panel_widgets.BY_KIND
+    assert "gauge" in field_widgets.BY_KIND
 
 
 # --- when one goes wrong -------------------------------------------------------------------
@@ -268,7 +268,7 @@ def test_half_of_a_plugin_that_failed_is_taken_back(app, window):
 def test_reloading_replaces_rather_than_repeats(app, window):
     """Without this a plugin edited and loaded again leaves its old pane, its
     old menu entries and its old buttons beside the new ones."""
-    from pycangui.ui import panel_widgets
+    from pycangui.ui import field_widgets
 
     write_plugin(window, "demo", EVERYTHING)
     window._reload_plugins()
@@ -277,7 +277,7 @@ def test_reloading_replaces_rather_than_repeats(app, window):
         [n for n in window.panes.names() if n.startswith("demo")],
         entries(window.plugins_menu),
         len(window.trace.classifiers),
-        "gauge" in panel_widgets.BY_KIND,
+        "gauge" in field_widgets.BY_KIND,
     )
 
     window._reload_plugins()
@@ -286,7 +286,7 @@ def test_reloading_replaces_rather_than_repeats(app, window):
         [n for n in window.panes.names() if n.startswith("demo")],
         entries(window.plugins_menu),
         len(window.trace.classifiers),
-        "gauge" in panel_widgets.BY_KIND,
+        "gauge" in field_widgets.BY_KIND,
     )
     assert before == after
 

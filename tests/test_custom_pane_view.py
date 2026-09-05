@@ -1,6 +1,6 @@
-"""A panel on screen: a dock of its own, built by picking objects.
+"""A pane on screen: a dock of its own, built by picking objects.
 
-The two halves that matter are that a panel is a *dock* -- so two of them sit
+The two halves that matter are that a pane is a *dock* -- so two of them sit
 side by side comparing two nodes, which is the case the whole thing exists for
 -- and that building one takes no code: the objects are picked in the object
 dictionary, where they can be searched for and where their names already are.
@@ -10,9 +10,9 @@ import pytest
 from PySide6.QtCore import QSettings
 
 from pycangui.canopen.display import Display
-from pycangui.panels import model
-from pycangui.panels.model import Field, Panel
-from pycangui.ui.main_window import MainWindow, panel_instance
+from pycangui.custom_panes import model
+from pycangui.custom_panes.model import CustomPane, Field
+from pycangui.ui.main_window import MainWindow, custom_instance
 
 
 @pytest.fixture
@@ -31,8 +31,8 @@ def settle(app, times=5):
         app.processEvents()
 
 
-def sample(title="Battery limits") -> Panel:
-    return Panel(
+def sample(title="Battery limits") -> CustomPane:
+    return CustomPane(
         title=title,
         node=5,
         fields=[
@@ -42,20 +42,20 @@ def sample(title="Battery limits") -> Panel:
     )
 
 
-# --- a panel is a dock ---------------------------------------------------------------
+# --- a pane is a dock ---------------------------------------------------------------
 def test_opening_a_panel_gives_it_a_dock_of_its_own(window):
     model.save("battery", sample())
-    name = window.open_panel("battery")
+    name = window.open_custom_pane("battery")
 
-    assert name == panel_instance("battery")
+    assert name == custom_instance("battery")
     assert window.panes.docks[name].windowTitle() == "Battery limits"
-    assert window.panes.kind_of(name) == "panel"
+    assert window.panes.kind_of(name) == "custom"
 
 
 def test_a_panel_opens_in_a_window_of_its_own(app, window):
     """It is something to look at beside the panes already on screen."""
     model.save("battery", sample())
-    name = window.open_panel("battery")
+    name = window.open_custom_pane("battery")
     settle(app)
     assert window.panes.docks[name].isFloating()
     assert window.panes.docks[name].isVisible()
@@ -65,8 +65,8 @@ def test_two_panels_are_two_docks(window):
     """The case the whole thing exists for: node 1 beside node 2."""
     model.save("battery", sample("Battery limits"))
     model.save("gains", sample("Control gains"))
-    window.open_panel("battery")
-    window.open_panel("gains")
+    window.open_custom_pane("battery")
+    window.open_custom_pane("gains")
 
     titles = [window.panes.docks[n].windowTitle() for n in window.panes.names() if ":" in n]
     assert sorted(titles) == ["Battery limits", "Control gains"]
@@ -74,34 +74,34 @@ def test_two_panels_are_two_docks(window):
 
 def test_opening_the_same_panel_twice_shows_the_one_that_is_open(window):
     model.save("battery", sample())
-    first = window.open_panel("battery")
-    assert window.open_panel("battery") == first
+    first = window.open_custom_pane("battery")
+    assert window.open_custom_pane("battery") == first
     assert len([n for n in window.panes.names() if ":" in n]) == 1
 
 
 def test_a_panel_with_no_file_yet_gets_one(window):
-    window.open_panel("new one")
+    window.open_custom_pane("new one")
     assert model.load("new one") is not None
     assert model.load("new one").title == "new one"
 
 
 def test_a_panel_is_not_offered_as_another_one_of_these(window):
-    """There is no Panel 2; there is the panel called Battery limits."""
+    """There is no CustomPane 2; there is the pane called Battery limits."""
     offered = {a.text() for a in _submenu(window, "Another pane").actions()}
-    assert "Panel" not in offered
+    assert "CustomPane" not in offered
 
 
 def test_a_panel_pane_cannot_be_opened_without_saying_which(window):
-    assert window.panes.add("panel") == ""
+    assert window.panes.add("custom") == ""
     assert "opened by name" in window.log.toPlainText()
 
 
-def test_the_panels_menu_lists_what_the_workspace_has(app, window):
+def test_the_custom_menu_lists_what_the_workspace_has(app, window):
     model.save("battery", sample())
     model.save("gains", sample("Control gains"))
     window._build_view_menu()
-    listed = [a.text() for a in _submenu(window, "Custom panels").actions() if a.text()]
-    assert listed == ["battery", "gains", "New panel..."]
+    listed = [a.text() for a in _submenu(window, "Custom panes").actions() if a.text()]
+    assert listed == ["battery", "gains", "New custom pane..."]
 
 
 def _submenu(window, title):
@@ -117,22 +117,22 @@ def test_a_panel_left_open_is_open_next_time(app, tmp_path, monkeypatch):
     QSettings().clear()
     first = MainWindow()
     model.save("battery", sample())
-    first.open_panel("battery")
+    first.open_custom_pane("battery")
     first.close()
     settle(app)
 
     second = MainWindow()
     second.show()
     settle(app)
-    assert panel_instance("battery") in second.panes.docks
-    assert second.panes.docks[panel_instance("battery")].windowTitle() == "Battery limits"
+    assert custom_instance("battery") in second.panes.docks
+    assert second.panes.docks[custom_instance("battery")].windowTitle() == "Battery limits"
     second.close()
 
 
 def test_closing_a_panel_pane_does_not_throw_the_panel_away(window):
     """The dock is a view of the file, and closing a window is not deleting."""
     model.save("battery", sample())
-    name = window.open_panel("battery")
+    name = window.open_custom_pane("battery")
     window.panes.remove(name)
     assert model.load("battery") is not None
     assert "battery" in model.names()
@@ -140,14 +140,16 @@ def test_closing_a_panel_pane_does_not_throw_the_panel_away(window):
 
 # --- picking the objects ---------------------------------------------------------------------
 def test_objects_picked_in_the_dictionary_land_on_a_panel(window):
-    window._add_to_panel("battery", [Field(index=0x2001, kind="number", label="Motor current")])
-    panel = model.load("battery")
-    assert [(f.index, f.label) for f in panel.fields] == [(0x2001, "Motor current")]
-    assert panel_instance("battery") in window.panes.docks, "and it opens"
+    window._add_to_custom_pane(
+        "battery", [Field(index=0x2001, kind="number", label="Motor current")]
+    )
+    pane = model.load("battery")
+    assert [(f.index, f.label) for f in pane.fields] == [(0x2001, "Motor current")]
+    assert custom_instance("battery") in window.panes.docks, "and it opens"
 
 
 def test_several_at_once_are_asked_about_once(window, monkeypatch):
-    """Being asked six times what to call the panel would be its own argument
+    """Being asked six times what to call the pane would be its own argument
     against the feature."""
     from PySide6.QtWidgets import QInputDialog
 
@@ -158,7 +160,7 @@ def test_several_at_once_are_asked_about_once(window, monkeypatch):
         return ("Battery limits", True)
 
     monkeypatch.setattr(QInputDialog, "getText", once)
-    window._add_to_panel("", [Field(index=0x2001), Field(index=0x2002), Field(index=0x2003)])
+    window._add_to_custom_pane("", [Field(index=0x2001), Field(index=0x2002), Field(index=0x2003)])
 
     assert len(asked) == 1
     assert len(model.load("Battery limits").fields) == 3
@@ -168,7 +170,7 @@ def test_a_name_that_will_not_do_makes_no_panel(window, monkeypatch):
     from PySide6.QtWidgets import QInputDialog
 
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("../escape", True))
-    window._add_to_panel("", [Field(index=0x2001)])
+    window._add_to_custom_pane("", [Field(index=0x2001)])
     assert model.names() == []
     assert "file name" in window.log.toPlainText()
 
@@ -209,7 +211,7 @@ def test_picking_reaches_the_window(app, window):
     view.od.addTopLevelItem(item)
     view.od.selectAll()
 
-    view.add_to_panel.emit("battery", view._picked_fields())
+    view.add_to_custom_pane.emit("battery", view._picked_fields())
     settle(app)
     assert [f.index for f in model.load("battery").fields] == [0x2001]
 
@@ -217,8 +219,8 @@ def test_picking_reaches_the_window(app, window):
 # --- where the values come from -----------------------------------------------------------------
 def test_the_panel_reads_through_whatever_it_is_bound_to(app, window):
     model.save("battery", sample())
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
 
     asked = []
     view.bind(_Fake(asked))
@@ -228,8 +230,8 @@ def test_the_panel_reads_through_whatever_it_is_bound_to(app, window):
 
 def test_a_value_reaches_the_field_it_belongs_to(app, window):
     model.save("battery", sample())
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
     source = _Fake([])
     view.bind(source)
 
@@ -240,8 +242,8 @@ def test_a_value_reaches_the_field_it_belongs_to(app, window):
 
 def test_writing_goes_to_the_source_and_not_to_the_bus(app, window):
     model.save("battery", sample())
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
     source = _Fake([])
     view.bind(source)
 
@@ -252,8 +254,8 @@ def test_writing_goes_to_the_source_and_not_to_the_bus(app, window):
 
 def test_a_source_that_cannot_be_written_to_makes_the_panel_read_only(app, window):
     model.save("battery", sample())
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
     source = _Fake([])
     source.writable = False
     view.bind(source)
@@ -262,8 +264,8 @@ def test_a_source_that_cannot_be_written_to_makes_the_panel_read_only(app, windo
 
 def test_with_nothing_bound_a_read_says_so_rather_than_failing(app, window):
     model.save("battery", sample())
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
     view.bind(None)
     view.refresh()
     settle(app)
@@ -272,34 +274,34 @@ def test_with_nothing_bound_a_read_says_so_rather_than_failing(app, window):
 
 def test_the_selector_offers_the_nodes_and_a_file(app, window):
     model.save("battery", sample())
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
     entries = [view.sources.itemText(i) for i in range(view.sources.count())]
-    assert "Node 5" in entries, "the panel's usual node, even before it is heard from"
+    assert "Node 5" in entries, "the pane's usual node, even before it is heard from"
     assert entries[-1].startswith("Open a DCF")
 
 
 # --- what is wrong with it ---------------------------------------------------------------
 def test_a_panel_with_a_bad_field_still_opens_and_says_why(app, window):
     """Refusing to open it would leave nobody able to see which field it was."""
-    model.save("broken", Panel(title="Broken", fields=[Field(index=0x2001, kind="flags")]))
-    window.open_panel("broken")
-    view = window._panel_view("broken")
+    model.save("broken", CustomPane(title="Broken", fields=[Field(index=0x2001, kind="flags")]))
+    window.open_custom_pane("broken")
+    view = window._custom_pane_view("broken")
     assert view.note.isVisible()
     assert "would show nothing" in view.note.text()
 
 
 def test_editing_the_panel_rewrites_its_file_and_its_title(app, window):
     model.save("battery", sample())
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
 
-    view.panel = Panel(title="Pack limits", fields=view.panel.fields)
-    model.save("battery", view.panel)
+    view.pane = CustomPane(title="Pack limits", fields=view.pane.fields)
+    model.save("battery", view.pane)
     view.rebuild()
     view.changed.emit()
     settle(app)
-    assert window.panes.docks[panel_instance("battery")].windowTitle() == "Pack limits"
+    assert window.panes.docks[custom_instance("battery")].windowTitle() == "Pack limits"
 
 
 class _Fake:
@@ -332,18 +334,18 @@ class _Fake:
 
 # --- adding objects from the editor -----------------------------------------------------
 def demo_source():
-    """An EDS, so a panel can be built with no bus anywhere near it."""
+    """An EDS, so a pane can be built with no bus anywhere near it."""
     from pathlib import Path
 
     from pycangui import resources
-    from pycangui.panels.source import FileSource
+    from pycangui.custom_panes.source import FileSource
 
     return FileSource(Path(resources.__file__).parent / "demo.eds")
 
 
 def test_a_source_says_what_it_holds(app):
     """An EDS knows the whole dictionary without a bus being present, which is
-    what lets a panel be built at a desk."""
+    what lets a pane be built at a desk."""
     entries = demo_source().objects()
     assert entries, "the demo EDS has objects in it"
     assert all(len(e) == 4 for e in entries)
@@ -353,7 +355,7 @@ def test_a_source_says_what_it_holds(app):
 def test_a_source_that_knows_nothing_says_nothing(app):
     """A node with no EDS can still be read object by object; it just cannot
     be browsed, and empty is the honest answer rather than a guess."""
-    from pycangui.panels.source import Source
+    from pycangui.custom_panes.source import Source
 
     assert Source().objects() == []
 
@@ -363,16 +365,16 @@ def test_the_editor_offers_add(app, window):
     oversight, because it was one."""
     from PySide6.QtWidgets import QPushButton
 
-    from pycangui.ui.panel_view import PanelEditor
+    from pycangui.ui.custom_pane_view import CustomPaneEditor
 
-    editor = PanelEditor(None, sample(), demo_source())
+    editor = CustomPaneEditor(None, sample(), demo_source())
     offered = {b.text() for b in editor.findChildren(QPushButton)}
     assert {"Add...", "Move up", "Move down", "Remove"} <= offered
     editor.deleteLater()
 
 
 def test_the_picker_lists_what_the_source_holds(app, window):
-    from pycangui.ui.panel_view import AddObjects
+    from pycangui.ui.custom_pane_view import AddObjects
 
     picker = AddObjects(None, demo_source())
     assert picker.list.count() > 5
@@ -380,7 +382,7 @@ def test_the_picker_lists_what_the_source_holds(app, window):
 
 
 def test_the_picker_searches_the_way_the_tree_does(app, window):
-    from pycangui.ui.panel_view import AddObjects
+    from pycangui.ui.custom_pane_view import AddObjects
 
     picker = AddObjects(None, demo_source())
     picker.search.setText("vendor")
@@ -395,7 +397,7 @@ def test_the_picker_searches_the_way_the_tree_does(app, window):
 
 def test_a_picked_object_arrives_named_and_shown_sensibly(app, window):
     """A writable object is one to type into, a read-only one a reading."""
-    from pycangui.ui.panel_view import AddObjects
+    from pycangui.ui.custom_pane_view import AddObjects
 
     picker = AddObjects(None, demo_source())
     picker.index.setText("1018")
@@ -410,7 +412,7 @@ def test_a_picked_object_arrives_named_and_shown_sensibly(app, window):
 def test_an_index_nobody_has_a_name_for_is_still_added(app, window):
     """Somebody with the documentation in front of them should not have to
     find a node first."""
-    from pycangui.ui.panel_view import AddObjects
+    from pycangui.ui.custom_pane_view import AddObjects
 
     picker = AddObjects(None, None)
     assert picker.list.count() == 0, "nothing to pick from, and that is not a dead end"
@@ -423,7 +425,7 @@ def test_an_index_nobody_has_a_name_for_is_still_added(app, window):
 def test_an_index_that_is_not_one_is_refused(app, window, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
 
-    from pycangui.ui.panel_view import AddObjects
+    from pycangui.ui.custom_pane_view import AddObjects
 
     said = []
     monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, text: said.append(text))
@@ -435,7 +437,7 @@ def test_an_index_that_is_not_one_is_refused(app, window, monkeypatch):
 
 
 def test_nothing_typed_is_not_an_object(app, window):
-    from pycangui.ui.panel_view import AddObjects
+    from pycangui.ui.custom_pane_view import AddObjects
 
     picker = AddObjects(None, demo_source())
     assert picker._typed() is None
@@ -445,24 +447,24 @@ def test_nothing_typed_is_not_an_object(app, window):
 def test_added_objects_land_on_the_panel(app, window, monkeypatch):
     from PySide6.QtWidgets import QDialog
 
-    from pycangui.ui import panel_view
+    from pycangui.ui import custom_pane_view
 
-    model.save("battery", Panel(title="Battery limits", fields=[]))
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    model.save("battery", CustomPane(title="Battery limits", fields=[]))
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
     view.bind(demo_source())
     settle(app)
 
     added = [Field(index=0x2001, kind="number", label="Speed demand")]
-    monkeypatch.setattr(panel_view.AddObjects, "chosen_fields", lambda _self: added)
+    monkeypatch.setattr(custom_pane_view.AddObjects, "chosen_fields", lambda _self: added)
     # Press Add, then OK, without either dialog appearing.
     monkeypatch.setattr(
-        panel_view.PanelEditor, "exec", lambda self: (self._add(), QDialog.Accepted)[1]
+        custom_pane_view.CustomPaneEditor, "exec", lambda self: (self._add(), QDialog.Accepted)[1]
     )
 
     view._edit()
     settle(app)
-    assert [(f.index, f.label) for f in view.panel.fields] == [(0x2001, "Speed demand")]
+    assert [(f.index, f.label) for f in view.pane.fields] == [(0x2001, "Speed demand")]
     assert [(f.index, f.label) for f in model.load("battery").fields] == [
         (0x2001, "Speed demand")
     ], "and written to the file"

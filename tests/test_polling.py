@@ -14,8 +14,8 @@ import pytest
 from PySide6.QtCore import QObject, QSettings, QTimer, Signal
 
 from pycangui.canopen.display import Display
-from pycangui.panels.model import Field, Panel, save
-from pycangui.panels.polling import Poller, rate_text
+from pycangui.custom_panes.model import CustomPane, Field, save
+from pycangui.custom_panes.polling import Poller, rate_text
 from pycangui.ui.main_window import MainWindow
 
 
@@ -130,7 +130,7 @@ def test_a_rate_the_bus_can_keep_up_with_is_reported_as_asked(app, poller):
 def test_a_round_that_never_answers_does_not_wedge_it(app, poller, monkeypatch):
     """Every request normally produces exactly one answer, an abort included.
     This is for when something has gone wrong enough that one never arrives."""
-    import pycangui.panels.polling as polling
+    import pycangui.custom_panes.polling as polling
 
     monkeypatch.setattr(polling, "ROUND_TIMEOUT_S", 0.05)
     made, asked = poller
@@ -143,7 +143,7 @@ def test_a_round_that_never_answers_does_not_wedge_it(app, poller, monkeypatch):
 
 
 def test_nothing_to_read_is_not_a_reason_to_stop(app):
-    """A panel that gains a field should start polling it without anybody
+    """A pane that gains a field should start polling it without anybody
     having to press the button again."""
     made = Poller()
     asked: list[tuple[int, int]] = []
@@ -194,7 +194,7 @@ def test_a_slow_rate_keeps_a_second_decimal():
     assert rate_text(0.5, 0.5, running=True) == "0.50 Hz"
 
 
-# --- on a panel ---------------------------------------------------------------------------
+# --- on a pane ---------------------------------------------------------------------------
 class FakeNode(QObject):
     """A source that answers after a delay, the way a node does."""
 
@@ -226,40 +226,40 @@ class FakeFile(FakeNode):
 
 
 @pytest.fixture
-def panel(app, tmp_path, monkeypatch):
+def pane(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
     save(
         "battery",
-        Panel(
+        CustomPane(
             title="Battery limits",
             fields=[Field(index=0x2001, kind="value"), Field(index=0x2002, kind="value")],
         ),
     )
-    window.open_panel("battery")
-    view = window._panel_view("battery")
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
     yield window, view
     view.poller.stop()
     window.close()
 
 
-def test_polling_is_not_offered_with_nothing_bound(app, panel):
-    _window, view = panel
+def test_polling_is_not_offered_with_nothing_bound(app, pane):
+    _window, view = pane
     assert not view.poll.isEnabled()
 
 
-def test_polling_is_not_offered_against_a_file(app, panel):
+def test_polling_is_not_offered_against_a_file(app, pane):
     """A file does not change under you, so re-reading it has one answer."""
-    _window, view = panel
+    _window, view = pane
     view.bind(FakeFile())
     settle(app)
     assert not view.poll.isEnabled()
     assert "does not" in view.poll.toolTip()
 
 
-def test_polling_a_node_reads_it_over_and_over(app, panel):
-    _window, view = panel
+def test_polling_a_node_reads_it_over_and_over(app, pane):
+    _window, view = pane
     source = FakeNode()
     view.bind(source)
     settle(app)
@@ -271,8 +271,8 @@ def test_polling_a_node_reads_it_over_and_over(app, panel):
     assert source.reads > before + 4, "several rounds of two objects"
 
 
-def test_the_panel_shows_the_rate_it_is_managing(app, panel):
-    _window, view = panel
+def test_the_panel_shows_the_rate_it_is_managing(app, pane):
+    _window, view = pane
     view.bind(FakeNode(delay_ms=50))
     settle(app)
     view.poll_hz.setValue(50.0)
@@ -281,8 +281,8 @@ def test_the_panel_shows_the_rate_it_is_managing(app, panel):
     assert "asked for 50" in view.poll_rate.text(), view.poll_rate.text()
 
 
-def test_stopping_clears_the_rate(app, panel):
-    _window, view = panel
+def test_stopping_clears_the_rate(app, pane):
+    _window, view = pane
     view.bind(FakeNode())
     settle(app)
     view.poll.setChecked(True)
@@ -292,10 +292,10 @@ def test_stopping_clears_the_rate(app, panel):
     assert view.poll_rate.text() == ""
 
 
-def test_a_polled_object_becomes_a_signal(app, panel):
+def test_a_polled_object_becomes_a_signal(app, pane):
     """So it plots and exports like any other, rather than being a number that
     only exists on this form."""
-    window, view = panel
+    window, view = pane
     view.bind(FakeNode())
     settle(app)
     view.poll_hz.setValue(20.0)  # the default is a couple a second
@@ -307,13 +307,13 @@ def test_a_polled_object_becomes_a_signal(app, panel):
     series = window.signals.get(next(k for k in keys if "0x2001" in k))
     assert len(series.values) > 1, "a series, not one reading"
     assert series.unit == "A"
-    assert series.values[0] == pytest.approx(123.4), "in its own units, as the panel shows it"
+    assert series.values[0] == pytest.approx(123.4), "in its own units, as the pane shows it"
 
 
-def test_reading_by_hand_does_not_fill_the_signal_list(app, panel):
+def test_reading_by_hand_does_not_fill_the_signal_list(app, pane):
     """A value read once is a reading; a series of one point in the plot would
     fill the list with things nobody is watching."""
-    window, view = panel
+    window, view = pane
     view.bind(FakeNode())
     settle(app)
     view.refresh()
@@ -325,15 +325,15 @@ def test_the_poll_rate_is_remembered_per_panel(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     first = MainWindow()
-    save("battery", Panel(title="Battery", fields=[Field(index=0x2001, kind="value")]))
-    first.open_panel("battery")
-    first._panel_view("battery").poll_hz.setValue(5.0)
+    save("battery", CustomPane(title="Battery", fields=[Field(index=0x2001, kind="value")]))
+    first.open_custom_pane("battery")
+    first._custom_pane_view("battery").poll_hz.setValue(5.0)
     first.close()
     settle(app)
 
     second = MainWindow()
-    second.open_panel("battery")
-    assert second._panel_view("battery").poll_hz.value() == pytest.approx(5.0)
+    second.open_custom_pane("battery")
+    assert second._custom_pane_view("battery").poll_hz.value() == pytest.approx(5.0)
     second.close()
 
 
@@ -343,9 +343,9 @@ def test_a_box_being_typed_into_is_not_overwritten(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
-    save("gains", Panel(title="Gains", fields=[Field(index=0x2001, kind="number")]))
-    window.open_panel("gains")
-    view = window._panel_view("gains")
+    save("gains", CustomPane(title="Gains", fields=[Field(index=0x2001, kind="number")]))
+    window.open_custom_pane("gains")
+    view = window._custom_pane_view("gains")
     view.bind(FakeNode())
     settle(app)
 

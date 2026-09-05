@@ -2,7 +2,7 @@
 
 Every dock used to be a singleton, and the main window named each one by a
 string constant in nineteen places.  A second trace with its own filter is the
-smallest case that breaks that, and a user's own panels -- two side by side,
+smallest case that breaks that, and a user's own custom_panes -- two side by side,
 one per node -- are the case it is being broken for.
 
 What has to hold is that the two instances are genuinely separate: their own
