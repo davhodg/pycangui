@@ -8,6 +8,7 @@ from PySide6.QtCore import QCoreApplication
 from pycangui import resources
 from pycangui.canopen.emcy import Emcy, describe_code, describe_register, encode
 from pycangui.canopen.manager import CanopenManager
+from pycangui.core import workspaces
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.demo import DemoDevice
@@ -75,7 +76,7 @@ def stack(app, tmp_path, monkeypatch):
 
 
 def test_demo_emergency_is_decoded(stack):
-    manager, _demo, hooks, home = stack
+    manager, _demo, hooks, _home = stack
     seen: list[Emcy] = []
     manager.emcy.connect(seen.append)
     manager.emcy.connect(manager.remember_emcy)
@@ -102,7 +103,7 @@ def test_demo_emergency_is_decoded(stack):
     hook += "        amps = int.from_bytes(data[0:2], 'little') / 10" + chr(10)
     hook += "        return f'{amps:.1f} A on channel {data[2]}'" + chr(10)
     hook += "    return None" + chr(10)
-    (home / "hooks" / "canopen.py").write_text(hook)
+    (workspaces.hooks_dir() / "canopen.py").write_text(hook)
     hooks.reload()
 
     n = len(seen)

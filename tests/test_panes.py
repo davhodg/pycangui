@@ -119,7 +119,8 @@ def test_each_plot_keeps_its_own_splitter(app, window, tmp_path):
     window.scope.splitter.setSizes([100, 900])
     second.splitter.setSizes([700, 300])
     window.panes.save_view_states()
-    assert QSettings().value("panes/scope/state") != QSettings().value("panes/scope 2/state")
+    layout = window.ctx.layout
+    assert layout.get("panes/scope") != layout.get("panes/scope 2")
 
 
 # --- removing one ----------------------------------------------------------------------

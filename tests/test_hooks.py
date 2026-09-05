@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from pycangui.canopen import NodeIdentity
+from pycangui.core import workspaces
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks, registry
 
@@ -29,7 +30,7 @@ def hooks(home, log):
 
 
 def write_user(home: Path, body: str) -> None:
-    (home / "hooks" / "canopen.py").write_text(
+    (workspaces.hooks_dir() / "canopen.py").write_text(
         "from pycangui.core.hooks import hook\n" + body, encoding="utf-8"
     )
 
@@ -39,7 +40,7 @@ def test_registry_has_canopen_hooks():
 
 
 def test_first_run_copies_defaults(home, hooks):
-    user_file = home / "hooks" / "canopen.py"
+    user_file = workspaces.hooks_dir() / "canopen.py"
     assert user_file.exists()
     assert "def eds_for_node" in user_file.read_text()
     assert hooks.is_user_defined("canopen", "eds_for_node")  # the copy defines it
@@ -78,7 +79,7 @@ def test_syntax_error_file_uses_defaults(home, hooks, log):
 def test_hook_receives_ctx(home, hooks):
     write_user(home, "def eds_for_node(identity, *, ctx):\n    return ctx.eds_dir / 'a.eds'\n")
     hooks.reload()
-    assert hooks.call("canopen", "eds_for_node", IDENT) == home / "eds" / "a.eds"
+    assert hooks.call("canopen", "eds_for_node", IDENT) == workspaces.eds_dir() / "a.eds"
 
 
 def test_update_stubs_appends_missing_without_touching_existing(home, hooks):
@@ -87,7 +88,7 @@ def test_update_stubs_appends_missing_without_touching_existing(home, hooks):
     # everything the module defines except the one the user already wrote
     expected = sorted(set(registry()["canopen"]) - {"node_name"})
     assert sorted(added["canopen"]) == expected
-    text = (home / "hooks" / "canopen.py").read_text()
+    text = (workspaces.hooks_dir() / "canopen.py").read_text()
     assert "return 'mine'" in text and "def eds_for_node" in text
     hooks.reload()
     assert hooks.call("canopen", "node_name", IDENT) == "mine"
@@ -104,7 +105,7 @@ def test_update_stubs_adds_the_imports_the_new_code_needs(home, hooks):
     """
     import ast
 
-    user_file = home / "hooks" / "canopen.py"
+    user_file = workspaces.hooks_dir() / "canopen.py"
     user_file.write_text('def node_name(identity, *, ctx):\n    return "mine"\n')
     hooks.reload()
     hooks.update_stubs()

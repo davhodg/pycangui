@@ -1,4 +1,10 @@
-"""Where user-modifiable things live.
+"""Where the machine's own things live.
+
+The hooks, the EDS files, the settings and the layout moved out of here and
+into a workspace -- see ``core/workspaces.py`` -- because they are about the
+product being worked on rather than about this computer.  What is left is the
+folder they all sit under and the back ends, which are about being able to
+talk to a bus at all.
 
 Windows:  %APPDATA%\\pycangui        (e.g. C:\\Users\\you\\AppData\\Roaming\\pycangui)
 Linux:    $XDG_CONFIG_HOME/pycangui  (default ~/.config/pycangui)
@@ -27,18 +33,6 @@ def user_dir() -> Path:
         base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / APP_NAME
     base.mkdir(parents=True, exist_ok=True)
     return base
-
-
-def hooks_dir() -> Path:
-    d = user_dir() / "hooks"
-    d.mkdir(exist_ok=True)
-    return d
-
-
-def eds_dir() -> Path:
-    d = user_dir() / "eds"
-    d.mkdir(exist_ok=True)
-    return d
 
 
 def backends_dir() -> Path:

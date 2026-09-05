@@ -9,8 +9,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from pycangui.core import paths
+from pycangui.core import paths, workspaces
 from pycangui.core.events import ERROR, INFORMATION, WARNING, EventLog
+from pycangui.core.layout import Layout
 from pycangui.core.settings import Settings
 
 
@@ -21,10 +22,18 @@ class Context:
         events: EventLog | None = None,
     ) -> None:
         self.user_dir: Path = paths.user_dir()
-        self.hooks_dir: Path = paths.hooks_dir()
-        self.eds_dir: Path = paths.eds_dir()
+        #: The back ends are about this machine's ability to talk to a bus at
+        #: all, so they are shared by every workspace rather than owned by one.
         self.backends_dir: Path = paths.backends_dir()
-        self.settings = Settings(self.user_dir / "settings.json")
+        #: Which product is being worked on.  Everything below belongs to it.
+        self.workspace: str = workspaces.active()
+        self.workspace_dir: Path = workspaces.active_dir()
+        self.hooks_dir: Path = workspaces.hooks_dir()
+        self.eds_dir: Path = workspaces.eds_dir()
+        self.settings = Settings(workspaces.settings_path())
+        #: The dock arrangement, in the workspace folder rather than in
+        #: QSettings, so that the workspace is one thing that can be copied.
+        self.layout = Layout(workspaces.layout_path())
         #: Everything said to the user goes through here, with a level.
         self.events = events if events is not None else EventLog()
         if events is None:
