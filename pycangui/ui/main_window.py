@@ -9,6 +9,7 @@ from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QInputDialog,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QStatusBar,
@@ -29,6 +30,8 @@ from pycangui.core.export import write_csv
 from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
+from pycangui.core.plugins import Plugins
+from pycangui.core.plugins import builtin_dir as builtin_plugins_dir
 from pycangui.core.signals import SignalHub
 from pycangui.j1939.manager import J1939Manager
 from pycangui.panels import model as panel_model
@@ -43,6 +46,7 @@ from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.panel_view import PanelView
 from pycangui.ui.panes import PaneKind, Panes
+from pycangui.ui.plugin_app import PluginApp
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
@@ -159,6 +163,15 @@ class MainWindow(QMainWindow):
         #: names a pane to open it and then leaves it alone: a second trace
         #: costs a registration rather than a rewrite, and a plugin or a
         #: workspace opens one through the same door.
+        #: What names a frame in the trace.  A list rather than four calls
+        #: on each trace, so that a plugin can join in and every trace --
+        #: including one opened later -- agrees about what things are called.
+        self._labellers = [
+            self.dbc.message_name,
+            self.uds.classify,
+            self.j1939.classify,
+            self.xcp.classify,
+        ]
         self.panes = Panes(self, self.ctx)
         self._register_panes()
         # The first of each kind is named after its kind, so every layout and
@@ -178,9 +191,6 @@ class MainWindow(QMainWindow):
         self.panes.add("log")
         self.console = self.panes.view(self.panes.add("console"))
         self.ascii = self.panes.view(self.panes.add("ascii"))
-        # Before the saved layout is restored, which places the docks that
-        # exist when it runs and nothing else.
-        self.panes.restore_instances()
         self._arrange_default()
 
         self.setStatusBar(QStatusBar())
@@ -241,9 +251,19 @@ class MainWindow(QMainWindow):
 
         self._demo: DemoDevice | None = None
         tools_menu = self.menuBar().addMenu("&Tools")
+        #: Filled in by plugins as they register; empty and hidden if none do.
+        self.plugins_menu = tools_menu.addMenu("Plugins")
+        self.plugins_menu.setToolTipsVisible(True)
         tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
         tools_menu.addAction("Reload hooks", self._reload_hooks)
+        reload_plugins = tools_menu.addAction("Reload plugins", self._reload_plugins)
+        reload_plugins.setToolTip(
+            "Load the plugin files again.  Whatever a plugin added last time is\n"
+            "taken away first, so editing one and reloading is how it gets\n"
+            "written -- there is no need to restart."
+        )
+        tools_menu.addAction("Open plugins folder", self._open_plugins_folder)
         tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
         tools_menu.addSeparator()
         forget = tools_menu.addAction("Forget remembered folders", self._forget_folders)
@@ -268,6 +288,19 @@ class MainWindow(QMainWindow):
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
 
         self.help_menu = HelpMenu(self)
+        # Loaded after the menus exist, because a plugin may add entries to
+        # them, and before the layout is restored, because a plugin's pane has
+        # to exist for restoreState to be able to put it back where it was.
+        self._plugin_menus: dict[str, QMenu] = {}
+        self.plugins = Plugins(
+            folders=[builtin_plugins_dir(), self.ctx.workspace_dir / "plugins"],
+            make_app=lambda name: PluginApp(self, name),
+            log=self.events.information,
+            warn=self.events.warning,
+        )
+        self.plugins.load_all()
+        self.panes.restore_instances()
+        self._build_view_menu()
         self._default_state = self.saveState(LAYOUT_VERSION)
         self._restore_layout()
         self.panes.restore_state()
@@ -380,12 +413,30 @@ class MainWindow(QMainWindow):
     def _new_trace(self, name: str) -> TraceView:
         """A trace, fed the capture and told which settings are its own."""
         view = TraceView(self.hooks, self.ctx, key=name)
-        view.classifiers.append(self.dbc.message_name)
-        view.classifiers.append(self.uds.classify)
-        view.classifiers.append(self.j1939.classify)
-        view.classifiers.append(self.xcp.classify)
+        view.classifiers.extend(self._labellers)
         self.channels.frames.connect(view.on_frames)
         return view
+
+    def add_trace_labeller(self, labeller) -> None:
+        """Name frames in every trace, the ones open and the ones opened later.
+
+        Kept here rather than on a trace, because a second trace showing
+        different names from the first would be a puzzle rather than a feature.
+        """
+        if labeller in self._labellers:
+            return
+        self._labellers.append(labeller)
+        for name in self.panes.instances("trace"):
+            if (view := self.panes.view(name)) is not None:
+                view.classifiers.append(labeller)
+
+    def remove_trace_labeller(self, labeller) -> None:
+        if labeller in self._labellers:
+            self._labellers.remove(labeller)
+        for name in self.panes.instances("trace"):
+            view = self.panes.view(name)
+            if view is not None and labeller in view.classifiers:
+                view.classifiers.remove(labeller)
 
     def _new_panel(self, instance: str) -> PanelView:
         """One panel, by the name its file is kept under.
@@ -733,6 +784,39 @@ class MainWindow(QMainWindow):
 
     def _open_backends_folder(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.ctx.backends_dir)))
+
+    def plugin_menu(self, plugin: str) -> QMenu:
+        """Where a plugin's menu entries go: Tools > Plugins > its own name.
+
+        Grouped by plugin rather than pooled, so that a menu entry says whose
+        it is -- which matters most when one of them is misbehaving.
+        """
+        menu = self._plugin_menus.get(plugin)
+        if menu is None:
+            menu = self._plugin_menus[plugin] = self.plugins_menu.addMenu(plugin)
+            menu.setToolTipsVisible(True)
+        return menu
+
+    def drop_plugin_menu(self, plugin: str) -> None:
+        menu = self._plugin_menus.pop(plugin, None)
+        if menu is not None:
+            self.plugins_menu.removeAction(menu.menuAction())
+            menu.deleteLater()
+
+    def _reload_plugins(self) -> None:
+        self.plugins.load_all()
+        bad = self.plugins.errors()
+        say = self.events.warning if bad else self.events.information
+        say(
+            f"Plugins reloaded ({len(self.plugins.working())} working"
+            + (f", {len(bad)} failed, see above)" if bad else ")")
+        )
+        self._build_view_menu()
+
+    def _open_plugins_folder(self) -> None:
+        folder = self.ctx.workspace_dir / "plugins"
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def _reload_hooks(self) -> None:
         self.hooks.reload()
