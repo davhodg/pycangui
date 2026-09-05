@@ -68,7 +68,9 @@ def test_two_custom_panes_are_two_docks(window):
     window.open_custom_pane("battery")
     window.open_custom_pane("gains")
 
-    titles = [window.panes.docks[n].windowTitle() for n in window.panes.names() if ":" in n]
+    titles = [
+        window.panes.docks[n].windowTitle() for n in window.panes.names() if n.startswith("custom:")
+    ]
     assert sorted(titles) == ["Battery limits", "Control gains"]
 
 
@@ -76,7 +78,7 @@ def test_opening_the_same_custom_pane_twice_shows_the_one_that_is_open(window):
     model.save("battery", sample())
     first = window.open_custom_pane("battery")
     assert window.open_custom_pane("battery") == first
-    assert len([n for n in window.panes.names() if ":" in n]) == 1
+    assert len([n for n in window.panes.names() if n.startswith("custom:")]) == 1
 
 
 def test_a_custom_pane_with_no_file_yet_gets_one(window):

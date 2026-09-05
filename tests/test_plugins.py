@@ -110,7 +110,7 @@ def test_a_plugin_gets_to_add_things(app, window):
     window._reload_plugins()
     settle(app)
 
-    assert [r.label for r in window.plugins.working()] == ["Demo"]
+    assert "Demo" in [r.label for r in window.plugins.working()]
     assert "demo:screen" in window.panes.docks
     assert window.panes.docks["demo:screen"].windowTitle() == "Demo screen"
 
@@ -144,7 +144,9 @@ def test_the_menu_says_what_is_installed(app, window):
     write_plugin(window, "quiet", QUIET)
     window._reload_plugins()
     settle(app)
-    assert entries(window.plugins_menu)[:2] == ["Demo", "Quiet"]
+    listed = entries(window.plugins_menu)
+    assert {"Demo", "Quiet"} <= set(listed)
+    assert listed.index("Demo") < listed.index("Quiet"), "by name, whatever else is installed"
 
 
 def test_a_plugin_that_adds_no_entries_is_still_listed(app, window):
@@ -165,6 +167,10 @@ def test_one_that_failed_is_listed_too_rather_than_silently_absent(app, window):
 
 
 def test_with_nothing_installed_the_menu_still_shows_the_way_in(app, window):
+    """pycangui ships one, so this is the state of a workspace whose plugins
+    have all been removed rather than one nobody could reach."""
+    window.plugins.loaded.clear()
+    window._build_plugins_menu()
     assert entries(window.plugins_menu) == [
         "No plugins installed",
         "Reload plugins",
@@ -214,7 +220,7 @@ def test_a_plugin_that_will_not_import_takes_only_itself_down(app, window):
     settle(app)
 
     assert "broken" in window.plugins.errors()
-    assert [r.label for r in window.plugins.working()] == ["Demo"], "the good one still loaded"
+    assert "Demo" in [r.label for r in window.plugins.working()], "the good one still loaded"
     assert "broken" in window.log.toPlainText()
 
 

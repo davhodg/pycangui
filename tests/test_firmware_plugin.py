@@ -1,0 +1,191 @@
+"""Firmware download over CANopen, and the plugin API carrying a real screen.
+
+The sequence is CiA 302-3, which is the only written-down way of doing this --
+and the way most devices do not do it.  What is tested here is that the steps
+are the ones the standard says, in the order it says, and that the parts which
+cannot be honest about a device refuse rather than guess.
+
+Nothing here needs a bus: the sequence is handed something that can read and
+write objects, and a dictionary does that as well as a controller.
+"""
+
+import pytest
+from PySide6.QtCore import QSettings
+
+from pycangui.plugins.firmware import program
+from pycangui.plugins.firmware.program import CLEAR, PROGRAM_CONTROL, PROGRAM_DATA, START, STOP
+from pycangui.ui.main_window import MainWindow
+
+
+class FakeDevice(program.Device):
+    """Somewhere to write, and a record of what was written."""
+
+    def __init__(self, values=None):
+        self.written: list[tuple] = []
+        self.domains: list[tuple] = []
+        self.values = values or {}
+
+    def write(self, index, sub, value):
+        self.written.append((index, sub, value))
+
+    def read(self, index, sub):
+        if (index, sub) not in self.values:
+            raise KeyError("this device does not keep one")
+        return self.values[(index, sub)]
+
+    def write_domain(self, index, sub, data, progress):
+        self.domains.append((index, sub, data))
+        progress(len(data), len(data))
+
+
+class Segment:
+    def __init__(self, address, data):
+        self.address, self.data = address, data
+
+
+class Image:
+    def __init__(self, segments, path="firmware.hex"):
+        self.segments, self.path = segments, path
+
+
+def run(device, program_number=1, data=b"firmware"):
+    said = []
+    for step in program.steps(device, program_number, data, lambda _d, _t: None):
+        said.append(step.what)
+        step.run()
+    return said
+
+
+# --- the sequence -------------------------------------------------------------------------
+def test_it_stops_clears_writes_and_starts_in_that_order():
+    """CiA 302-3: a program is stopped and cleared before it is replaced, and
+    a device asked to run one it has half of is a device nobody can talk to."""
+    device = FakeDevice()
+    run(device)
+
+    assert device.written == [
+        (PROGRAM_CONTROL, 1, STOP),
+        (PROGRAM_CONTROL, 1, CLEAR),
+        (PROGRAM_CONTROL, 1, START),
+    ]
+    assert device.domains == [(PROGRAM_DATA, 1, b"firmware")]
+
+
+def test_each_step_says_what_it_is_doing_before_it_does_it():
+    """A download that fails half way should say which half."""
+    said = run(FakeDevice())
+    assert said[0].startswith("Stopping")
+    assert "8 bytes" in said[2]
+    assert said[-1].startswith("Starting")
+
+
+def test_a_second_processor_is_a_second_program():
+    """The case the manual warns about: a controller taking two images."""
+    device = FakeDevice()
+    run(device, program_number=2)
+    assert {sub for _index, sub, _value in device.written} == {2}
+    assert device.domains[0][1] == 2
+
+
+def test_stopping_the_program_is_what_puts_it_in_its_loader():
+    device = FakeDevice()
+    program.enter_bootloader(device, 1)
+    assert device.written == [(PROGRAM_CONTROL, 1, STOP)]
+
+
+def test_starting_it_again_is_one_write():
+    device = FakeDevice()
+    program.start_application(device, 1)
+    assert device.written == [(PROGRAM_CONTROL, 1, START)]
+
+
+def test_progress_is_reported_while_the_bytes_go():
+    seen = []
+    for step in program.steps(FakeDevice(), 1, b"x" * 4096, lambda d, t: seen.append((d, t))):
+        step.run()
+    assert seen == [(4096, 4096)]
+
+
+# --- what it will not do ----------------------------------------------------------------------
+def test_an_image_with_holes_in_it_is_refused():
+    """A program download is one block of bytes.  Filling the gaps would put
+    invented bytes into somebody's flash."""
+    image = Image([Segment(0, b"aaaa"), Segment(0x1000, b"bbbb")])
+    with pytest.raises(ValueError, match="pieces"):
+        program.image_bytes(image)
+
+
+def test_an_empty_image_is_refused():
+    with pytest.raises(ValueError, match="nothing in it"):
+        program.image_bytes(Image([]))
+
+
+def test_one_contiguous_image_is_the_bytes():
+    assert program.image_bytes(Image([Segment(0x8000, b"firmware")])) == b"firmware"
+
+
+def test_what_a_device_does_not_keep_is_reported_as_not_kept():
+    """Rather than as an error: most devices keep neither of these."""
+    assert program.identification(FakeDevice(), 1) == ""
+    assert program.flash_status(FakeDevice(), 1) == ""
+
+
+def test_what_it_does_keep_is_shown_as_the_number_it_is():
+    device = FakeDevice({(program.PROGRAM_IDENTIFICATION, 1): 0xDEADBEEF})
+    assert program.identification(device, 1) == "0xDEADBEEF"
+
+
+# --- and as a plugin ----------------------------------------------------------------------------
+@pytest.fixture
+def window(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    win = MainWindow()
+    win.show()
+    app.processEvents()
+    yield win
+    win.close()
+
+
+def test_it_ships_and_loads(app, window):
+    """The first thing built through the plugin API, which was the point of
+    building it that way: an API with no real screen behind it is a guess."""
+    assert "Firmware" in [r.label for r in window.plugins.working()]
+    assert window.plugins.errors() == {}
+
+
+def test_it_brings_a_pane(app, window):
+    assert "firmware:main" in window.panes.docks
+    assert window.panes.docks["firmware:main"].windowTitle() == "Firmware"
+    assert "Firmware" in [a.text() for a in window.view_menu.actions()]
+
+
+def test_a_users_own_replaces_it(app, window):
+    """Which is the whole reason it is a plugin: most devices want a sequence
+    of their maker's own."""
+    folder = window.ctx.workspace_dir / "plugins" / "firmware"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "plugin.py").write_text(
+        "NAME = 'Firmware (ours)'\ndef register(app):\n    pass\n", encoding="utf-8"
+    )
+    window._reload_plugins()
+    app.processEvents()
+
+    assert [r.label for r in window.plugins.working()] == ["Firmware (ours)"]
+    assert "firmware:main" not in window.panes.docks, "and its pane went with it"
+
+
+def test_programming_with_no_node_says_so_rather_than_failing(app, window):
+    view = window.panes.view("firmware:main")
+    view._download()
+    assert "No node selected" in window.log.toPlainText()
+
+
+def test_an_image_that_will_not_read_is_reported(app, window, tmp_path):
+    view = window.panes.view("firmware:main")
+    bad = tmp_path / "not-an-image.hex"
+    bad.write_text("this is not Intel HEX\n", encoding="utf-8")
+    view.path.setText(str(bad))
+    view._reload_image()
+    assert view.image is None
+    assert view.summary.text()
