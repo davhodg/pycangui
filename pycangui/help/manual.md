@@ -550,9 +550,13 @@ half: code that adds something that was not there, a pane of its own with its
 own buttons, doing something pycangui has never heard of.
 
 A plugin is a folder with a `plugin.py` in it, in
-`workspaces\<name>\plugins\` (*Tools > Open plugins folder*).  It belongs to
-the workspace, the same as the hooks, because a screen for a product is
+`workspaces\<name>\plugins\` (*Plugins > Open plugins folder*).  It belongs
+to the workspace, the same as the hooks, because a screen for a product is
 knowledge about that product.
+
+The **Plugins** menu is also the answer to what you have installed: every
+plugin appears there whether or not it added any entries of its own, and one
+that failed to load appears greyed out rather than silently not being there.
 
 ```python
 NAME = "Firmware"
@@ -583,7 +587,7 @@ a console that does not exist, and the rest still load.  If it fails part way
 through `register`, whatever it had already added is taken back, so the window
 is not left with a menu entry that raises whenever it is used.
 
-**Reload means reload.**  *Tools > Reload plugins* takes away everything a
+**Reload means reload.**  *Plugins > Reload plugins* takes away everything a
 plugin added last time before loading it again, so editing one and pressing
 reload is how it gets written -- there is no need to restart, and no second
 copy of its pane appears beside the first.

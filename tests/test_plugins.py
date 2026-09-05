@@ -40,6 +40,15 @@ def register(app):
     app.add_panel_widget("gauge", QLabel)
 """
 
+QUIET = """
+NAME = "Quiet"
+DESCRIPTION = "A pane only."
+
+
+def register(app):
+    pass
+"""
+
 
 @pytest.fixture
 def window(app, tmp_path, monkeypatch):
@@ -116,14 +125,63 @@ def test_a_plugin_pane_starts_hidden_and_is_in_the_view_menu(app, window):
     assert "Demo screen" in [a.text() for a in window.view_menu.actions()]
 
 
+def entries(menu):
+    return [a.text() for a in menu.actions() if not a.isSeparator()]
+
+
+def test_plugins_get_a_menu_of_their_own(app, window):
+    """A plugin adds screens and commands; Tools is where the tool's own
+    settings live."""
+    assert "&Plugins" in [m.text() for m in window.menuBar().actions()]
+    tools = next(m.menu() for m in window.menuBar().actions() if m.text() == "&Tools")
+    assert not any("plugin" in text.lower() for text in entries(tools))
+
+
+def test_the_menu_says_what_is_installed(app, window):
+    """Also the answer to "what have I got", which is not a question Tools
+    would ever be asked."""
+    write_plugin(window, "demo", EVERYTHING)
+    write_plugin(window, "quiet", QUIET)
+    window._reload_plugins()
+    settle(app)
+    assert entries(window.plugins_menu)[:2] == ["Demo", "Quiet"]
+
+
+def test_a_plugin_that_adds_no_entries_is_still_listed(app, window):
+    write_plugin(window, "quiet", QUIET)
+    window._reload_plugins()
+    settle(app)
+    assert entries(window.plugin_menu("quiet")) == ["A pane only."]
+    assert not window.plugin_menu("quiet").actions()[0].isEnabled()
+
+
+def test_one_that_failed_is_listed_too_rather_than_silently_absent(app, window):
+    """A plugin that is silently missing is the hardest kind to notice."""
+    write_plugin(window, "broken", "raise ValueError('deliberate')\n")
+    window._reload_plugins()
+    settle(app)
+    failed = [a for a in window.plugins_menu.actions() if "failed to load" in a.text()]
+    assert failed and not failed[0].isEnabled()
+
+
+def test_with_nothing_installed_the_menu_still_shows_the_way_in(app, window):
+    assert entries(window.plugins_menu) == [
+        "No plugins installed",
+        "Reload plugins",
+        "Open plugins folder",
+    ]
+
+
+def test_reloading_and_the_folder_are_in_the_plugins_menu(app, window):
+    assert entries(window.plugins_menu)[-2:] == ["Reload plugins", "Open plugins folder"]
+
+
 def test_a_plugin_menu_entry_says_whose_it_is(app, window):
     write_plugin(window, "demo", EVERYTHING)
     window._reload_plugins()
     settle(app)
-    groups = [a.text() for a in window.plugins_menu.actions()]
-    assert groups == ["demo"]
-    entries = [a.text() for a in window.plugin_menu("demo").actions()]
-    assert entries == ["Say hello"]
+    assert entries(window.plugins_menu)[0] == "Demo"
+    assert entries(window.plugin_menu("demo")) == ["Say hello"]
 
 
 def test_a_plugin_can_name_frames_in_every_trace(app, window):
@@ -217,7 +275,7 @@ def test_reloading_replaces_rather_than_repeats(app, window):
     settle(app)
     before = (
         [n for n in window.panes.names() if n.startswith("demo")],
-        [a.text() for a in window.plugins_menu.actions()],
+        entries(window.plugins_menu),
         len(window.trace.classifiers),
         "gauge" in panel_widgets.BY_KIND,
     )
@@ -226,7 +284,7 @@ def test_reloading_replaces_rather_than_repeats(app, window):
     settle(app)
     after = (
         [n for n in window.panes.names() if n.startswith("demo")],
-        [a.text() for a in window.plugins_menu.actions()],
+        entries(window.plugins_menu),
         len(window.trace.classifiers),
         "gauge" in panel_widgets.BY_KIND,
     )

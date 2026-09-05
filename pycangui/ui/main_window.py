@@ -251,19 +251,9 @@ class MainWindow(QMainWindow):
 
         self._demo: DemoDevice | None = None
         tools_menu = self.menuBar().addMenu("&Tools")
-        #: Filled in by plugins as they register; empty and hidden if none do.
-        self.plugins_menu = tools_menu.addMenu("Plugins")
-        self.plugins_menu.setToolTipsVisible(True)
         tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
         tools_menu.addAction("Reload hooks", self._reload_hooks)
-        reload_plugins = tools_menu.addAction("Reload plugins", self._reload_plugins)
-        reload_plugins.setToolTip(
-            "Load the plugin files again.  Whatever a plugin added last time is\n"
-            "taken away first, so editing one and reloading is how it gets\n"
-            "written -- there is no need to restart."
-        )
-        tools_menu.addAction("Open plugins folder", self._open_plugins_folder)
         tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
         tools_menu.addSeparator()
         forget = tools_menu.addAction("Forget remembered folders", self._forget_folders)
@@ -287,6 +277,13 @@ class MainWindow(QMainWindow):
         )
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
 
+        #: A menu of its own rather than a corner of Tools: a plugin adds
+        #: screens and commands, and Tools is where the tool's own settings
+        #: live.  It is also the answer to "what have I got installed", which
+        #: is not a question Tools would ever be asked.
+        self.plugins_menu = self.menuBar().addMenu("&Plugins")
+        self.plugins_menu.setToolTipsVisible(True)
+
         self.help_menu = HelpMenu(self)
         # Loaded after the menus exist, because a plugin may add entries to
         # them, and before the layout is restored, because a plugin's pane has
@@ -299,6 +296,7 @@ class MainWindow(QMainWindow):
             warn=self.events.warning,
         )
         self.plugins.load_all()
+        self._build_plugins_menu()
         self.panes.restore_instances()
         self._build_view_menu()
         self._default_state = self.saveState(LAYOUT_VERSION)
@@ -786,14 +784,16 @@ class MainWindow(QMainWindow):
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.ctx.backends_dir)))
 
     def plugin_menu(self, plugin: str) -> QMenu:
-        """Where a plugin's menu entries go: Tools > Plugins > its own name.
+        """Where a plugin's menu entries go: Plugins > its own name.
 
         Grouped by plugin rather than pooled, so that a menu entry says whose
-        it is -- which matters most when one of them is misbehaving.
+        it is -- which matters most when one of them is misbehaving.  Parented
+        to the window rather than to the Plugins menu, because that menu is
+        cleared and rebuilt and would take the submenus with it.
         """
         menu = self._plugin_menus.get(plugin)
         if menu is None:
-            menu = self._plugin_menus[plugin] = self.plugins_menu.addMenu(plugin)
+            menu = self._plugin_menus[plugin] = QMenu(plugin, self)
             menu.setToolTipsVisible(True)
         return menu
 
@@ -803,6 +803,42 @@ class MainWindow(QMainWindow):
             self.plugins_menu.removeAction(menu.menuAction())
             menu.deleteLater()
 
+    def _build_plugins_menu(self) -> None:
+        """Every plugin installed, then how to reload them and where they live.
+
+        Every one appears whether or not it added a menu entry, because this
+        menu is also the answer to what is installed -- and one that failed to
+        load appears too, disabled, since a plugin that is silently absent is
+        the hardest kind of missing to notice.
+        """
+        self.plugins_menu.clear()
+        for record in sorted(self.plugins.loaded.values(), key=lambda r: r.label.lower()):
+            if not record.ok:
+                failed = self.plugins_menu.addAction(f"{record.label} (failed to load)")
+                failed.setEnabled(False)
+                failed.setToolTip("Why is in the Event Log.")
+                continue
+            menu = self.plugin_menu(record.name)
+            menu.setTitle(record.label)
+            if not menu.actions():
+                nothing = menu.addAction(record.description or "Adds no menu entries.")
+                nothing.setEnabled(False)
+            self.plugins_menu.addMenu(menu)
+        if not self.plugins.loaded:
+            none = self.plugins_menu.addAction("No plugins installed")
+            none.setEnabled(False)
+            none.setToolTip("A plugin is a folder with a plugin.py in it; see the manual.")
+
+        self.plugins_menu.addSeparator()
+        reload_action = self.plugins_menu.addAction("Reload plugins", self._reload_plugins)
+        reload_action.setToolTip(
+            "Load the plugin files again.  Whatever a plugin added last time is\n"
+            "taken away first, so editing one and reloading is how it gets\n"
+            "written -- there is no need to restart."
+        )
+        folder = self.plugins_menu.addAction("Open plugins folder", self._open_plugins_folder)
+        folder.setToolTip("Where this workspace's plugins live.")
+
     def _reload_plugins(self) -> None:
         self.plugins.load_all()
         bad = self.plugins.errors()
@@ -811,6 +847,7 @@ class MainWindow(QMainWindow):
             f"Plugins reloaded ({len(self.plugins.working())} working"
             + (f", {len(bad)} failed, see above)" if bad else ")")
         )
+        self._build_plugins_menu()
         self._build_view_menu()
 
     def _open_plugins_folder(self) -> None:
