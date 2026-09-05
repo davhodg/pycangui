@@ -227,6 +227,13 @@ class CanopenManager(QObject):
             return None
         return self.network.nodes.get(node_id)
 
+    def nodes(self) -> list[int]:
+        """Every node this manager knows of: heard from, or asked about."""
+        seen = set(self.last_heartbeat)
+        if self.network is not None:
+            seen |= set(self.network.nodes)
+        return sorted(seen)
+
     def _ensure_node(self, node_id: int) -> canopen.RemoteNode:
         node = self.node(node_id)
         if node is None:

@@ -74,6 +74,11 @@ class PaneKind:
     #: Whether a second one means anything.  The Event Log is one log however
     #: many windows you point at it; a trace is not.
     several: bool = False
+    #: Instances are named by whoever opens them rather than numbered, and so
+    #: are not offered as "another one of these".  A panel is the case: there
+    #: is no such thing as Panel 2, there is the panel called Battery limits,
+    #: and it is opened by name from its own menu.
+    named: bool = False
     #: Undo whatever ``build`` wired up, when an instance is removed.
     shutdown: Callable[[QWidget], None] | None = None
 
@@ -136,6 +141,9 @@ class Panes(QObject):
         """Open a pane of this kind and return its instance name."""
         kind = self.kinds.get(kind_name)
         if kind is None:
+            return ""
+        if not name and kind.named:
+            self.ctx.events.warning(f"A {kind.title} pane has to be opened by name.")
             return ""
         if not name:
             # Asking for a pane there can only be one of means the one there
