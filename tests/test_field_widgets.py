@@ -341,7 +341,7 @@ def test_a_nonsense_count_does_not_ask_for_a_thousand_points(app):
 
 
 # --- the pane's word over the source's -------------------------------------------------------
-def test_a_panel_may_say_what_an_object_means(app):
+def test_a_custom_pane_may_say_what_an_object_means(app):
     """The hook says what an object means on this product; the pane says what
     it means on this screen, which is occasionally narrower."""
     item = Field(index=0x2001, kind="number", label="Peak current", unit="A", factor=0.1)
@@ -371,7 +371,7 @@ def test_a_flags_widget_shows_which_bit_is_which(app):
     assert widget.boxes[3].toolTip() == "Bit 3"
 
 
-def test_a_map_labels_its_axes_from_the_panel(app):
+def test_a_map_labels_its_axes_from_the_pane(app):
     widget, _w, _a, _s = made(
         Field(index=0x2100, kind="map", x_label="Speed", y_label="Torque limit")
     )

@@ -43,7 +43,7 @@ def sample(title="Battery limits") -> CustomPane:
 
 
 # --- a pane is a dock ---------------------------------------------------------------
-def test_opening_a_panel_gives_it_a_dock_of_its_own(window):
+def test_opening_a_custom_pane_gives_it_a_dock_of_its_own(window):
     model.save("battery", sample())
     name = window.open_custom_pane("battery")
 
@@ -52,7 +52,7 @@ def test_opening_a_panel_gives_it_a_dock_of_its_own(window):
     assert window.panes.kind_of(name) == "custom"
 
 
-def test_a_panel_opens_in_a_window_of_its_own(app, window):
+def test_a_custom_pane_opens_in_a_window_of_its_own(app, window):
     """It is something to look at beside the panes already on screen."""
     model.save("battery", sample())
     name = window.open_custom_pane("battery")
@@ -61,7 +61,7 @@ def test_a_panel_opens_in_a_window_of_its_own(app, window):
     assert window.panes.docks[name].isVisible()
 
 
-def test_two_panels_are_two_docks(window):
+def test_two_custom_panes_are_two_docks(window):
     """The case the whole thing exists for: node 1 beside node 2."""
     model.save("battery", sample("Battery limits"))
     model.save("gains", sample("Control gains"))
@@ -72,26 +72,26 @@ def test_two_panels_are_two_docks(window):
     assert sorted(titles) == ["Battery limits", "Control gains"]
 
 
-def test_opening_the_same_panel_twice_shows_the_one_that_is_open(window):
+def test_opening_the_same_custom_pane_twice_shows_the_one_that_is_open(window):
     model.save("battery", sample())
     first = window.open_custom_pane("battery")
     assert window.open_custom_pane("battery") == first
     assert len([n for n in window.panes.names() if ":" in n]) == 1
 
 
-def test_a_panel_with_no_file_yet_gets_one(window):
+def test_a_custom_pane_with_no_file_yet_gets_one(window):
     window.open_custom_pane("new one")
     assert model.load("new one") is not None
     assert model.load("new one").title == "new one"
 
 
-def test_a_panel_is_not_offered_as_another_one_of_these(window):
-    """There is no CustomPane 2; there is the pane called Battery limits."""
-    offered = {a.text() for a in _submenu(window, "Another pane").actions()}
-    assert "CustomPane" not in offered
+def test_a_custom_pane_is_not_offered_as_a_standard_one(window):
+    """There is no Custom pane 2; there is the one called Battery limits."""
+    offered = {a.text() for a in _submenu(window, "Standard panes").actions()}
+    assert not any("ustom" in text for text in offered)
 
 
-def test_a_panel_pane_cannot_be_opened_without_saying_which(window):
+def test_a_custom_pane_cannot_be_opened_without_saying_which(window):
     assert window.panes.add("custom") == ""
     assert "opened by name" in window.log.toPlainText()
 
@@ -112,7 +112,7 @@ def _submenu(window, title):
 
 
 # --- and it comes back --------------------------------------------------------------------
-def test_a_panel_left_open_is_open_next_time(app, tmp_path, monkeypatch):
+def test_a_custom_pane_left_open_is_open_next_time(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     first = MainWindow()
@@ -129,7 +129,7 @@ def test_a_panel_left_open_is_open_next_time(app, tmp_path, monkeypatch):
     second.close()
 
 
-def test_closing_a_panel_pane_does_not_throw_the_panel_away(window):
+def test_closing_a_custom_pane_does_not_throw_the_pane_away(window):
     """The dock is a view of the file, and closing a window is not deleting."""
     model.save("battery", sample())
     name = window.open_custom_pane("battery")
@@ -139,7 +139,7 @@ def test_closing_a_panel_pane_does_not_throw_the_panel_away(window):
 
 
 # --- picking the objects ---------------------------------------------------------------------
-def test_objects_picked_in_the_dictionary_land_on_a_panel(window):
+def test_objects_picked_in_the_dictionary_land_on_a_custom_pane(window):
     window._add_to_custom_pane(
         "battery", [Field(index=0x2001, kind="number", label="Motor current")]
     )
@@ -166,7 +166,7 @@ def test_several_at_once_are_asked_about_once(window, monkeypatch):
     assert len(model.load("Battery limits").fields) == 3
 
 
-def test_a_name_that_will_not_do_makes_no_panel(window, monkeypatch):
+def test_a_name_that_will_not_do_makes_no_custom_pane(window, monkeypatch):
     from PySide6.QtWidgets import QInputDialog
 
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("../escape", True))
@@ -217,7 +217,7 @@ def test_picking_reaches_the_window(app, window):
 
 
 # --- where the values come from -----------------------------------------------------------------
-def test_the_panel_reads_through_whatever_it_is_bound_to(app, window):
+def test_the_pane_reads_through_whatever_it_is_bound_to(app, window):
     model.save("battery", sample())
     window.open_custom_pane("battery")
     view = window._custom_pane_view("battery")
@@ -252,7 +252,7 @@ def test_writing_goes_to_the_source_and_not_to_the_bus(app, window):
     assert source.written == [(0x2001, 0, 42)]
 
 
-def test_a_source_that_cannot_be_written_to_makes_the_panel_read_only(app, window):
+def test_a_source_that_cannot_be_written_to_makes_the_pane_read_only(app, window):
     model.save("battery", sample())
     window.open_custom_pane("battery")
     view = window._custom_pane_view("battery")
@@ -282,7 +282,7 @@ def test_the_selector_offers_the_nodes_and_a_file(app, window):
 
 
 # --- what is wrong with it ---------------------------------------------------------------
-def test_a_panel_with_a_bad_field_still_opens_and_says_why(app, window):
+def test_a_custom_pane_with_a_bad_field_still_opens_and_says_why(app, window):
     """Refusing to open it would leave nobody able to see which field it was."""
     model.save("broken", CustomPane(title="Broken", fields=[Field(index=0x2001, kind="flags")]))
     window.open_custom_pane("broken")
@@ -291,7 +291,7 @@ def test_a_panel_with_a_bad_field_still_opens_and_says_why(app, window):
     assert "would show nothing" in view.note.text()
 
 
-def test_editing_the_panel_rewrites_its_file_and_its_title(app, window):
+def test_editing_the_pane_rewrites_its_file_and_its_title(app, window):
     model.save("battery", sample())
     window.open_custom_pane("battery")
     view = window._custom_pane_view("battery")
@@ -444,7 +444,7 @@ def test_nothing_typed_is_not_an_object(app, window):
     picker.deleteLater()
 
 
-def test_added_objects_land_on_the_panel(app, window, monkeypatch):
+def test_added_objects_land_on_the_pane(app, window, monkeypatch):
     from PySide6.QtWidgets import QDialog
 
     from pycangui.ui import custom_pane_view

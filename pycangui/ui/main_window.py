@@ -610,16 +610,24 @@ class MainWindow(QMainWindow):
             "use Add to a custom pane."
         )
 
-        # "Another" rather than "New": what it opens is a second Trace or a
-        # second Transmit, not a new sort of thing.  Not "Duplicate" either,
-        # which would promise a copy of the one you are looking at -- these
-        # arrive with settings of their own.
-        new = self.view_menu.addMenu("Another pane")
-        new.setToolTipsVisible(True)
+        # Paired with Custom panes above: the ones pycangui comes with, and the
+        # ones you built.  The verb is on each entry rather than on the
+        # submenu, because "Add Trace" cannot be misread and no adjective for
+        # the parent could be made to work -- "New" promises a new sort of
+        # thing, "Duplicate" promises a copy of the one you are looking at, and
+        # these arrive with settings of their own.
+        standard = self.view_menu.addMenu("Standard panes")
+        standard.setToolTipsVisible(True)
+        # Only the ones there can be more than one of, so that the list is
+        # things you can actually do.  Every pane, one of a kind included, is
+        # already named at the top of this menu.
+        standard.setToolTip("The panes pycangui comes with that you can have more than one of.")
         for kind in self.panes.kinds.values():
             if not kind.several or kind.named:
                 continue
-            action = new.addAction(kind.title, lambda k=kind.name: self.panes.add(k, floating=True))
+            action = standard.addAction(
+                f"Add {kind.title}", lambda k=kind.name: self.panes.add(k, floating=True)
+            )
             action.setToolTip(
                 f"Open another {kind.title} pane, with settings of its own --\n"
                 "its own filter, its own list, its own signals.\n"

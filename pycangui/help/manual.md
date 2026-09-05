@@ -83,8 +83,8 @@ settings always have.  *File > Workspace* has three items.
   does not move under the window.
 
 Only one workspace is open at a time.  When it feels like you want two, what
-you want is usually two *panes*: *View > Another pane* gives a second trace or a
-second plot side by side, within one workspace.
+you want is usually two *panes*: *View > Standard panes* gives a second trace or
+a second plot side by side, within one workspace.
 
 ## Custom panes
 
@@ -226,16 +226,17 @@ time.
 
 ### More than one of a pane
 
-*View > Another pane* opens a second **Trace**, **Signals and Plot** or
-**Transmit**, numbered after the first -- Trace 2, Trace 3.  Each has settings
+*View > Standard panes* opens a second **Trace**, **Signals and Plot** or
+**Transmit** -- the panes pycangui comes with that you can have more than one
+of -- numbered after the first: Trace 2, Trace 3.  Each has settings
 of its own: its own filter, its own mode, its own plotted signals, its own
 list of messages, all remembered separately.  Two traces of the same capture
 filtered differently, a plot per subsystem, or the background traffic a rig
 needs left running beside a scratch list to try something in, are what this is
 for.
 
-It is *another*, not a duplicate: a new pane arrives with settings of its own
-rather than a copy of the one you were looking at.
+Each entry reads *Add Trace*, because that is what it does: a new pane arrives
+with settings of its own rather than a copy of the one you were looking at.
 
 A pane you open arrives **in its own window**, in front of the main one, rather
 than squeezing into the space the panes already on screen were using.  Drag it
