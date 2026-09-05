@@ -13,11 +13,16 @@ something cycling unnoticed):
   process data can be driven without hand-packing bytes.
 
 The list is saved in settings.json ("tx.messages") and restored on start.
+There can be more than one transmit pane -- a list of background traffic left
+running and a scratch list to fiddle with is the case -- and each keeps its own
+messages.  What is *not* per pane is Stop all cyclic: the button says all, and
+a big red stop that stopped half of what was going onto a live bus would be the
+worst kind of wrong.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, Slot
+from PySide6.QtCore import QEvent, Qt, Signal, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -135,6 +140,11 @@ class RpdoPicker(QDialog):
 
 
 class TxView(QWidget):
+    #: Stop all cyclic was pressed here.  Emitted rather than acted on across
+    #: panes, because a transmit list has no business knowing that there are
+    #: other transmit lists -- the window does.
+    stop_all_requested = Signal()
+
     def __init__(
         self,
         bus: BusManager,
@@ -142,10 +152,15 @@ class TxView(QWidget):
         dbc: DbcDecoder,
         canopen: CanopenManager,
         confirm: Confirmations | None = None,
+        key: str = "tx",
     ) -> None:
         super().__init__()
         self.bus = bus
         self.ctx = ctx
+        #: Where this list is kept.  There can be two transmit panes, and the
+        #: second one holding the first one's messages would be one list shown
+        #: twice rather than a second list.
+        self.key = key
         self.confirm = confirm if confirm is not None else Confirmations()
         self.dbc = dbc
         self.canopen = canopen
@@ -179,8 +194,8 @@ class TxView(QWidget):
         send = QPushButton("Send selected")
         send.clicked.connect(self.send_selected)
         stop_all = QPushButton("Stop all cyclic")
-        stop_all.setToolTip("Stop every repeating transmission at once")
-        stop_all.clicked.connect(self.stop_all)
+        stop_all.setToolTip("Stop every repeating transmission at once, in every transmit pane.")
+        stop_all.clicked.connect(self._on_stop_all_pressed)
         # Three buttons that differed only in where the message came from are
         # one button and a menu: the choice is which source, not which button.
         add = QPushButton("Add")
@@ -528,7 +543,23 @@ class TxView(QWidget):
         self._loading = False
 
     @Slot()
+    def _on_stop_all_pressed(self) -> None:
+        """Stop this list, and ask for every other transmit pane to stop too.
+
+        Its own first, so that pressing it does the obvious thing even where
+        nothing is listening -- a transmit pane on its own in a test, or one
+        built by a plugin.
+        """
+        self.stop_all()
+        self.stop_all_requested.emit()
+
+    def cyclic_count(self) -> int:
+        """How many messages in this list are repeating right now."""
+        return len(self._tasks)
+
+    @Slot()
     def stop_all(self) -> None:
+        """Stop everything repeating in *this* list."""
         for row in list(self._tasks):
             self._stop_row(row)
             self._set_cyclic(row, False)
@@ -570,11 +601,11 @@ class TxView(QWidget):
     def _save(self) -> None:
         if not self._loading:
             self.ctx.settings.set(
-                "tx.messages", [self._spec(r) for r in range(self.message_count())]
+                f"{self.key}.messages", [self._spec(r) for r in range(self.message_count())]
             )
 
     def _load(self) -> None:
-        for spec in self.ctx.settings.get("tx.messages", []):
+        for spec in self.ctx.settings.get(f"{self.key}.messages", []):
             self.add_message(spec)
 
     @Slot()

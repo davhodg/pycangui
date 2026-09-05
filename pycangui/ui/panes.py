@@ -103,6 +103,9 @@ class Panes(QObject):
 
     #: A pane was added or removed: whatever lists them needs rebuilding.
     changed = Signal()
+    #: A pane appeared or was put away: name, and whether it is on screen now.
+    #: Anything that should not go on happening out of sight listens to this.
+    pane_shown = Signal(str, bool)
 
     def __init__(self, window: QMainWindow, ctx: Context) -> None:
         super().__init__(window)
@@ -125,6 +128,14 @@ class Panes(QObject):
         #: dropping it into the main window, which is not where it was.
         self._came_from: dict[str, tuple[bool, object]] = {}
         self._said_undock_tip = False
+        #: What each pane's visibility last was, so that the signal above
+        #: fires on a change rather than on every event Qt sends.
+        self._shown: dict[str, bool] = {}
+        #: Panes part way between a dock and a window of their own.  Qt hides
+        #: the dock before the window exists, so for a moment the pane looks
+        #: put away when it is only moving -- and something listening for that
+        #: would act on a state that never really happened.
+        self._moving: set[str] = set()
         #: True while the saved panes are being reopened, so that opening
         #: them does not write a half-built list back over the one being
         #: read from.
@@ -235,6 +246,7 @@ class Panes(QObject):
         self._suspended.discard(name)
         self._came_from.pop(name, None)
         self._kind_of.pop(name, None)
+        self._shown.pop(name, None)
         view = self._views.pop(name, None)
         self.window.removeDockWidget(dock)
         dock.setParent(None)
@@ -333,9 +345,32 @@ class Panes(QObject):
         stack.addWidget(scroll)
         dock.setWidget(container)
         dock.topLevelChanged.connect(lambda floating, d=dock: self._on_dock_floated(d, floating))
+        dock.visibilityChanged.connect(lambda _v, n=name: self.note_shown(n))
         dock.installEventFilter(self)
         self.window.addDockWidget(area, dock)
         return dock
+
+    def on_screen(self, name: str) -> bool:
+        """Whether this pane is somewhere a person can actually see it.
+
+        Not simply whether its dock is visible.  A pane tabbed behind another
+        is on screen as far as anybody is concerned -- it is one click away and
+        nothing has been put away -- and a detached pane is on screen in a
+        window of its own precisely while its dock is hidden.
+        """
+        if (window := self.detached.get(name)) is not None:
+            return not window.isHidden()
+        dock = self.docks.get(name)
+        return dock is not None and not dock.isHidden()
+
+    def note_shown(self, name: str) -> None:
+        """Say so if this pane has appeared or been put away since last time."""
+        if name not in self.docks or name in self._moving:
+            return
+        now = self.on_screen(name)
+        if self._shown.get(name) != now:
+            self._shown[name] = now
+            self.pane_shown.emit(name, now)
 
     def _name_of(self, dock) -> str:
         return next((n for n, d in self.docks.items() if d is dock), "")
@@ -453,14 +488,19 @@ class Panes(QObject):
         # Where to put it back.  Attaching a pane that was floating should
         # float it again: the main window is not where it was.
         self._came_from[name] = (dock.isFloating(), dock.geometry())
-        dock.setWidget(None)
-        dock.hide()
-        window = DetachedPane(name, dock.windowTitle(), widget, on_top=name in self.on_top)
-        window.closed.connect(self._reattach)
-        window.installEventFilter(self)  # so a dialog can get in front of it
-        self.detached[name] = window
-        self.show_bar(name)
-        window.show()
+        self._moving.add(name)
+        try:
+            dock.setWidget(None)
+            dock.hide()
+            window = DetachedPane(name, dock.windowTitle(), widget, on_top=name in self.on_top)
+            window.closed.connect(self._reattach)
+            window.installEventFilter(self)  # so a dialog can get in front of it
+            self.detached[name] = window
+            self.show_bar(name)
+            window.show()
+        finally:
+            self._moving.discard(name)
+        self.note_shown(name)
         self._save_pane_state()
 
     @Slot(str)
@@ -477,15 +517,20 @@ class Panes(QObject):
         dock = self.docks.get(name)
         if window is None or dock is None:
             return
-        if (widget := window.release()) is not None:
-            dock.setWidget(widget)
-            widget.show()  # release() reparented it, which hides it
-        was_floating, geometry = self._came_from.pop(name, (False, None))
-        dock.setFloating(was_floating)
-        if was_floating and geometry is not None:
-            dock.setGeometry(geometry)
-        dock.setVisible(show)
-        self.show_bar(name)
+        self._moving.add(name)
+        try:
+            if (widget := window.release()) is not None:
+                dock.setWidget(widget)
+                widget.show()  # release() reparented it, which hides it
+            was_floating, geometry = self._came_from.pop(name, (False, None))
+            dock.setFloating(was_floating)
+            if was_floating and geometry is not None:
+                dock.setGeometry(geometry)
+            dock.setVisible(show)
+            self.show_bar(name)
+        finally:
+            self._moving.discard(name)
+        self.note_shown(name)
         self._save_pane_state()
 
     def attach(self, name: str) -> None:

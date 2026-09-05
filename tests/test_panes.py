@@ -297,8 +297,8 @@ def _submenu(window, title):
 
 
 def test_only_the_kinds_that_mean_something_twice_are_offered(window):
-    offered = {a.text() for a in _submenu(window, "New pane").actions()}
-    assert offered == {"Trace", "Signals and Plot"}
+    offered = {a.text() for a in _submenu(window, "Another pane").actions()}
+    assert offered == {"Trace", "Signals and Plot", "Transmit"}
 
 
 def test_every_pane_is_listed_by_its_own_title(app, window):

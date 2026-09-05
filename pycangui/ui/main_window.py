@@ -111,6 +111,9 @@ class MainWindow(QMainWindow):
         self.bus = ActiveBus(self.channels)
 
         # --- log pane first: everything else reports into it -----------------
+        #: True from the moment the window starts closing, so that what is
+        #: torn down on the way out is not reported as if somebody did it.
+        self._closing = False
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
@@ -173,6 +176,7 @@ class MainWindow(QMainWindow):
             self.xcp.classify,
         ]
         self.panes = Panes(self, self.ctx)
+        self.panes.pane_shown.connect(self._on_pane_shown)
         self._register_panes()
         # The first of each kind is named after its kind, so every layout and
         # setting written before any of this existed still names its own pane.
@@ -203,7 +207,7 @@ class MainWindow(QMainWindow):
         self.recorder.state.connect(self._on_record_state)
         self.recorder.error.connect(self.events.error)
         self.recorder.note.connect(self.events.information)
-        self.canopen.rpdos_read.connect(lambda _n: self.tx.refresh_sources())
+        self.canopen.rpdos_read.connect(lambda _n: self._refresh_transmit_sources())
         self.canopen.pdo_update.connect(self._on_pdo_update)
         self.channels.frames.connect(self._count_frames)
         self.channels.state_changed.connect(self._on_channel_state)
@@ -379,7 +383,8 @@ class MainWindow(QMainWindow):
                 "tx",
                 "Transmit",
                 Qt.BottomDockWidgetArea,
-                lambda _name: TxView(self.bus, self.ctx, self.dbc, self.canopen, self.confirm),
+                self._new_transmit,
+                several=True,
             ),
             PaneKind(
                 "panel",
@@ -517,6 +522,60 @@ class MainWindow(QMainWindow):
         how_many = "object" if len(items) == 1 else f"{len(items)} objects"
         self.events.information(f"Added {how_many} to {name}")
 
+    def _new_transmit(self, name: str) -> TxView:
+        """A transmit list, keeping its own messages.
+
+        A second one is a real thing to want: the background traffic a rig
+        needs left running, and a scratch list to try something in, without
+        the two being the same list.
+        """
+        view = TxView(self.bus, self.ctx, self.dbc, self.canopen, self.confirm, key=name)
+        view.stop_all_requested.connect(self._stop_all_transmits)
+        return view
+
+    @Slot(str, bool)
+    def _on_pane_shown(self, name: str, shown: bool) -> None:
+        """A transmit pane that has been put away stops transmitting.
+
+        Frames arriving on a live bus from a pane nobody can see is the hardest
+        sort of fault to find, because nothing on screen accounts for them.  So
+        closing one stops its cyclic messages -- and bringing it back does not
+        start them again, since beginning to transmit onto a bus is not
+        something to do without being asked.
+
+        Being tabbed behind another pane is not being put away, and neither is
+        being detached into a window of its own; both are still on screen, and
+        stopping a rig's traffic because somebody looked at the trace would be
+        its own kind of unpleasant surprise.
+        """
+        if shown or self._closing or self.panes.kind_of(name) != "tx":
+            return
+        view = self.panes.view(name)
+        if not isinstance(view, TxView) or not (stopped := view.cyclic_count()):
+            return
+        view.stop_all()
+        title = self.panes.docks[name].windowTitle() if name in self.panes.docks else name
+        self.events.information(
+            f"{title} was closed with {stopped} cyclic message(s) sending, so they were stopped."
+        )
+
+    def _stop_all_transmits(self) -> None:
+        """What Stop all cyclic promises: every list, not just the one pressed."""
+        for view in self._transmit_panes():
+            view.stop_all()
+
+    def _transmit_panes(self) -> list[TxView]:
+        return [
+            view
+            for name in self.panes.instances("tx")
+            if isinstance(view := self.panes.view(name), TxView)
+        ]
+
+    def _refresh_transmit_sources(self) -> None:
+        """A database or an RPDO configuration changed, so every list is stale."""
+        for view in self._transmit_panes():
+            view.refresh_sources()
+
     def _drop_trace(self, view: TraceView) -> None:
         """Stop feeding a trace that has been closed for good.
 
@@ -533,7 +592,9 @@ class MainWindow(QMainWindow):
             self.view_menu.addAction(self.panes.docks[name].toggleViewAction())
         self.view_menu.addSeparator()
 
-        panels_menu = self.view_menu.addMenu("Panels")
+        # "Custom panels" rather than "Panels", which is one letter from
+        # "panes" and means something else entirely.
+        panels_menu = self.view_menu.addMenu("Custom panels")
         panels_menu.setToolTipsVisible(True)
         for name in panel_model.names():
             action = panels_menu.addAction(name, lambda n=name: self.open_panel(n))
@@ -547,14 +608,19 @@ class MainWindow(QMainWindow):
             "use Add to panel."
         )
 
-        new = self.view_menu.addMenu("New pane")
+        # "Another" rather than "New": what it opens is a second Trace or a
+        # second Transmit, not a new sort of thing.  Not "Duplicate" either,
+        # which would promise a copy of the one you are looking at -- these
+        # arrive with settings of their own.
+        new = self.view_menu.addMenu("Another pane")
         new.setToolTipsVisible(True)
         for kind in self.panes.kinds.values():
             if not kind.several or kind.named:
                 continue
             action = new.addAction(kind.title, lambda k=kind.name: self.panes.add(k, floating=True))
             action.setToolTip(
-                f"Open another {kind.title} pane, with settings of its own.\n"
+                f"Open another {kind.title} pane, with settings of its own --\n"
+                "its own filter, its own list, its own signals.\n"
                 "It opens in a window of its own; drag it into the main window\n"
                 "to dock it, or onto another pane to tab the two together."
             )
@@ -654,6 +720,9 @@ class MainWindow(QMainWindow):
         self.restoreState(self._default_state, LAYOUT_VERSION)
 
     def closeEvent(self, event) -> None:
+        # Everything is about to be hidden, and reporting each pane going away
+        # on the way out would be a paragraph nobody asked for.
+        self._closing = True
         QSettings().setValue("geometry", self.saveGeometry())
         self.ctx.layout.set("window", bytes(self.saveState(LAYOUT_VERSION)))
         self.panes.save_view_states()
@@ -1047,7 +1116,7 @@ class MainWindow(QMainWindow):
         how = "" if strict else " (strict checks off)"
         self.events.information(f"Loaded {path}: {len(db.messages)} messages{how}")
         if hasattr(self, "tx"):
-            self.tx.refresh_sources()
+            self._refresh_transmit_sources()
         return True
 
     def _offer_relaxed_load(self, path: str, exc: Exception) -> bool:
@@ -1072,7 +1141,7 @@ class MainWindow(QMainWindow):
         for path in list(self.dbc.databases):
             self.dbc.unload(path)
         self.ctx.settings.set("dbc.paths", [])
-        self.tx.refresh_sources()
+        self._refresh_transmit_sources()
         self.events.information("DBC databases unloaded")
 
     @Slot(list)

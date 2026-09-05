@@ -83,7 +83,7 @@ settings always have.  *File > Workspace* has three items.
   does not move under the window.
 
 Only one workspace is open at a time.  When it feels like you want two, what
-you want is usually two *panes*: *View > New pane* gives a second trace or a
+you want is usually two *panes*: *View > Another pane* gives a second trace or a
 second plot side by side, within one workspace.
 
 ## Panels
@@ -96,7 +96,8 @@ needs, labelled, with the units on them, in one place.
 **Building one takes no code.**  In the CANopen pane, select the objects in the
 object dictionary -- several at once -- right-click, and *Add to panel*.  Pick
 an existing panel or make a new one; you are asked what to call it once, not
-once per object.  *View > Panels* opens any panel you have, and *New panel...*
+once per object.  *View > Custom panels* -- named so as not to be confused with
+the panes the tool comes with -- opens any panel you have, and *New panel...*
 makes an empty one.
 
 A panel's own *Edit...* has **Add...** too, which matters when the object
@@ -222,11 +223,16 @@ time.
 
 ### More than one of a pane
 
-*View > New pane* opens a second **Trace** or **Signals and Plot**, numbered
-after the first -- Trace 2, Trace 3.  Each has settings of its own: its own
-filter, its own mode, its own plotted signals, all remembered separately.  Two
-traces of the same capture filtered differently, or a plot per subsystem, are
-what this is for.
+*View > Another pane* opens a second **Trace**, **Signals and Plot** or
+**Transmit**, numbered after the first -- Trace 2, Trace 3.  Each has settings
+of its own: its own filter, its own mode, its own plotted signals, its own
+list of messages, all remembered separately.  Two traces of the same capture
+filtered differently, a plot per subsystem, or the background traffic a rig
+needs left running beside a scratch list to try something in, are what this is
+for.
+
+It is *another*, not a duplicate: a new pane arrives with settings of its own
+rather than a copy of the one you were looking at.
 
 A pane you open arrives **in its own window**, in front of the main one, rather
 than squeezing into the space the panes already on screen were using.  Drag it
@@ -384,6 +390,17 @@ Replay, pycangui offers to create that virtual channel for you.  Replaying
 onto a real bus is real traffic, so it asks first.
 
 ## Transmit
+
+A transmit pane only sends while it is on screen.  Closing one stops whatever
+it was repeating -- frames arriving on a live bus from a pane nobody can see is
+the hardest sort of fault to find, since nothing on screen accounts for them --
+and it says so in the Event Log.  Bringing it back does not start them again,
+because beginning to transmit onto a bus is not something to do unasked.
+Tabbing a transmit pane behind another, or detaching it into a window of its
+own, are not putting it away: it is still on screen and still sending.
+
+*Stop all cyclic* means all of them, in every transmit pane, however many are
+open.
 
 The **Transmit** pane holds one list of everything being sent, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded
