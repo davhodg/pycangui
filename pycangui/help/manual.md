@@ -542,6 +542,56 @@ value to write it (unlock CAL first -- the seed-to-key algorithm is
 Signals/Plot panes.  The demo device answers on 0x7A0/0x7A1 and matches
 `resources/demo.a2l`.
 
+## Plugins
+
+A hook answers a question pycangui already knows to ask -- which EDS for this
+node, what to call it -- from a fixed list of them.  A plugin is the other
+half: code that adds something that was not there, a pane of its own with its
+own buttons, doing something pycangui has never heard of.
+
+A plugin is a folder with a `plugin.py` in it, in
+`workspaces\<name>\plugins\` (*Tools > Open plugins folder*).  It belongs to
+the workspace, the same as the hooks, because a screen for a product is
+knowledge about that product.
+
+```python
+NAME = "Firmware"
+API_VERSION = 1          # what it was written against; refused if newer than pycangui
+
+
+def register(app):
+    app.add_pane("main", "Firmware", build_the_widget)
+    app.add_menu_action("Do the thing", run_it, "what it will do")
+```
+
+`app` is the whole API, and it offers:
+
+| | |
+|---|---|
+| `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu opens it |
+| `add_menu_action(text, callback, tooltip)` | an entry under *Tools > Plugins > your plugin* |
+| `add_toolbar_button(text, callback, tooltip)` | a button on the toolbar |
+| `add_trace_labeller(fn)` | name frames in every trace: `fn(frame) -> str \| None` |
+| `add_panel_widget(kind, class)` | an eighth way for a panel to show an object |
+| `run_in_background(job, done)` | work off the GUI thread, so the window does not freeze |
+| `log` / `warn` / `error` | say something in the Event Log, prefixed with your name |
+| `ctx` `hooks` `panes` `channels` `bus` `signals` `canopen` `uds` `j1939` `xcp` `dbc` | the live objects |
+
+Two things it does for you.  **A plugin that fails takes only itself down** --
+the traceback goes to the Event Log where somebody will see it, rather than to
+a console that does not exist, and the rest still load.  If it fails part way
+through `register`, whatever it had already added is taken back, so the window
+is not left with a menu entry that raises whenever it is used.
+
+**Reload means reload.**  *Tools > Reload plugins* takes away everything a
+plugin added last time before loading it again, so editing one and pressing
+reload is how it gets written -- there is no need to restart, and no second
+copy of its pane appears beside the first.
+
+pycangui's own plugins are loaded the same way, from the same kind of folder.
+One of yours with the same name replaces one of ours, exactly as a hook file
+does.
+
 ## Replaceable protocol back ends
 
 Each protocol is split into a *manager* (Qt signals, threading, A2L / EDS /

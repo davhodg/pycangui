@@ -23,7 +23,7 @@ once, they cannot drift apart.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from PySide6.QtCore import QEvent, QObject, QRect, Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
@@ -196,6 +196,12 @@ class Panes(QObject):
         if show:
             dock.show()
             dock.raise_()
+        else:
+            # Said rather than left alone: addDockWidget on a window that is
+            # already on screen shows the dock, so a pane added quietly -- one
+            # a plugin brought, one the saved layout is about to place -- would
+            # arrive in front of whatever somebody was doing.
+            dock.hide()
         if name != kind.name:
             # The fixed panes are not in the saved list -- they are opened by
             # name every time -- so opening one changes nothing to save.
@@ -258,6 +264,31 @@ class Panes(QObject):
             height = max(height, min(wanted.height() + 48, max(height, where.height() - 2 * step)))
         dock.setFloating(True)
         dock.setGeometry(QRect(where.x() + step, where.y() + step, width, height))
+
+    def unregister(self, kind_name: str) -> None:
+        """Remove a kind and every pane of it, first instance included.
+
+        ``remove`` refuses the first of a kind because that one *is* the pane.
+        This is the other case: the kind itself is going, because the plugin
+        that brought it is being unloaded, and leaving a dock behind whose
+        contents belong to code that is no longer there would be worse than
+        anything the rule protects against.
+        """
+        kind = self.kinds.get(kind_name)
+        if kind is None:
+            return
+        # remove() protects the first instance of a kind because that one *is*
+        # the pane.  The protection does not apply when the kind itself is
+        # going, so the panes are pointed at a stand-in whose name no instance
+        # can equal, which is what makes them ordinary removable ones.
+        going = replace(kind, name=f"{kind_name} (unloading)")
+        self.kinds[going.name] = going
+        for name in [n for n, k in self._kind_of.items() if k == kind_name]:
+            self._kind_of[name] = going.name
+            self.remove(name)
+        self.kinds.pop(going.name, None)
+        self.kinds.pop(kind_name, None)
+        self.changed.emit()
 
     def _next_name(self, kind: PaneKind) -> str:
         number = 2
