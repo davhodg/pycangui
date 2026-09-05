@@ -113,6 +113,33 @@ how a configuration is built at a desk and taken to the machine: edits change
 the file in memory, and saving writes a DCF through the original text so its
 comments survive.
 
+### Polling
+
+*Read* reads the panel once.  **Poll** reads it over and over, so the values
+follow the controller -- which is the only way to watch an object that is not
+mapped to a PDO.  The box beside it is how often, at most.
+
+**The figure after the box is the rate actually achieved, not the one you
+asked for**, and the difference is the point.  An SDO read is a request and a
+response on the bus against a controller that answers when it feels like it, so
+a panel of twelve objects at 50 Hz is asking for six hundred round trips a
+second and will not get them.  When the two agree it just shows the rate; when
+they do not it says so -- `12.0 Hz (asked for 50)` -- because a value read at
+12 Hz that looks like it was read at 50 is the sort of thing conclusions get
+built on.
+
+A round only starts once the last one has finished, so asking for more than the
+bus can do gets you as fast as it can rather than a growing backlog of stale
+values.  A box you are typing in is not overwritten by an arriving value.
+
+While polling, every numeric field is pushed to **Signals and Plot** under the
+source's name, so a polled object plots and exports to CSV like any other
+signal.  Reading once by hand does not, since a series of one point would only
+fill the signal list.
+
+Polling is offered against a node and not against a file: a file does not
+change while you watch it.
+
 ### How an object is shown
 
 Each field has one of seven kinds, changed in *Edit...* on the panel:
