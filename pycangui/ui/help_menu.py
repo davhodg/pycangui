@@ -215,7 +215,7 @@ def diagnostics(window) -> str:
             f"load={bus.load_percent:.1f}% error frames={bus._error_frames}"
         )
 
-    floating = [(n, d) for n, d in window._docks.items() if d.isFloating()]
+    floating = [(n, d) for n, d in window.panes.docks.items() if d.isFloating()]
     if floating:
         from PySide6.QtCore import Qt
 

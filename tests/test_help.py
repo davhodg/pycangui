@@ -223,7 +223,7 @@ def test_every_pane_is_documented(app, window):
     from pycangui.help import manual_text
 
     text = manual_text().lower()
-    for dock in window._docks.values():
+    for dock in window.panes.docks.values():
         assert dock.windowTitle().lower() in text, f"{dock.windowTitle()} is not in the manual"
 
 

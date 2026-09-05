@@ -69,7 +69,7 @@ def test_a_context_keeps_its_plain_sink(app, tmp_path, monkeypatch):
 # --- the pane -------------------------------------------------------------------------
 def test_a_note_does_not_reopen_a_closed_log(app, window):
     """Closing it has to keep meaning "stop chattering at me"."""
-    dock = window._docks["log"]
+    dock = window.panes.docks["log"]
     dock.close()
     settle(app)
     assert not dock.isVisible()
@@ -82,7 +82,7 @@ def test_a_note_does_not_reopen_a_closed_log(app, window):
 
 @pytest.mark.parametrize("level", (WARNING, ERROR))
 def test_a_problem_opens_it(app, window, level):
-    dock = window._docks["log"]
+    dock = window.panes.docks["log"]
     dock.close()
     settle(app)
 
@@ -94,7 +94,7 @@ def test_a_problem_opens_it(app, window, level):
 
 def test_a_burst_of_problems_opens_it_once(app, window):
     """Ticking Cyclic on a selection with no bus is one warning per row."""
-    dock = window._docks["log"]
+    dock = window.panes.docks["log"]
     dock.close()
     settle(app)
     for row in range(20):
@@ -116,17 +116,17 @@ def test_a_problem_while_the_window_is_still_opening_is_not_lost(app, tmp_path, 
     first = MainWindow()
     first.show()
     settle(app)
-    first._docks["log"].close()
+    first.panes.docks["log"].close()
     settle(app)
     first.close()  # saves a layout with the Event Log hidden
 
     second = MainWindow()
     second.show()
     settle(app)
-    assert not second._docks["log"].isVisible(), "the saved layout is honoured"
+    assert not second.panes.docks["log"].isVisible(), "the saved layout is honoured"
     second.events.warning("a problem at startup")
     settle(app)
-    assert second._docks["log"].isVisible()
+    assert second.panes.docks["log"].isVisible()
     second.close()
 
 
@@ -147,7 +147,7 @@ def test_a_row_that_cannot_be_sent_is_a_warning(app, window):
 
     from pycangui.ui.tx_view import COL_CYCLIC, DEFAULT_RAW
 
-    dock = window._docks["log"]
+    dock = window.panes.docks["log"]
     dock.close()
     settle(app)
     row = window.tx.add_message(dict(DEFAULT_RAW))

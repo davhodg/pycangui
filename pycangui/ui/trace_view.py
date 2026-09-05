@@ -97,10 +97,15 @@ def _table(model, font: QFont) -> QTableView:
 
 
 class TraceView(QWidget):
-    def __init__(self, hooks: Hooks, ctx: Context) -> None:
+    def __init__(self, hooks: Hooks, ctx: Context, key: str = "trace") -> None:
         super().__init__()
         self.hooks = hooks
         self.ctx = ctx
+        #: Where this trace's settled choices are kept.  There can be more than
+        #: one trace, and the reason to open a second is that it should show
+        #: something the first does not -- so the filter, the mode and the
+        #: autoscroll belong to the instance rather than to traces in general.
+        self.key = key
         self._pending: list[Frame] = []  # frames captured while paused
         # Extra labellers tried after the hook, before the CANopen classifier (DBC names)
         self.classifiers: list[Callable[[Frame], str | None]] = []
@@ -157,7 +162,7 @@ class TraceView(QWidget):
         self.filter_button.setPopupMode(QToolButton.InstantPopup)
         menu = QMenu(self.filter_button)
         self._group_actions: dict[str, QAction] = {}
-        hidden = set(ctx.settings.get("trace.hidden_groups", []))
+        hidden = set(ctx.settings.get(f"{key}.hidden_groups", []))
         for group in GROUPS:
             action = menu.addAction(group)
             action.setCheckable(True)
@@ -173,8 +178,8 @@ class TraceView(QWidget):
         self._apply_filter(save=False)
 
         # Settled choices about how to read the trace, not what is in it.
-        remember(ctx, "trace.mode", self.mode)
-        remember(ctx, "trace.autoscroll", self.autoscroll)
+        remember(ctx, f"{key}.mode", self.mode)
+        remember(ctx, f"{key}.autoscroll", self.autoscroll)
 
         clear = QPushButton("Clear")
         clear.clicked.connect(self.clear)
@@ -220,7 +225,8 @@ class TraceView(QWidget):
             return
         action = self._channel_menu.addAction(name)
         action.setCheckable(True)
-        action.setChecked(name not in set(self.ctx.settings.get("trace.hidden_channels", [])))
+        hidden = set(self.ctx.settings.get(f"{self.key}.hidden_channels", []))
+        action.setChecked(name not in hidden)
         action.toggled.connect(self._on_filter_changed)
         self._channel_actions[name] = action
 
@@ -235,8 +241,8 @@ class TraceView(QWidget):
         total = len(groups) + len(channels)
         self.filter_button.setText("Filter" if not total else f"Filter ({total} hidden)")
         if save:
-            self.ctx.settings.set("trace.hidden_groups", sorted(groups))
-            self.ctx.settings.set("trace.hidden_channels", sorted(channels))
+            self.ctx.settings.set(f"{self.key}.hidden_groups", sorted(groups))
+            self.ctx.settings.set(f"{self.key}.hidden_channels", sorted(channels))
         self._update_count()
 
     def _show_all(self) -> None:
