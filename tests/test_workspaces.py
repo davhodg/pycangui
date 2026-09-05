@@ -11,8 +11,9 @@ import json
 import shutil
 
 import pytest
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 
+from pycangui import APP_NAME, __version__
 from pycangui.core import paths, workspaces
 from pycangui.core.context import Context
 from pycangui.core.layout import Layout
@@ -301,3 +302,278 @@ def test_a_new_workspace_does_not_inherit_the_old_layout(app, home):
     app.processEvents()
     assert not second.panes.docks["canopen"].isVisible(), "the default arrangement"
     second.close()
+
+
+# --- the menu, the title and the switch ----------------------------------------------------
+@pytest.fixture
+def window(app, home):
+    from pycangui.ui.main_window import MainWindow
+
+    QSettings().clear()
+    win = MainWindow()
+    win.show()
+    app.processEvents()
+    yield win
+    win.close()
+
+
+def switch_menu(window):
+    """The Switch to submenu, rebuilt as opening the menu would rebuild it."""
+    window.workspace_menu._build()
+    return window.workspace_menu.menu.actions()[1].menu()
+
+
+def test_a_single_product_never_meets_the_word(window):
+    """The title says nothing while the workspace is the one everybody has."""
+    assert window.windowTitle() == f"{APP_NAME} {__version__}"
+    assert [a.text() for a in switch_menu(window).actions()] == [workspaces.DEFAULT]
+
+
+def test_the_title_names_a_workspace_that_is_not_the_default(app, home):
+    from pycangui.ui.main_window import MainWindow
+
+    workspaces.create("Pump controller")
+    workspaces.set_active("Pump controller")
+    win = MainWindow()
+    assert win.windowTitle().endswith(" - Pump controller")
+    win.close()
+
+
+def test_switch_to_lists_them_all_and_ticks_the_one_in_use(window):
+    workspaces.create("drive")
+    actions = switch_menu(window).actions()
+    assert [a.text() for a in actions] == [workspaces.DEFAULT, "drive"]
+    assert [a.isChecked() for a in actions] == [True, False]
+
+
+def test_save_as_forks_what_is_on_screen_and_asks_to_open_it(window, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    window.ctx.settings.set("dbc.paths", ["mine.dbc"])
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Pump controller", True))
+    asked: list[str] = []
+    window.workspace_menu.switch_requested.connect(asked.append)
+
+    window.workspace_menu._save_as()
+
+    assert asked == ["Pump controller"], "and switching to it is somebody else's job"
+    forked = workspaces.dir_for("Pump controller") / "settings.json"
+    assert json.loads(forked.read_text())["dbc.paths"] == ["mine.dbc"]
+
+
+def test_save_as_with_a_name_that_will_not_do_makes_nothing(window, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("../escape", True))
+    said: list[str] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, text, *a, **k: said.append(text))
+    asked: list[str] = []
+    window.workspace_menu.switch_requested.connect(asked.append)
+
+    window.workspace_menu._save_as()
+
+    assert asked == []
+    assert said and "folder name" in said[0], "told why, rather than quietly repaired"
+    assert workspaces.names() == [workspaces.DEFAULT]
+
+
+def test_cancelling_save_as_does_nothing(window, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("drive", False))
+    window.workspace_menu._save_as()
+    assert workspaces.names() == [workspaces.DEFAULT]
+
+
+def test_switching_to_the_one_you_are_in_does_nothing(window):
+    asked: list[str] = []
+    window.reopen_requested.connect(asked.append)
+    window._switch_workspace(workspaces.DEFAULT)
+    assert asked == []
+
+
+def test_switching_with_nothing_connected_does_not_ask(window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *a, **k: pytest.fail("nothing to lose, nothing to ask")
+    )
+    workspaces.create("drive")
+    asked: list[str] = []
+    window.reopen_requested.connect(asked.append)
+    window._switch_workspace("drive")
+    assert asked == ["drive"]
+
+
+def test_switching_off_a_live_bus_asks_first(window, app, monkeypatch):
+    """A workspace holds which channels at what bitrate, so opening another
+    one drops the bus this one is on."""
+    from PySide6.QtWidgets import QMessageBox
+
+    bus = window.channels.active_bus()
+    bus.connect_bus("virtual", "vcan_ws", 500_000, False)
+    app.processEvents()
+    assert window.channels.any_connected
+
+    workspaces.create("drive")
+    seen: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _p, _t, text, *a, **k: (seen.append(text), QMessageBox.Cancel)[1],
+    )
+    asked: list[str] = []
+    window.reopen_requested.connect(asked.append)
+
+    window._switch_workspace("drive")
+    assert asked == [], "cancelled means stay"
+    assert seen and "drive" in seen[0] and "cyclically" in seen[0]
+
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    window._switch_workspace("drive")
+    assert asked == ["drive"]
+    bus.disconnect_bus()
+
+
+def test_agreeing_once_covers_the_session(window, app, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    bus = window.channels.active_bus()
+    bus.connect_bus("virtual", "vcan_ws2", 500_000, False)
+    app.processEvents()
+    workspaces.create("drive")
+    workspaces.create("other")
+    times: list[int] = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *a, **k: (times.append(1), QMessageBox.Yes)[1]
+    )
+    window._switch_workspace("drive")
+    window._switch_workspace("other")
+    assert len(times) == 1, "it is the same loss each time"
+    bus.disconnect_bus()
+
+
+def test_what_a_switch_actually_does(app, home):
+    """The window is replaced rather than persuaded: the settings, the hooks
+    and the layout are all read once, while it is being built."""
+    from pycangui.ui.main_window import MainWindow
+    from pycangui.ui.session import Session
+
+    QSettings().clear()
+    session = Session(MainWindow)
+    first = session.open()
+    first.ctx.settings.set("dbc.paths", ["first.dbc"])
+    workspaces.create("second")
+
+    second = session.reopen("second")
+    assert second is not first
+    assert not first.isVisible(), "the one that asked is the one that goes"
+    assert second.ctx.workspace == "second"
+    assert second.ctx.settings.get("dbc.paths") is None, "a workspace of its own"
+    assert second.windowTitle().endswith(" - second")
+
+    back = session.reopen(workspaces.DEFAULT)
+    assert back.ctx.settings.get("dbc.paths") == ["first.dbc"], "and the first is as it was"
+    back.close()
+
+
+def test_asking_the_window_to_switch_reaches_the_session(app, home):
+    """The signal is the whole of the connection between the two."""
+    from pycangui.ui.main_window import MainWindow
+    from pycangui.ui.session import Session
+
+    QSettings().clear()
+    session = Session(MainWindow)
+    first = session.open()
+    workspaces.create("drive")
+
+    first.reopen_requested.emit("drive")
+    app.processEvents()
+    assert session.window is not first
+    assert session.window.ctx.workspace == "drive"
+    assert workspaces.active() == "drive", "and the choice is remembered"
+    session.window.close()
+
+
+def test_a_switch_writes_the_old_layout_where_it_belongs(app, home):
+    """Closed before the pointer moves, or the arrangement somebody was
+    looking at lands in the workspace they were leaving for."""
+    from pycangui.ui.main_window import MainWindow
+    from pycangui.ui.session import Session
+
+    QSettings().clear()
+    session = Session(MainWindow)
+    first = session.open()
+    app.processEvents()
+    first.panes.docks["canopen"].setVisible(True)
+    workspaces.create("drive")
+
+    second = session.reopen("drive")
+    app.processEvents()
+    assert second.ctx.layout.get("window") is None, "nothing was written into the new one"
+    assert Layout(workspaces.dir_for(workspaces.DEFAULT) / "layout.json").get("window")
+    second.close()
+
+
+def test_switching_to_a_workspace_that_is_not_there_stays_put(app, home):
+    from pycangui.ui.main_window import MainWindow
+    from pycangui.ui.session import Session
+
+    QSettings().clear()
+    session = Session(MainWindow)
+    session.open()
+    session.reopen("never made")
+    assert session.window.ctx.workspace == workspaces.DEFAULT
+    session.window.close()
+
+
+# --- managing them ----------------------------------------------------------------------------
+def test_manage_will_not_offer_to_remove_the_ground_you_stand_on(app, home):
+    from pycangui.ui.workspace_menu import ManageWorkspaces
+
+    workspaces.create("drive")
+    workspaces.create("spare")
+    dialog = ManageWorkspaces(None, current="drive")
+
+    rows = {dialog.list.item(i).data(Qt.UserRole): i for i in range(dialog.list.count())}
+    for name, enabled, why in (
+        (workspaces.DEFAULT, False, "always there"),
+        ("drive", False, "Switch to another one first"),
+        ("spare", True, ""),
+    ):
+        dialog.list.setCurrentRow(rows[name])
+        assert dialog.delete.isEnabled() == enabled, name
+        assert dialog.rename.isEnabled() == enabled, name
+        assert why in dialog.rename.toolTip()
+    dialog.deleteLater()
+
+
+def test_manage_deletes_one_that_is_not_in_use(app, home, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    from pycangui.ui.workspace_menu import ManageWorkspaces
+
+    workspaces.create("scrap")
+    dialog = ManageWorkspaces(None, current=workspaces.DEFAULT)
+    rows = {dialog.list.item(i).data(Qt.UserRole): i for i in range(dialog.list.count())}
+    dialog.list.setCurrentRow(rows["scrap"])
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    dialog._delete()
+    assert not workspaces.exists("scrap")
+    dialog.deleteLater()
+
+
+def test_manage_renames_and_the_list_follows(app, home, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    from pycangui.ui.workspace_menu import ManageWorkspaces
+
+    workspaces.create("old")
+    dialog = ManageWorkspaces(None, current=workspaces.DEFAULT)
+    rows = {dialog.list.item(i).data(Qt.UserRole): i for i in range(dialog.list.count())}
+    dialog.list.setCurrentRow(rows["old"])
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("new", True))
+    dialog._rename()
+    assert workspaces.exists("new") and not workspaces.exists("old")
+    assert "new" in {dialog.list.item(i).data(Qt.UserRole) for i in range(dialog.list.count())}
+    dialog.deleteLater()

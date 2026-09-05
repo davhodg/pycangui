@@ -19,11 +19,13 @@ TPDO1, and writing *Speed demand* (0x2001) moves the motor speed in the PDO.
 
 ## Your files
 
-Everything in `%APPDATA%\pycangui` is yours: `hooks/*.py` hold small Python
-functions pycangui calls at decision points (which EDS to use for a node, how
-to name it, ...) with the defaults and commented examples in place; `eds/` is
-scanned for EDS files matching a node's vendor/product; `settings.json` holds
-what the GUI remembers.  Tools > Reload hooks applies edits without a restart.
+Everything in `%APPDATA%\pycangui` is yours.  Most of it lives in a
+*workspace* -- `workspaces\default\` unless you make others -- which holds
+`hooks/*.py`, small Python functions pycangui calls at decision points (which
+EDS to use for a node, how to name it, ...) with the defaults and commented
+examples in place; `eds/`, scanned for EDS files matching a node's
+vendor/product; `settings.json`; and `layout.json`.  Tools > Reload hooks
+applies edits without a restart.
 
 `settings.json` is sorted, indented JSON with dotted keys, meant to be read and
 hand-edited: the channels and their adapters, the databases loaded, the
@@ -31,9 +33,44 @@ transmit list, which trace groups are hidden, the trace view mode, the plot
 window, the UDS and XCP addresses, whether DBC checks are strict.  Settled
 choices are kept; passing state -- a search box, a paused view, the selected
 row -- is not, because starting up paused would be a bug rather than a
-convenience.  Window geometry and the dock layout go to `QSettings` instead,
-since that is what Qt saves and restores itself; *View > Reset layout* puts
-those back.
+convenience.  `layout.json` holds the dock arrangement, which is Qt's own
+opaque data rather than anything to read; *View > Reset layout* puts it back.
+
+Outside the workspaces are the things that belong to the machine rather than
+to what you are working on: `backends/`, which is about being able to talk to a
+bus at all, and the window's position on screen, which stays in `QSettings`.
+
+## Workspaces
+
+A workspace is everything about the product you are working on: the hooks that
+say what its objects mean, its EDS files, its channels and bitrates, its
+databases, its transmit list, its watch lists and its pane arrangement.  One
+folder, so it can be copied, backed up or handed to a colleague whole.
+
+**If you only ever work on one thing, you can stop reading here.**  There is a
+workspace called `default`, it was made without asking, and everything above
+describes it.  The title bar names a workspace only when it is *not* `default`,
+so nothing on screen will ever mention this.
+
+There is no Save and no unsaved changes: a workspace saves as you go, the way
+settings always have.  *File > Workspace* has three items.
+
+- **Save as...** keeps everything as it is now under a new name and carries on
+  in that one.  It is a fork -- the workspace you were in is left exactly as
+  you left it -- because what somebody means by it is "keep this and call it
+  something else".
+- **Switch to** opens another one.  Everything reloads, including the channels:
+  a workspace holds which adapter at what bitrate, and an adapter can only be
+  in one of those states at a time.  Switching while connected asks first,
+  since it means dropping off the bus and stopping anything being sent
+  cyclically.
+- **Manage...** renames and deletes.  Not `default`, which is the one that is
+  always there, and not the one you are in -- switch away first, so the ground
+  does not move under the window.
+
+Only one workspace is open at a time.  When it feels like you want two, what
+you want is usually two *panes*: *View > New pane* gives a second trace or a
+second plot side by side, within one workspace.
 
 ## About, licences and updates
 
@@ -408,7 +445,7 @@ different Python package -- without touching pycangui:
 | `xcp` | `pycangui.xcp.engine.XcpEngine` (connect, seed/unlock, read, write) | `native` -- XCP on CAN in pycangui |
 | `isotp` | `pycangui.uds.transport.IsoTpTransport` (open, send, recv) -- everything UDS needs from the link | `can-isotp` |
 
-Put a module in `%APPDATA%\pycanguiackends\` (Tools > Open backends folder):
+Put a module in `%APPDATA%\pycangui\backends\` (Tools > Open backends folder):
 
 ```python
 from pycangui.core.backends import register_backend

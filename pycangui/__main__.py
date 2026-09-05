@@ -95,6 +95,7 @@ def main() -> int:
     # that never appears and not one word about why.
     try:
         from pycangui.ui.main_window import MainWindow
+        from pycangui.ui.session import Session
     except ImportError as exc:
         QMessageBox.critical(
             None,
@@ -105,8 +106,10 @@ def main() -> int:
         )
         return 1
 
-    window = MainWindow()
-    window.show()
+    # Held by a Session rather than a local, because switching workspace
+    # replaces the window rather than reconfiguring it -- see ui/session.py.
+    session = Session(MainWindow)
+    session.open()
     return app.exec()
 
 
