@@ -1,6 +1,6 @@
-"""Where a panel's values come from, and where a change goes.
+"""Where a pane's values come from, and where a change goes.
 
-A panel is bound to a *source*, never to a node, and that is the one decision
+A pane is bound to a *source*, never to a node, and that is the one decision
 here worth arguing about.  The same group of objects is wanted against three
 different things: a live controller, a DCF somebody was sent, and the defaults
 in an EDS.  Bound to a node, each of those becomes its own feature with its own
@@ -8,14 +8,14 @@ screen, and comparing one against another becomes a fourth.  Bound to a source,
 they are one mechanism with three inputs -- and offline editing, comparison and
 live configuration all fall out of it.
 
-Retrofitting this is not a refactor of the seam, it is a rewrite of every panel
+Retrofitting this is not a refactor of the seam, it is a rewrite of every pane
 that was written before it, which is why it is here before there is a single
-panel to bind.
+pane to bind.
 
 Every source is asynchronous, including the ones that answer instantly.  A live
 node reads over SDO on a worker thread and answers later; a file answers now.
 Making the file pretend to be slow is a great deal less trouble than making the
-panel able to cope with both, and it means the panel has exactly one path
+pane able to cope with both, and it means the pane has exactly one path
 through it rather than a fast one that only ever gets exercised in tests.
 """
 
@@ -43,7 +43,7 @@ class Source(QObject):
     #: What to call this source on screen.
     label = ""
     #: Whether writing means anything.  An EDS's defaults are readable and not
-    #: writable, and a panel bound to one should say so rather than fail.
+    #: writable, and a pane bound to one should say so rather than fail.
     writable = False
     #: Whether reading it again can tell you anything new.  A controller
     #: changes while you watch it; a file on disk does not, so polling one
@@ -67,7 +67,7 @@ class Source(QObject):
         than wrong: a node with no EDS can still be read object by object, it
         just cannot be browsed.  An EDS, on the other hand, knows the whole
         dictionary without a bus being present at all -- which is what lets a
-        panel be built at a desk.
+        pane be built at a desk.
         """
         return []
 
@@ -102,8 +102,8 @@ class NodeSource(Source):
         manager.identified.connect(self._on_identified)
 
     def _on_result(self, node_id: int, index: int, sub: int, value: Any, error: Any) -> None:
-        # Every panel bound to every node hears every read, so the filter is
-        # the whole of what makes two panels on two nodes independent.
+        # Every pane bound to every node hears every read, so the filter is
+        # the whole of what makes two custom_panes on two nodes independent.
         if node_id == self.node_id:
             self.value.emit(index, sub, value, error)
 
@@ -214,7 +214,7 @@ class FileSource(Source):
 
     def _answer(self, index: int, sub: int, raw: Any, error: str | None) -> None:
         # Through the event loop, so a file behaves the way a node does and the
-        # panel has one path through it rather than two.
+        # pane has one path through it rather than two.
         QTimer.singleShot(0, lambda: self.value.emit(index, sub, raw, error))
 
     # --- and back out again -------------------------------------------------------------

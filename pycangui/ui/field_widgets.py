@@ -1,4 +1,4 @@
-"""The seven ways a panel can show an object, and no eighth.
+"""The seven ways a pane can show an object, and no eighth.
 
 A manufacturer's tool has two dozen hand-built configuration screens, and
 every one of them turns out to be made of the same small set of parts: a
@@ -51,7 +51,7 @@ from pycangui.canopen.display import (
     out_of_range,
 )
 from pycangui.canopen.display import text as value_text
-from pycangui.panels.model import Field, display_for
+from pycangui.custom_panes.model import Field, display_for
 
 #: A value that was refused, and one that has not been read yet.
 REFUSED = QColor(200, 40, 40)
@@ -64,14 +64,14 @@ MAX_POINTS = 128
 
 
 class FieldWidget(QWidget):
-    """One object on a panel: shows what it is, and asks for what it should be.
+    """One object on a pane: shows what it is, and asks for what it should be.
 
     Everything is by (index, sub) rather than implied, because a map is one
     field over many sub-indices and the rest of the machinery should not have
     to know which sort it is holding.
     """
 
-    #: Please fetch this.  The panel forwards it to whatever source it is bound
+    #: Please fetch this.  The pane forwards it to whatever source it is bound
     #: to -- a live node, a DCF, an EDS's defaults.
     read_requested = Signal(int, int)
     #: index, sub, raw value to write.
@@ -86,7 +86,7 @@ class FieldWidget(QWidget):
         self.writable = True
         self._raw: Any = None
 
-    # --- what the panel asks of it ---------------------------------------------------
+    # --- what the pane asks of it ---------------------------------------------------
     def refresh(self) -> None:
         """Ask for whatever this field needs in order to show itself."""
         self.read_requested.emit(self.field.index, self.field.sub)
@@ -409,7 +409,7 @@ class MapWidget(FieldWidget):
     entered exactly and the graph is how a mistake is seen.  They show the same
     array, so editing either moves the other.
 
-    The X values come from a second array where the panel names one, and from
+    The X values come from a second array where the pane names one, and from
     the sub-index number where it does not -- which is what an array of
     breakpoints usually means.
     """

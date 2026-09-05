@@ -47,8 +47,8 @@ from pycangui.canopen.display import text as value_text
 from pycangui.canopen.manager import CanopenManager, od_entries, type_name
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.panels.model import Field as PanelField
-from pycangui.panels.model import names as panel_names
+from pycangui.custom_panes.model import Field as PaneField
+from pycangui.custom_panes.model import names as custom_names
 from pycangui.ui import folders
 from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
@@ -64,7 +64,7 @@ COL_VALUE = 4
 #: A tick against the objects worth coming back to.  A real device offers
 #: fifteen hundred of them and a job uses eight, so the list you build is
 #: worth more than the search that built it -- and it is the shape a
-#: user-composed panel will need later.
+#: user-composed pane will need later.
 COL_WATCH = 5
 ERROR_COLOUR = QColor(200, 40, 40)
 LOST_COLOUR = QColor(150, 150, 150)
@@ -80,8 +80,8 @@ NMT_COMMANDS_UI = (
 
 
 class CanopenView(QWidget):
-    #: A panel name (or "" for one not made yet) and the objects to put on it.
-    add_to_panel = Signal(str, object)
+    #: A pane name (or "" for one not made yet) and the objects to put on it.
+    add_to_custom_pane = Signal(str, object)
 
     def __init__(self, manager: CanopenManager, hooks: Hooks, ctx: Context) -> None:
         super().__init__()
@@ -164,8 +164,8 @@ class CanopenView(QWidget):
         self.od.header().setSectionResizeMode(COL_VALUE, QHeaderView.Stretch)
         self.od.itemDoubleClicked.connect(self._on_od_double_clicked)
         self.od.itemChanged.connect(self._on_od_item_changed)
-        # Several at once, because building a panel means picking the six
-        # related parameters, and picking them one at a time is what a panel
+        # Several at once, because building a pane means picking the six
+        # related parameters, and picking them one at a time is what a pane
         # exists to stop somebody doing.
         self.od.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.od.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -625,42 +625,42 @@ class CanopenView(QWidget):
                 shown += not child.isHidden()
             top.setHidden(shown == 0)
 
-    # --- onto a panel ------------------------------------------------------------
+    # --- onto a pane ------------------------------------------------------------
     def _od_menu(self, at) -> None:
-        """Add what is selected to a panel.
+        """Add what is selected to a custom pane.
 
         Here rather than in a dialog with an index box in it, because this is
         where the objects can be searched for and where their names already
-        are.  Typing 0x2001 into a form is what panels exist to avoid.
+        are.  Typing 0x2001 into a form is what custom_panes exist to avoid.
         """
         chosen = self._picked_fields()
         if not chosen:
             return
         menu = QMenu(self.od)
         how_many = "object" if len(chosen) == 1 else f"{len(chosen)} objects"
-        add = menu.addMenu(f"Add {how_many} to panel")
-        for name in panel_names():
-            add.addAction(name, lambda n=name: self.add_to_panel.emit(n, chosen))
-        if panel_names():
+        add = menu.addMenu(f"Add {how_many} to a custom pane")
+        for name in custom_names():
+            add.addAction(name, lambda n=name: self.add_to_custom_pane.emit(n, chosen))
+        if custom_names():
             add.addSeparator()
-        add.addAction("New panel...", lambda: self.add_to_panel.emit("", chosen))
+        add.addAction("New custom pane...", lambda: self.add_to_custom_pane.emit("", chosen))
         menu.exec(self.od.viewport().mapToGlobal(at))
 
-    def _picked_fields(self) -> list[PanelField]:
+    def _picked_fields(self) -> list[PaneField]:
         """The selected rows, as fields shown the way their access suggests.
 
         A writable object is offered as one that can be typed into and a
         read-only one as a reading, since that is what they are.  Either can
-        be changed afterwards in the panel's own editor.
+        be changed afterwards in the pane's own editor.
         """
-        out: list[PanelField] = []
+        out: list[PaneField] = []
         for item in self.od.selectedItems():
             index = item.data(0, ROLE_INDEX)
             if index is None:
                 continue
             writable = "w" in (item.text(COL_ACCESS) or "").lower()
             out.append(
-                PanelField(
+                PaneField(
                     index=int(index),
                     sub=int(item.data(0, ROLE_SUB) or 0),
                     kind="number" if writable else "value",

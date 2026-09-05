@@ -124,10 +124,19 @@ def eds_dir() -> Path:
     return _made(active_dir() / "eds")
 
 
-def panels_dir() -> Path:
-    """The user's own panels.  Beside the hooks, because a panel is knowledge
-    about a product in exactly the way a hook is, and the two travel together."""
-    return _made(active_dir() / "panels")
+def custom_panes_dir() -> Path:
+    """The panes the user built.  Beside the hooks, because one of these is
+    knowledge about a product in exactly the way a hook is, and the two travel
+    together.
+
+    Renamed from ``panels`` once, in place: a workspace folder is something a
+    person browses, so it says what the tool says.
+    """
+    folder = active_dir() / "custom_panes"
+    older = active_dir() / "panels"
+    if older.is_dir() and not folder.exists():
+        older.rename(folder)
+    return _made(folder)
 
 
 def settings_path() -> Path:

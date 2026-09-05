@@ -50,7 +50,7 @@ DEFAULT_HZ = 2.0
 class Poller(QObject):
     """One set of objects, read over and over at up to a requested rate."""
 
-    #: Ask for this object.  Whatever the panel is bound to answers it.
+    #: Ask for this object.  Whatever the pane is bound to answers it.
     read = Signal(int, int)
     #: Requested rate, and the rate actually being achieved (0 until a round
     #: has completed).
@@ -121,7 +121,7 @@ class Poller(QObject):
             return
         if not self._objects:
             # Nothing to read: keep the clock running rather than stopping, so
-            # that a panel which gains a field starts polling it without
+            # that a pane which gains a field starts polling it without
             # anybody having to press the button again.
             self._timer.start(self._interval_ms())
             return

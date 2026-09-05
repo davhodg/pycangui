@@ -1,4 +1,4 @@
-"""The seven ways a panel shows an object, and what each of them refuses.
+"""The seven ways a pane shows an object, and what each of them refuses.
 
 The interesting behaviour is not the displaying, it is the not-writing.  Two
 rules run through the lot:
@@ -17,12 +17,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QAbstractItemView
 
 from pycangui.canopen.display import Display
-from pycangui.panels.model import Field
-from pycangui.ui import panel_widgets
+from pycangui.custom_panes.model import Field
+from pycangui.ui import field_widgets
 
 
 def made(item: Field, display: Display | None = None):
-    widget = panel_widgets.build(item, display or Display())
+    widget = field_widgets.build(item, display or Display())
     written: list[tuple] = []
     asked: list[tuple] = []
     said: list[str] = []
@@ -36,24 +36,24 @@ def made(item: Field, display: Display | None = None):
 @pytest.mark.parametrize(
     "kind, expected",
     [
-        ("value", panel_widgets.ValueWidget),
-        ("number", panel_widgets.NumberWidget),
-        ("hex", panel_widgets.HexWidget),
-        ("enum", panel_widgets.EnumWidget),
-        ("flags", panel_widgets.FlagsWidget),
-        ("bits", panel_widgets.BitsWidget),
-        ("map", panel_widgets.MapWidget),
+        ("value", field_widgets.ValueWidget),
+        ("number", field_widgets.NumberWidget),
+        ("hex", field_widgets.HexWidget),
+        ("enum", field_widgets.EnumWidget),
+        ("flags", field_widgets.FlagsWidget),
+        ("bits", field_widgets.BitsWidget),
+        ("map", field_widgets.MapWidget),
     ],
 )
 def test_every_kind_has_a_widget(app, kind, expected):
     """Seven, and no eighth: the vocabulary is the promise."""
     item = Field(index=0x2001, kind=kind, bits={0: "Ready"}, choices={0: "Off"}, width=2)
-    assert isinstance(panel_widgets.build(item, Display()), expected)
+    assert isinstance(field_widgets.build(item, Display()), expected)
 
 
 def test_a_kind_nobody_recognises_is_shown_rather_than_guessed_at(app):
     item = Field(index=0x2001, kind="something new")
-    assert isinstance(panel_widgets.build(item, Display()), panel_widgets.ValueWidget)
+    assert isinstance(field_widgets.build(item, Display()), field_widgets.ValueWidget)
 
 
 def test_a_field_asks_for_what_it_needs(app):
@@ -198,7 +198,7 @@ def test_ticking_one_flag_keeps_the_rest_of_the_word(app):
 
 
 def test_a_flag_will_not_be_written_before_the_word_is_read(app):
-    """Writing it would clear every bit the panel is not showing."""
+    """Writing it would clear every bit the pane is not showing."""
     widget, written, asked, said = made(Field(index=0x2001, kind="flags", bits={3: "Fault"}))
     widget.boxes[3].click()
 
@@ -337,12 +337,12 @@ def test_a_nonsense_count_does_not_ask_for_a_thousand_points(app):
     widget, _w, asked, _s = made(Field(index=0x2100, kind="map"))
     widget.refresh()
     widget.set_value(0x2100, 0, 100000, None)
-    assert len(asked) - 1 == panel_widgets.MAX_POINTS
+    assert len(asked) - 1 == field_widgets.MAX_POINTS
 
 
-# --- the panel's word over the source's -------------------------------------------------------
+# --- the pane's word over the source's -------------------------------------------------------
 def test_a_panel_may_say_what_an_object_means(app):
-    """The hook says what an object means on this product; the panel says what
+    """The hook says what an object means on this product; the pane says what
     it means on this screen, which is occasionally narrower."""
     item = Field(index=0x2001, kind="number", label="Peak current", unit="A", factor=0.1)
     widget, _w, _a, _s = made(item, Display(name="Object 2001", low=0, high=1000))
