@@ -112,6 +112,30 @@ def _submenu(window, title):
 
 
 # --- and it comes back --------------------------------------------------------------------
+def test_the_default_name_of_a_custom_pane_is_what_its_file_says(app, window):
+    """No amount of looking at "custom:battery" produces "Battery limits"."""
+    model.save("battery", sample())
+    name = window.open_custom_pane("battery")
+    assert window.panes.default_title(name) == "Battery limits"
+
+    window.panes.rename(name, "Pack")
+    assert window.panes.docks[name].windowTitle() == "Pack"
+    window.panes.rename(name, "")
+    assert window.panes.docks[name].windowTitle() == "Battery limits", "not the instance name"
+
+
+def test_renaming_a_custom_pane_survives_editing_its_file(app, window):
+    """Editing the title in the file must not quietly undo a rename."""
+    model.save("battery", sample())
+    name = window.open_custom_pane("battery")
+    window.panes.rename(name, "Pack")
+
+    window.panes.set_default_title(name, "Battery limits, revised")
+    assert window.panes.docks[name].windowTitle() == "Pack"
+    window.panes.rename(name, "")
+    assert window.panes.docks[name].windowTitle() == "Battery limits, revised", "the newer default"
+
+
 def test_a_custom_pane_left_open_is_open_next_time(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()

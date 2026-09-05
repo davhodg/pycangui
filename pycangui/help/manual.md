@@ -245,6 +245,13 @@ into the main window to dock it, or onto another pane to tab the two together;
 wherever you leave it is where it opens next time.  Otherwise it behaves like
 any other pane -- pin it, detach it, close it.
 
+*View > Rename pane* calls one whatever the job calls it: two traces are much
+clearer as **Drive bus** and **Errors** than as CAN Trace and CAN Trace 2, and
+so are two transmit lists as **Background** and **Scratch**.  An empty name
+puts the default back.  Only the label changes -- what identifies a pane to the
+saved layout is untouched, so renaming one cannot cost you the arrangement you
+were renaming.
+
 Closing one puts it away and *View* brings it back, exactly as for the panes
 that are always there.  *View > Remove pane* is the other thing: it closes one
 for good and forgets it.  The first pane of each sort cannot be removed --

@@ -485,9 +485,8 @@ class MainWindow(QMainWindow):
     def _on_custom_pane_changed(self, name: str) -> None:
         """A custom pane renamed itself, so its dock should say so too."""
         view = self._custom_pane_view(name)
-        dock = self.panes.docks.get(custom_instance(name))
-        if view is not None and dock is not None:
-            dock.setWindowTitle(view.pane.title or name)
+        if view is not None:
+            self.panes.set_default_title(custom_instance(name), view.pane.title or name)
 
     def _new_custom_pane_dialog(self) -> None:
         name, chose = QInputDialog.getText(self, "New custom pane", "A name for it:")
@@ -643,6 +642,15 @@ class MainWindow(QMainWindow):
                 "to dock it, or onto another pane to tab the two together."
             )
 
+        rename = self.view_menu.addMenu("Rename pane")
+        rename.setToolTipsVisible(True)
+        rename.setToolTip("Call a pane something that says what you are using it for.")
+        for name in self.panes.names():
+            action = rename.addAction(
+                self.panes.docks[name].windowTitle(), lambda n=name: self._rename_pane(n)
+            )
+            action.setToolTip("Two traces are much clearer as Drive bus and Errors.")
+
         extras = self.panes.extras()
         remove = self.view_menu.addMenu("Remove pane")
         remove.setEnabled(bool(extras))
@@ -733,6 +741,25 @@ class MainWindow(QMainWindow):
             if not agreed:
                 return
         self.reopen_requested.emit(name)
+
+    def _rename_pane(self, name: str) -> None:
+        """Call a pane whatever the job calls it.
+
+        Only the label changes.  What identifies a pane to the saved layout is
+        its instance name, which nothing here touches -- so a rename cannot
+        cost somebody the arrangement they were renaming.
+        """
+        dock = self.panes.docks.get(name)
+        if dock is None:
+            return
+        title, chose = QInputDialog.getText(
+            self,
+            "Rename pane",
+            f"A name for it, or nothing for {self.panes.default_title(name)}:",
+            text=dock.windowTitle(),
+        )
+        if chose:
+            self.panes.rename(name, title)
 
     def _reset_layout(self) -> None:
         self.restoreState(self._default_state, LAYOUT_VERSION)

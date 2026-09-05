@@ -12,7 +12,7 @@ of this existed calls it by the kind's own name.
 """
 
 import pytest
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 
 from pycangui.core.bus import Frame
 from pycangui.ui.main_window import MainWindow
@@ -221,6 +221,108 @@ def test_a_restored_pane_is_placed_by_the_layout_and_not_floated(app, tmp_path, 
     second = restart(app, first)
     assert not second.panes.docks[name].isFloating(), "docking it was the last word"
     second.close()
+
+
+# --- calling one something ----------------------------------------------------------
+def test_a_pane_can_be_called_what_the_job_calls_it(app, window):
+    """Two traces are much clearer as Drive bus and Errors than as 1 and 2."""
+    name = window.panes.add("trace")
+    assert window.panes.docks[name].windowTitle() == "CAN Trace 2"
+
+    window.panes.rename(name, "Drive bus")
+    assert window.panes.docks[name].windowTitle() == "Drive bus"
+
+
+def test_renaming_does_not_touch_what_identifies_it(app, window):
+    """The instance name is the dock's objectName, and that is the only thing
+    restoreState uses -- a rename that changed it would lose the arrangement
+    it was renaming."""
+    name = window.panes.add("trace")
+    window.panes.rename(name, "Drive bus")
+    assert name in window.panes.docks
+    assert window.panes.docks[name].objectName() == name
+
+
+def test_the_first_of_a_kind_can_be_renamed_too(app, window):
+    window.panes.rename("trace", "Errors only")
+    assert window.panes.docks["trace"].windowTitle() == "Errors only"
+
+
+def test_an_empty_name_puts_the_default_back(app, window):
+    window.panes.rename("trace", "Errors only")
+    window.panes.rename("trace", "")
+    assert window.panes.docks["trace"].windowTitle() == "CAN Trace"
+    assert "trace" not in window.panes.titles(), "and nothing is left saying so"
+
+
+def test_naming_it_what_it_was_already_called_is_not_a_rename(app, window):
+    window.panes.rename("trace", "CAN Trace")
+    assert window.panes.titles() == {}, "a default is not a name"
+
+
+def test_a_name_survives_a_restart(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = restart(app)
+    second_trace = first.panes.add("trace")
+    first.panes.rename(second_trace, "Drive bus")
+    first.panes.rename("trace", "Errors only")
+    settle(app)
+
+    again = restart(app, first)
+    assert again.panes.docks["trace"].windowTitle() == "Errors only"
+    assert again.panes.docks[second_trace].windowTitle() == "Drive bus"
+    again.close()
+
+
+def test_removing_a_pane_forgets_what_it_was_called(app, window):
+    name = window.panes.add("trace")
+    window.panes.rename(name, "Drive bus")
+    window.panes.remove(name)
+    assert name not in window.panes.titles()
+
+
+def test_the_view_menu_calls_panes_what_they_are_called_now(app, window):
+    window.panes.rename("trace", "Errors only")
+    settle(app)
+    assert "Errors only" in [a.text() for a in window.view_menu.actions()]
+
+
+# --- and carrying a little configuration ------------------------------------------------
+def test_a_pane_can_be_opened_with_something_to_show(app, window):
+    """Which file, which identifier: what makes a second one different from
+    the first without the kind having to be a special sort."""
+    name = window.panes.add("trace", config={"id": "0x77F"})
+    assert window.panes.config(name) == {"id": "0x77F"}
+
+
+def test_the_builder_sees_it_before_the_pane_is_built(app, window):
+    """A pane cannot decide what it is showing after it has been made."""
+    seen = {}
+
+    def build(name):
+        from PySide6.QtWidgets import QLabel
+
+        seen.update(window.panes.config(name))
+        return QLabel("x")
+
+    from pycangui.ui.panes import PaneKind
+
+    window.panes.register(PaneKind("probe", "Probe", Qt.RightDockWidgetArea, build, several=True))
+    window.panes.add("probe", config={"id": "0x77F"})
+    assert seen == {"id": "0x77F"}
+
+
+def test_the_configuration_comes_back_with_the_pane(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = restart(app)
+    name = first.panes.add("trace", config={"id": "0x77F"})
+    settle(app)
+
+    again = restart(app, first)
+    assert again.panes.config(name) == {"id": "0x77F"}
+    again.close()
 
 
 # --- what comes back ---------------------------------------------------------------------
