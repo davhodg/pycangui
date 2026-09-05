@@ -7,7 +7,6 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
-    QFileDialog,
     QInputDialog,
     QMainWindow,
     QMessageBox,
@@ -34,6 +33,7 @@ from pycangui.core.signals import SignalHub
 from pycangui.j1939.manager import J1939Manager
 from pycangui.panels import model as panel_model
 from pycangui.uds.manager import UdsManager
+from pycangui.ui import folders
 from pycangui.ui.ascii_view import AsciiView
 from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.confirm import Confirmations, is_real
@@ -245,6 +245,13 @@ class MainWindow(QMainWindow):
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
         tools_menu.addAction("Reload hooks", self._reload_hooks)
         tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
+        tools_menu.addSeparator()
+        forget = tools_menu.addAction("Forget remembered folders", self._forget_folders)
+        forget.setToolTip(
+            "A file dialog opens where that sort of file was last used -- an EDS\n"
+            "where the last EDS was, a firmware image where the last image was.\n"
+            "This puts them all back to pycangui's own folders."
+        )
         tools_menu.addSeparator()
         verbose = tools_menu.addAction("Verbose CAN logging")
         verbose.setCheckable(True)
@@ -668,8 +675,14 @@ class MainWindow(QMainWindow):
         if not self.signals.keys():
             self.events.warning("Export signals: nothing has been decoded yet")
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export signals", "signals.csv", "CSV (*.csv);;All files (*)"
+        path = folders.save_file(
+            self,
+            self.ctx,
+            folders.EXPORT,
+            "Export signals",
+            "CSV (*.csv);;All files (*)",
+            self.ctx.user_dir,
+            suggested="signals.csv",
         )
         if not path:
             return
@@ -701,6 +714,16 @@ class MainWindow(QMainWindow):
         self.events.information(
             f"Verbose CAN logging {'on' if on else 'off'}: the CAN libraries' "
             f"{'info messages are' if on else 'warnings and errors are still'} relayed here."
+        )
+
+    def _forget_folders(self) -> None:
+        """Put every file dialog back to the folder it started life in."""
+        how_many = folders.forget_all(self.ctx)
+        self.events.information(
+            f"Forgot {how_many} remembered folder(s): file dialogs will open in "
+            "pycangui's own folders again."
+            if how_many
+            else "No folders were being remembered."
         )
 
     def _open_hooks_folder(self) -> None:
@@ -840,8 +863,14 @@ class MainWindow(QMainWindow):
         if not on:
             self.recorder.stop()
             return
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Record to a log file", str(self.ctx.user_dir / "capture.blf"), WRITE_FILTER
+        path = folders.save_file(
+            self,
+            self.ctx,
+            folders.LOG,
+            "Record to a log file",
+            WRITE_FILTER,
+            self.ctx.user_dir,
+            suggested="capture.blf",
         )
         if not path or not self.recorder.start(path):
             self.record_action.setChecked(False)
@@ -856,11 +885,13 @@ class MainWindow(QMainWindow):
 
     # --- DBC / signals -------------------------------------------------------
     def _load_dbc_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
+        path = folders.open_file(
             self,
+            self.ctx,
+            folders.DBC,
             "Load CAN database",
-            str(self.ctx.user_dir),
             "CAN databases (*.dbc *.kcd *.sym *.arxml)",
+            self.ctx.user_dir,
         )
         if path and self._load_dbc(path, offer_relaxing=True):
             paths = list(self.ctx.settings.get("dbc.paths", []))

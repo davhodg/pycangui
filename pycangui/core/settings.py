@@ -29,6 +29,14 @@ class Settings:
         self._data[key] = value
         self.save()
 
+    def keys(self) -> list[str]:
+        return sorted(self._data)
+
+    def remove(self, key: str) -> None:
+        """Forget a setting, so that whatever default applies applies again."""
+        if self._data.pop(key, None) is not None:
+            self.save()
+
     def save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(self._data, indent=2, sort_keys=True), encoding="utf-8")

@@ -8,7 +8,6 @@ from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -23,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
+from pycangui.ui import folders
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
@@ -169,8 +169,8 @@ class XcpView(QWidget):
         self.connect_btn.blockSignals(False)
 
     def _load_a2l(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Load A2L", str(self.ctx.user_dir), "A2L (*.a2l);;All files (*)"
+        path = folders.open_file(
+            self, self.ctx, folders.A2L, "Load A2L", "A2L (*.a2l);;All files (*)", self.ctx.user_dir
         )
         if path:
             try:

@@ -21,7 +21,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QKeyEvent, QTextCursor
 from PySide6.QtWidgets import (
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -32,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.context import Context
+from pycangui.ui import folders
 
 BANNER = """pycangui console -- Python {ver}
   ctx       settings, log(), eds_dir ...       bus       connect/send/send_periodic
@@ -142,8 +142,8 @@ class ConsoleView(QWidget):
         return result
 
     def _run_script_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Run Python script", str(self.ctx.user_dir), "Python (*.py)"
+        path = folders.open_file(
+            self, self.ctx, folders.SCRIPT, "Run Python script", "Python (*.py)", self.ctx.user_dir
         )
         if path:
             self.run_file(path)
