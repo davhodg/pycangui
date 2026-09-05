@@ -7,6 +7,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 
 from pycangui import resources
+from pycangui.core import workspaces
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.demo import DemoDevice
@@ -66,7 +67,7 @@ def stack(app, tmp_path, monkeypatch):
 
 
 def test_xcp_against_demo_slave(stack):
-    _bus, manager, demo, hub, home = stack
+    _bus, manager, demo, hub, _home = stack
     lines: list[str] = []
     values: list[tuple] = []
     manager.result.connect(lines.append)
@@ -99,7 +100,7 @@ def test_xcp_against_demo_slave(stack):
 
     hook = "def compute_key(resource, seed, *, ctx):" + chr(10)
     hook += "    return bytes(b ^ 0xFF for b in seed)" + chr(10)
-    (home / "hooks" / "xcp.py").write_text(hook)
+    (workspaces.hooks_dir() / "xcp.py").write_text(hook)
     manager._hooks.reload()
     manager.unlock(0x01)
     assert last_after(n) == "XCP resource 0x01 unlocked"

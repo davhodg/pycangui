@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
+from pycangui.core import workspaces
 from pycangui.core.backends import BACKENDS
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.context import Context
@@ -394,10 +395,17 @@ class MainWindow(QMainWindow):
         self.resizeDocks([trace, scope], [6, 4], Qt.Vertical)
 
     def _restore_layout(self) -> None:
-        s = QSettings()
-        if (geo := s.value("geometry")) is not None:
+        # Where the window sits stays in QSettings: that belongs to this desk
+        # and these monitors, and switching product should rearrange the panes
+        # rather than move the window.
+        if (geo := QSettings().value("geometry")) is not None:
             self.restoreGeometry(geo)
-        state = s.value("windowState")
+        state = self.ctx.layout.get("window")
+        if state is None and self.ctx.workspace == workspaces.DEFAULT:
+            # Where it lived before there were workspaces.  Only for default,
+            # which is what an existing setup became: a new workspace that
+            # inherited the last one's arrangement would not be a new one.
+            state = QSettings().value("windowState")
         # restoreState declines a layout saved under an older LAYOUT_VERSION,
         # which leaves the default in place -- the same as never having run.
         if state is None or not self.restoreState(state, LAYOUT_VERSION):
@@ -420,9 +428,8 @@ class MainWindow(QMainWindow):
         self.restoreState(self._default_state, LAYOUT_VERSION)
 
     def closeEvent(self, event) -> None:
-        s = QSettings()
-        s.setValue("geometry", self.saveGeometry())
-        s.setValue("windowState", self.saveState(LAYOUT_VERSION))
+        QSettings().setValue("geometry", self.saveGeometry())
+        self.ctx.layout.set("window", bytes(self.saveState(LAYOUT_VERSION)))
         self.panes.save_view_states()
         # Saved before they are closed: closing one puts its pane away, and
         # what is saved should be how things were left, not how they were

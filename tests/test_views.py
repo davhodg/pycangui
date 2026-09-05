@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QWidget
 
 from pycangui import resources
 from pycangui.canopen.manager import CanopenManager
+from pycangui.core import workspaces
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
@@ -191,7 +192,7 @@ def test_trace_view_kind_column_and_filter(app, tmp_path, monkeypatch):
     # a user hook can relabel frames; the first word picks the group
     hook_src = "def frame_kind(frame, *, ctx):" + chr(10)
     hook_src += "    return 'Pump status' if frame.can_id == 0x123 else None" + chr(10)
-    (tmp_path / "hooks" / "trace.py").write_text(hook_src)
+    (workspaces.hooks_dir() / "trace.py").write_text(hook_src)
     view.hooks.reload()
     view.on_frames([frame(0x123, b"", 0.3)])
     assert view.model.index(3, 4).data() == "Pump status"

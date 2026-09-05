@@ -5,6 +5,7 @@ import time
 import pytest
 from PySide6.QtCore import QCoreApplication
 
+from pycangui.core import workspaces
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.demo import DemoDevice
@@ -44,7 +45,7 @@ def test_dtc_code():
 
 
 def test_uds_services_against_demo_ecu(stack):
-    _bus, manager, demo, home = stack
+    _bus, manager, demo, _home = stack
     lines: list[str] = []
     manager.result.connect(lines.append)
 
@@ -77,7 +78,7 @@ def test_uds_services_against_demo_ecu(stack):
 
     hook = "def security_key(level, seed, *, ctx):" + chr(10)
     hook += "    return bytes(b ^ 0xFF for b in seed)" + chr(10)
-    (home / "hooks" / "uds.py").write_text(hook)
+    (workspaces.hooks_dir() / "uds.py").write_text(hook)
     manager._hooks.reload()
     manager.unlock(1)
     assert last_after(n) == "Security level 1: unlocked"

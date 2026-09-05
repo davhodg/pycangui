@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEvent, QObject, QSettings, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QDockWidget,
     QMainWindow,
@@ -196,7 +196,7 @@ class Panes(QObject):
         dock.deleteLater()
         if view is not None and kind.shutdown is not None:
             kind.shutdown(view)
-        QSettings().remove(f"panes/{name}")  # whatever it had saved about itself
+        self.ctx.layout.remove(f"panes/{name}")  # whatever it had saved about itself
         self._save_instances()
         self._save_pane_state()
         self.changed.emit()
@@ -504,19 +504,14 @@ class Panes(QObject):
         """Whatever a pane says about itself -- a splitter position, so far.
 
         Kept per instance rather than per kind, or the second plot's splitter
-        would be the first one's.
+        would be the first one's -- and in the workspace rather than in
+        QSettings, so it travels with the arrangement it belongs to.
         """
-        settings = QSettings()
         for name, view in self._views.items():
             if hasattr(view, "save_state"):
-                settings.setValue(f"panes/{name}/state", view.save_state())
+                self.ctx.layout.set(f"panes/{name}", bytes(view.save_state()))
 
     def restore_view_states(self) -> None:
-        settings = QSettings()
         for name, view in self._views.items():
-            if not hasattr(view, "restore_state"):
-                continue
-            state = settings.value(f"panes/{name}/state")
-            if state is None and name == "scope":
-                state = settings.value("scopeSplitter")  # where it lived before W4
-            view.restore_state(state)
+            if hasattr(view, "restore_state"):
+                view.restore_state(self.ctx.layout.get(f"panes/{name}"))
