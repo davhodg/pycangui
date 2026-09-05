@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui import APP_NAME
 from pycangui.core.context import Context
 from pycangui.ui.detached import DetachedPane
 from pycangui.ui.pane_bar import PaneBar
@@ -131,6 +132,17 @@ class Panes(QObject):
         #: What each pane's visibility last was, so that the signal above
         #: fires on a change rather than on every event Qt sends.
         self._shown: dict[str, bool] = {}
+        #: What each pane was configured with, where it needed anything: which
+        #: file this one shows, which identifier that one reads.  Kept here so
+        #: that a builder can ask for it and the workspace can write it down,
+        #: which is what lets a pane be more than one of a kind without the
+        #: kind having to be a special sort.
+        self._config: dict[str, dict] = {}
+        #: What each pane was called when it was made, which is what "the
+        #: default name" means.  For most kinds that is the kind's title and a
+        #: number, but a custom pane is called whatever its file says and no
+        #: amount of looking at "custom:battery" will produce "Battery limits".
+        self._made_as: dict[str, str] = {}
         #: Panes part way between a dock and a window of their own.  Qt hides
         #: the dock before the window exists, so for a moment the pane looks
         #: put away when it is only moving -- and something listening for that
@@ -170,6 +182,7 @@ class Panes(QObject):
         title: str = "",
         show: bool = True,
         floating: bool = False,
+        config: dict | None = None,
     ) -> str:
         """Open a pane of this kind and return its instance name.
 
@@ -198,10 +211,19 @@ class Panes(QObject):
         if name != kind.name and not kind.several:
             self.ctx.events.warning(f"There can only be one {kind.title} pane.")
             return ""
+        # Stored before the pane is built, because the builder is what reads
+        # it: an ASCII pane cannot decide which identifier it is showing after
+        # it has been made.
+        if config is not None:
+            self._config[name] = dict(config)
         view = kind.build(name)
         self._views[name] = view
         self._kind_of[name] = kind.name
-        dock = self._make_dock(name, title or self._title(kind, name), view, kind.area)
+        self._made_as[name] = title or self._title(kind, name)
+        dock = self._make_dock(name, self._made_as[name], view, kind.area)
+        # Whatever somebody called it, over whatever it was made as.
+        if chosen := self.titles().get(name):
+            dock.setWindowTitle(chosen)
         if floating:
             self._float_new(dock)
         if show:
@@ -247,6 +269,10 @@ class Panes(QObject):
         self._came_from.pop(name, None)
         self._kind_of.pop(name, None)
         self._shown.pop(name, None)
+        self._config.pop(name, None)
+        self._made_as.pop(name, None)
+        if (titles := self.titles()).pop(name, None) is not None:
+            self.ctx.settings.set("panes.titles", titles)
         view = self._views.pop(name, None)
         self.window.removeDockWidget(dock)
         dock.setParent(None)
@@ -301,6 +327,67 @@ class Panes(QObject):
         self.kinds.pop(going.name, None)
         self.kinds.pop(kind_name, None)
         self.changed.emit()
+
+    # --- what it is called ------------------------------------------------------------
+    def titles(self) -> dict[str, str]:
+        """The panes somebody has renamed.  Only those: a default is not a name."""
+        stored = self.ctx.settings.get("panes.titles", {})
+        return {str(k): str(v) for k, v in stored.items()} if isinstance(stored, dict) else {}
+
+    def default_title(self, name: str) -> str:
+        """What this pane would be called if nobody had said otherwise."""
+        if made_as := self._made_as.get(name):
+            return made_as
+        kind = self.kinds.get(self._kind_of.get(name, ""))
+        return self._title(kind, name) if kind is not None else name
+
+    def rename(self, name: str, title: str) -> None:
+        """Call a pane something.  An empty title puts the default back.
+
+        The *instance name* is untouched, and that is the whole reason this is
+        safe: it is the dock's objectName, which is the only thing Qt's
+        restoreState uses to put a pane back where it was.  A rename that
+        changed it would lose the arrangement it was renaming.
+        """
+        dock = self.docks.get(name)
+        if dock is None:
+            return
+        title = title.strip()
+        titles = self.titles()
+        if title and title != self.default_title(name):
+            titles[name] = title
+        else:
+            titles.pop(name, None)
+            title = self.default_title(name)
+        self.ctx.settings.set("panes.titles", titles)
+        dock.setWindowTitle(title)
+        if (window := self.detached.get(name)) is not None:
+            window.setWindowTitle(f"{title} - {APP_NAME}")
+        self.changed.emit()
+
+    def set_default_title(self, name: str, title: str) -> None:
+        """Change what a pane is called *unless* somebody has renamed it.
+
+        For a pane whose title comes from its contents -- a custom pane is
+        called whatever its file says -- so that editing the file does not
+        quietly undo a rename.  It still becomes the default, so clearing a
+        rename later lands on what the file says now rather than what it said
+        when the pane was opened.
+        """
+        if name not in self.docks:
+            return
+        self._made_as[name] = title
+        if name not in self.titles():
+            self.docks[name].setWindowTitle(title)
+
+    # --- what it was made with ------------------------------------------------------------
+    def config(self, name: str) -> dict:
+        """What this pane was opened with.  Empty for one that needed nothing."""
+        return dict(self._config.get(name, {}))
+
+    def set_config(self, name: str, config: dict) -> None:
+        self._config[name] = dict(config)
+        self._save_instances()
 
     def _next_name(self, kind: PaneKind) -> str:
         number = 2
@@ -585,7 +672,8 @@ class Panes(QObject):
                 {
                     "kind": self._kind_of[name],
                     "name": name,
-                    "title": self.docks[name].windowTitle(),
+                    "title": self.default_title(name),
+                    "config": self.config(name),
                 }
                 for name in self.extras()
             ],
@@ -613,11 +701,13 @@ class Panes(QObject):
             for saved in self.ctx.settings.get("panes.instances", []):
                 if not isinstance(saved, dict):
                     continue  # a hand-edited settings.json
+                config = saved.get("config")
                 self.add(
                     str(saved.get("kind", "")),
                     name=str(saved.get("name", "")),
                     title=str(saved.get("title", "")),
                     show=False,
+                    config=config if isinstance(config, dict) else None,
                 )
         finally:
             self._restoring = False
