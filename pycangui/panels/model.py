@@ -23,6 +23,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from pycangui.canopen.display import Display, with_overrides
 from pycangui.core import workspaces
 
 #: How a field is shown, and therefore how it is edited.
@@ -237,6 +238,27 @@ def panel_to_dict(panel: Panel) -> dict:
         out["node"] = panel.node
     out["fields"] = [field_to_dict(f) for f in panel.fields]
     return out
+
+
+def display_for(item: Field, base: Display) -> Display:
+    """What the source said about the object, with the panel's word on top.
+
+    The panel wins where it speaks, because it is the more specific statement:
+    the hook says what an object means on this product, and the panel says what
+    it means *on this screen*, which is occasionally narrower.  Everything the
+    panel leaves unset keeps whatever the EDS and the hook produced, so naming
+    a field does not silently discard the limits the file declared.
+    """
+    overrides: dict[str, object] = {}
+    if item.label:
+        overrides["name"] = item.label
+    for key in ("unit", "factor", "offset", "decimals", "low", "high"):
+        value = getattr(item, key)
+        if value not in (None, ""):
+            overrides[key] = value
+    if item.choices:
+        overrides["choices"] = dict(item.choices)
+    return with_overrides(base, overrides)
 
 
 # --- where they are kept ------------------------------------------------------------------
