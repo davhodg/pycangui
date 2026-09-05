@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QRect, Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QDockWidget,
     QMainWindow,
@@ -58,6 +58,21 @@ BLOCKED, UNBLOCKED = QEvent.WindowBlocked, QEvent.WindowUnblocked
 #: dock areas the whole time one is being dragged, so without this a pane
 #: cannot be put in front of the main window at all.
 UNDOCK_TIP = "Hold Ctrl while dragging an undocked pane to stop it docking again."
+
+#: A pane opened now is opened floating, in front of the window.  Docking
+#: it takes the room the panes already on screen were using, and somebody
+#: asking for a second trace or a panel wants to look at it beside what is
+#: there rather than instead of it.  Dragging it in is one gesture; finding
+#: where it landed and dragging it out is two.
+#: The size it opens at, unless the pane asks for more.
+NEW_PANE_SIZE = (620, 460)
+#: Down and right of the main window's corner, so it is obviously in front
+#: of it rather than lost behind it...
+NEW_PANE_OFFSET = 64
+#: ...and each one after that steps again, so opening three panels gives
+#: three windows rather than one window with two hidden underneath.
+CASCADE = 28
+CASCADE_BEFORE_WRAPPING = 6
 
 
 @dataclass(frozen=True)
@@ -137,8 +152,22 @@ class Panes(QObject):
         """The pane itself, not the container the dock holds."""
         return self._views.get(name)
 
-    def add(self, kind_name: str, name: str = "", title: str = "", show: bool = True) -> str:
-        """Open a pane of this kind and return its instance name."""
+    def add(
+        self,
+        kind_name: str,
+        name: str = "",
+        title: str = "",
+        show: bool = True,
+        floating: bool = False,
+    ) -> str:
+        """Open a pane of this kind and return its instance name.
+
+        ``floating`` is what a person asking for a pane means: it opens in
+        front of the window rather than taking room from the panes already
+        on screen.  The panes built at start-up and the ones restored with
+        the workspace do not, because where those go is the saved layout's
+        business and not this call's.
+        """
         kind = self.kinds.get(kind_name)
         if kind is None:
             return ""
@@ -162,6 +191,8 @@ class Panes(QObject):
         self._views[name] = view
         self._kind_of[name] = kind.name
         dock = self._make_dock(name, title or self._title(kind, name), view, kind.area)
+        if floating:
+            self._float_new(dock)
         if show:
             dock.show()
             dock.raise_()
@@ -208,6 +239,25 @@ class Panes(QObject):
         self._save_instances()
         self._save_pane_state()
         self.changed.emit()
+
+    def _float_new(self, dock: QDockWidget) -> None:
+        """Put a newly opened pane in its own window, in front of the main one.
+
+        Qt floats a dock wherever it happened to be docked, which for a pane
+        that was never on screen is a sliver at the edge.  So it is given a
+        size and a place: down and right of the window's corner, stepping for
+        each one already out, and wrapping before it walks off the screen.
+        """
+        out = sum(1 for d in self.docks.values() if d is not dock and d.isFloating())
+        step = NEW_PANE_OFFSET + CASCADE * (out % CASCADE_BEFORE_WRAPPING)
+        where = self.window.geometry()
+        wanted = dock.widget().sizeHint() if dock.widget() is not None else None
+        width, height = NEW_PANE_SIZE
+        if wanted is not None:
+            width = max(width, min(wanted.width() + 24, max(width, where.width() - 2 * step)))
+            height = max(height, min(wanted.height() + 48, max(height, where.height() - 2 * step)))
+        dock.setFloating(True)
+        dock.setGeometry(QRect(where.x() + step, where.y() + step, width, height))
 
     def _next_name(self, kind: PaneKind) -> str:
         number = 2

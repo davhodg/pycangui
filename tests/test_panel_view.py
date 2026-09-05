@@ -52,6 +52,15 @@ def test_opening_a_panel_gives_it_a_dock_of_its_own(window):
     assert window.panes.kind_of(name) == "panel"
 
 
+def test_a_panel_opens_in_a_window_of_its_own(app, window):
+    """It is something to look at beside the panes already on screen."""
+    model.save("battery", sample())
+    name = window.open_panel("battery")
+    settle(app)
+    assert window.panes.docks[name].isFloating()
+    assert window.panes.docks[name].isVisible()
+
+
 def test_two_panels_are_two_docks(window):
     """The case the whole thing exists for: node 1 beside node 2."""
     model.save("battery", sample("Battery limits"))

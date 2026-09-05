@@ -85,9 +85,10 @@ an existing panel or make a new one; you are asked what to call it once, not
 once per object.  *View > Panels* opens any panel you have, and *New panel...*
 makes an empty one.
 
-A panel is a dock like any other pane, so drop one on another to tab them,
-float one, or put two side by side comparing two nodes -- which is what they
-are for.  The ones you leave open reopen next time.
+A panel opens in a window of its own, in front of the main one.  It is a dock
+like any other pane, so drag it in to dock it, drop it onto another to tab
+them, or leave two out side by side comparing two nodes -- which is what they
+are for.  Wherever you leave one is where it opens next time.
 
 ### Where the values come from
 
@@ -177,8 +178,13 @@ time.
 after the first -- Trace 2, Trace 3.  Each has settings of its own: its own
 filter, its own mode, its own plotted signals, all remembered separately.  Two
 traces of the same capture filtered differently, or a plot per subsystem, are
-what this is for, and a new pane behaves like any other -- dock it, float it,
-pin it, or drop it onto another to tab them.
+what this is for.
+
+A pane you open arrives **in its own window**, in front of the main one, rather
+than squeezing into the space the panes already on screen were using.  Drag it
+into the main window to dock it, or onto another pane to tab the two together;
+wherever you leave it is where it opens next time.  Otherwise it behaves like
+any other pane -- pin it, detach it, close it.
 
 Closing one puts it away and *View* brings it back, exactly as for the panes
 that are always there.  *View > Remove pane* is the other thing: it closes one
