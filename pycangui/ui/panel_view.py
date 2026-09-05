@@ -15,14 +15,17 @@ panel over a DCF is how you build a configuration at a desk.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -39,8 +42,10 @@ from PySide6.QtWidgets import (
 from pycangui.core.context import Context
 from pycangui.panels import model
 from pycangui.panels.model import Field, Panel
+from pycangui.panels.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
 from pycangui.panels.source import FileSource, NodeSource, Source
 from pycangui.ui import folders, panel_widgets
+from pycangui.ui.persist import remember
 
 #: Offered in the source selector, above whatever nodes are on the bus.
 FILE_ENTRY = "Open a DCF or EDS..."
@@ -56,6 +61,18 @@ SOURCE_TIP = (
     "EDS file.  The same panel over a file is how a configuration is built\n"
     "at a desk and taken to the machine."
 )
+POLL_TIP = (
+    "Read every object on this panel over and over, so the values follow\n"
+    "the controller.  The figure beside the box is the rate actually being\n"
+    "achieved, which for SDO reads is often well below the one asked for.\n"
+    "Numeric values go to Signals and Plot while this is on, so a polled\n"
+    "object plots and exports like any other signal."
+)
+RATE_TIP = (
+    "How often to read the whole panel, at most.  A round only starts when\n"
+    "the last one has finished, so asking for more than the bus can do gets\n"
+    "you as fast as it can rather than a backlog of stale values."
+)
 
 
 class PanelView(QWidget):
@@ -64,14 +81,23 @@ class PanelView(QWidget):
     #: The panel was edited here and should be written back.
     changed = Signal()
 
-    def __init__(self, name: str, panel: Panel, manager, ctx: Context) -> None:
+    def __init__(
+        self, name: str, panel: Panel, manager, ctx: Context, signals=None, now=None
+    ) -> None:
         super().__init__()
         self.name = name
         self.panel = panel
         self.manager = manager
         self.ctx = ctx
+        #: Where polled values go, so that one plots and exports like any other
+        #: signal rather than being a number that only exists on this form.
+        self.signals = signals
+        self._now = now or time.monotonic
         self.source: Source | None = None
         self._widgets: list[panel_widgets.FieldWidget] = []
+        self.poller = Poller(self)
+        self.poller.read.connect(self._on_read_requested)
+        # rate is connected once the label it writes to exists, below.
 
         self.heading = QLabel()
         self.heading.setStyleSheet("font-weight: bold")
@@ -89,10 +115,32 @@ class PanelView(QWidget):
         edit.setToolTip(EDIT_TIP)
         edit.clicked.connect(self._edit)
 
+        self.poll = QCheckBox("Poll")
+        self.poll.setToolTip(POLL_TIP)
+        self.poll.toggled.connect(self._on_poll_toggled)
+        self.poll_hz = QDoubleSpinBox()
+        self.poll_hz.setRange(MIN_HZ, MAX_HZ)
+        self.poll_hz.setDecimals(2)
+        self.poll_hz.setSingleStep(0.5)
+        self.poll_hz.setSuffix(" Hz")
+        self.poll_hz.setToolTip(RATE_TIP)
+        remember(self.ctx, f"panel.{self.name}.poll_hz", self.poll_hz, DEFAULT_HZ)
+        self.poll_hz.valueChanged.connect(self.poller.set_rate)
+        self.poller.set_rate(self.poll_hz.value())
+        #: The rate actually being managed.  Shown rather than the requested
+        #: one, because a value read at 12 Hz that looks like it was read at
+        #: 100 is the sort of thing people build conclusions on.
+        self.poll_rate = QLabel("")
+        self.poll_rate.setToolTip("The rate this panel is actually being read at.")
+        self.poller.rate.connect(self._on_rate)
+
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Values from:"))
         bar.addWidget(self.sources, 1)
         bar.addWidget(read_all)
+        bar.addWidget(self.poll)
+        bar.addWidget(self.poll_hz)
+        bar.addWidget(self.poll_rate)
         bar.addWidget(edit)
 
         self.form_holder = QWidget()
@@ -134,6 +182,7 @@ class PanelView(QWidget):
             self.form.addRow(QLabel(widget.label_text() + ":"), widget)
             self._widgets.append(widget)
         self._apply_writable()
+        self.poller.set_objects(f.where for f in self.panel.fields)
         self._fill_sources()
 
     def refresh(self) -> None:
@@ -202,6 +251,29 @@ class PanelView(QWidget):
         writable = bool(self.source is not None and self.source.writable)
         for widget in self._widgets:
             widget.set_writable(writable)
+        self._apply_live()
+
+    def _apply_live(self) -> None:
+        """A file does not change under you, so polling one is not offered."""
+        live = bool(self.source is not None and getattr(self.source, "live", False))
+        for widget in (self.poll, self.poll_hz):
+            widget.setEnabled(live)
+        if not live and self.poller.running:
+            self.poll.setChecked(False)
+        self.poll.setToolTip(
+            POLL_TIP if live else "Only a node changes while you watch it; a file does not."
+        )
+
+    # --- polling ------------------------------------------------------------------------
+    def _on_poll_toggled(self, on: bool) -> None:
+        if on and self.source is None:
+            self.ctx.warn(f"{self.panel.title or self.name}: no node or file selected")
+            self.poll.setChecked(False)
+            return
+        self.poller.start(self.poll_hz.value()) if on else self.poller.stop()
+
+    def _on_rate(self, requested: float, achieved: float) -> None:
+        self.poll_rate.setText(rate_text(requested, achieved, self.poller.running))
 
     # --- and back again ------------------------------------------------------------------
     def _on_read_requested(self, index: int, sub: int) -> None:
@@ -221,6 +293,29 @@ class PanelView(QWidget):
         # sub-indices of one object, and only it knows which.
         for widget in self._widgets:
             widget.set_value(index, sub, raw, error)
+        self.poller.answered(index, sub)
+        if not error:
+            self._to_signals(index, sub, raw)
+
+    def _to_signals(self, index: int, sub: int, raw: Any) -> None:
+        """A polled number is a signal, so it plots and exports like one.
+
+        Only while polling: a value read once by hand is a reading, and putting
+        it in the plot as a series of one point would fill the signal list with
+        things nobody is watching.
+        """
+        if self.signals is None or not self.poller.running:
+            return
+        if not isinstance(raw, int | float) or isinstance(raw, bool):
+            return  # a string or a block of bytes is not a trace
+        widget = next((w for w in self._widgets if w.field.where == (index, sub)), None)
+        if widget is None:
+            return
+        display = widget.display
+        value = display.physical(raw) if display.scaled else raw
+        group = self.source.label if self.source is not None else self.name
+        self.signals.push(group, widget.label_text(), self._now(), float(value), display.unit)
+        self.signals.updated.emit()
 
     # --- changing the panel itself ----------------------------------------------------------
     def _edit(self) -> None:

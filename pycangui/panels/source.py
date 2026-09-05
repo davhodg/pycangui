@@ -45,6 +45,10 @@ class Source(QObject):
     #: Whether writing means anything.  An EDS's defaults are readable and not
     #: writable, and a panel bound to one should say so rather than fail.
     writable = False
+    #: Whether reading it again can tell you anything new.  A controller
+    #: changes while you watch it; a file on disk does not, so polling one
+    #: would be work with a guaranteed answer of "the same".
+    live = False
 
     def display(self, index: int, sub: int) -> Display:
         """Name, unit, scaling, choices and limits for one object."""
@@ -61,6 +65,7 @@ class NodeSource(Source):
     """A live controller, read and written over SDO."""
 
     writable = True
+    live = True
 
     def __init__(self, manager, node_id: int) -> None:
         super().__init__()

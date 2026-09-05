@@ -164,6 +164,11 @@ class _EntryWidget(FieldWidget):
 
     def _show(self, raw: Any, error: Any) -> None:
         self.edit.setToolTip(self._tooltip())
+        if self.edit.hasFocus():
+            # Being typed into.  A polled value landing in the box would take
+            # the half-typed number with it, and the next thing pressed would
+            # be Enter -- which would write whatever had replaced it.
+            return
         if error:
             self.edit.clear()
             self.edit.setPlaceholderText(str(error))
@@ -253,6 +258,8 @@ class EnumWidget(FieldWidget):
 
     def _show(self, raw: Any, error: Any) -> None:
         self.box.setToolTip(str(error) if error else self._tooltip())
+        if self.box.hasFocus():
+            return  # being chosen from; see the note in _EntryWidget
         if error or raw is None:
             self.box.setCurrentIndex(-1)
             return
@@ -353,6 +360,10 @@ class BitsWidget(FieldWidget):
 
     def _show(self, raw: Any, error: Any) -> None:
         self.setToolTip(str(error) if error else self._tooltip())
+        if (self.box is not None and self.box.hasFocus()) or (
+            self.edit is not None and self.edit.hasFocus()
+        ):
+            return  # being edited; see the note in _EntryWidget
         known = not error and raw is not None
         part = self.field.extract(int(raw)) if known else None
         if self.box is not None:

@@ -396,7 +396,9 @@ class MainWindow(QMainWindow):
         """
         name = panel_name(instance)
         panel = panel_model.load(name) or panel_model.Panel(title=name)
-        view = PanelView(name, panel, self.canopen, self.ctx)
+        view = PanelView(
+            name, panel, self.canopen, self.ctx, signals=self.signals, now=self.bus.now
+        )
         view.changed.connect(lambda n=name: self._on_panel_changed(n))
         return view
 
