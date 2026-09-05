@@ -556,7 +556,7 @@ knowledge about that product.
 
 ```python
 NAME = "Firmware"
-API_VERSION = 1          # what it was written against; refused if newer than pycangui
+API_VERSION = 1  # what it was written against; refused if newer than pycangui
 
 
 def register(app):
