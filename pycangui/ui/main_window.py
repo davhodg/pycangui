@@ -68,8 +68,8 @@ def window_title() -> str:
     return f"{APP_NAME} {__version__}" + ("" if name == workspaces.DEFAULT else f" - {name}")
 
 
-#: A pane pane is named after the pane it shows, so that reopening the
-#: workspace reopens the same custom_panes and two custom_panes are two docks.
+#: A custom pane's dock is named after the pane it shows, so that reopening a
+#: workspace reopens the same ones and two of them are two docks.
 CUSTOM_PREFIX = "custom:"
 
 
@@ -453,7 +453,7 @@ class MainWindow(QMainWindow):
         """One custom pane, by the name its file is kept under.
 
         The instance name carries it -- ``pane:Battery limits`` -- so that the
-        workspace reopens the same custom_panes it was closed with, and two custom_panes
+        workspace reopens the same ones it was closed with, and two of them
         are two docks rather than one pane with a selector in it.
         """
         name = custom_name(instance)
@@ -619,11 +619,11 @@ class MainWindow(QMainWindow):
         )
 
         # Paired with Custom panes above: the ones pycangui comes with, and the
-        # ones you built.  The verb is on each entry rather than on the
-        # submenu, because "Add Trace" cannot be misread and no adjective for
-        # the parent could be made to work -- "New" promises a new sort of
-        # thing, "Duplicate" promises a copy of the one you are looking at, and
-        # these arrive with settings of their own.
+        # ones you built.  "Additional X" rather than "Add X" because the top
+        # of this same menu is a list of panes shown by name, so "Add CAN
+        # Trace" could be read as putting the one that exists on screen --
+        # "Additional CAN Trace" can only mean a second one.  It also leaves
+        # both submenus listing things rather than one listing commands.
         standard = self.view_menu.addMenu("Standard panes")
         standard.setToolTipsVisible(True)
         # Only the ones there can be more than one of, so that the list is
@@ -634,7 +634,7 @@ class MainWindow(QMainWindow):
             if not kind.several or kind.named:
                 continue
             action = standard.addAction(
-                f"Add {kind.title}", lambda k=kind.name: self.panes.add(k, floating=True)
+                f"Additional {kind.title}", lambda k=kind.name: self.panes.add(k, floating=True)
             )
             action.setToolTip(
                 f"Open another {kind.title} pane, with settings of its own --\n"

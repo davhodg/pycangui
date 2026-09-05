@@ -235,8 +235,9 @@ filtered differently, a plot per subsystem, or the background traffic a rig
 needs left running beside a scratch list to try something in, are what this is
 for.
 
-Each entry reads *Add CAN Trace*, because that is what it does: a new pane arrives
-with settings of its own rather than a copy of the one you were looking at.
+Each entry reads *Additional CAN Trace*, because that is what you get: a new
+pane with settings of its own, not a copy of the one you were looking at and
+not the one that is already open.
 
 A pane you open arrives **in its own window**, in front of the main one, rather
 than squeezing into the space the panes already on screen were using.  Drag it
