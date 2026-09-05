@@ -54,13 +54,13 @@ def test_the_first_of_a_kind_is_named_after_the_kind(window):
     """Every layout and setting written before W4 names its pane this way."""
     assert "trace" in window.panes.docks
     assert window.panes.docks["trace"].objectName() == "trace"
-    assert window.panes.docks["trace"].windowTitle() == "Trace"
+    assert window.panes.docks["trace"].windowTitle() == "CAN Trace"
 
 
 def test_a_second_one_gets_a_name_and_a_title_of_its_own(window):
     name = window.panes.add("trace")
     assert name == "trace 2"
-    assert window.panes.docks[name].windowTitle() == "Trace 2"
+    assert window.panes.docks[name].windowTitle() == "CAN Trace 2"
 
 
 def test_the_docks_are_told_apart_by_their_object_names(window):
@@ -233,7 +233,7 @@ def test_an_extra_pane_comes_back_after_a_restart(app, tmp_path, monkeypatch):
 
     second = restart(app, first)
     assert "trace 2" in second.panes.docks
-    assert second.panes.docks["trace 2"].windowTitle() == "Trace 2"
+    assert second.panes.docks["trace 2"].windowTitle() == "CAN Trace 2"
     # Visible, which is the proof that the saved layout knew about it: the
     # panes are opened before restoreState so that it can place them, and a
     # pane it did not know about would still be hidden by the default arrangement.
@@ -298,14 +298,14 @@ def _submenu(window, title):
 
 def test_only_the_kinds_that_mean_something_twice_are_offered(window):
     offered = {a.text() for a in _submenu(window, "Standard panes").actions()}
-    assert offered == {"Add Trace", "Add Signals and Plot", "Add Transmit"}
+    assert offered == {"Add CAN Trace", "Add Signals and Plot", "Add Transmit"}
 
 
 def test_every_pane_is_listed_by_its_own_title(app, window):
     window.panes.add("trace")
     settle(app)
     listed = [a.text() for a in window.view_menu.actions()]
-    assert "Trace" in listed and "Trace 2" in listed
+    assert "CAN Trace" in listed and "CAN Trace 2" in listed
 
 
 def test_there_is_nothing_to_remove_until_there_is(app, window):
@@ -316,4 +316,4 @@ def test_there_is_nothing_to_remove_until_there_is(app, window):
     settle(app)
     remove = _submenu(window, "Remove pane")
     assert remove.isEnabled()
-    assert [a.text() for a in remove.actions()] == ["Trace 2"]
+    assert [a.text() for a in remove.actions()] == ["CAN Trace 2"]

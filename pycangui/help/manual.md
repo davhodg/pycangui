@@ -194,7 +194,7 @@ open the releases page.
 
 ## Panes and layout
 
-pycangui opens with three panes: the **Trace** with the **Event Log** beside
+pycangui opens with three panes: the **CAN Trace** with the **Event Log** beside
 it, and **Signals and Plot** spanning underneath.  The rest (CANopen, UDS, J1939,
 XCP, Transmit, Python Console) start hidden, because which of them you want
 depends on what you have plugged in; turn any on in the **View** menu, and
@@ -226,16 +226,16 @@ time.
 
 ### More than one of a pane
 
-*View > Standard panes* opens a second **Trace**, **Signals and Plot** or
+*View > Standard panes* opens a second **CAN Trace**, **Signals and Plot** or
 **Transmit** -- the panes pycangui comes with that you can have more than one
-of -- numbered after the first: Trace 2, Trace 3.  Each has settings
+of -- numbered after the first: CAN Trace 2, CAN Trace 3.  Each has settings
 of its own: its own filter, its own mode, its own plotted signals, its own
 list of messages, all remembered separately.  Two traces of the same capture
 filtered differently, a plot per subsystem, or the background traffic a rig
 needs left running beside a scratch list to try something in, are what this is
 for.
 
-Each entry reads *Add Trace*, because that is what it does: a new pane arrives
+Each entry reads *Add CAN Trace*, because that is what it does: a new pane arrives
 with settings of its own rather than a copy of the one you were looking at.
 
 A pane you open arrives **in its own window**, in front of the main one, rather
@@ -355,7 +355,7 @@ bitrate and the data rate never gets used.  Both follow the channel rather
 than the box that was ticked: a channel that opened classic offers 8 and
 nothing else.
 
-## The trace
+## The CAN Trace
 
 The trace narrows down in three ways, none of which discard anything: the
 **filter box** matches text against the id, the decoded name, the channel and
