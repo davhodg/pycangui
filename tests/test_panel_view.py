@@ -328,3 +328,141 @@ class _Fake:
 
     def write(self, index, sub, raw):
         self.written.append((index, sub, raw))
+
+
+# --- adding objects from the editor -----------------------------------------------------
+def demo_source():
+    """An EDS, so a panel can be built with no bus anywhere near it."""
+    from pathlib import Path
+
+    from pycangui import resources
+    from pycangui.panels.source import FileSource
+
+    return FileSource(Path(resources.__file__).parent / "demo.eds")
+
+
+def test_a_source_says_what_it_holds(app):
+    """An EDS knows the whole dictionary without a bus being present, which is
+    what lets a panel be built at a desk."""
+    entries = demo_source().objects()
+    assert entries, "the demo EDS has objects in it"
+    assert all(len(e) == 4 for e in entries)
+    assert (0x1018, 1) in {(index, sub) for index, sub, _n, _a in entries}
+
+
+def test_a_source_that_knows_nothing_says_nothing(app):
+    """A node with no EDS can still be read object by object; it just cannot
+    be browsed, and empty is the honest answer rather than a guess."""
+    from pycangui.panels.source import Source
+
+    assert Source().objects() == []
+
+
+def test_the_editor_offers_add(app, window):
+    """A dialog with Move up, Move down and Remove and no Add reads as an
+    oversight, because it was one."""
+    from PySide6.QtWidgets import QPushButton
+
+    from pycangui.ui.panel_view import PanelEditor
+
+    editor = PanelEditor(None, sample(), demo_source())
+    offered = {b.text() for b in editor.findChildren(QPushButton)}
+    assert {"Add...", "Move up", "Move down", "Remove"} <= offered
+    editor.deleteLater()
+
+
+def test_the_picker_lists_what_the_source_holds(app, window):
+    from pycangui.ui.panel_view import AddObjects
+
+    picker = AddObjects(None, demo_source())
+    assert picker.list.count() > 5
+    picker.deleteLater()
+
+
+def test_the_picker_searches_the_way_the_tree_does(app, window):
+    from pycangui.ui.panel_view import AddObjects
+
+    picker = AddObjects(None, demo_source())
+    picker.search.setText("vendor")
+    shown = [
+        picker.list.item(i).text()
+        for i in range(picker.list.count())
+        if not picker.list.item(i).isHidden()
+    ]
+    assert shown and all("vendor" in text.lower() for text in shown)
+    picker.deleteLater()
+
+
+def test_a_picked_object_arrives_named_and_shown_sensibly(app, window):
+    """A writable object is one to type into, a read-only one a reading."""
+    from pycangui.ui.panel_view import AddObjects
+
+    picker = AddObjects(None, demo_source())
+    picker.index.setText("1018")
+    picker.sub.setText("1")
+    field = picker._typed()
+    assert field.index == 0x1018 and field.sub == 1
+    assert field.label, "the file already knows what it is called"
+    assert field.kind == "value", "0x1018:01 is read-only"
+    picker.deleteLater()
+
+
+def test_an_index_nobody_has_a_name_for_is_still_added(app, window):
+    """Somebody with the documentation in front of them should not have to
+    find a node first."""
+    from pycangui.ui.panel_view import AddObjects
+
+    picker = AddObjects(None, None)
+    assert picker.list.count() == 0, "nothing to pick from, and that is not a dead end"
+    picker.index.setText("0x2001")
+    field = picker._typed()
+    assert (field.index, field.sub) == (0x2001, 0)
+    picker.deleteLater()
+
+
+def test_an_index_that_is_not_one_is_refused(app, window, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    from pycangui.ui.panel_view import AddObjects
+
+    said = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, text: said.append(text))
+    picker = AddObjects(None, None)
+    picker.index.setText("not an index")
+    assert picker._typed() is None
+    assert said and "not a hex object index" in said[0]
+    picker.deleteLater()
+
+
+def test_nothing_typed_is_not_an_object(app, window):
+    from pycangui.ui.panel_view import AddObjects
+
+    picker = AddObjects(None, demo_source())
+    assert picker._typed() is None
+    picker.deleteLater()
+
+
+def test_added_objects_land_on_the_panel(app, window, monkeypatch):
+    from PySide6.QtWidgets import QDialog
+
+    from pycangui.ui import panel_view
+
+    model.save("battery", Panel(title="Battery limits", fields=[]))
+    window.open_panel("battery")
+    view = window._panel_view("battery")
+    view.bind(demo_source())
+    settle(app)
+
+    added = [Field(index=0x2001, kind="number", label="Speed demand")]
+    monkeypatch.setattr(panel_view.AddObjects, "chosen_fields", lambda _self: added)
+    # Press Add, then OK, without either dialog appearing.
+    monkeypatch.setattr(
+        panel_view.PanelEditor, "exec", lambda self: (self._add(), QDialog.Accepted)[1]
+    )
+
+    view._edit()
+    settle(app)
+    assert [(f.index, f.label) for f in view.panel.fields] == [(0x2001, "Speed demand")]
+    assert [(f.index, f.label) for f in model.load("battery").fields] == [
+        (0x2001, "Speed demand")
+    ], "and written to the file"
