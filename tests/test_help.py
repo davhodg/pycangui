@@ -227,6 +227,28 @@ def test_every_pane_is_documented(app, window):
         assert dock.windowTitle().lower() in text, f"{dock.windowTitle()} is not in the manual"
 
 
+def test_the_manual_has_no_control_characters_in_it(app):
+    r"""A \b in a Python string is a backspace, not a folder separator.
+
+    One got into the manual that way, and the path a user needs in order to
+    find their backends folder shipped with a character missing.  Nothing that
+    renders a document would ever have complained about it.
+    """
+    from pycangui.help import manual_text
+
+    stray = sorted({ch for ch in manual_text() if ord(ch) < 32 and ch not in "\n\t"})
+    assert not stray, f"control characters in the manual: {[hex(ord(c)) for c in stray]}"
+
+
+def test_the_manual_spells_out_the_folders_it_sends_people_to(app):
+    """Whole and correct, because somebody has to type them."""
+    from pycangui.help import manual_text
+
+    text = manual_text()
+    assert r"%APPDATA%\pycangui" in text
+    assert r"%APPDATA%\pycangui\backends" in text
+
+
 def test_documentation_shows_the_manual_rather_than_a_browser(app, window, monkeypatch):
     """On a bench with no network, a Help menu that opens a browser is nothing."""
     from PySide6.QtGui import QDesktopServices

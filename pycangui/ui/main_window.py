@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Slot
+from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -45,8 +45,21 @@ from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
 from pycangui.ui.uds_view import UdsView
+from pycangui.ui.workspace_menu import SWITCH_WHILE_CONNECTED, WorkspaceMenu
 from pycangui.ui.xcp_view import XcpView
 from pycangui.xcp.manager import XcpManager
+
+
+def window_title() -> str:
+    """The workspace is named only when it is not the one everybody has.
+
+    Somebody with a single product should not be able to tell from the window
+    that workspaces were built, and a title bar reading "default" would be the
+    one place that gave it away.
+    """
+    name = workspaces.active()
+    return f"{APP_NAME} {__version__}" + ("" if name == workspaces.DEFAULT else f" - {name}")
+
 
 # Bumped whenever the set of docks changes.  restoreState declines a state
 # saved under a different version, so an old layout is replaced by the current
@@ -60,9 +73,14 @@ DEFAULT_VISIBLE = ("trace", "log", "scope")
 
 
 class MainWindow(QMainWindow):
+    #: Open this workspace instead.  Emitted rather than acted on, because a
+    #: switch is a full reload and the window that asks is the one that goes:
+    #: something outside it has to close it and open the next.
+    reopen_requested = Signal(str)
+
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(f"{APP_NAME} {__version__}")
+        self.setWindowTitle(window_title())
         self.resize(1400, 900)
         self.setDockNestingEnabled(True)  # full grid layouts, not just the four edges
 
@@ -181,6 +199,10 @@ class MainWindow(QMainWindow):
             "which means decoding it again elsewhere to get back what is\n"
             "already on screen here."
         )
+        file_menu.addSeparator()
+        self.workspace_menu = WorkspaceMenu(self, self.ctx)
+        self.workspace_menu.install(file_menu)
+        self.workspace_menu.switch_requested.connect(self._switch_workspace)
         file_menu.addSeparator()
         quit_action = file_menu.addAction("Exit", self.close)
         quit_action.setMenuRole(QAction.QuitRole)  # the Apple menu, where there is one
@@ -423,6 +445,33 @@ class MainWindow(QMainWindow):
                 "Tools > Demo CANopen device to have something to look at."
             )
         self.panes.restore_view_states()
+
+    @Slot(str)
+    def _switch_workspace(self, name: str) -> None:
+        """Open another workspace, once whoever is on a bus has agreed to it.
+
+        A workspace holds which channels at what bitrate, so opening one means
+        closing the channels this one has -- which is dropping off a live bus,
+        and stopping whatever was being sent cyclically onto it.  Worth a
+        question, and only when there is something to lose.
+        """
+        if name == self.ctx.workspace or not workspaces.exists(name):
+            return
+        if self.channels.any_connected:
+            connected = ", ".join(
+                n
+                for n in self.channels.names()
+                if (bus := self.channels.get(n)) is not None and bus.is_connected
+            )
+            agreed = self.confirm.ask(
+                self,
+                "workspace-switch",  # agreed once a session: it is the same loss each time
+                "Close the bus and open another workspace?",
+                SWITCH_WHILE_CONNECTED.format(name=connected, target=name),
+            )
+            if not agreed:
+                return
+        self.reopen_requested.emit(name)
 
     def _reset_layout(self) -> None:
         self.restoreState(self._default_state, LAYOUT_VERSION)
