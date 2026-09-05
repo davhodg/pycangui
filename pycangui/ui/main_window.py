@@ -4,18 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, QUrl, Slot
+from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QDockWidget,
     QFileDialog,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
-    QScrollArea,
     QStatusBar,
-    QVBoxLayout,
-    QWidget,
 )
 
 from pycangui import APP_NAME, __version__
@@ -40,10 +36,9 @@ from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
-from pycangui.ui.detached import DetachedPane
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
-from pycangui.ui.pane_bar import PaneBar
+from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
@@ -56,27 +51,6 @@ from pycangui.xcp.manager import XcpManager
 # saved under a different version, so an old layout is replaced by the current
 # default instead of being restored with panes missing.
 LAYOUT_VERSION = 4
-
-#: Events after which Qt may have put its own window flags back.  It does that
-#: whenever it moves a dock about -- at the end of a drag above all -- so
-#: "always on top" cannot be set once and forgotten.
-REAPPLY_AFTER = (
-    QEvent.Show,
-    QEvent.WindowActivate,
-    QEvent.NonClientAreaMouseButtonRelease,
-)
-
-#: Qt sends these to every window of the application when a modal dialog opens
-#: and when it closes.  A pinned pane has to stand down in between: it is above
-#: everything, the dialog included, and a dialog nobody can see or reach --
-#: while the window hiding it cannot be moved, because the dialog is holding
-#: the application -- is indistinguishable from a lock-up.
-BLOCKED, UNBLOCKED = QEvent.WindowBlocked, QEvent.WindowUnblocked
-
-#: Said once a session, the first time a pane is undocked.  Qt hit-tests the
-#: dock areas the whole time one is being dragged, so without this a pane
-#: cannot be put in front of the main window at all.
-UNDOCK_TIP = "Hold Ctrl while dragging an undocked pane to stop it docking again."
 
 #: Open on a first run.  Everything else is one click away in the View menu:
 #: nine panes at once is a wall, and which of the protocol panes you want
@@ -145,48 +119,32 @@ class MainWindow(QMainWindow):
         self.xcp = XcpManager(self.bus, self.hooks, self.signals, self.ctx)
         self.recorder = Recorder(self.channels)  # every connected channel
 
-        # --- docks -----------------------------------------------------------
-        self._docks: dict[str, QDockWidget] = {}
-        #: The button strip at the top of each pane, shown when it is out.
-        self._bars: dict[str, PaneBar] = {}
-        #: Panes given a window of their own, by name.
-        self._detached: dict[str, DetachedPane] = {}
-        #: Panes asked to stay above other windows.
-        self._on_top: set[str] = set()
-        #: Pinned panes standing down while a dialog is waiting for an answer.
-        self._suspended: set[str] = set()
-        #: Where a detached pane came from: floating or docked, and if it was
-        #: floating, where it was.  Attach puts it back there rather than
-        #: dropping it into the main window, which is not where it was.
-        self._came_from: dict[str, tuple[bool, object]] = {}
-        self._said_undock_tip = False
-        self.trace = TraceView(self.hooks, self.ctx)
-        self.trace.classifiers.append(self.dbc.message_name)
-        self.trace.classifiers.append(self.uds.classify)
-        self.trace.classifiers.append(self.j1939.classify)
-        self.trace.classifiers.append(self.xcp.classify)
-        self._add_dock("trace", "Trace", self.trace, Qt.LeftDockWidgetArea)
-        self.scope = ScopeView(self.signals, self.bus.now, self.ctx)
+        # --- panes -----------------------------------------------------------
+        #: Every dock, and how many of each kind there can be.  The window
+        #: names a pane to open it and then leaves it alone: a second trace
+        #: costs a registration rather than a rewrite, and a plugin or a
+        #: workspace opens one through the same door.
+        self.panes = Panes(self, self.ctx)
+        self._register_panes()
+        # The first of each kind is named after its kind, so every layout and
+        # setting written before any of this existed still names its own pane.
+        self.trace = self.panes.view(self.panes.add("trace"))
+        self.scope = self.panes.view(self.panes.add("scope"))
         # The two halves stay reachable by name: the Python console and the
         # docs refer to window.signals_view and window.plot.
         self.signals_view = self.scope.signals_view
         self.plot = self.scope.plot
-        self._add_dock("scope", "Signals and Plot", self.scope, Qt.LeftDockWidgetArea)
-        self.canopen_view = CanopenView(self.canopen, self.hooks, self.ctx)
-        self._add_dock("canopen", "CANopen", self.canopen_view, Qt.RightDockWidgetArea)
-        self.uds_view = UdsView(self.uds, self.ctx, self.confirm)
-        self._add_dock("uds", "UDS", self.uds_view, Qt.RightDockWidgetArea)
-        self.j1939_view = J1939View(self.j1939, self.ctx)
-        self._add_dock("j1939", "J1939", self.j1939_view, Qt.RightDockWidgetArea)
-        self.xcp_view = XcpView(self.xcp, self.ctx)
-        self._add_dock("xcp", "XCP", self.xcp_view, Qt.RightDockWidgetArea)
-        self.tx = TxView(self.bus, self.ctx, self.dbc, self.canopen, self.confirm)
-        self._add_dock("tx", "Transmit", self.tx, Qt.BottomDockWidgetArea)
-        self._add_dock("log", "Event Log", self.log, Qt.BottomDockWidgetArea)
-        self.console = ConsoleView(self._console_namespace(), self.ctx)
-        self._add_dock("console", "Python Console", self.console, Qt.BottomDockWidgetArea)
-        self.ascii = AsciiView(self.channels, self.ctx)
-        self._add_dock("ascii", "ASCII", self.ascii, Qt.BottomDockWidgetArea)
+        self.canopen_view = self.panes.view(self.panes.add("canopen"))
+        self.uds_view = self.panes.view(self.panes.add("uds"))
+        self.j1939_view = self.panes.view(self.panes.add("j1939"))
+        self.xcp_view = self.panes.view(self.panes.add("xcp"))
+        self.tx = self.panes.view(self.panes.add("tx"))
+        self.panes.add("log")
+        self.console = self.panes.view(self.panes.add("console"))
+        self.ascii = self.panes.view(self.panes.add("ascii"))
+        # Before the saved layout is restored, which places the docks that
+        # exist when it runs and nothing else.
+        self.panes.restore_instances()
         self._arrange_default()
 
         self.setStatusBar(QStatusBar())
@@ -195,7 +153,6 @@ class MainWindow(QMainWindow):
         self._status_timer.start()
 
         # --- wiring ----------------------------------------------------------
-        self.channels.frames.connect(self.trace.on_frames)
         self.channels.frames.connect(self._decode_frames)
         self.recorder.state.connect(self._on_record_state)
         self.recorder.error.connect(self.events.error)
@@ -231,12 +188,12 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.events.warning(f"A2L load failed: {exc}")
 
-        view_menu = self.menuBar().addMenu("&View")
-        for dock in self.findChildren(QDockWidget):
-            view_menu.addAction(dock.toggleViewAction())
-        view_menu.addSeparator()
-        view_menu.addAction("Dock all panes", self._dock_all)
-        view_menu.addAction("Reset layout", self._reset_layout)
+        self.view_menu = self.menuBar().addMenu("&View")
+        self._build_view_menu()
+        # Deferred by a turn of the loop: adding or removing a pane is usually
+        # this menu's own action doing it, and clearing a menu while it is
+        # delivering a click is not somewhere to be.
+        self.panes.changed.connect(lambda: QTimer.singleShot(0, self._build_view_menu))
 
         self._demo: DemoDevice | None = None
         tools_menu = self.menuBar().addMenu("&Tools")
@@ -262,7 +219,7 @@ class MainWindow(QMainWindow):
         self.help_menu = HelpMenu(self)
         self._default_state = self.saveState(LAYOUT_VERSION)
         self._restore_layout()
-        self._restore_pane_state()
+        self.panes.restore_state()
 
     # --- helpers -------------------------------------------------------------
     def _console_namespace(self) -> dict:
@@ -285,222 +242,129 @@ class MainWindow(QMainWindow):
             "send": send,
         }
 
-    def _add_dock(self, name: str, title: str, widget, area: Qt.DockWidgetArea) -> QDockWidget:
-        dock = QDockWidget(title, self)
-        self._docks[name] = dock
-        dock.setObjectName(name)  # saveState/restoreState identify docks by objectName
-        # Wrap in a scroll area so a pane shrunk below its natural minimum gets
-        # scrollbars instead of pushing its controls off screen.
-        scroll = QScrollArea()
-        scroll.setWidget(widget)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
+    # --- panes ---------------------------------------------------------------
+    def _register_panes(self) -> None:
+        """What sorts of pane there are, and which of them there can be several of.
 
-        # The buttons live at the top of the pane's own content rather than in
-        # a title bar: giving a dock a custom title bar makes Qt float it
-        # frameless, which would cost it the native frame and the move, resize
-        # and close that come with it.  Hidden while the pane is docked, since
-        # none of it applies then.
-        bar = PaneBar()
-        bar.hide()
-        bar.pinned.connect(lambda on, n=name: self._set_pane_on_top(n, on))
-        bar.detach_requested.connect(lambda n=name: self._detach_pane(n))
-        bar.attach_requested.connect(lambda n=name: self._restore_pane(n))
-        self._bars[name] = bar
-
-        container = QWidget()
-        stack = QVBoxLayout(container)
-        stack.setContentsMargins(0, 0, 0, 0)
-        stack.setSpacing(0)
-        stack.addWidget(bar)
-        stack.addWidget(scroll)
-        dock.setWidget(container)
-        dock.topLevelChanged.connect(lambda floating, d=dock: self._on_dock_floated(d, floating))
-        dock.installEventFilter(self)
-        self.addDockWidget(area, dock)
-        return dock
-
-    def _on_dock_floated(self, dock: QDockWidget, floating: bool) -> None:
-        """An undocked pane is left as Qt makes it, and given its buttons.
-
-        The buttons are at the top of the pane's own content, not in a title
-        bar: giving a dock a custom title bar makes Qt float it frameless, and
-        that costs it the native frame along with the move, resize and close
-        that come with it.
+        A trace and a plot earn a second instance and the rest do not, and the
+        test is what a second one would show: a trace filtered differently, or
+        a plot of other signals, is a different view of the same capture.  A
+        second Event Log is the same log twice, a second UDS pane is two faces
+        on one session, and a second transmit list is a question about which
+        of them is sending.
         """
-        name = next((n for n, d in self._docks.items() if d is dock), "")
-        # Visible as well as floating.  A pane that was undocked and then
-        # closed is restored floating but hidden, which said this at every
-        # start-up with nothing on screen to say it about.
-        if floating and dock.isVisible() and not self._said_undock_tip:
-            self._said_undock_tip = True
-            self.events.information(UNDOCK_TIP)
-        self._show_pane_bar(name)
-
-    def eventFilter(self, watched, event) -> bool:
-        """Put "always on top" and the buttons back after Qt has moved a pane."""
-        if event.type() in (BLOCKED, UNBLOCKED):
-            self._suspend_on_top(watched, event.type() == BLOCKED)
-        if isinstance(watched, QDockWidget) and event.type() in REAPPLY_AFTER:
-            # Deferred: Qt is part way through whatever it is doing to this
-            # pane, and setWindowFlags hides and re-shows the widget.
-            QTimer.singleShot(0, lambda d=watched: self._apply_on_top(d))
-            # A pane restored floating is shown *after* topLevelChanged says so,
-            # so asking then found it invisible and left it without its buttons.
-            name = next((n for n, d in self._docks.items() if d is watched), "")
-            if name:
-                QTimer.singleShot(0, lambda n=name: self._show_pane_bar(n))
-        return super().eventFilter(watched, event)
-
-    # --- what an undocked pane can be asked to do ------------------------------------
-    def _show_pane_bar(self, name: str) -> None:
-        """Show the strip while the pane is out, and say what it can do."""
-        bar = self._bars.get(name)
-        dock = self._docks.get(name)
-        if bar is None or dock is None:
-            return
-        detached = name in self._detached
-        if detached and dock.isVisible():
-            # There is nothing in it -- the pane is in a window of its own --
-            # so an empty one must not be left on screen.  Qt shows a restored
-            # floating dock *after* the layout is put back, which is after the
-            # pane was taken out of it, so hiding it once is not enough.
-            dock.hide()
-        bar.setVisible((dock.isFloating() and dock.isVisible()) or detached)
-        bar.set_detached(detached)
-        bar.set_pinned(name in self._on_top)
-
-    def _suspend_on_top(self, watched, blocked: bool) -> None:
-        """Stand a pinned pane down while a dialog waits, and put it back after.
-
-        Without this a warning can open behind a pinned window, where it
-        cannot be read, and the window cannot be moved out of the way either,
-        because the dialog is holding the application.  Nothing on screen says
-        why, which is worse than the warning going unread.
-        """
-        name = next(
-            (
-                n
-                for n in self._docks
-                if watched is self._docks[n] or watched is self._detached.get(n)
+        for kind in (
+            PaneKind(
+                "trace",
+                "Trace",
+                Qt.LeftDockWidgetArea,
+                self._new_trace,
+                several=True,
+                shutdown=self._drop_trace,
             ),
-            "",
-        )
-        if not name or name not in self._on_top:
-            return
-        if blocked:
-            self._suspended.add(name)
-        else:
-            self._suspended.discard(name)
-        if (window := self._detached.get(name)) is not None:
-            window.set_on_top(not blocked)
-        else:
-            self._apply_on_top(self._docks[name])
+            PaneKind(
+                "scope",
+                "Signals and Plot",
+                Qt.LeftDockWidgetArea,
+                lambda _name: ScopeView(self.signals, self.bus.now, self.ctx),
+                several=True,
+            ),
+            PaneKind(
+                "canopen",
+                "CANopen",
+                Qt.RightDockWidgetArea,
+                lambda _name: CanopenView(self.canopen, self.hooks, self.ctx),
+            ),
+            PaneKind(
+                "uds",
+                "UDS",
+                Qt.RightDockWidgetArea,
+                lambda _name: UdsView(self.uds, self.ctx, self.confirm),
+            ),
+            PaneKind(
+                "j1939",
+                "J1939",
+                Qt.RightDockWidgetArea,
+                lambda _name: J1939View(self.j1939, self.ctx),
+            ),
+            PaneKind(
+                "xcp",
+                "XCP",
+                Qt.RightDockWidgetArea,
+                lambda _name: XcpView(self.xcp, self.ctx),
+            ),
+            PaneKind(
+                "tx",
+                "Transmit",
+                Qt.BottomDockWidgetArea,
+                lambda _name: TxView(self.bus, self.ctx, self.dbc, self.canopen, self.confirm),
+            ),
+            PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
+            PaneKind(
+                "console",
+                "Python Console",
+                Qt.BottomDockWidgetArea,
+                lambda _name: ConsoleView(self._console_namespace(), self.ctx),
+            ),
+            PaneKind(
+                "ascii",
+                "ASCII",
+                Qt.BottomDockWidgetArea,
+                lambda _name: AsciiView(self.channels, self.ctx),
+            ),
+        ):
+            self.panes.register(kind)
 
-    def _apply_on_top(self, dock: QDockWidget) -> None:
-        """Keep a floating pane above other windows, if that was asked for."""
-        name = next((n for n, d in self._docks.items() if d is dock), "")
-        wanted = dock.isFloating() and name in self._on_top and name not in self._suspended
-        flags = dock.windowFlags()
-        if flags & Qt.FramelessWindowHint:
-            return  # still being dragged; Qt gives it a frame when it lands
-        if bool(flags & Qt.WindowStaysOnTopHint) == wanted:
-            return  # nothing to do, and setWindowFlags would hide the window
-        dock.setWindowFlags(
-            flags | Qt.WindowStaysOnTopHint if wanted else flags & ~Qt.WindowStaysOnTopHint
-        )
-        dock.show()
-        if (widget := dock.widget()) is not None:
-            widget.show()  # the window was rebuilt, so its contents are hidden
-        if wanted:
-            dock.raise_()
+    def _new_trace(self, name: str) -> TraceView:
+        """A trace, fed the capture and told which settings are its own."""
+        view = TraceView(self.hooks, self.ctx, key=name)
+        view.classifiers.append(self.dbc.message_name)
+        view.classifiers.append(self.uds.classify)
+        view.classifiers.append(self.j1939.classify)
+        view.classifiers.append(self.xcp.classify)
+        self.channels.frames.connect(view.on_frames)
+        return view
 
-    def _save_pane_state(self) -> None:
-        """Which panes are out on their own, and which are pinned.
+    def _drop_trace(self, view: TraceView) -> None:
+        """Stop feeding a trace that has been closed for good.
 
-        Settled choices like any other, so they survive a restart: a pane left
-        on a second monitor came back closed, because putting it away on the
-        way out was the last thing saved about it.
+        Qt would drop the connection when the widget is deleted, but deletion
+        is deferred: without this, frames go on arriving at a pane that is no
+        longer on screen for as long as it takes the event loop to come round.
         """
-        self.ctx.settings.set("panes.detached", sorted(self._detached))
-        self.ctx.settings.set("panes.on_top", sorted(self._on_top))
+        self.channels.frames.disconnect(view.on_frames)
 
-    def _restore_pane_state(self) -> None:
-        """Detach and pin again whatever was when pycangui last closed."""
-        self._on_top = {
-            name for name in self.ctx.settings.get("panes.on_top", []) if name in self._docks
-        }
-        for name in self.ctx.settings.get("panes.detached", []):
-            if name in self._docks:
-                self._detach_pane(name)
-        for name in self._docks:
-            self._apply_on_top(self._docks[name])
-            self._show_pane_bar(name)
+    def _build_view_menu(self) -> None:
+        """Every pane, and the two things you can do to the set of them."""
+        self.view_menu.clear()
+        for name in self.panes.names():
+            self.view_menu.addAction(self.panes.docks[name].toggleViewAction())
+        self.view_menu.addSeparator()
 
-    def _set_pane_on_top(self, name: str, on: bool) -> None:
-        self._on_top.add(name) if on else self._on_top.discard(name)
-        self._save_pane_state()
-        if (window := self._detached.get(name)) is not None:
-            window.set_on_top(on)
-        elif (dock := self._docks.get(name)) is not None:
-            self._apply_on_top(dock)
-        # Rebuilding a window hides what is in it, the button strip included,
-        # so put it back rather than leave the pane without its buttons.
-        self._show_pane_bar(name)
+        new = self.view_menu.addMenu("New pane")
+        new.setToolTipsVisible(True)
+        for kind in self.panes.kinds.values():
+            if not kind.several:
+                continue
+            action = new.addAction(kind.title, lambda k=kind.name: self.panes.add(k))
+            action.setToolTip(
+                f"Open another {kind.title} pane, with settings of its own.\n"
+                "Drop one onto another to tab them, or drag it out to a window."
+            )
 
-    def _detach_pane(self, name: str) -> None:
-        """Give a pane a window of its own, with no dock behind it."""
-        dock = self._docks.get(name)
-        if dock is None or name in self._detached:
-            return
-        widget = dock.widget()
-        if widget is None:
-            return
-        # Where to put it back.  Attaching a pane that was floating should
-        # float it again: the main window is not where it was.
-        self._came_from[name] = (dock.isFloating(), dock.geometry())
-        dock.setWidget(None)
-        dock.hide()
-        window = DetachedPane(name, dock.windowTitle(), widget, on_top=name in self._on_top)
-        window.closed.connect(self._reattach_pane)
-        window.installEventFilter(self)  # so a dialog can get in front of it
-        self._detached[name] = window
-        self._show_pane_bar(name)
-        window.show()
-        self._save_pane_state()
+        extras = self.panes.extras()
+        remove = self.view_menu.addMenu("Remove pane")
+        remove.setEnabled(bool(extras))
+        remove.setToolTipsVisible(True)
+        for name in extras:
+            action = remove.addAction(
+                self.panes.docks[name].windowTitle(), lambda n=name: self.panes.remove(n)
+            )
+            action.setToolTip("Close this pane for good.  Closing its window only puts it away.")
 
-    @Slot(str)
-    def _reattach_pane(self, name: str, show: bool = False) -> None:
-        """Put a detached pane back in its dock.
-
-        Hidden unless asked otherwise: closing a window means closing it,
-        exactly as closing a docked pane does, and a pane that reappeared in
-        the main window because you had shut it would be answering a question
-        nobody asked.  The widget goes home either way, so the View menu can
-        show it again.
-        """
-        window = self._detached.pop(name, None)
-        dock = self._docks.get(name)
-        if window is None or dock is None:
-            return
-        if (widget := window.release()) is not None:
-            dock.setWidget(widget)
-            widget.show()  # release() reparented it, which hides it
-        was_floating, geometry = self._came_from.pop(name, (False, None))
-        dock.setFloating(was_floating)
-        if was_floating and geometry is not None:
-            dock.setGeometry(geometry)
-        dock.setVisible(show)
-        self._show_pane_bar(name)
-        self._save_pane_state()
-
-    def _restore_pane(self, name: str) -> None:
-        """Bring a detached pane back into the window, and show it."""
-        if (window := self._detached.get(name)) is not None:
-            window.close()  # its closed signal hands the widget back
-        self._reattach_pane(name, show=True)
-        if (dock := self._docks.get(name)) is not None:
-            dock.show()
+        self.view_menu.addSeparator()
+        self.view_menu.addAction("Dock all panes", self.panes.dock_all)
+        self.view_menu.addAction("Reset layout", self._reset_layout)
 
     def _arrange_default(self) -> None:
         """The layout a first run opens with: the trace, the log, and the plot.
@@ -509,7 +373,7 @@ class MainWindow(QMainWindow):
         lists every pane, and showing one puts it back in the area it was
         added to, so the protocol panes still arrive on the right.
         """
-        trace, log, scope = (self._docks[n] for n in DEFAULT_VISIBLE)
+        trace, log, scope = (self.panes.docks[n] for n in DEFAULT_VISIBLE)
         # The trace and the log share the top row and the plot spans below
         # them: both of those want width, and the log's lines are short.
         # Nested splits inside one area rather than the four edges, which is
@@ -517,7 +381,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.LeftDockWidgetArea, trace)
         self.splitDockWidget(trace, scope, Qt.Vertical)
         self.splitDockWidget(trace, log, Qt.Horizontal)
-        for name, dock in self._docks.items():
+        for name, dock in self.panes.docks.items():
             dock.setVisible(name in DEFAULT_VISIBLE)
         self.resizeDocks([trace, log], [7, 3], Qt.Horizontal)
         self.resizeDocks([trace, scope], [6, 4], Qt.Vertical)
@@ -530,7 +394,9 @@ class MainWindow(QMainWindow):
         # restoreState declines a layout saved under an older LAYOUT_VERSION,
         # which leaves the default in place -- the same as never having run.
         if state is None or not self.restoreState(state, LAYOUT_VERSION):
-            hidden = [d.windowTitle() for n, d in self._docks.items() if n not in DEFAULT_VISIBLE]
+            hidden = [
+                d.windowTitle() for n, d in self.panes.docks.items() if n not in DEFAULT_VISIBLE
+            ]
             self.events.information(
                 f"Panes for {', '.join(hidden)} are hidden to start with: "
                 "turn any of them on in the View menu."
@@ -541,23 +407,7 @@ class MainWindow(QMainWindow):
                 "No hardware?  Connect on the virtual channel and switch on "
                 "Tools > Demo CANopen device to have something to look at."
             )
-        self.scope.restore_state(s.value("scopeSplitter"))
-
-    def _dock_all(self) -> None:
-        """Put every undocked pane back.
-
-        A floating pane is a window of its own, so it can end up behind the
-        main one -- the taskbar will find it, but this is the way back that
-        does not depend on knowing where it went.
-        """
-        for name in list(self._detached):
-            self._restore_pane(name)
-        floating = [dock for dock in self._docks.values() if dock.isFloating()]
-        for dock in floating:
-            dock.setFloating(False)
-        self.events.information(
-            f"Docked {len(floating)} pane(s)." if floating else "No panes are undocked."
-        )
+        self.panes.restore_view_states()
 
     def _reset_layout(self) -> None:
         self.restoreState(self._default_state, LAYOUT_VERSION)
@@ -566,15 +416,14 @@ class MainWindow(QMainWindow):
         s = QSettings()
         s.setValue("geometry", self.saveGeometry())
         s.setValue("windowState", self.saveState(LAYOUT_VERSION))
-        s.setValue("scopeSplitter", self.scope.save_state())
+        self.panes.save_view_states()
         # Saved before they are closed: closing one puts its pane away, and
         # what is saved should be how things were left, not how they were
         # tidied up.
-        self._save_pane_state()
-        for name in list(self._detached):
-            # Parentless windows of their own, so they would keep the
-            # application running after the main window had gone.
-            self._detached.pop(name).close()
+        self.panes.save()
+        # Parentless windows of their own, so they would keep the application
+        # running after the main window had gone.
+        self.panes.close_detached()
         # And the same for any ASCII stream popped out into a window.
         self.ascii.shutdown()
         self.replay.stop()
@@ -620,8 +469,9 @@ class MainWindow(QMainWindow):
 
     def _show_log(self) -> None:
         self._surfacing = False
-        dock = getattr(self, "_docks", {}).get("log")
-        if dock is None or "log" in getattr(self, "_detached", {}):
+        panes = getattr(self, "panes", None)
+        dock = None if panes is None else panes.docks.get("log")
+        if dock is None or "log" in panes.detached:
             return  # too early to have a pane, or it has a window of its own
         if not dock.isVisible():
             dock.show()

@@ -78,6 +78,20 @@ Which panes are out on their own, and which are pinned, are remembered like
 the rest of the settings: a pane left on a second monitor is still there next
 time.
 
+### More than one of a pane
+
+*View > New pane* opens a second **Trace** or **Signals and Plot**, numbered
+after the first -- Trace 2, Trace 3.  Each has settings of its own: its own
+filter, its own mode, its own plotted signals, all remembered separately.  Two
+traces of the same capture filtered differently, or a plot per subsystem, are
+what this is for, and a new pane behaves like any other -- dock it, float it,
+pin it, or drop it onto another to tab them.
+
+Closing one puts it away and *View* brings it back, exactly as for the panes
+that are always there.  *View > Remove pane* is the other thing: it closes one
+for good and forgets it.  The first pane of each sort cannot be removed --
+that one is the pane.
+
 Controls whose effect is not written on them explain themselves on hover: the
 UDS service behind a button, what a routine's Start actually sends, that
 clearing DTCs takes the freeze frames with them, that an RPDO needs the node's

@@ -250,8 +250,11 @@ def test_no_pane_hides_a_qwidget_method(app, tmp_path, monkeypatch):
     window = MainWindow()
     hidden = [
         f"{name}.{attr}"
-        for name, dock in window._docks.items()
-        if (pane := dock.widget()) is not None
+        for name in window.panes.names()
+        # The pane, not the dock's widget: that is a container holding the
+        # button strip and a scroll area, and asking it walked six Qt signals
+        # and none of the panes this was written to check.
+        if (pane := window.panes.view(name)) is not None
         for attr, value in vars(pane).items()
         # Qt keeps its own bound signals in here too, and those are meant to be
         # there; a child widget under one of those names is the mistake.

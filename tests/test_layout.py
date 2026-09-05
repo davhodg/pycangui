@@ -20,12 +20,12 @@ def window(app, tmp_path, monkeypatch):
 
 def test_only_three_panes_are_open_to_start_with(app, window):
     """Nine panes at once is a wall; the rest are one click away in View."""
-    visible = {name for name, dock in window._docks.items() if dock.isVisible()}
+    visible = {name for name, dock in window.panes.docks.items() if dock.isVisible()}
     assert visible == set(DEFAULT_VISIBLE) == {"trace", "log", "scope"}
 
 
 def test_the_log_sits_beside_the_trace_with_the_plot_below(app, window):
-    trace, log, scope = (window._docks[n].geometry() for n in ("trace", "log", "scope"))
+    trace, log, scope = (window.panes.docks[n].geometry() for n in ("trace", "log", "scope"))
     assert log.x() > trace.x(), "the log is to the right of the trace..."
     assert log.y() == trace.y(), "...sharing the top row with it"
     assert trace.width() > log.width(), "and the trace gets the greater share of the width"
@@ -34,7 +34,7 @@ def test_the_log_sits_beside_the_trace_with_the_plot_below(app, window):
 
 
 def test_a_hidden_pane_comes_back_where_it_belongs(app, window):
-    dock = window._docks["canopen"]
+    dock = window.panes.docks["canopen"]
     assert not dock.isVisible()
     dock.toggleViewAction().trigger()  # what the View menu does
     app.processEvents()
@@ -43,12 +43,12 @@ def test_a_hidden_pane_comes_back_where_it_belongs(app, window):
 
 
 def test_reset_layout_puts_the_extra_panes_away_again(app, window):
-    window._docks["canopen"].toggleViewAction().trigger()
-    window._docks["console"].toggleViewAction().trigger()
+    window.panes.docks["canopen"].toggleViewAction().trigger()
+    window.panes.docks["console"].toggleViewAction().trigger()
     app.processEvents()
     window._reset_layout()
     app.processEvents()
-    visible = {name for name, dock in window._docks.items() if dock.isVisible()}
+    visible = {name for name, dock in window.panes.docks.items() if dock.isVisible()}
     assert visible == set(DEFAULT_VISIBLE)
 
 
