@@ -258,7 +258,7 @@ class AsciiView(QWidget):
         try:
             can_id = int(text, 16)
         except ValueError:
-            self.ctx.warn(f"ASCII: {text!r} is not a hex id")
+            self.ctx.warn(f"ASCII Log: {text!r} is not a hex id")
             return
         stream = Stream(
             can_id=can_id,
@@ -267,7 +267,7 @@ class AsciiView(QWidget):
             skip=self.skip.value(),
         )
         if not self.add_stream(stream):
-            self.ctx.warn(f"ASCII: {stream.title} is already being read")
+            self.ctx.warn(f"ASCII Log: {stream.title} is already being read")
             return
         self.id_edit.clear()
         self.name_edit.clear()
@@ -307,7 +307,7 @@ class AsciiView(QWidget):
         if index >= 0:
             self.tabs.removeTab(index)  # removeTab does not delete the widget
         stream = next(s for s in self._streams if s.key == key)
-        window = DetachedPane(key, f"{stream.title} (ASCII)", text)
+        window = DetachedPane(key, f"{stream.title} (ASCII Log)", text)
         window.closed.connect(self._take_back)
         self._windows[key] = window
         window.show()

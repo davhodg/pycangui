@@ -351,9 +351,9 @@ standard, so it is editable.  What either routine is *sent* comes from
 address and length in the ISO format; a bootloader wanting a CRC of what it
 was given is a couple of lines there.
 
-## ASCII
+## ASCII Log
 
-The **ASCII** pane reads a CAN id as text.  Some devices use an id as a
+The **ASCII Log** pane reads a CAN id as text.  Some devices use an id as a
 console and print into the data bytes a few characters at a time.  No protocol
 settles which identifier that happens on -- CANopen has objects for a console,
 but an object is not an identifier -- so you give it the ids.

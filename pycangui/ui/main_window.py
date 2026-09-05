@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Slot
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -180,6 +180,10 @@ class MainWindow(QMainWindow):
             "which means decoding it again elsewhere to get back what is\n"
             "already on screen here."
         )
+        file_menu.addSeparator()
+        quit_action = file_menu.addAction("Exit", self.close)
+        quit_action.setMenuRole(QAction.QuitRole)  # the Apple menu, where there is one
+        quit_action.setShortcut(QKeySequence.Quit)
         for path in self.ctx.settings.get("dbc.paths", []):
             self._load_dbc(path)
         if (a2l := self.ctx.settings.get("xcp.a2l")) and Path(a2l).exists():
@@ -307,8 +311,11 @@ class MainWindow(QMainWindow):
                 lambda _name: ConsoleView(self._console_namespace(), self.ctx),
             ),
             PaneKind(
+                # The kind keeps its old name: it is the dock's objectName, and
+                # it is what the saved streams are filed under.  Only the title
+                # changes, which is the part anybody reads.
                 "ascii",
-                "ASCII",
+                "ASCII Log",
                 Qt.BottomDockWidgetArea,
                 lambda _name: AsciiView(self.channels, self.ctx),
             ),

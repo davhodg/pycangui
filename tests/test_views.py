@@ -30,17 +30,103 @@ def test_latest_model_one_row_per_id_with_count_and_period(app):
     assert row0[0] == "100" and row0[5] == "03" and row0[6] == "2" and row0[8] == "100.0 ms"
     assert m.index(0, 5).data(Qt.ForegroundRole) is not None  # data changed -> highlighted
     assert m.index(1, 5).data(Qt.ForegroundRole) is None
-    assert m.index(0, 7).data() == ""  # no rate until refreshed
+    assert m.index(1, 7).data() == "", "one frame is not a rate"
 
 
-def test_latest_model_rate(app):
+# --- rate and cycle time -----------------------------------------------------------------
+def cyclic(m, can_id, period, count, start=0.0):
+    """Feed one id at a fixed period, as a bus would."""
+    m.append([frame(can_id, b"", start + period * i) for i in range(count)])
+
+
+def test_a_rate_appears_as_soon_as_there_are_two_frames(app):
+    """Two arrivals are a gap, and a gap is an answer.  Waiting adds nothing."""
     m = LatestModel()
-    m.append([frame(0x100, b"", 0.0)])
-    m._rows[0].last_rate_time -= 1.0  # pretend a second has elapsed
-    m.append([frame(0x100, b"", 0.1 * i) for i in range(1, 10)])  # 9 more frames
+    cyclic(m, 0x100, 0.1, 2)
+    assert m.index(0, 7).data() == "10.0 Hz"
+
+
+def test_a_fast_message_is_measured_over_recent_arrivals(app):
+    m = LatestModel()
+    cyclic(m, 0x100, 0.01, 200)  # 100 Hz
     m.refresh_rates()
-    assert m.index(0, 7).data().endswith("Hz")
-    assert 8.0 <= m._rows[0].rate_hz <= 10.5
+    assert m._rows[0].rate_hz == pytest.approx(100.0, rel=0.05)
+
+
+@pytest.mark.parametrize("hz", [2.0, 1.0, 0.5, 0.2])
+def test_a_slow_message_is_measured_correctly(app, hz):
+    """The old figure counted arrivals per refresh, and half a second holds
+    none of these -- so it alternated between nothing and twice the truth."""
+    m = LatestModel()
+    cyclic(m, 0x100, 1 / hz, 12)
+    m.refresh_rates()
+    assert m._rows[0].rate_hz == pytest.approx(hz, rel=0.01)
+    assert m._rows[0].period_s == pytest.approx(1 / hz, rel=0.01)
+
+
+def test_a_message_slower_than_the_window_still_gets_an_answer(app):
+    """One frame a minute: the only thing available about it is the minute."""
+    m = LatestModel()
+    cyclic(m, 0x100, 60.0, 3)
+    m.refresh_rates()
+    assert m._rows[0].period_s == pytest.approx(60.0)
+    assert m.index(0, 8).data() == "60.00 s", "read in seconds once it is not milliseconds"
+
+
+def test_the_rate_and_the_cycle_time_cannot_disagree(app):
+    """They are the same measurement, so they are the same measurement."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.02, 40)
+    m.refresh_rates()
+    row = m._rows[0]
+    assert row.rate_hz == pytest.approx(1 / row.period_s)
+
+
+def test_a_stopped_message_has_no_rate(app):
+    """Saying it still runs at 50 Hz because it used to is the wrong answer."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.02, 40)
+    m.refresh_rates()
+    assert m._rows[0].rate_hz > 0
+    m._rows[0].last_seen -= 5.0  # nothing for five seconds
+    m.refresh_rates()
+    assert m._rows[0].rate_hz == 0.0
+    assert m.index(0, 7).data() == ""
+
+
+def test_a_slow_message_is_not_mistaken_for_a_stopped_one(app):
+    """Two seconds of silence is a stop for a fast message and a gap for this one."""
+    m = LatestModel()
+    cyclic(m, 0x100, 2.0, 4)  # one every two seconds
+    m._rows[0].last_seen -= 3.0
+    m.refresh_rates()
+    assert m._rows[0].rate_hz == pytest.approx(0.5)
+
+
+def test_a_changed_rate_is_picked_up_rather_than_averaged_in(app):
+    """Arrivals older than the window drop out, so the figure describes now."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.5, 10)  # 2 Hz for five seconds
+    cyclic(m, 0x100, 0.02, 60, start=10.0)  # then 50 Hz
+    m.refresh_rates()
+    assert m._rows[0].rate_hz == pytest.approx(50.0, rel=0.1)
+
+
+def test_time_starting_over_does_not_report_a_negative_rate(app):
+    """A reconnect restarts bus time at zero, and a replay loops."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.1, 10)
+    cyclic(m, 0x100, 0.1, 10)  # the same timestamps again
+    m.refresh_rates()
+    assert m._rows[0].rate_hz == pytest.approx(10.0, rel=0.1)
+
+
+def test_a_rate_below_one_hertz_keeps_a_second_decimal(app):
+    """One would round 0.2 Hz to 0.2 and 0.04 Hz to nothing at all."""
+    m = LatestModel()
+    cyclic(m, 0x100, 5.0, 3)
+    m.refresh_rates()
+    assert m.index(0, 7).data() == "0.20 Hz"
 
 
 def wait(app, pred, timeout=2.0):
