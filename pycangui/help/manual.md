@@ -627,6 +627,25 @@ plugin added last time before loading it again, so editing one and pressing
 reload is how it gets written -- there is no need to restart, and no second
 copy of its pane appears beside the first.
 
+### The plugins that ship with it
+
+**Firmware** downloads a program to a CANopen node by CiA 302-3: stop the
+program (0x1F51), clear it, write the image as a domain (0x1F50), start it
+again.  Intel HEX, S-record and raw binary are all read; the image has to be
+one contiguous block, because a program download *is* one block of bytes and
+filling the gaps would put invented bytes into somebody's flash.
+
+**Most devices do not do it that way.**  Firmware download over CANopen is
+usually a sequence of the maker's own writes to objects of their own choosing,
+and no amount of standards reading will produce it.  That is exactly why it is
+a plugin: copy its folder into `plugins/` in your workspace and edit
+`program.py` to be what the device actually wants.  Yours replaces ours, and
+the pane, the progress bar and the reporting go on working.
+
+While a device is being programmed it answers very little and slowly, so
+timeouts are the expected thing rather than a fault -- and pulling the power
+part way through is how a controller is turned into a brick.
+
 pycangui's own plugins are loaded the same way, from the same kind of folder.
 One of yours with the same name replaces one of ours, exactly as a hook file
 does.
