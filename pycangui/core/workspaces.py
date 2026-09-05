@@ -124,6 +124,12 @@ def eds_dir() -> Path:
     return _made(active_dir() / "eds")
 
 
+def panels_dir() -> Path:
+    """The user's own panels.  Beside the hooks, because a panel is knowledge
+    about a product in exactly the way a hook is, and the two travel together."""
+    return _made(active_dir() / "panels")
+
+
 def settings_path() -> Path:
     return active_dir() / "settings.json"
 

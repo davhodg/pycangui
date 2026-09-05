@@ -1,0 +1,48 @@
+"""User-composed panels: a named group of objects laid out as a form.
+
+The object dictionary shows one object per row sorted by index, which is the
+right way to *find* an object and the wrong way to *use* one.  Reading six
+related parameters means six double-clicks in three parts of a tree of fifteen
+hundred rows, and doing it again tomorrow means finding them again.
+
+A panel is that group, named and kept: a title, and a list of objects each with
+a label and a way of being shown.  Building one takes no code -- pick the
+objects and say what they are -- and it opens as a dock like any other pane, so
+two panels can sit side by side comparing two nodes.
+
+The panels are readable JSON in the workspace, beside the hooks that give their
+objects meaning, so one can be edited by hand and sent to a colleague along with
+the EDS it belongs to.
+"""
+
+from pycangui.panels.model import (
+    KINDS,
+    Field,
+    Panel,
+    delete,
+    directory,
+    load,
+    names,
+    path_for,
+    problems,
+    save,
+    why_not,
+)
+from pycangui.panels.source import FileSource, NodeSource, Source
+
+__all__ = [
+    "KINDS",
+    "Field",
+    "FileSource",
+    "NodeSource",
+    "Panel",
+    "Source",
+    "delete",
+    "directory",
+    "load",
+    "names",
+    "path_for",
+    "problems",
+    "save",
+    "why_not",
+]
