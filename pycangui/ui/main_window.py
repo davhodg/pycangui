@@ -8,6 +8,7 @@ from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
+    QInputDialog,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
@@ -31,6 +32,7 @@ from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.signals import SignalHub
 from pycangui.j1939.manager import J1939Manager
+from pycangui.panels import model as panel_model
 from pycangui.uds.manager import UdsManager
 from pycangui.ui.ascii_view import AsciiView
 from pycangui.ui.canopen_view import CanopenView
@@ -39,6 +41,7 @@ from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
+from pycangui.ui.panel_view import PanelView
 from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.scope_view import ScopeView
@@ -59,6 +62,19 @@ def window_title() -> str:
     """
     name = workspaces.active()
     return f"{APP_NAME} {__version__}" + ("" if name == workspaces.DEFAULT else f" - {name}")
+
+
+#: A panel pane is named after the panel it shows, so that reopening the
+#: workspace reopens the same panels and two panels are two docks.
+PANEL_PREFIX = "panel:"
+
+
+def panel_instance(name: str) -> str:
+    return f"{PANEL_PREFIX}{name}"
+
+
+def panel_name(instance: str) -> str:
+    return instance[len(PANEL_PREFIX) :] if instance.startswith(PANEL_PREFIX) else instance
 
 
 # Bumped whenever the set of docks changes.  restoreState declines a state
@@ -154,6 +170,7 @@ class MainWindow(QMainWindow):
         self.signals_view = self.scope.signals_view
         self.plot = self.scope.plot
         self.canopen_view = self.panes.view(self.panes.add("canopen"))
+        self.canopen_view.add_to_panel.connect(self._add_to_panel)
         self.uds_view = self.panes.view(self.panes.add("uds"))
         self.j1939_view = self.panes.view(self.panes.add("j1939"))
         self.xcp_view = self.panes.view(self.panes.add("xcp"))
@@ -326,6 +343,14 @@ class MainWindow(QMainWindow):
                 Qt.BottomDockWidgetArea,
                 lambda _name: TxView(self.bus, self.ctx, self.dbc, self.canopen, self.confirm),
             ),
+            PaneKind(
+                "panel",
+                "Panel",
+                Qt.RightDockWidgetArea,
+                self._new_panel,
+                several=True,
+                named=True,
+            ),
             PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
             PaneKind(
                 "console",
@@ -355,6 +380,81 @@ class MainWindow(QMainWindow):
         self.channels.frames.connect(view.on_frames)
         return view
 
+    def _new_panel(self, instance: str) -> PanelView:
+        """One panel, by the name its file is kept under.
+
+        The instance name carries it -- ``panel:Battery limits`` -- so that the
+        workspace reopens the same panels it was closed with, and two panels
+        are two docks rather than one pane with a selector in it.
+        """
+        name = panel_name(instance)
+        panel = panel_model.load(name) or panel_model.Panel(title=name)
+        view = PanelView(name, panel, self.canopen, self.ctx)
+        view.changed.connect(lambda n=name: self._on_panel_changed(n))
+        return view
+
+    def open_panel(self, name: str) -> str:
+        """Open a panel by name, making an empty one if there is no file yet."""
+        panel = panel_model.load(name)
+        if panel is None:
+            panel = panel_model.Panel(title=name)
+            panel_model.save(name, panel)
+        return self.panes.add(
+            "panel", name=panel_instance(name), title=panel.title or name, show=True
+        )
+
+    def _panel_view(self, name: str) -> PanelView | None:
+        view = self.panes.view(panel_instance(name))
+        return view if isinstance(view, PanelView) else None
+
+    def _on_panel_changed(self, name: str) -> None:
+        """A panel renamed itself, so its dock should say so too."""
+        view = self._panel_view(name)
+        dock = self.panes.docks.get(panel_instance(name))
+        if view is not None and dock is not None:
+            dock.setWindowTitle(view.panel.title or name)
+
+    def _new_panel_dialog(self) -> None:
+        name, chose = QInputDialog.getText(self, "New panel", "A name for it:")
+        if not chose:
+            return
+        if (reason := panel_model.why_not(name)) != "":
+            self.events.warning(f"New panel: {reason}")
+            return
+        self.open_panel(name.strip())
+        self.events.information(
+            f"Panel {name.strip()} created.  Add objects to it from the CANopen "
+            "pane: select them in the object dictionary and use Add to panel."
+        )
+
+    @Slot(str, object)
+    def _add_to_panel(self, name: str, chosen) -> None:
+        """Put the objects picked in the object dictionary onto a panel.
+
+        Asked once for the whole selection: somebody adding six related
+        parameters means one panel, and being asked six times what to call it
+        would be its own argument against the feature.
+        """
+        items = list(chosen or [])
+        if not items:
+            return
+        if not name:
+            new, chose = QInputDialog.getText(self, "New panel", "A name for it:")
+            if not chose:
+                return
+            if (reason := panel_model.why_not(new)) != "":
+                self.events.warning(f"New panel: {reason}")
+                return
+            name = new.strip()
+        self.open_panel(name)
+        view = self._panel_view(name)
+        if view is None:
+            return
+        for item in items:
+            view.add_field(item)
+        how_many = "object" if len(items) == 1 else f"{len(items)} objects"
+        self.events.information(f"Added {how_many} to {name}")
+
     def _drop_trace(self, view: TraceView) -> None:
         """Stop feeding a trace that has been closed for good.
 
@@ -371,10 +471,24 @@ class MainWindow(QMainWindow):
             self.view_menu.addAction(self.panes.docks[name].toggleViewAction())
         self.view_menu.addSeparator()
 
+        panels_menu = self.view_menu.addMenu("Panels")
+        panels_menu.setToolTipsVisible(True)
+        for name in panel_model.names():
+            action = panels_menu.addAction(name, lambda n=name: self.open_panel(n))
+            action.setToolTip("Open this panel, as a dock like any other pane.")
+        if panel_model.names():
+            panels_menu.addSeparator()
+        made = panels_menu.addAction("New panel...", self._new_panel_dialog)
+        made.setToolTip(
+            "A named group of objects laid out as a form.  Objects are added\n"
+            "from the CANopen pane: select them in the object dictionary and\n"
+            "use Add to panel."
+        )
+
         new = self.view_menu.addMenu("New pane")
         new.setToolTipsVisible(True)
         for kind in self.panes.kinds.values():
-            if not kind.several:
+            if not kind.several or kind.named:
                 continue
             action = new.addAction(kind.title, lambda k=kind.name: self.panes.add(k))
             action.setToolTip(
