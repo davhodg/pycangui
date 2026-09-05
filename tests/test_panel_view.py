@@ -87,7 +87,7 @@ def test_a_panel_with_no_file_yet_gets_one(window):
 
 def test_a_panel_is_not_offered_as_another_one_of_these(window):
     """There is no Panel 2; there is the panel called Battery limits."""
-    offered = {a.text() for a in _submenu(window, "New pane").actions()}
+    offered = {a.text() for a in _submenu(window, "Another pane").actions()}
     assert "Panel" not in offered
 
 
@@ -100,7 +100,7 @@ def test_the_panels_menu_lists_what_the_workspace_has(app, window):
     model.save("battery", sample())
     model.save("gains", sample("Control gains"))
     window._build_view_menu()
-    listed = [a.text() for a in _submenu(window, "Panels").actions() if a.text()]
+    listed = [a.text() for a in _submenu(window, "Custom panels").actions() if a.text()]
     assert listed == ["battery", "gains", "New panel..."]
 
 
