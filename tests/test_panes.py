@@ -177,6 +177,52 @@ def test_an_instance_is_pinned_and_detached_on_its_own(app, window):
     assert not window.panes.bars["trace"].pin.isChecked()
 
 
+# --- where a new one opens ------------------------------------------------------------
+def test_a_pane_you_ask_for_opens_in_front_of_the_window(app, window):
+    """Docking it takes the room the panes on screen were using, and somebody
+    opening a second trace wants it beside what is there, not instead of it."""
+    name = window.panes.add("trace", floating=True)
+    settle(app)
+    dock = window.panes.docks[name]
+    assert dock.isFloating()
+    assert dock.isVisible()
+    assert dock.width() > 100 and dock.height() > 100, "a real window, not a sliver"
+
+
+def test_it_carries_its_buttons_like_any_other_undocked_pane(app, window):
+    name = window.panes.add("trace", floating=True)
+    settle(app)
+    assert window.panes.bars[name].isVisible()
+
+
+def test_the_panes_the_window_opens_with_are_not_floated(app, window):
+    """Where those go is the saved layout's business."""
+    assert not any(window.panes.docks[n].isFloating() for n in ("trace", "log", "scope"))
+
+
+def test_the_second_one_does_not_land_on_the_first(app, window):
+    first = window.panes.add("trace", floating=True)
+    second = window.panes.add("scope", floating=True)
+    settle(app)
+    assert window.panes.docks[first].pos() != window.panes.docks[second].pos(), (
+        "or one window hides the other and looks like nothing happened"
+    )
+
+
+def test_a_restored_pane_is_placed_by_the_layout_and_not_floated(app, tmp_path, monkeypatch):
+    """It was somewhere last time; that is where it goes."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = restart(app)
+    name = first.panes.add("trace", floating=True)
+    first.panes.docks[name].setFloating(False)  # docked by hand
+    settle(app)
+
+    second = restart(app, first)
+    assert not second.panes.docks[name].isFloating(), "docking it was the last word"
+    second.close()
+
+
 # --- what comes back ---------------------------------------------------------------------
 def test_an_extra_pane_comes_back_after_a_restart(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))

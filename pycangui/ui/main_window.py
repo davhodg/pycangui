@@ -400,7 +400,11 @@ class MainWindow(QMainWindow):
             panel = panel_model.Panel(title=name)
             panel_model.save(name, panel)
         return self.panes.add(
-            "panel", name=panel_instance(name), title=panel.title or name, show=True
+            "panel",
+            name=panel_instance(name),
+            title=panel.title or name,
+            show=True,
+            floating=True,
         )
 
     def _panel_view(self, name: str) -> PanelView | None:
@@ -490,10 +494,11 @@ class MainWindow(QMainWindow):
         for kind in self.panes.kinds.values():
             if not kind.several or kind.named:
                 continue
-            action = new.addAction(kind.title, lambda k=kind.name: self.panes.add(k))
+            action = new.addAction(kind.title, lambda k=kind.name: self.panes.add(k, floating=True))
             action.setToolTip(
                 f"Open another {kind.title} pane, with settings of its own.\n"
-                "Drop one onto another to tab them, or drag it out to a window."
+                "It opens in a window of its own; drag it into the main window\n"
+                "to dock it, or onto another pane to tab the two together."
             )
 
         extras = self.panes.extras()
