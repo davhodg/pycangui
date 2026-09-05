@@ -400,7 +400,12 @@ def _submenu(window, title):
 
 def test_only_the_kinds_that_mean_something_twice_are_offered(window):
     offered = {a.text() for a in _submenu(window, "Standard panes").actions()}
-    assert offered == {"Additional CAN Trace", "Additional Signals and Plot", "Additional Transmit"}
+    assert offered == {
+        "Additional CAN Trace",
+        "Additional Signals and Plot",
+        "Additional Transmit",
+        "Additional ASCII Log",
+    }
 
 
 def test_every_pane_is_listed_by_its_own_title(app, window):

@@ -37,7 +37,7 @@ from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.uds.manager import UdsManager
 from pycangui.ui import folders
-from pycangui.ui.ascii_view import AsciiView
+from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.connect_bar import ConnectBar
@@ -196,7 +196,7 @@ class MainWindow(QMainWindow):
         self.j1939_view = self.panes.view(self.panes.add("j1939"))
         self.xcp_view = self.panes.view(self.panes.add("xcp"))
         self.panes.add("log")
-        self.ascii = self.panes.view(self.panes.add("ascii"))
+        self._open_ascii_panes()
         self.console = self.panes.view(self.panes.add("console"))
         self._arrange_default()
 
@@ -404,13 +404,12 @@ class MainWindow(QMainWindow):
             ),
             PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
             PaneKind(
-                # The kind keeps its old name: it is the dock's objectName, and
-                # it is what the saved streams are filed under.  Only the title
-                # changes, which is the part anybody reads.
                 "ascii",
                 "ASCII Log",
                 Qt.BottomDockWidgetArea,
-                lambda _name: AsciiView(self.channels, self.ctx),
+                self._new_ascii,
+                several=True,
+                shutdown=self._drop_ascii,
             ),
             PaneKind(
                 "console",
@@ -528,6 +527,51 @@ class MainWindow(QMainWindow):
             view.add_field(item)
         how_many = "object" if len(items) == 1 else f"{len(items)} objects"
         self.events.information(f"Added {how_many} to {name}")
+
+    def _open_ascii_panes(self) -> None:
+        """One pane per id, moving over whatever the tabbed pane used to hold.
+
+        The old pane kept a list of streams in the settings and showed them as
+        tabs.  Each becomes a pane, once: somebody who had three ids being read
+        finds three panes rather than an empty one and a lost list.
+        """
+        saved = self.ctx.settings.get("ascii.streams", [])
+        streams = [s for s in saved if isinstance(s, dict)] if isinstance(saved, list) else []
+        for at, entry in enumerate(streams):
+            stream = Stream.from_dict(entry)
+            name = "ascii" if at == 0 else f"ascii {at + 1}"
+            self.panes.set_config(name, stream.to_dict())
+        if streams:
+            self.ctx.settings.remove("ascii.streams")  # they live with their panes now
+
+        # Whatever this pane was reading last time, which for the first one is
+        # not in the list of extra panes -- that list holds the ones beyond the
+        # first, and the first is opened by name here every time.
+        first = Stream.from_dict(self.panes.config("ascii"))
+        self.ascii = self.panes.view(self.panes.add("ascii", title=first.pane_title))
+        for at in range(1, len(streams)):
+            stream = Stream.from_dict(self.panes.config(f"ascii {at + 1}"))
+            self.panes.add("ascii", name=f"ascii {at + 1}", title=stream.pane_title, show=False)
+
+    def _new_ascii(self, name: str) -> AsciiView:
+        """One pane, one identifier, taken from what the pane was opened with."""
+        view = AsciiView(self.channels, self.ctx, Stream.from_dict(self.panes.config(name)))
+        view.changed.connect(lambda stream, n=name: self._on_ascii_changed(n, stream))
+        return view
+
+    def _on_ascii_changed(self, name: str, stream) -> None:
+        """Somebody pointed the pane at a different id.
+
+        Written down against the pane rather than in a list of its own, so it
+        travels with the pane it belongs to -- and the dock says which id it is
+        showing, unless it has been given a name of its own.
+        """
+        self.panes.set_config(name, stream.to_dict())
+        self.panes.set_default_title(name, stream.pane_title)
+        self._build_view_menu()
+
+    def _drop_ascii(self, view: AsciiView) -> None:
+        self.channels.frames.disconnect(view.on_frames)
 
     def _new_transmit(self, name: str) -> TxView:
         """A transmit list, keeping its own messages.
@@ -778,8 +822,6 @@ class MainWindow(QMainWindow):
         # Parentless windows of their own, so they would keep the application
         # running after the main window had gone.
         self.panes.close_detached()
-        # And the same for any ASCII stream popped out into a window.
-        self.ascii.shutdown()
         self.replay.stop()
         self.help_menu.shutdown()
         self.connect_bar.shutdown()

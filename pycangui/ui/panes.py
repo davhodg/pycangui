@@ -137,7 +137,10 @@ class Panes(QObject):
         #: that a builder can ask for it and the workspace can write it down,
         #: which is what lets a pane be more than one of a kind without the
         #: kind having to be a special sort.
-        self._config: dict[str, dict] = {}
+        #: Read back at once rather than only for the extra panes, because the
+        #: first pane of a kind can hold a configuration too -- the first ASCII
+        #: pane is reading an identifier like any other.
+        self._config: dict[str, dict] = self._saved_config()
         #: What each pane was called when it was made, which is what "the
         #: default name" means.  For most kinds that is the kind's title and a
         #: number, but a custom pane is called whatever its file says and no
@@ -216,6 +219,7 @@ class Panes(QObject):
         # it has been made.
         if config is not None:
             self._config[name] = dict(config)
+            self._save_config()
         view = kind.build(name)
         self._views[name] = view
         self._kind_of[name] = kind.name
@@ -269,7 +273,8 @@ class Panes(QObject):
         self._came_from.pop(name, None)
         self._kind_of.pop(name, None)
         self._shown.pop(name, None)
-        self._config.pop(name, None)
+        if self._config.pop(name, None) is not None:
+            self._save_config()
         self._made_as.pop(name, None)
         if (titles := self.titles()).pop(name, None) is not None:
             self.ctx.settings.set("panes.titles", titles)
@@ -382,12 +387,26 @@ class Panes(QObject):
 
     # --- what it was made with ------------------------------------------------------------
     def config(self, name: str) -> dict:
-        """What this pane was opened with.  Empty for one that needed nothing."""
+        """What this pane was opened with.  Empty for one that needed nothing.
+
+        Answers before the pane exists as well as after, so that whatever is
+        about to build one can ask what it is meant to be showing.
+        """
         return dict(self._config.get(name, {}))
 
     def set_config(self, name: str, config: dict) -> None:
         self._config[name] = dict(config)
-        self._save_instances()
+        self._save_config()
+
+    def _saved_config(self) -> dict[str, dict]:
+        stored = self.ctx.settings.get("panes.config", {})
+        if not isinstance(stored, dict):
+            return {}
+        return {str(k): dict(v) for k, v in stored.items() if isinstance(v, dict)}
+
+    def _save_config(self) -> None:
+        if not self._restoring:
+            self.ctx.settings.set("panes.config", self._config)
 
     def _next_name(self, kind: PaneKind) -> str:
         number = 2
@@ -673,7 +692,6 @@ class Panes(QObject):
                     "kind": self._kind_of[name],
                     "name": name,
                     "title": self.default_title(name),
-                    "config": self.config(name),
                 }
                 for name in self.extras()
             ],
@@ -701,13 +719,11 @@ class Panes(QObject):
             for saved in self.ctx.settings.get("panes.instances", []):
                 if not isinstance(saved, dict):
                     continue  # a hand-edited settings.json
-                config = saved.get("config")
                 self.add(
                     str(saved.get("kind", "")),
                     name=str(saved.get("name", "")),
                     title=str(saved.get("title", "")),
                     show=False,
-                    config=config if isinstance(config, dict) else None,
                 )
         finally:
             self._restoring = False
