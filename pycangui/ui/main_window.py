@@ -186,15 +186,18 @@ class MainWindow(QMainWindow):
         # docs refer to window.signals_view and window.plot.
         self.signals_view = self.scope.signals_view
         self.plot = self.scope.plot
+        # Opened in the order the View menu should list them, which is by what
+        # they are for: what is on the bus and what you put on it, then the
+        # protocol panes, then what the tool has to say for itself.
+        self.tx = self.panes.view(self.panes.add("tx"))
         self.canopen_view = self.panes.view(self.panes.add("canopen"))
         self.canopen_view.add_to_custom_pane.connect(self._add_to_custom_pane)
         self.uds_view = self.panes.view(self.panes.add("uds"))
         self.j1939_view = self.panes.view(self.panes.add("j1939"))
         self.xcp_view = self.panes.view(self.panes.add("xcp"))
-        self.tx = self.panes.view(self.panes.add("tx"))
         self.panes.add("log")
-        self.console = self.panes.view(self.panes.add("console"))
         self.ascii = self.panes.view(self.panes.add("ascii"))
+        self.console = self.panes.view(self.panes.add("console"))
         self._arrange_default()
 
         self.setStatusBar(QStatusBar())
@@ -341,8 +344,13 @@ class MainWindow(QMainWindow):
         """
         for kind in (
             PaneKind(
+                # "CAN Trace" rather than "Trace": worth saying what is being
+                # traced.  Not "Raw", which would undersell a pane that names
+                # the protocol and the DBC message of every frame; and not
+                # "Message", because what it lists is frames -- error frames
+                # included, and those are not messages at all.
                 "trace",
-                "Trace",
+                "CAN Trace",
                 Qt.LeftDockWidgetArea,
                 self._new_trace,
                 several=True,
@@ -353,6 +361,13 @@ class MainWindow(QMainWindow):
                 "Signals and Plot",
                 Qt.LeftDockWidgetArea,
                 lambda _name: ScopeView(self.signals, self.bus.now, self.ctx),
+                several=True,
+            ),
+            PaneKind(
+                "tx",
+                "Transmit",
+                Qt.BottomDockWidgetArea,
+                self._new_transmit,
                 several=True,
             ),
             PaneKind(
@@ -380,13 +395,6 @@ class MainWindow(QMainWindow):
                 lambda _name: XcpView(self.xcp, self.ctx),
             ),
             PaneKind(
-                "tx",
-                "Transmit",
-                Qt.BottomDockWidgetArea,
-                self._new_transmit,
-                several=True,
-            ),
-            PaneKind(
                 "custom",
                 "Custom pane",
                 Qt.RightDockWidgetArea,
@@ -396,12 +404,6 @@ class MainWindow(QMainWindow):
             ),
             PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
             PaneKind(
-                "console",
-                "Python Console",
-                Qt.BottomDockWidgetArea,
-                lambda _name: ConsoleView(self._console_namespace(), self.ctx),
-            ),
-            PaneKind(
                 # The kind keeps its old name: it is the dock's objectName, and
                 # it is what the saved streams are filed under.  Only the title
                 # changes, which is the part anybody reads.
@@ -409,6 +411,12 @@ class MainWindow(QMainWindow):
                 "ASCII Log",
                 Qt.BottomDockWidgetArea,
                 lambda _name: AsciiView(self.channels, self.ctx),
+            ),
+            PaneKind(
+                "console",
+                "Python Console",
+                Qt.BottomDockWidgetArea,
+                lambda _name: ConsoleView(self._console_namespace(), self.ctx),
             ),
         ):
             self.panes.register(kind)
