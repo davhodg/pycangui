@@ -1,4 +1,13 @@
-"""Reading a CAN id as text, several at once, each able to have its own window."""
+"""Reading a CAN id as text: one pane, one id.
+
+It used to be one pane with a tab per id and a hand-rolled pop-out button.
+That was the right shape when a dock could only ever be one of a kind; two
+streams side by side is what people want, and tabs are precisely the thing that
+forbids it.  So the tabs are gone, and what is left has to hold: each pane
+reads its own id, remembers it, and says which one it is showing.
+"""
+
+import json
 
 import pytest
 from PySide6.QtCore import QSettings
@@ -7,19 +16,23 @@ from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.ui.ascii_view import AsciiView, Stream, decode
+from pycangui.ui.main_window import MainWindow
 
 
 def frame(can_id, data, extended=False, error=False):
     return Frame(0.0, "vcan", can_id, extended, False, True, data, error=error)
 
 
+def settle(app, times=5):
+    for _ in range(times):
+        app.processEvents()
+
+
 @pytest.fixture
 def view(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
-    widget = AsciiView(Channels(), Context(log=print))
-    yield widget
-    widget.shutdown()
+    return AsciiView(Channels(), Context(log=print), Stream(can_id=0x123))
 
 
 # --- decoding ---------------------------------------------------------------------------
@@ -28,7 +41,8 @@ def test_the_printable_characters_come_through():
 
 
 def test_padding_is_dropped_rather_than_shown():
-    """A frame is a fixed length and its tail is padding far more often than data."""
+    """A frame is a fixed length and its tail is padding far more often than
+    it is data."""
     assert decode(b"Hi\x00\x00\x00\x00\x00\x00") == "Hi"
 
 
@@ -42,141 +56,200 @@ def test_the_layout_the_device_meant_is_kept():
 
 def test_anything_else_becomes_a_dot():
     """A stream of dots is how you find out the id is wrong."""
-    assert decode(bytes([0x01, 0x02, 0xFF])) == "..."
+    assert decode(b"\x01\x02ok") == "..ok"
 
 
 def test_leading_bytes_can_be_skipped():
     """Devices often put a length or a sequence number at the front."""
-    assert decode(b"\x05hello", skip=1) == "hello"
+    assert decode(b"\x04text", skip=1) == "text"
 
 
-# --- streams ----------------------------------------------------------------------------
-def test_an_id_can_be_watched_and_its_text_arrives(view):
-    assert view.add_stream(Stream(0x123, name="ECU"))
-    view._on_frames([frame(0x123, b"Ready\n")])
-    assert view._texts["123"].toPlainText() == "Ready\n"
+# --- one pane, one id ----------------------------------------------------------------------
+def test_the_text_of_its_id_arrives(view):
+    view.on_frames([frame(0x123, b"hello")])
+    assert view.text.toPlainText() == "hello"
 
 
-def test_several_ids_are_read_at_once_each_in_its_own_tab(view):
-    view.add_stream(Stream(0x100, name="one"))
-    view.add_stream(Stream(0x200, name="two"))
-    view._on_frames([frame(0x100, b"A"), frame(0x200, b"B"), frame(0x100, b"C")])
-
-    assert view.tabs.count() == 2
-    assert view._texts["100"].toPlainText() == "AC"
-    assert view._texts["200"].toPlainText() == "B"
-    assert view.tabs.tabText(0).startswith("100")
+def test_another_id_is_not_its_business(view):
+    view.on_frames([frame(0x124, b"nope")])
+    assert view.text.toPlainText() == ""
 
 
 def test_the_same_number_with_29_bits_is_a_different_id(view):
-    view.add_stream(Stream(0x123))
-    view.add_stream(Stream(0x123, extended=True))
-    assert view.tabs.count() == 2
-
-    view._on_frames([frame(0x123, b"std"), frame(0x123, b"ext", extended=True)])
-    assert view._texts["123"].toPlainText() == "std"
-    assert view._texts["123x"].toPlainText() == "ext"
+    view.on_frames([frame(0x123, b"eleven"), frame(0x123, b"twentynine", extended=True)])
+    assert view.text.toPlainText() == "eleven"
 
 
 def test_an_error_frame_is_not_text(view):
-    """Its id carries error flags rather than an identifier."""
-    view.add_stream(Stream(0x123))
-    view._on_frames([frame(0x123, b"junk", error=True)])
-    assert view._texts["123"].toPlainText() == ""
+    """Its identifier carries error flags, not an identifier."""
+    view.on_frames([frame(0x123, b"junk", error=True)])
+    assert view.text.toPlainText() == ""
 
 
-def test_the_same_id_is_not_added_twice(view):
-    assert view.add_stream(Stream(0x123))
-    assert not view.add_stream(Stream(0x123, name="again"))
-    assert view.tabs.count() == 1
-
-
-def test_a_bad_id_says_so_rather_than_doing_nothing(view):
-    view.id_edit.setText("nonsense")
-    view._add_from_controls()
-    assert view.tabs.count() == 0
-
-
-def test_closing_a_tab_stops_reading_that_id(view):
-    view.add_stream(Stream(0x123))
-    view._close_tab(0)
-    assert view.tabs.count() == 0
-    view._on_frames([frame(0x123, b"gone")])  # must not raise
+def test_a_pane_with_no_id_yet_reads_nothing(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    empty = AsciiView(Channels(), Context(log=print))
+    empty.on_frames([frame(0x123, b"hello")])
+    assert empty.text.toPlainText() == ""
+    assert empty.stream.pane_title == "ASCII Log"
 
 
 def test_the_skip_reaches_the_text(view):
-    view.add_stream(Stream(0x123, skip=2))
-    view._on_frames([frame(0x123, b"\x01\x07hello")])
-    assert view._texts["123"].toPlainText() == "hello"
+    view.skip.setValue(2)
+    view.on_frames([frame(0x123, b"\x00\x05text")])
+    assert view.text.toPlainText() == "text"
 
 
-# --- a window of its own ------------------------------------------------------------------
-def test_a_stream_can_be_given_its_own_window(view, app):
-    """A tab is not a window; this is the arrangement the request was about."""
-    view.add_stream(Stream(0x123, name="ECU"))
-    view._pop_out_current()
-    app.processEvents()
+def test_pointing_it_at_another_id_is_announced(view):
+    seen = []
+    view.changed.connect(seen.append)
+    view.id_edit.setText("456")
+    view.id_edit.editingFinished.emit()
 
-    window = view._windows["123"]
-    assert window.parent() is None, "an owner is what costs it the taskbar entry"
-    assert window.isVisible() and window.pane.isVisible()
-    assert view.tabs.count() == 0, "it left the tabs rather than being copied"
-    assert "ECU" in window.windowTitle()
+    assert view.stream.can_id == 0x456
+    assert seen and seen[-1].can_id == 0x456
 
 
-def test_a_popped_out_stream_keeps_reading(view, app):
-    view.add_stream(Stream(0x123))
-    view._pop_out_current()
-    app.processEvents()
-    view._on_frames([frame(0x123, b"still here")])
-    assert view._texts["123"].toPlainText() == "still here"
+def test_a_bad_id_says_so_and_keeps_reading_the_old_one(view):
+    said = []
+    view.ctx.warn = said.append
+    view.id_edit.setText("zzz")
+    view.id_edit.editingFinished.emit()
+
+    assert said and "not a hex id" in said[0]
+    assert view.stream.can_id == 0x123, "still reading what it was reading"
+    assert view.id_edit.text() == "123", "and the box says so"
 
 
-def test_closing_the_window_brings_it_back_as_a_tab(view, app):
-    view.add_stream(Stream(0x123, name="ECU"))
-    view._on_frames([frame(0x123, b"before ")])
-    view._pop_out_current()
-    app.processEvents()
-
-    view._windows["123"].close()
-    app.processEvents()
-    assert "123" not in view._windows
-    assert view.tabs.count() == 1
-    # isHidden, not isVisible: the pane itself is not on screen in a test,
-    # so what matters is that reparenting did not leave the widget
-    # explicitly hidden, which is how a blank tab happens.
-    assert not view._texts["123"].isHidden(), "not a blank tab"
-    view._on_frames([frame(0x123, b"after")])
-    assert view._texts["123"].toPlainText() == "before after", "and it kept what it had"
+def test_a_pane_says_which_id_it_is_showing():
+    assert Stream(can_id=0x77F, name="Node 5").pane_title == "ASCII 77F  Node 5"
+    assert Stream(can_id=0x1ABCDEF, extended=True).pane_title == "ASCII 01ABCDEF"
+    assert Stream().pane_title == "ASCII Log"
 
 
-def test_a_stream_cannot_be_popped_out_twice(view, app):
-    view.add_stream(Stream(0x123))
-    view._pop_out_current()
-    app.processEvents()
-    assert not view.pop_out.isEnabled()
-
-
-def test_removing_a_stream_takes_its_window_with_it(view, app):
-    view.add_stream(Stream(0x123))
-    view._pop_out_current()
-    app.processEvents()
-    view.remove_stream("123")
-    app.processEvents()
-    assert not view._windows and not view._streams
-
-
-# --- between runs -------------------------------------------------------------------------
-def test_the_ids_are_remembered(app, tmp_path, monkeypatch):
+# --- as panes -------------------------------------------------------------------------------
+@pytest.fixture
+def window(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
-    ctx = Context(log=print)
-    first = AsciiView(Channels(), ctx)
-    first.add_stream(Stream(0x18FF0102, extended=True, name="log", skip=1))
-    first.shutdown()
+    win = MainWindow()
+    win.show()
+    settle(app)
+    yield win
+    win.close()
 
-    second = AsciiView(Channels(), Context(log=print))
-    assert [s.to_dict() for s in second.streams()] == [
-        {"id": 0x18FF0102, "extended": True, "name": "log", "skip": 1}
-    ]
-    second.shutdown()
+
+def test_two_ids_can_be_read_side_by_side(app, window):
+    """The arrangement tabs forbade, which is why they went."""
+    second = window.panes.add("ascii")
+    settle(app)
+    window.panes.view("ascii").stream = Stream(can_id=0x123)
+    window.panes.view(second).stream = Stream(can_id=0x456)
+
+    window.channels.frames.emit([frame(0x123, b"one"), frame(0x456, b"two")])
+    settle(app)
+    assert window.panes.view("ascii").text.toPlainText() == "one"
+    assert window.panes.view(second).text.toPlainText() == "two"
+
+
+def test_the_dock_says_which_id_it_is_showing(app, window):
+    view = window.panes.view("ascii")
+    view.id_edit.setText("77F")
+    view.id_edit.editingFinished.emit()
+    settle(app)
+    assert window.panes.docks["ascii"].windowTitle() == "ASCII 77F"
+
+
+def test_a_name_of_your_own_survives_pointing_it_somewhere_else(app, window):
+    """Renaming a pane is a statement about the pane, not about the id."""
+    window.panes.rename("ascii", "Motor console")
+    view = window.panes.view("ascii")
+    view.id_edit.setText("77F")
+    view.id_edit.editingFinished.emit()
+    settle(app)
+    assert window.panes.docks["ascii"].windowTitle() == "Motor console"
+
+
+def test_the_id_comes_back_next_time(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = MainWindow()
+    first.show()
+    settle(app)
+    view = first.panes.view("ascii")
+    view.id_edit.setText("77F")
+    view.id_edit.editingFinished.emit()
+    settle(app)
+    first.close()
+    settle(app)
+
+    again = MainWindow()
+    again.show()
+    settle(app)
+    assert again.panes.view("ascii").stream.can_id == 0x77F
+    assert again.panes.docks["ascii"].windowTitle() == "ASCII 77F"
+    again.close()
+
+
+def test_a_removed_pane_stops_reading(app, window):
+    """Deletion is deferred, so without disconnecting it goes on filling up."""
+    second = window.panes.add("ascii")
+    view = window.panes.view(second)
+    view.stream = Stream(can_id=0x123)
+    window.panes.remove(second)
+
+    window.channels.frames.emit([frame(0x123, b"hello")])
+    settle(app)
+    assert view.text.toPlainText() == ""
+
+
+# --- and the tabs that used to hold them ------------------------------------------------------
+def older_setup(tmp_path, streams):
+    workspace = tmp_path / "workspaces" / "default"
+    workspace.mkdir(parents=True)
+    (workspace / "settings.json").write_text(
+        json.dumps({"ascii.streams": streams}), encoding="utf-8"
+    )
+
+
+def test_the_streams_the_tabbed_pane_kept_become_panes(app, tmp_path, monkeypatch):
+    """Somebody who had two ids being read should find two panes, not an empty
+    one and a lost list."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    older_setup(
+        tmp_path,
+        [
+            {"id": 0x77F, "extended": False, "name": "Node 5", "skip": 0},
+            {"id": 0x780, "extended": False, "name": "", "skip": 1},
+        ],
+    )
+
+    window = MainWindow()
+    window.show()
+    settle(app)
+    panes = [n for n in window.panes.names() if n.startswith("ascii")]
+    assert panes == ["ascii", "ascii 2"]
+    assert [window.panes.view(n).stream.can_id for n in panes] == [0x77F, 0x780]
+    assert window.panes.view("ascii 2").stream.skip == 1
+    assert window.ctx.settings.get("ascii.streams") is None, "moved, not copied"
+    window.close()
+
+
+def test_they_are_still_there_after_that(app, tmp_path, monkeypatch):
+    """The migration runs once; what it made has to persist on its own."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    older_setup(tmp_path, [{"id": 0x77F}, {"id": 0x780}])
+    first = MainWindow()
+    first.show()
+    settle(app)
+    first.close()
+    settle(app)
+
+    again = MainWindow()
+    again.show()
+    settle(app)
+    panes = [n for n in again.panes.names() if n.startswith("ascii")]
+    assert [again.panes.view(n).stream.can_id for n in panes] == [0x77F, 0x780]
+    again.close()

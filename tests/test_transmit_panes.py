@@ -51,7 +51,12 @@ def sending(app, view: TxView, can_id: str = "123") -> None:
 # --- a second list ------------------------------------------------------------------------
 def test_transmit_is_offered_as_another_pane(app, window):
     offered = {a.text() for a in _submenu(window, "Standard panes").actions()}
-    assert offered == {"Additional CAN Trace", "Additional Signals and Plot", "Additional Transmit"}
+    assert offered == {
+        "Additional CAN Trace",
+        "Additional Signals and Plot",
+        "Additional Transmit",
+        "Additional ASCII Log",
+    }
 
 
 def test_the_second_list_is_a_second_list(app, window):
