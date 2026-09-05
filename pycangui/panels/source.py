@@ -60,6 +60,32 @@ class Source(QObject):
     def write(self, index: int, sub: int, raw: Any) -> None:
         """Set a value.  What the source made of it comes back on ``value``."""
 
+    def objects(self) -> list[tuple[int, int, str, str]]:
+        """Everything this source knows of, as (index, sub, name, access).
+
+        For picking from, so it is empty where the source does not know rather
+        than wrong: a node with no EDS can still be read object by object, it
+        just cannot be browsed.  An EDS, on the other hand, knows the whole
+        dictionary without a bus being present at all -- which is what lets a
+        panel be built at a desk.
+        """
+        return []
+
+
+def _listed(od) -> list[tuple[int, int, str, str]]:
+    """Flatten an object dictionary, leaving out the rows that are not objects."""
+    from pycangui.canopen.manager import od_entries
+
+    if od is None:
+        return []
+    out = []
+    for index, sub, var, name in od_entries(od):
+        if var is None:
+            continue  # the record itself; its sub-indices follow
+        access = getattr(var, "access_type", "") or ""
+        out.append((index, sub or 0, name, access))
+    return out
+
 
 class NodeSource(Source):
     """A live controller, read and written over SDO."""
@@ -93,6 +119,10 @@ class NodeSource(Source):
 
     def write(self, index: int, sub: int, raw: Any) -> None:
         self.manager.sdo_write(self.node_id, index, sub, str(raw))
+
+    def objects(self) -> list[tuple[int, int, str, str]]:
+        node = self.manager.node(self.node_id)
+        return _listed(getattr(node, "object_dictionary", None) if node else None)
 
 
 class FileSource(Source):
@@ -178,6 +208,9 @@ class FileSource(Source):
             return
         self._values[(index, sub)] = raw
         self._answer(index, sub, raw, None)
+
+    def objects(self) -> list[tuple[int, int, str, str]]:
+        return _listed(self._od)
 
     def _answer(self, index: int, sub: int, raw: Any, error: str | None) -> None:
         # Through the event loop, so a file behaves the way a node does and the

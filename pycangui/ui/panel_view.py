@@ -19,6 +19,7 @@ import time
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -52,9 +54,9 @@ FILE_ENTRY = "Open a DCF or EDS..."
 
 READ_TIP = "Read every object on this panel again."
 EDIT_TIP = (
-    "Change the labels, the order and how each object is shown.\n"
-    "Objects are added from the CANopen pane: pick them in the object\n"
-    "dictionary and use Add to panel."
+    "Add objects to this panel, and change their labels, their order and\n"
+    "how each one is shown.  Objects can also be picked in the CANopen\n"
+    "pane's object dictionary, with Add to panel."
 )
 SOURCE_TIP = (
     "Where the values come from and go to: a node on the bus, or a DCF or\n"
@@ -319,7 +321,7 @@ class PanelView(QWidget):
 
     # --- changing the panel itself ----------------------------------------------------------
     def _edit(self) -> None:
-        dialog = PanelEditor(self, self.panel)
+        dialog = PanelEditor(self, self.panel, self.source)
         if dialog.exec() != QDialog.Accepted:
             return
         self.panel = dialog.result_panel()
@@ -346,19 +348,23 @@ def _no_display():
 
 
 class PanelEditor(QDialog):
-    """The labels, the order and how each object is shown.
+    """The objects on a panel, what they are called, and how each is shown.
 
-    Not where objects are added: they are picked in the object dictionary,
-    which is where they can be searched for and where their names already are.
-    Typing an index into a dialog is the thing this feature exists to avoid.
+    Objects are usually picked in the CANopen pane's object dictionary, which
+    is where they can be searched for and where their names already are.  Add
+    is here as well because that route needs a node on the bus with an EDS
+    loaded, and the two cases it does not cover are ordinary ones: building a
+    panel at a desk against a DCF, and adding an object whose index you
+    already have in front of you.
     """
 
     COLUMNS = ("Object", "Label", "Shown as")
 
-    def __init__(self, parent: QWidget | None, panel: Panel) -> None:
+    def __init__(self, parent: QWidget | None, panel: Panel, source=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Edit panel")
-        self.resize(560, 420)
+        self.resize(560, 460)
+        self.source = source
         self._fields = list(panel.fields)
 
         self.title = QLineEdit(panel.title)
@@ -381,6 +387,12 @@ class PanelEditor(QDialog):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.verticalHeader().setVisible(False)
 
+        add = QPushButton("Add...")
+        add.setToolTip(
+            "Add objects to this panel.  Pick them from whatever it is bound\n"
+            "to -- a node's dictionary or an EDS -- or type an index."
+        )
+        add.clicked.connect(self._add)
         up = QPushButton("Move up")
         up.clicked.connect(lambda: self._move(-1))
         down = QPushButton("Move down")
@@ -388,7 +400,7 @@ class PanelEditor(QDialog):
         remove = QPushButton("Remove")
         remove.clicked.connect(self._remove)
         buttons = QHBoxLayout()
-        for button in (up, down, remove):
+        for button in (add, up, down, remove):
             buttons.addWidget(button)
         buttons.addStretch()
 
@@ -400,12 +412,12 @@ class PanelEditor(QDialog):
         layout.addLayout(details)
         layout.addWidget(self.table)
         layout.addLayout(buttons)
-        layout.addWidget(
-            QLabel(
-                "Anything this dialog does not cover -- named bits, map axes -- "
-                "is in the panel's file, which is JSON and meant to be edited."
-            )
+        note = QLabel(
+            "Anything this dialog does not cover -- named bits, map axes -- "
+            "is in the panel's file, which is JSON and meant to be edited."
         )
+        note.setWordWrap(True)
+        layout.addWidget(note)
         layout.addWidget(closer)
         self._fill()
 
@@ -420,6 +432,15 @@ class PanelEditor(QDialog):
             kinds.addItems(model.KINDS)
             kinds.setCurrentText(item.kind)
             self.table.setCellWidget(row, 2, kinds)
+
+    def _add(self) -> None:
+        chosen = AddObjects(self, self.source).chosen_fields()
+        if not chosen:
+            return
+        self._collect()
+        self._fields.extend(chosen)
+        self._fill()
+        self.table.setCurrentCell(len(self._fields) - 1, 1)
 
     def _current(self) -> int:
         return self.table.currentRow()
@@ -468,4 +489,111 @@ class PanelEditor(QDialog):
             description=self.description.text().strip(),
             fields=list(self._fields),
             node=int(node, 0) if node.isdigit() or node.lower().startswith("0x") else None,
+        )
+
+
+class AddObjects(QDialog):
+    """Pick objects out of whatever the panel is bound to, or type an index.
+
+    Both, rather than either.  A list to search is how somebody who does not
+    know the index finds it, and typing one is how somebody who does gets on
+    with it -- and there is no list at all when the panel is bound to a node
+    that has no EDS, which must not be a dead end.
+    """
+
+    def __init__(self, parent: QWidget | None, source) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Add objects")
+        self.resize(520, 480)
+        self._entries: list[tuple[int, int, str, str]] = []
+        if source is not None:
+            self._entries = list(source.objects())
+
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("filter by index or name...")
+        self.search.setToolTip("Several words must all match, as in the object dictionary.")
+        self.search.textChanged.connect(self._filter)
+
+        self.list = QListWidget()
+        self.list.setFont(QFont("Consolas", 9))
+        self.list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.list.itemDoubleClicked.connect(lambda _i: self.accept())
+        for index, sub_index, name, access in self._entries:
+            self.list.addItem(f"{index:04X}:{sub_index:02X}  {name}  ({access or '?'})")
+
+        self.index = QLineEdit()
+        self.index.setPlaceholderText("2001")
+        self.index.setToolTip("In hex, as an index is always written.  0x2001 works too.")
+        self.sub = QLineEdit()
+        self.sub.setPlaceholderText("0")
+        self.sub.setToolTip("Sub-index, in hex.  Blank means 0.")
+        typed = QHBoxLayout()
+        typed.addWidget(QLabel("or index:"))
+        typed.addWidget(self.index, 1)
+        typed.addWidget(QLabel("sub:"))
+        typed.addWidget(self.sub)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        if self._entries:
+            layout.addWidget(self.search)
+            layout.addWidget(self.list, 1)
+        else:
+            missing = QLabel(
+                "Nothing to pick from: this panel is not bound to a node with an "
+                "EDS loaded, or to a file.  Type an index instead."
+            )
+            missing.setWordWrap(True)
+            layout.addWidget(missing)
+            self.list.hide()
+            self.search.hide()
+        layout.addLayout(typed)
+        layout.addWidget(buttons)
+
+    def _filter(self, text: str) -> None:
+        needles = text.lower().split()
+        for row in range(self.list.count()):
+            item = self.list.item(row)
+            item.setHidden(not all(n in item.text().lower() for n in needles))
+
+    def chosen_fields(self) -> list[Field]:
+        """What was picked, as fields.  Empty if the dialog was cancelled."""
+        if self.exec() != QDialog.Accepted:
+            return []
+        out = [self._as_field(*self._entries[self.list.row(i)]) for i in self.list.selectedItems()]
+        if (typed := self._typed()) is not None:
+            out.append(typed)
+        return out
+
+    def _typed(self) -> Field | None:
+        text = self.index.text().strip()
+        if not text:
+            return None
+        try:
+            index = int(text, 16 if not text.lower().startswith("0x") else 0)
+            sub_text = self.sub.text().strip() or "0"
+            sub_index = int(sub_text, 16 if not sub_text.lower().startswith("0x") else 0)
+        except ValueError:
+            QMessageBox.warning(
+                self.parent(), "Not an index", f"{text!r} is not a hex object index."
+            )
+            return None
+        # Whatever the source says about it, where it knows: a typed index that
+        # happens to be in the dictionary should arrive named, like a picked one.
+        for entry in self._entries:
+            if (entry[0], entry[1]) == (index, sub_index):
+                return self._as_field(*entry)
+        return Field(index=index, sub=sub_index, kind="number")
+
+    @staticmethod
+    def _as_field(index: int, sub_index: int, name: str, access: str) -> Field:
+        """A writable object is one to type into, a read-only one a reading."""
+        return Field(
+            index=index,
+            sub=sub_index,
+            kind="number" if "w" in (access or "").lower() else "value",
+            label=name,
         )

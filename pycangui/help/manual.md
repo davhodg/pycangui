@@ -99,6 +99,13 @@ an existing panel or make a new one; you are asked what to call it once, not
 once per object.  *View > Panels* opens any panel you have, and *New panel...*
 makes an empty one.
 
+A panel's own *Edit...* has **Add...** too, which matters when the object
+dictionary is not the way in: building a panel at a desk against a DCF or EDS
+with no bus present, or adding an object whose index you already have in front
+of you.  It searches whatever the panel is bound to, and takes a typed index
+either way -- a typed one that turns out to be in the file arrives named, the
+same as a picked one.
+
 A panel opens in a window of its own, in front of the main one.  It is a dock
 like any other pane, so drag it in to dock it, drop it onto another to tab
 them, or leave two out side by side comparing two nodes -- which is what they
