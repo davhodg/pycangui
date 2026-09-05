@@ -271,7 +271,7 @@ def test_polling_a_node_reads_it_over_and_over(app, pane):
     assert source.reads > before + 4, "several rounds of two objects"
 
 
-def test_the_panel_shows_the_rate_it_is_managing(app, pane):
+def test_the_pane_shows_the_rate_it_is_managing(app, pane):
     _window, view = pane
     view.bind(FakeNode(delay_ms=50))
     settle(app)
@@ -321,7 +321,7 @@ def test_reading_by_hand_does_not_fill_the_signal_list(app, pane):
     assert window.signals.keys() == []
 
 
-def test_the_poll_rate_is_remembered_per_panel(app, tmp_path, monkeypatch):
+def test_the_poll_rate_is_remembered_per_custom_pane(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     first = MainWindow()

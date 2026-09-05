@@ -49,7 +49,7 @@ def sample() -> CustomPane:
     )
 
 
-def test_a_panel_survives_the_trip_through_its_file(home):
+def test_a_custom_pane_survives_the_trip_through_its_file(home):
     custom_panes.save("battery", sample())
     assert custom_panes.load("battery") == sample()
 
@@ -81,7 +81,7 @@ def test_an_index_is_read_however_it_was_typed(home, written):
     assert custom_panes.load("hand").fields[0].index == 0x2001
 
 
-def test_a_typo_costs_the_field_and_not_the_panel(home):
+def test_a_typo_costs_the_field_and_not_the_pane(home):
     path = custom_panes.path_for("hand")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -102,7 +102,7 @@ def test_a_typo_costs_the_field_and_not_the_panel(home):
     assert pane.fields[0].factor is None
 
 
-def test_a_file_that_is_not_a_panel_is_no_panel_rather_than_a_crash(home):
+def test_a_file_that_is_not_a_custom_pane_is_no_custom_pane_rather_than_a_crash(home):
     path = custom_panes.path_for("broken")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{ truncated", encoding="utf-8")
@@ -110,7 +110,7 @@ def test_a_file_that_is_not_a_panel_is_no_panel_rather_than_a_crash(home):
     assert custom_panes.load("never written") is None
 
 
-def test_panels_live_beside_the_hooks_that_explain_them(home):
+def test_custom_panes_live_beside_the_hooks_that_explain_them(home):
     """A pane is knowledge about a product in the way a hook is."""
     custom_panes.save("battery", sample())
     assert custom_panes.directory().parent == workspaces.active_dir()
@@ -119,7 +119,7 @@ def test_panels_live_beside_the_hooks_that_explain_them(home):
     assert custom_panes.names() == []
 
 
-def test_a_panel_belongs_to_its_workspace(home):
+def test_a_custom_pane_belongs_to_its_workspace(home):
     custom_panes.save("battery", sample())
     workspaces.create("other")
     workspaces.set_active("other")
@@ -150,7 +150,7 @@ def test_a_whole_object_is_not_a_bit_field():
 
 
 # --- is it usable -----------------------------------------------------------------------------
-def test_a_good_panel_has_nothing_wrong_with_it():
+def test_a_good_custom_pane_has_nothing_wrong_with_it():
     assert custom_panes.problems(sample()) == []
 
 
