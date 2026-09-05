@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QDoubleSpinBox,
-    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -50,6 +49,7 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.panels.model import Field as PanelField
 from pycangui.panels.model import names as panel_names
+from pycangui.ui import folders
 from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
 
@@ -356,11 +356,12 @@ class CanopenView(QWidget):
         if identity.key in self._asked:
             return None
         self._asked.add(identity.key)
-        path, _ = QFileDialog.getOpenFileName(
+        path = folders.open_file(
             self,
+            self.ctx,
+            folders.EDS,
             f"EDS file for node {identity.node_id} "
             f"(vendor {_hex(identity.vendor_id)}, product {_hex(identity.product_code)})",
-            str(self.ctx.eds_dir),
             "EDS / DCF files (*.eds *.dcf);;All files (*)",
         )
         if not path:
@@ -382,11 +383,13 @@ class CanopenView(QWidget):
         node_id = self.selected_node()
         if node_id is None:
             return
-        path, _ = QFileDialog.getOpenFileName(
+        path = folders.open_file(
             self,
+            self.ctx,
+            folders.EDS,
             f"EDS file for node {node_id}",
-            str(self.ctx.eds_dir),
             "EDS / DCF files (*.eds *.dcf)",
+            self.ctx.eds_dir,
         )
         if path:
             self.manager.load_eds(node_id, path)
@@ -428,11 +431,14 @@ class CanopenView(QWidget):
         node_id = self.selected_node()
         if node_id is None:
             return
-        path, _ = QFileDialog.getSaveFileName(
+        path = folders.save_file(
             self,
+            self.ctx,
+            folders.EDS,
             f"Save node {node_id} configuration",
-            str(self.ctx.eds_dir / f"node{node_id}.dcf"),
             "Device configuration (*.dcf);;All files (*)",
+            self.ctx.eds_dir,
+            suggested=f"node{node_id}.dcf",
         )
         if path:
             self.ctx.log(f"Node {node_id}: reading all parameters, this can take a while...")
@@ -442,11 +448,13 @@ class CanopenView(QWidget):
         node_id = self.selected_node()
         if node_id is None:
             return
-        path, _ = QFileDialog.getOpenFileName(
+        path = folders.open_file(
             self,
+            self.ctx,
+            folders.EDS,
             f"Apply a configuration to node {node_id}",
-            str(self.ctx.eds_dir),
             "Device configuration (*.dcf *.eds);;All files (*)",
+            self.ctx.eds_dir,
         )
         if path:
             self.manager.apply_dcf(node_id, path)

@@ -40,6 +40,20 @@ Outside the workspaces are the things that belong to the machine rather than
 to what you are working on: `backends/`, which is about being able to talk to a
 bus at all, and the window's position on screen, which stays in `QSettings`.
 
+### Where file dialogs open
+
+A file dialog opens where you last used **that sort of file**.  Open an EDS and
+the next EDS dialog starts where that one was; a firmware image, a captured log
+and a CAN database each keep their own folder, so picking one does not move the
+others.  The folders live in the workspace, since which folder a product's
+files are in is a fact about that product and should not follow you into the
+next one.
+
+A remembered folder that no longer exists -- a memory stick unplugged, a folder
+deleted -- is ignored, and the dialog opens at its default instead.  *Tools >
+Forget remembered folders* puts every one of them back to pycangui's own
+folders at once.
+
 ## Workspaces
 
 A workspace is everything about the product you are working on: the hooks that

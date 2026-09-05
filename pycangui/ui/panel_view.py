@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -41,7 +40,7 @@ from pycangui.core.context import Context
 from pycangui.panels import model
 from pycangui.panels.model import Field, Panel
 from pycangui.panels.source import FileSource, NodeSource, Source
-from pycangui.ui import panel_widgets
+from pycangui.ui import folders, panel_widgets
 
 #: Offered in the source selector, above whatever nodes are on the bus.
 FILE_ENTRY = "Open a DCF or EDS..."
@@ -170,11 +169,13 @@ class PanelView(QWidget):
             self.bind(FileSource(chosen, hooks=getattr(self.manager, "_hooks", None)))
 
     def _choose_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
+        path = folders.open_file(
             self,
+            self.ctx,
+            folders.EDS,
             "Values from a file",
-            str(self.ctx.eds_dir),
             "Device configuration (*.dcf *.eds);;All files (*)",
+            self.ctx.eds_dir,
         )
         if not path:
             self._fill_sources()  # put the selector back on whatever it was

@@ -8,7 +8,6 @@ from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QFileDialog,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -50,6 +49,7 @@ from pycangui.uds.manager import (
     UdsManager,
     parse_bytes,
 )
+from pycangui.ui import folders
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.persist import remember
 
@@ -720,10 +720,14 @@ class UdsView(QWidget):
     def _browse(self) -> None:
         if self._wants_a_local_file():
             caption, filt = "Save to", images.WRITE_FILTER if self._operation() == "upload" else ""
-            path, _ = QFileDialog.getSaveFileName(self, caption, "", filt or "All files (*)")
+            path = folders.save_file(
+                self, self.ctx, folders.IMAGE, caption, filt or "All files (*)", self.ctx.user_dir
+            )
         else:
             filt = images.READ_FILTER if self._operation() == "download" else "All files (*)"
-            path, _ = QFileDialog.getOpenFileName(self, "Transfer file", "", filt)
+            path = folders.open_file(
+                self, self.ctx, folders.IMAGE, "Transfer file", filt, self.ctx.user_dir
+            )
         if path:
             self.local.setText(path)
             self._reload_image()

@@ -22,6 +22,7 @@ from pycangui.core.bus import BusManager
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.logging import READ_FILTER, Player
+from pycangui.ui import folders
 from pycangui.ui.confirm import Confirmations, is_real
 
 SPEEDS = (0.1, 0.5, 1.0, 2.0, 5.0, 20.0)
@@ -86,8 +87,24 @@ class ReplayAction(QObject):
         return chosen.data() if chosen else 1.0
 
     def _browse(self) -> bool:
-        start = str(self._path.parent if self._path else self.ctx.user_dir)
-        path, _ = QFileDialog.getOpenFileName(self.button, "Replay a log", start, READ_FILTER)
+        # Its own recent list first -- that is a file, not a folder, and more
+        # specific than either.  Otherwise wherever a log was last recorded or
+        # replayed, which is usually the same place.
+        if self._path is not None:
+            path, _ = QFileDialog.getOpenFileName(
+                self.button, "Replay a log", str(self._path.parent), READ_FILTER
+            )
+            if path:
+                folders.remember(self.ctx, folders.LOG, path)
+        else:
+            path = folders.open_file(
+                self.button,
+                self.ctx,
+                folders.LOG,
+                "Replay a log",
+                READ_FILTER,
+                self.ctx.user_dir,
+            )
         if not path:
             return False
         self._remember(Path(path))
