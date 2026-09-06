@@ -3,10 +3,10 @@
 A plugin rather than part of the tool, deliberately.  What a device wants in
 order to take new firmware is not part of any protocol pycangui speaks: CiA
 302-3 describes one way of doing it, most makers do something else, and the
-something else is the interesting half.  Shipping it as a plugin means the
-maker's version replaces this one by being a folder of the same name in the
-workspace, and everything around it -- the pane, the progress, the reporting --
-goes on working.
+something else is the interesting half.  Installing it puts a copy in the
+workspace, which is the copy that runs: edit ``program.py`` to be what the
+device actually wants and everything around it -- the pane, the progress, the
+reporting -- goes on working.
 
 It is also the first thing built through the plugin API, which was the point of
 building it that way: an API with no real screen behind it is a guess.
@@ -37,6 +37,7 @@ from pycangui.ui import folders
 
 API_VERSION = 1
 NAME = "Firmware"
+VERSION = "1.0"
 DESCRIPTION = "Download firmware to a CANopen node (CiA 302-3)."
 
 WARNING = (
@@ -144,9 +145,9 @@ class FirmwareView(QWidget):
         inside.addWidget(self.state)
 
         note = QLabel(
-            "Most devices use a sequence of their maker's own instead.  Copy this "
-            "plugin's folder into the workspace and edit program.py to be what "
-            "yours wants; a plugin of the same name replaces this one."
+            "Most devices use a sequence of their maker's own instead.  This "
+            "plugin is installed in your workspace: edit program.py in it to be "
+            "what yours wants, then Plugins > Reload plugins."
         )
         note.setWordWrap(True)
         note.setEnabled(False)

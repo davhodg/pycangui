@@ -584,17 +584,48 @@ node, what to call it -- from a fixed list of them.  A plugin is the other
 half: code that adds something that was not there, a pane of its own with its
 own buttons, doing something pycangui has never heard of.
 
-A plugin is a folder with a `plugin.py` in it, in
-`workspaces\<name>\plugins\` (*Plugins > Open plugins folder*).  It belongs
-to the workspace, the same as the hooks, because a screen for a product is
-knowledge about that product.
+### Installing one
+
+A plugin is distributed as a **package**: a plain zip with a `plugin.py` at the
+top of it, which is what you send somebody.  *Plugins > Install plugin...*
+unpacks one into `workspaces\<name>\plugins\` and loads it, and its pane
+opens straight away -- you asked for it, so you are shown what you got.
+
+Before it unpacks anything it says what is in the package and reminds you what
+a plugin is: **Python that runs as part of pycangui, with everything pycangui
+can reach.**  Install ones you would be willing to run yourself.  You can open
+a package in any file manager and read it first; that is most of the reason it
+is a plain zip.
+
+It belongs to the workspace, the same as the hooks, because a screen for a
+product is knowledge about that product.  *Manage plugins...* is the rest of
+it:
+
+* **the tick beside each one** switches it on and off.  Off means *not loaded
+  at all* -- no pane, no menu entries, and none of its code runs -- while the
+  folder stays exactly as you left it, edits and all.
+* **Export...** writes an installed plugin back out as a package, which is how
+  one of yours gets to somebody else.
+* **Remove...** deletes it from the workspace, and says so first: whatever you
+  edited into it goes too.
+* **Supplied with pycangui** lists the ones that ship with it and are not
+  installed here.  *Nothing pycangui ships is loaded until you install it*, so
+  a window you have not asked anything of has no plugin panes in it at all.
+
+Installing a supplied plugin puts a copy in your workspace, and that copy is
+the one that runs -- so editing it is editing yours rather than the
+installation, and *Reload plugins* picks the edit up without a restart.
 
 The **Plugins** menu is also the answer to what you have installed: every
-plugin appears there whether or not it added any entries of its own, and one
-that failed to load appears greyed out rather than silently not being there.
+plugin appears there whether or not it added any entries of its own, one that
+is switched off says so, and one that failed to load appears greyed out rather
+than silently not being there.
+
+### Writing one
 
 ```python
 NAME = "Firmware"
+VERSION = "1.0"  # yours; shown in the menu, and compared when one replaces another
 API_VERSION = 1  # what it was written against; refused if newer than pycangui
 
 
@@ -629,6 +660,9 @@ copy of its pane appears beside the first.
 
 ### The plugins that ship with it
 
+Supplied rather than installed: *Plugins > Manage plugins...* is where they
+are, and until one is installed none of it runs.
+
 **Firmware** downloads a program to a CANopen node by CiA 302-3: stop the
 program (0x1F51), clear it, write the image as a domain (0x1F50), start it
 again.  Intel HEX, S-record and raw binary are all read; the image has to be
@@ -638,17 +672,18 @@ filling the gaps would put invented bytes into somebody's flash.
 **Most devices do not do it that way.**  Firmware download over CANopen is
 usually a sequence of the maker's own writes to objects of their own choosing,
 and no amount of standards reading will produce it.  That is exactly why it is
-a plugin: copy its folder into `plugins/` in your workspace and edit
-`program.py` to be what the device actually wants.  Yours replaces ours, and
-the pane, the progress bar and the reporting go on working.
+a plugin: install it, then edit the `program.py` in your workspace to be what
+the device actually wants.  The copy you edit is the one that runs, and the
+pane, the progress bar and the reporting go on working around it.
 
 While a device is being programmed it answers very little and slowly, so
 timeouts are the expected thing rather than a fault -- and pulling the power
 part way through is how a controller is turned into a brick.
 
-pycangui's own plugins are loaded the same way, from the same kind of folder.
-One of yours with the same name replaces one of ours, exactly as a hook file
-does.
+pycangui's own plugins are packaged, installed and loaded exactly the way one
+of yours is -- installing a supplied plugin packs it and unpacks it through the
+same code a downloaded one goes through, so the path a stranger's plugin takes
+is the path we take every time.
 
 ## Replaceable protocol back ends
 

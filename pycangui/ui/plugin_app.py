@@ -59,6 +59,10 @@ class PluginApp:
         self.confirm = window.confirm
         #: What this plugin has added, so that it can all be taken back.
         self._kinds: list[str] = []
+        #: The instances those kinds opened, in the order they were added, so
+        #: that a plugin just installed can be shown rather than merely being
+        #: somewhere in the View menu.
+        self._panes: list[str] = []
         self._actions: list[QAction] = []
         self._labellers: list[Callable] = []
         self._widget_kinds: list[str] = []
@@ -84,13 +88,25 @@ class PluginApp:
         self.panes.register(PaneKind(kind, title, where, build, several=several))
         self._kinds.append(kind)
         opened = self.panes.add(kind, show=False)
+        if opened:
+            self._panes.append(opened)
         return opened
 
     def open_pane(self, name: str) -> None:
         """Show one of this plugin's panes, for a plugin that has a reason to."""
-        if (dock := self.panes.docks.get(f"{self.plugin}:{name}")) is not None:
-            dock.show()
-            dock.raise_()
+        self.panes.show(f"{self.plugin}:{name}")
+
+    def show_panes(self) -> None:
+        """Bring this plugin's panes out.
+
+        Not called at load time -- a plugin's screen is one more pane among a
+        dozen, and opening every one of them at start-up is how a tool becomes
+        a wall.  Called the moment a plugin is *installed*, because somebody
+        who has just asked for it should be shown what they got rather than
+        having to go and look for it in a menu.
+        """
+        for name in self._panes:
+            self.panes.show(name, floating=True)
 
     # --- somewhere to press --------------------------------------------------------------
     def add_menu_action(
@@ -160,6 +176,7 @@ class PluginApp:
         for kind in self._kinds:
             self.panes.unregister(kind)
         self._kinds.clear()
+        self._panes.clear()
         for action in self._actions:
             if (parent := action.parent()) is not None and hasattr(parent, "removeAction"):
                 parent.removeAction(action)

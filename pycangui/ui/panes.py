@@ -246,6 +246,26 @@ class Panes(QObject):
         self.changed.emit()
         return name
 
+    def show(self, name: str, floating: bool = False) -> None:
+        """Bring a pane that already exists to the front.
+
+        ``floating`` is for one somebody has just asked into existence -- a
+        plugin's pane, the moment it is installed -- and applies only to a
+        pane that is not on screen anywhere: one docked where somebody put it
+        should come back there rather than jumping out into a window.
+        """
+        dock = self.docks.get(name)
+        if dock is None:
+            return
+        if (window := self.detached.get(name)) is not None:
+            window.show()
+            window.raise_()
+            return
+        if floating and dock.isHidden() and not dock.isFloating():
+            self._float_new(dock)
+        dock.show()
+        dock.raise_()
+
     def remove(self, name: str) -> None:
         """Close a pane for good.  The first of a kind stays: it is the pane.
 

@@ -12,6 +12,8 @@ write objects, and a dictionary does that as well as a controller.
 import pytest
 from PySide6.QtCore import QSettings
 
+from pycangui.core import plugin_package
+from pycangui.core.plugins import builtin_dir
 from pycangui.plugins.firmware import program
 from pycangui.plugins.firmware.program import CLEAR, PROGRAM_CONTROL, PROGRAM_DATA, START, STOP
 from pycangui.ui.main_window import MainWindow
@@ -136,8 +138,15 @@ def test_what_it_does_keep_is_shown_as_the_number_it_is():
 
 
 # --- and as a plugin ----------------------------------------------------------------------------
+def install(window) -> None:
+    """As the menu does it, without the question in front of it."""
+    plugin_package.install_folder(builtin_dir() / "firmware", window.ctx.workspace_dir / "plugins")
+    window._reload_plugins()
+
+
 @pytest.fixture
-def window(app, tmp_path, monkeypatch):
+def bare(app, tmp_path, monkeypatch):
+    """A window as it comes: nothing installed."""
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     win = MainWindow()
@@ -147,11 +156,31 @@ def window(app, tmp_path, monkeypatch):
     win.close()
 
 
-def test_it_ships_and_loads(app, window):
+@pytest.fixture
+def window(app, bare):
+    install(bare)
+    app.processEvents()
+    return bare
+
+
+def test_it_is_supplied_rather_than_present(app, bare):
+    """Nothing pycangui ships is loaded until somebody installs it.  A screen
+    nobody asked for in every window is what installing is there to prevent."""
+    assert "firmware:main" not in bare.panes.docks
+    assert bare.plugins.loaded == {}
+
+
+def test_it_installs_and_loads(app, window):
     """The first thing built through the plugin API, which was the point of
     building it that way: an API with no real screen behind it is a guess."""
     assert "Firmware" in [r.label for r in window.plugins.working()]
     assert window.plugins.errors() == {}
+
+
+def test_it_says_which_version_it_is(app, window):
+    """A plugin travels, and the copy in a workspace is the user's own: the
+    only way to know which of ours it started as is for it to say."""
+    assert window.plugins.loaded["firmware"].version == "1.0"
 
 
 def test_it_brings_a_pane(app, window):
@@ -162,9 +191,9 @@ def test_it_brings_a_pane(app, window):
 
 def test_a_users_own_replaces_it(app, window):
     """Which is the whole reason it is a plugin: most devices want a sequence
-    of their maker's own."""
+    of their maker's own, and installing puts the copy they edit in front of
+    them rather than leaving them to find ours."""
     folder = window.ctx.workspace_dir / "plugins" / "firmware"
-    folder.mkdir(parents=True, exist_ok=True)
     (folder / "plugin.py").write_text(
         "NAME = 'Firmware (ours)'\ndef register(app):\n    pass\n", encoding="utf-8"
     )
