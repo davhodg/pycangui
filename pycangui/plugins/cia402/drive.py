@@ -179,6 +179,26 @@ FAULT_RESET = 0x0080
 #: on the rising edge of this and not before.
 NEW_SETPOINT = 0x0010
 
+#: Bit 8, and the one that matters most here.  Halt is defined in every profiled
+#: mode as "come to a standstill, the way 0x605D says to", which is what makes
+#: it the one command that stops a drive without needing to know what mode it is
+#: in or what its target means.
+HALT = 0x0100
+
+#: The modes whose target is a *rate*, where writing zero is a command to stop.
+#:
+#: A position target is not in here, and that is the whole point of the list.
+#: Zero is a *place*: writing it to 0x607A does not stop a drive, it sends it to
+#: position zero, which on a machine part way through a move is the opposite of
+#: stopping and may be the longest move it has been asked for all day.
+RATE_TARGETS = {
+    2: TARGET_VELOCITY,
+    3: TARGET_VELOCITY,
+    4: TARGET_TORQUE,
+    9: TARGET_VELOCITY,
+    10: TARGET_TORQUE,
+}
+
 #: Statusword bits worth showing beside the state, since none of them is part
 #: of it.  Bit 10 means different things in different modes, so it is named for
 #: what the standard calls it rather than for what it implies.
@@ -365,6 +385,36 @@ def can_set_target(mode: int) -> tuple[bool, str]:
     if mode not in TARGET_FOR:
         return False, f"{mode_name(mode)} has no target to set."
     return True, ""
+
+
+def stop_writes(mode: int, statusword: int, disable: bool = False) -> list[tuple[Object, int]]:
+    """What to write to leave a drive at a standstill, as a screen goes away.
+
+    A demand sent over SDO does not stop when the window showing it does.  The
+    drive holds the last controlword and the last target it was given, and goes
+    on doing exactly what it was told by somebody who can no longer see it.  So
+    a pane that has commanded motion has to take it back on its way out.
+
+    Halt rather than a zero target, because halt is the one command that means
+    "stop" in every mode.  A zero is then written to the target as well, but
+    *only where the target is a rate*: a zero position is a place rather than a
+    stop, and writing one would send the machine there.
+
+    ``disable`` is offered and is not the default.  Removing power is not
+    obviously safer than commanding a standstill -- on a vertical axis it is the
+    load that decides, and whether a brake catches it is a fact about the
+    machine that pycangui has no way of knowing.
+    """
+    if not is_enabled(statusword):
+        return []  # not driving anything, so there is nothing to take back
+    writes = [(CONTROLWORD, ENABLE_OPERATION | HALT)]
+    # After the halt, so that switching it back on later does not start from
+    # the demand it was left with.
+    if (target := RATE_TARGETS.get(mode)) is not None:
+        writes.append((target, 0))
+    if disable:
+        writes.append((CONTROLWORD, DISABLE_VOLTAGE))
+    return writes
 
 
 # --- what it is all written through -----------------------------------------------------------

@@ -645,6 +645,8 @@ pycangui ships rather than the one you are editing.
 |---|---|
 | `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu opens it |
 | `on_pane_shown(fn)` | `fn(name, on)` when one of *your* panes appears or is put away |
+| `add_pane(..., shutdown=fn)` | `fn(pane)` when that pane goes for good, or your plugin is unloaded |
+| `on_closing(fn)` | `fn()` as the window goes, while the buses are still open |
 | `add_menu_action(text, callback, tooltip)` | an entry under *Tools > Plugins > your plugin* |
 | `add_toolbar_button(text, callback, tooltip)` | a button on the toolbar |
 | `add_trace_labeller(fn)` | name frames in every trace: `fn(frame) -> str \| None` |
@@ -719,6 +721,27 @@ position drive to take its target is offered only while the drive is already
 enabled, because making that happen means writing the enable controlword -- a
 button that quietly does what another button asks permission for is a hole in
 the permission.
+
+**Closing the pane stops the drive.**  A demand sent over SDO does not stop
+when the window showing it does: the drive holds the last controlword and the
+last target it was given and goes on acting on them.  So putting the pane away,
+closing it for good, switching the plugin off or closing pycangui all halt the
+drive first -- and while it is running, a bar across the top of the pane says
+so.  If it was running and the bus goes instead, nothing can be written, and
+the Event Log says that plainly rather than saying nothing.
+
+Stopping is a **halt** (controlword bit 8), not a zero target, and the
+difference matters: halt means "come to a standstill" in every mode, whereas
+zero is a *place*.  Writing zero to the target position of a drive part way
+through a move would not stop it -- it would send it to position zero, which
+may be the longest move it has been asked for all day.  A zero is written to
+the target as well, but only in the speed and torque modes, where the target is
+a rate and zero really is a stop.
+
+Removing power on top of that is offered as a tick box and is off by default.
+It is not obviously the safer of the two: on a vertical axis it is the load
+that decides, and whether a brake catches it is a fact about the machine rather
+than about the tool.
 
 The numbers are counts, counts per second and per mille of rated torque, which
 is what the profile defines.  Turning those into millimetres or amps needs the

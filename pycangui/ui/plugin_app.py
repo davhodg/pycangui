@@ -68,6 +68,10 @@ class PluginApp:
         #: and disconnected when it is unloaded -- a relay left connected to
         #: code that is no longer there would run on the next pane change.
         self._watchers: list[Callable] = []
+        #: Called as the window goes, and disconnected if the plugin goes
+        #: first -- a closer left connected would run against code that had
+        #: already been unloaded.
+        self._closers: list[Callable] = []
         self._labellers: list[Callable] = []
         self._widget_kinds: list[str] = []
 
@@ -79,6 +83,7 @@ class PluginApp:
         build: Callable[[str], QWidget],
         area: str = "right",
         several: bool = False,
+        shutdown: Callable[[QWidget], None] | None = None,
     ) -> str:
         """Add a dock, and open it hidden.
 
@@ -86,10 +91,16 @@ class PluginApp:
         opening every one of them on top of whatever somebody was doing is how
         a tool becomes a wall.  It is in the View menu, which is where every
         other pane is found.
+
+        ``shutdown`` is called with the pane when it goes -- closed for good, or
+        taken away because the plugin was unloaded.  A plugin that has only put
+        things on screen needs nothing here.  One that has put a piece of
+        equipment into a state does: the equipment does not stop because the
+        window showing it did.
         """
         kind = f"{self.plugin}:{name}"
         where = AREAS.get(area.lower(), Qt.RightDockWidgetArea) if isinstance(area, str) else area
-        self.panes.register(PaneKind(kind, title, where, build, several=several))
+        self.panes.register(PaneKind(kind, title, where, build, several=several, shutdown=shutdown))
         self._kinds.append(kind)
         opened = self.panes.add(kind, show=False)
         if opened:
@@ -119,6 +130,18 @@ class PluginApp:
 
         self.panes.pane_shown.connect(relay)
         self._watchers.append(relay)
+
+    def on_closing(self, callback: Callable[[], None]) -> None:
+        """Be told once, as the window goes, before anything is torn down.
+
+        The other half of ``shutdown``: a pane is not removed when the tool is
+        closed, it goes with the window, so a plugin that has left equipment
+        running would otherwise never hear about the one moment it most needs
+        to.  Called on the GUI thread while the buses are still open, which is
+        the only time a last write can still be sent.
+        """
+        self.window.closing.connect(callback)
+        self._closers.append(callback)
 
     def show_panes(self) -> None:
         """Bring this plugin's panes out.
@@ -204,6 +227,9 @@ class PluginApp:
         for watcher in self._watchers:
             self.panes.pane_shown.disconnect(watcher)
         self._watchers.clear()
+        for closer in self._closers:
+            self.window.closing.disconnect(closer)
+        self._closers.clear()
         for action in self._actions:
             if (parent := action.parent()) is not None and hasattr(parent, "removeAction"):
                 parent.removeAction(action)

@@ -97,6 +97,11 @@ class MainWindow(QMainWindow):
     #: switch is a full reload and the window that asks is the one that goes:
     #: something outside it has to close it and open the next.
     reopen_requested = Signal(str)
+    #: The window is going.  Emitted before anything is torn down and while the
+    #: buses are still open, because something that has left equipment in a
+    #: state needs one last chance to take it back -- and a signal sent after
+    #: the channels had closed would be a chance in name only.
+    closing = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -815,6 +820,10 @@ class MainWindow(QMainWindow):
         # Everything is about to be hidden, and reporting each pane going away
         # on the way out would be a paragraph nobody asked for.
         self._closing = True
+        # First of all, and before anything is put away: whatever a plugin has
+        # left running is still running, and this is the last moment at which
+        # a write can still reach it.
+        self.closing.emit()
         QSettings().setValue("geometry", self.saveGeometry())
         self.ctx.layout.set("window", bytes(self.saveState(LAYOUT_VERSION)))
         self.panes.save_view_states()

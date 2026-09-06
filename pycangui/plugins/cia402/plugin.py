@@ -24,6 +24,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QGridLayout,
@@ -56,6 +57,36 @@ ENABLE_TEXT = (
     "If a target is already set, it may move the moment it is enabled -- and "
     "what is bolted to the shaft moves with it.\n\n"
     "Enable node {node}?"
+)
+
+#: Loud on purpose, and both colours given: the pane has to say that a motor is
+#: live in a way that survives being glanced at, and a background with no
+#: foreground would be unreadable in half the themes it might be shown in.
+BANNER_STYLE = (
+    "background: #b34700; color: #ffffff; padding: 6px; border-radius: 3px; font-weight: bold;"
+)
+DEMANDING = "DEMAND ACTIVE - node {node} is enabled and acting on its target."
+STALE = (
+    "Node {node} was enabled when it was last read.  Nothing is being read now, "
+    "so what it is doing at this moment is not known here."
+)
+
+DISABLE_TOO_TIP = (
+    "Off by default.  Closing this pane always halts the drive and zeroes a\n"
+    "speed or torque demand -- that part is not optional.  Removing power on\n"
+    "top of that is a decision about the machine rather than about the tool:\n"
+    "on a vertical axis it is the load that decides, and whether a brake\n"
+    "catches it is not something pycangui can know."
+)
+
+STOPPED = "Halted node {node} and zeroed its demand, because this pane was closing."
+COULD_NOT_STOP = (
+    "Node {node} was left enabled and could NOT be halted: {why}\n"
+    "It is still acting on the last target it was given."
+)
+BUS_GONE = (
+    "The bus closed while node {node} was enabled.  It is still acting on the "
+    "last target it was given, and nothing here can stop it now."
 )
 
 #: How the numbers are shown.  Counts and per mille are what the profile says;
@@ -197,6 +228,14 @@ class MotorView(QWidget):
             watched.addWidget(QLabel(obj.unit), row, 2)
         watched.setColumnStretch(3, 1)
 
+        self.banner = QLabel("")
+        self.banner.setWordWrap(True)
+        self.banner.setStyleSheet(BANNER_STYLE)
+        self.banner.hide()
+
+        self.disable_too = QCheckBox("Disable the drive as well when this pane closes")
+        self.disable_too.setToolTip(DISABLE_TOO_TIP)
+
         self.poll = QPushButton("Poll")
         self.poll.setCheckable(True)
         self.poll.setToolTip("Read the statusword, the mode and the actual values, over and over.")
@@ -222,6 +261,7 @@ class MotorView(QWidget):
 
         status_box = QGroupBox("State")
         inside = QVBoxLayout(status_box)
+        inside.addWidget(self.banner)
         inside.addWidget(self.state)
         inside.addWidget(self.flags)
         inside.addWidget(self.raw)
@@ -231,6 +271,7 @@ class MotorView(QWidget):
         run_inside = QVBoxLayout(run_box)
         run_inside.addLayout(settings)
         run_inside.addWidget(self.target_note)
+        run_inside.addWidget(self.disable_too)
 
         watch_box = QGroupBox("What it is doing")
         watch_inside = QVBoxLayout(watch_box)
@@ -257,6 +298,7 @@ class MotorView(QWidget):
 
         self._fill_nodes()
         app.canopen.node_seen.connect(lambda *_a: self._fill_nodes())
+        app.bus.disconnected.connect(self._on_bus_lost)
         self._show_state()
         self._show_target()
 
@@ -346,6 +388,9 @@ class MotorView(QWidget):
             label.setText(f"{int(value):,}")
 
     def _on_rate(self, requested: float, achieved: float) -> None:
+        # Polling starting or stopping changes what the banner is entitled to
+        # say, not only what the rate label says.
+        self._show_banner()
         self.rate.setText(rate_text(requested, achieved, self.poller.running))
 
     # --- saying what it is ------------------------------------------------------------------
@@ -368,6 +413,23 @@ class MotorView(QWidget):
         self.reset.setEnabled(faulted)
         self.disable.setEnabled(state != "Switch on disabled")
         self._show_target()  # whether a target can be applied depends on this too
+        self._show_banner()
+
+    def _show_banner(self) -> None:
+        """Say loudly when a motor is live, and say when that is only a memory.
+
+        The distinction is the point.  A drive that was enabled when it was last
+        read may have been stopped by something else since, and a banner that
+        went on asserting the old answer would be worse than no banner: it would
+        be a confident statement about equipment nobody is watching.
+        """
+        node = self.node.currentData()
+        if not cia402.is_enabled(self.statusword):
+            self.banner.hide()
+            return
+        said = DEMANDING if self.poller.running else STALE
+        self.banner.setText(said.format(node=node))
+        self.banner.show()
 
     def _show_target(self) -> None:
         allowed, why = cia402.can_set_target(self.mode)
@@ -510,20 +572,104 @@ class MotorView(QWidget):
 
     # --- and stopping when nobody is looking ------------------------------------------------
     def set_visible_to_user(self, on: bool) -> None:
-        """Stop polling while the pane is put away.
+        """Put the drive down when the pane is put away.
 
-        Every read is a round trip on somebody's bus, and a pane nobody can see
-        asking for six objects twice a second is bus traffic with no reader.
+        Two things, and the second is the one that matters.  Polling stops
+        because every read is a round trip on somebody's bus and a pane nobody
+        can see is a pane with no reader.  The *demand* stops because it would
+        not otherwise: a drive holds the last controlword and target it was
+        given and goes on acting on them, so a window that commanded motion and
+        then went away has left a motor turning with nobody watching the screen
+        that says so.
+
+        The same rule the transmit panes follow.  Out of sight is not a reason
+        to go on sending.
         """
-        if not on and self.poller.running:
+        if on:
+            return
+        if self.poller.running:
+            self.poll.setChecked(False)
+        self.stop_demand()
+
+    def stop_demand(self, background: bool = True) -> None:
+        """Halt the drive and take back a rate demand, if it is running at all.
+
+        ``background`` is false when the tool itself is closing.  The writes then
+        go on the GUI thread, because the worker is about to be shut down and a
+        safety stop handed to a queue that never runs is worse than none: it
+        would look like one.  A close that pauses for an SDO timeout is a fair
+        price.
+        """
+        node = self.node.currentData()
+        writes = cia402.stop_writes(self.mode, self.statusword, self.disable_too.isChecked())
+        if not writes:
+            return  # not driving anything, as far as anything here knows
+        drive = self._quietly()
+        if drive is None:
+            self.app.error(COULD_NOT_STOP.format(node=node, why="it is no longer on the bus"))
+            return
+
+        def job():
+            for obj, value in writes:
+                drive.write(obj, value)
+
+        def done(_result, error) -> None:
+            if error:
+                self.app.error(COULD_NOT_STOP.format(node=node, why=error))
+                return
+            self.app.log(STOPPED.format(node=node))
+            # What it is doing now is no longer known: the pane is going, and
+            # the next thing to read it should read it rather than trust this.
+            self.statusword = 0
+            self._read_something = False
+            self._show_state()
+
+        if background:
+            self.app.run_in_background(job, done)
+            return
+        try:
+            job()
+        except Exception as exc:  # a bus that has already gone, most likely
+            done(None, exc)
+        else:
+            done(None, None)
+
+    def _on_bus_lost(self) -> None:
+        """Say the thing that cannot be done anything about.
+
+        There is no write to make -- the bus is what has gone -- so the only
+        honest response is to state it: the drive is still doing what it was
+        told, and nothing in this window can reach it now.
+        """
+        if cia402.is_enabled(self.statusword):
+            self.app.error(BUS_GONE.format(node=self.node.currentData()))
+        if self.poller.running:
             self.poll.setChecked(False)
 
 
 def register(app) -> None:
-    app.add_pane("main", "Motor control", lambda _name: MotorView(app), area="right")
+    """Every way this pane can go away has to take the demand with it.
+
+    Four of them, and missing any one leaves a motor turning with nothing on
+    screen to say so: put away, closed for good, unloaded with the plugin, and
+    the whole tool closing.  The first three are the pane facade's business and
+    the last is the window's, which is why the plugin API grew a hook for it.
+    """
+    app.add_pane(
+        "main",
+        "Motor control",
+        lambda _name: MotorView(app),
+        area="right",
+        shutdown=lambda view: view.stop_demand(background=False),
+    )
 
     def shown(pane: str, on: bool) -> None:
         if (view := app.panes.view(pane)) is not None:
             view.set_visible_to_user(on)
 
+    def closing() -> None:
+        if (view := app.panes.view(f"{app.plugin}:main")) is not None:
+            view.stop_demand(background=False)
+
     app.on_pane_shown(shown)
+    app.on_closing(closing)
