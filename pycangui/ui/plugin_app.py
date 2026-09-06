@@ -64,6 +64,10 @@ class PluginApp:
         #: somewhere in the View menu.
         self._panes: list[str] = []
         self._actions: list[QAction] = []
+        #: Connected to the pane facade's signals on this plugin's behalf,
+        #: and disconnected when it is unloaded -- a relay left connected to
+        #: code that is no longer there would run on the next pane change.
+        self._watchers: list[Callable] = []
         self._labellers: list[Callable] = []
         self._widget_kinds: list[str] = []
 
@@ -95,6 +99,26 @@ class PluginApp:
     def open_pane(self, name: str) -> None:
         """Show one of this plugin's panes, for a plugin that has a reason to."""
         self.panes.show(f"{self.plugin}:{name}")
+
+    def on_pane_shown(self, callback: Callable[[str, bool], None]) -> None:
+        """Be told when one of this plugin's panes appears or is put away.
+
+        Added because the second plugin written through this API needed it and
+        the first did not, which is the test the API was built to be put to.
+        A pane that polls a bus should stop while nobody can see it -- every
+        read is a round trip on somebody's equipment, and a pane put away is a
+        pane with no reader.
+
+        Only this plugin's own panes are reported, so that a plugin need not
+        filter out the ones it has never heard of.
+        """
+
+        def relay(name: str, on: bool) -> None:
+            if name in self._panes:
+                callback(name, on)
+
+        self.panes.pane_shown.connect(relay)
+        self._watchers.append(relay)
 
     def show_panes(self) -> None:
         """Bring this plugin's panes out.
@@ -177,6 +201,9 @@ class PluginApp:
             self.panes.unregister(kind)
         self._kinds.clear()
         self._panes.clear()
+        for watcher in self._watchers:
+            self.panes.pane_shown.disconnect(watcher)
+        self._watchers.clear()
         for action in self._actions:
             if (parent := action.parent()) is not None and hasattr(parent, "removeAction"):
                 parent.removeAction(action)

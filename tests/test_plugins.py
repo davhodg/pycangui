@@ -553,3 +553,112 @@ def test_a_plugin_switched_off_stays_off_next_time(app, tmp_path, monkeypatch):
     assert "demo:screen" not in second.panes.docks
     assert [r.label for r in second.plugins.inactive()] == ["Demo"]
     second.close()
+
+
+WATCHES = """
+from PySide6.QtWidgets import QLabel
+
+NAME = "Watcher"
+SEEN = []
+
+
+def register(app):
+    app.add_pane("screen", "Watched", lambda name: QLabel("hi"))
+    app.on_pane_shown(lambda name, on: SEEN.append((name, on)))
+"""
+
+
+def test_a_plugin_can_be_told_when_its_pane_is_put_away(app, window):
+    """A pane that polls a bus should stop while nobody can see it: every read
+    is a round trip on somebody's equipment."""
+    import sys
+
+    write_plugin(window, "watcher", WATCHES)
+    window._reload_plugins()
+    settle(app)
+    seen = sys.modules["pycangui_plugins.watcher"].SEEN
+
+    window.panes.show("watcher:screen")
+    settle(app)
+    window.panes.docks["watcher:screen"].hide()
+    settle(app)
+    assert ("watcher:screen", True) in seen
+    assert seen[-1] == ("watcher:screen", False)
+
+
+def test_it_hears_about_its_own_panes_and_no_others(app, window):
+    """So that a plugin need not filter out the ones it has never heard of."""
+    import sys
+
+    write_plugin(window, "watcher", WATCHES)
+    window._reload_plugins()
+    settle(app)
+    seen = sys.modules["pycangui_plugins.watcher"].SEEN
+    seen.clear()
+
+    window.panes.docks["log"].hide()
+    settle(app)
+    assert seen == []
+
+
+# --- a plugin that is more than one file ---------------------------------------------------------
+SPLIT_ENTRY = """
+from PySide6.QtWidgets import QLabel
+
+from . import helper
+
+NAME = "Split"
+
+
+def register(app):
+    app.add_pane("screen", "Split", lambda name: QLabel(helper.WHAT))
+"""
+
+
+def test_a_plugin_can_be_split_across_files(app, window):
+    """A folder rather than a single file is the whole reason a plugin is a
+    folder, and it is worth nothing if the second file cannot be reached."""
+    folder = write_plugin(window, "split", SPLIT_ENTRY)
+    (folder / "helper.py").write_text("WHAT = 'from the helper'\n", encoding="utf-8")
+    window._reload_plugins()
+    settle(app)
+
+    assert window.plugins.errors() == {}
+    assert window.panes.view("split:screen").text() == "from the helper"
+
+
+def test_the_copy_it_reaches_is_the_one_beside_it(app, window, agrees):
+    """The point of installing into the workspace: the copy you edit is the
+    copy that runs.  Named absolutely, an installed plugin would reach back
+    into the one pycangui ships and editing your own would do nothing."""
+    window.plugin_actions.install_supplied("firmware")
+    settle(app)
+    installed = window.ctx.workspace_dir / "plugins" / "firmware" / "program.py"
+    installed.write_text(
+        installed.read_text(encoding="utf-8").replace("BLOCK = 1024", "BLOCK = 7"),
+        encoding="utf-8",
+    )
+    window._reload_plugins()
+    settle(app)
+
+    import sys
+
+    assert sys.modules["pycangui_plugins.firmware.program"].BLOCK == 7
+    from pycangui.plugins.firmware import program
+
+    assert program.BLOCK == 1024, "and the one pycangui ships is untouched"
+
+
+def test_reloading_picks_up_an_edit_to_the_second_file_too(app, window):
+    """Otherwise the entry file is reloaded into the old version of its own
+    modules, which is the opposite of what reload is for."""
+    folder = write_plugin(window, "split", SPLIT_ENTRY)
+    (folder / "helper.py").write_text("WHAT = 'first'\n", encoding="utf-8")
+    window._reload_plugins()
+    settle(app)
+    assert window.panes.view("split:screen").text() == "first"
+
+    (folder / "helper.py").write_text("WHAT = 'second'\n", encoding="utf-8")
+    window._reload_plugins()
+    settle(app)
+    assert window.panes.view("split:screen").text() == "second"
