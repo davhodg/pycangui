@@ -31,7 +31,6 @@ from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.plugins import Plugins
-from pycangui.core.plugins import builtin_dir as builtin_plugins_dir
 from pycangui.core.signals import SignalHub
 from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
@@ -47,6 +46,7 @@ from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.plugin_app import PluginApp
+from pycangui.ui.plugin_manager import INACTIVE_TIP, ManagePlugins, PluginActions
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
@@ -297,11 +297,14 @@ class MainWindow(QMainWindow):
         # to exist for restoreState to be able to put it back where it was.
         self._plugin_menus: dict[str, QMenu] = {}
         self.plugins = Plugins(
-            folders=[builtin_plugins_dir(), self.ctx.workspace_dir / "plugins"],
+            folder=self.ctx.workspace_dir / "plugins",
+            disabled=self._disabled_plugins(),
             make_app=lambda name: PluginApp(self, name),
             log=self.events.information,
             warn=self.events.warning,
         )
+        self.plugin_actions = PluginActions(self, self.ctx, self.plugins)
+        self.plugin_actions.changed.connect(self._plugins_changed)
         self.plugins.load_all()
         self._build_plugins_menu()
         self.panes.restore_instances()
@@ -960,15 +963,21 @@ class MainWindow(QMainWindow):
             menu.deleteLater()
 
     def _build_plugins_menu(self) -> None:
-        """Every plugin installed, then how to reload them and where they live.
+        """What is installed, how to get more, and how to reload them.
 
-        Every one appears whether or not it added a menu entry, because this
-        menu is also the answer to what is installed -- and one that failed to
-        load appears too, disabled, since a plugin that is silently absent is
-        the hardest kind of missing to notice.
+        Every installed plugin appears whether or not it added a menu entry,
+        because this menu is also the answer to what is installed -- one that
+        is switched off appears too, and so does one that failed to load, since
+        a plugin that is silently absent is the hardest kind of missing to
+        notice.
         """
         self.plugins_menu.clear()
         for record in sorted(self.plugins.loaded.values(), key=lambda r: r.label.lower()):
+            if not record.active:
+                off = self.plugins_menu.addAction(f"{record.label} (switched off)")
+                off.setEnabled(False)
+                off.setToolTip(INACTIVE_TIP)
+                continue
             if not record.ok:
                 failed = self.plugins_menu.addAction(f"{record.label} (failed to load)")
                 failed.setEnabled(False)
@@ -983,7 +992,24 @@ class MainWindow(QMainWindow):
         if not self.plugins.loaded:
             none = self.plugins_menu.addAction("No plugins installed")
             none.setEnabled(False)
-            none.setToolTip("A plugin is a folder with a plugin.py in it; see the manual.")
+            none.setToolTip("Install one below, or see the manual for writing your own.")
+
+        self.plugins_menu.addSeparator()
+        install = self.plugins_menu.addAction("Install plugin...", self._install_plugin)
+        install.setToolTip(
+            "A plugin package: a zip with a plugin.py in it.  It is unpacked into\n"
+            "this workspace, and you are told what is in it before it is."
+        )
+        if offered := self.plugin_actions.not_installed():
+            supplied_menu = self.plugins_menu.addMenu("Supplied with pycangui")
+            supplied_menu.setToolTipsVisible(True)
+            for entry in offered:
+                action = supplied_menu.addAction(
+                    entry.label, lambda _=False, n=entry.name: self._install_supplied(n)
+                )
+                action.setToolTip(entry.info.description or f"Install the {entry.label} plugin.")
+        manage = self.plugins_menu.addAction("Manage plugins...", self._manage_plugins)
+        manage.setToolTip("Switch one off, remove one, or write one out as a package to send.")
 
         self.plugins_menu.addSeparator()
         reload_action = self.plugins_menu.addAction("Reload plugins", self._reload_plugins)
@@ -994,6 +1020,33 @@ class MainWindow(QMainWindow):
         )
         folder = self.plugins_menu.addAction("Open plugins folder", self._open_plugins_folder)
         folder.setToolTip("Where this workspace's plugins live.")
+
+    # --- installing and switching them off ------------------------------------------------
+    def _disabled_plugins(self) -> set[str]:
+        stored = self.ctx.settings.get("plugins.disabled", [])
+        return {str(name) for name in stored} if isinstance(stored, list) else set()
+
+    def _install_plugin(self) -> None:
+        self.plugin_actions.install_file(self)
+
+    def _install_supplied(self, name: str) -> None:
+        self.plugin_actions.install_supplied(name, self)
+
+    def _manage_plugins(self) -> None:
+        ManagePlugins(self, self.plugin_actions).exec()
+
+    @Slot(str)
+    def _plugins_changed(self, bring_forward: str) -> None:
+        """Something was installed, removed or switched off: load them again.
+
+        Whatever was just installed is then shown, because somebody who has
+        asked for a plugin should be shown what they got rather than being left
+        to find it in the View menu.
+        """
+        self._reload_plugins()
+        record = self.plugins.loaded.get(bring_forward) if bring_forward else None
+        if record is not None and record.app is not None:
+            record.app.show_panes()
 
     def _reload_plugins(self) -> None:
         self.plugins.load_all()

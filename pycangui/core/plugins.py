@@ -11,6 +11,19 @@ can do it does through the ``app`` it is handed.  That object is the whole API,
 which means the API is one thing to document, one thing to keep stable, and one
 thing to widen when a plugin needs something it has not got.
 
+**Nothing is a plugin until it is installed.**  The ones pycangui ships with
+are a catalogue rather than a load path: they sit in the package until somebody
+asks for one, at which point a copy goes into the workspace and is loaded from
+there like any other.  Anything else would put a screen nobody asked for into
+every window -- and would leave the shipped ones as the one sort of plugin you
+could not edit, because editing them would mean editing the installation.
+
+An installed plugin can also be switched off without being thrown away.
+Inactive means *not loaded at all*: no pane, no menu entries, no toolbar
+buttons, and none of its code running.  That is the useful sense of off -- one
+that leaves the window exactly as it would be if the plugin were not there,
+while keeping whatever you had edited into it.
+
 Two properties are worth more than the features:
 
 **A plugin that fails takes only itself down.**  Loading is per plugin and the
@@ -27,6 +40,7 @@ does not.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import sys
 import traceback
@@ -42,12 +56,19 @@ from typing import Any
 API_VERSION = 1
 
 #: The file inside a plugin folder.  A folder rather than a single file so that
-#: a plugin can bring its own modules, icons and data with it.
+#: a plugin can bring its own modules, icons and data with it.  A single file
+#: is what it is *distributed* as -- see ``plugin_package`` -- which is a
+#: different question from what it is while it is installed.
 ENTRY = "plugin.py"
+
+#: What a plugin says about itself when it says nothing.  A version matters
+#: most for the ones that travel: the copy in your workspace is yours, and the
+#: only way to know which of ours it started life as is for it to say.
+NO_VERSION = "0"
 
 
 def builtin_dir() -> Path:
-    """The plugins pycangui ships with.
+    """The plugins pycangui ships with, as a catalogue to install *from*.
 
     Shipped as plugins rather than compiled into the window on purpose: what
     they do is not part of any protocol pycangui speaks, and building them
@@ -55,6 +76,91 @@ def builtin_dir() -> Path:
     out whether that door is wide enough.
     """
     return Path(__file__).resolve().parent.parent / "plugins"
+
+
+@dataclass(frozen=True)
+class Info:
+    """What a ``plugin.py`` says about itself, read without running it.
+
+    Read rather than imported, because this is asked about plugins that have
+    not been chosen -- the ones in the catalogue, and the ones switched off.
+    Importing a file to find out what it calls itself would run it, and the
+    whole point of *not installed* and *inactive* is that the code does not
+    run.
+    """
+
+    title: str = ""
+    description: str = ""
+    version: str = NO_VERSION
+    api_version: int = 1
+
+
+#: The module-level names read out of a plugin file without running it.
+WANTED = ("NAME", "DESCRIPTION", "VERSION", "API_VERSION")
+
+
+def describe(entry: Path) -> Info:
+    """``NAME``, ``DESCRIPTION`` and ``VERSION`` out of a plugin file."""
+    try:
+        return describe_source(entry.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return Info()
+
+
+def describe_source(source: str) -> Info:
+    """The same, for a file that is still inside a package nobody has opened.
+
+    Anything it cannot make sense of is left at its default: a plugin that
+    computes its own name is welcome to, and will simply be listed under its
+    folder name until it is loaded.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return Info()
+    found: dict[str, Any] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id in WANTED:
+                try:
+                    found[target.id] = ast.literal_eval(node.value)
+                except ValueError:
+                    pass
+    api = found.get("API_VERSION", 1)
+    return Info(
+        title=str(found.get("NAME", "") or ""),
+        description=str(found.get("DESCRIPTION", "") or ""),
+        version=str(found.get("VERSION", NO_VERSION) or NO_VERSION),
+        api_version=api if isinstance(api, int) else 1,
+    )
+
+
+@dataclass(frozen=True)
+class Supplied:
+    """One of the plugins pycangui ships, before anybody has installed it."""
+
+    name: str
+    folder: Path
+    info: Info
+
+    @property
+    def label(self) -> str:
+        return self.info.title or self.name
+
+
+def supplied() -> list[Supplied]:
+    """The catalogue: what could be installed, in the order it is offered."""
+    out = []
+    folder = builtin_dir()
+    if not folder.is_dir():
+        return out
+    for child in sorted(folder.iterdir()):
+        entry = child / ENTRY
+        if child.is_dir() and not child.name.startswith(("_", ".")) and entry.is_file():
+            out.append(Supplied(child.name, child, describe(entry)))
+    return out
 
 
 @dataclass
@@ -65,9 +171,13 @@ class Loaded:
     path: Path
     title: str = ""  # what it calls itself
     description: str = ""
+    version: str = NO_VERSION
     error: str = ""
     app: Any = None
-    builtin: bool = False
+    #: Installed but switched off.  Listed, so that a plugin somebody turned
+    #: off six months ago is findable rather than mysteriously absent, but
+    #: none of its code has been run.
+    active: bool = True
 
     @property
     def ok(self) -> bool:
@@ -80,11 +190,16 @@ class Loaded:
 
 @dataclass
 class Plugins:
-    """Everything found, loaded and still loaded."""
+    """Everything installed, loaded and still loaded."""
 
-    #: Where to look, in order.  A user's plugin replaces a shipped one of the
-    #: same name, the same way a user's hook file replaces the default.
-    folders: list[Path] = field(default_factory=list)
+    #: Where installed plugins live: one folder, in the workspace.  A plugin is
+    #: code that gives a product's objects meaning, the same as a hook, so it
+    #: travels with that product.
+    folder: Path | None = None
+    #: Installed and switched off, by folder name.  Held here rather than
+    #: worked out from the folder, because "off" is a decision about the
+    #: workspace and not a property of the files.
+    disabled: set[str] = field(default_factory=set)
     make_app: Callable[[str], Any] | None = None
     log: Callable[[str], None] = print
     warn: Callable[[str], None] = print
@@ -92,36 +207,49 @@ class Plugins:
 
     # --- finding them --------------------------------------------------------------
     def found(self) -> dict[str, Path]:
-        """Plugin folder name -> its entry file, later folders winning."""
+        """Plugin folder name -> its entry file, whether or not it is switched on."""
         out: dict[str, Path] = {}
-        for folder in self.folders:
-            if not folder.is_dir():
-                continue
-            for child in sorted(folder.iterdir()):
-                entry = child / ENTRY
-                if child.is_dir() and not child.name.startswith(("_", ".")) and entry.is_file():
-                    out[child.name] = entry
+        if self.folder is None or not self.folder.is_dir():
+            return out
+        for child in sorted(self.folder.iterdir()):
+            entry = child / ENTRY
+            if child.is_dir() and not child.name.startswith(("_", ".")) and entry.is_file():
+                out[child.name] = entry
         return out
+
+    def is_active(self, name: str) -> bool:
+        return name not in self.disabled
 
     # --- loading them ---------------------------------------------------------------
     def load_all(self) -> None:
-        """Unload whatever is loaded, then load what is there now."""
+        """Unload whatever is loaded, then load what is installed and switched on."""
         self.unload_all()
-        builtin = {name for name, path in self.found().items() if self._is_builtin(path)}
         saved = sys.dont_write_bytecode
         sys.dont_write_bytecode = True  # keep __pycache__ out of the user's folders
         try:
             for name, entry in self.found().items():
-                self._load_one(name, entry, builtin=name in builtin)
+                if self.is_active(name):
+                    self._load_one(name, entry)
+                else:
+                    self._note_inactive(name, entry)
         finally:
             sys.dont_write_bytecode = saved
         self._report()
 
-    def _is_builtin(self, entry: Path) -> bool:
-        return bool(self.folders) and entry.is_relative_to(self.folders[0])
+    def _note_inactive(self, name: str, entry: Path) -> None:
+        """List a switched-off plugin without running a line of it."""
+        info = describe(entry)
+        self.loaded[name] = Loaded(
+            name=name,
+            path=entry,
+            title=info.title,
+            description=info.description,
+            version=info.version,
+            active=False,
+        )
 
-    def _load_one(self, name: str, entry: Path, builtin: bool = False) -> None:
-        record = Loaded(name=name, path=entry, builtin=builtin)
+    def _load_one(self, name: str, entry: Path) -> None:
+        record = Loaded(name=name, path=entry)
         self.loaded[name] = record
         module = self._import(record)
         if module is None:
@@ -136,6 +264,7 @@ class Plugins:
             return
         record.title = str(getattr(module, "NAME", "") or name)
         record.description = str(getattr(module, "DESCRIPTION", "") or "")
+        record.version = str(getattr(module, "VERSION", NO_VERSION) or NO_VERSION)
 
         register = getattr(module, "register", None)
         if not callable(register):
@@ -189,7 +318,11 @@ class Plugins:
         return {name: r.error for name, r in self.loaded.items() if r.error}
 
     def working(self) -> list[Loaded]:
-        return [r for r in self.loaded.values() if r.ok]
+        """The ones that are actually adding something to the window."""
+        return [r for r in self.loaded.values() if r.ok and r.active]
+
+    def inactive(self) -> list[Loaded]:
+        return [r for r in self.loaded.values() if not r.active]
 
     def _report(self) -> None:
         good = self.working()

@@ -11,8 +11,11 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QMessageBox
 
-from pycangui.core.plugins import API_VERSION, Plugins
+from pycangui.core import plugin_package
+from pycangui.core.plugins import API_VERSION, Plugins, supplied
+from pycangui.ui import folders, plugin_manager
 from pycangui.ui.main_window import MainWindow
 
 PANE = """
@@ -77,31 +80,28 @@ def write_plugin(window, name: str, source: str) -> Path:
 def test_a_folder_with_an_entry_file_is_a_plugin(tmp_path):
     (tmp_path / "demo").mkdir()
     (tmp_path / "demo" / "plugin.py").write_text("NAME = 'Demo'", encoding="utf-8")
-    assert set(Plugins(folders=[tmp_path]).found()) == {"demo"}
+    assert set(Plugins(folder=tmp_path).found()) == {"demo"}
 
 
 def test_a_loose_file_is_not(tmp_path):
     """A folder, so a plugin can bring its own modules and data with it."""
     (tmp_path / "plugin.py").write_text("NAME = 'Nope'", encoding="utf-8")
     (tmp_path / "empty").mkdir()
-    assert Plugins(folders=[tmp_path]).found() == {}
+    assert Plugins(folder=tmp_path).found() == {}
 
 
 def test_folders_that_are_not_meant_to_be_plugins_are_skipped(tmp_path):
     for name in ("__pycache__", ".git"):
         (tmp_path / name).mkdir()
         (tmp_path / name / "plugin.py").write_text("NAME = 'x'", encoding="utf-8")
-    assert Plugins(folders=[tmp_path]).found() == {}
+    assert Plugins(folder=tmp_path).found() == {}
 
 
-def test_a_users_plugin_replaces_a_shipped_one_of_the_same_name(tmp_path):
-    """The same rule as a hook file: yours wins."""
-    shipped, mine = tmp_path / "shipped", tmp_path / "mine"
-    for folder in (shipped, mine):
-        (folder / "demo").mkdir(parents=True)
-        (folder / "demo" / "plugin.py").write_text("NAME = 'x'", encoding="utf-8")
-    found = Plugins(folders=[shipped, mine]).found()
-    assert found["demo"] == mine / "demo" / "plugin.py"
+def test_nothing_pycangui_ships_is_loaded_until_it_is_installed(app, window):
+    """The catalogue is not a load path.  A screen nobody asked for in every
+    window is exactly what installing is there to prevent."""
+    assert window.plugins.loaded == {}
+    assert [s.name for s in supplied()], "and yet there are some to install"
 
 
 # --- loading them -----------------------------------------------------------------------
@@ -167,12 +167,13 @@ def test_one_that_failed_is_listed_too_rather_than_silently_absent(app, window):
 
 
 def test_with_nothing_installed_the_menu_still_shows_the_way_in(app, window):
-    """pycangui ships one, so this is the state of a workspace whose plugins
-    have all been removed rather than one nobody could reach."""
-    window.plugins.loaded.clear()
-    window._build_plugins_menu()
+    """Which is a fresh workspace: nothing is installed until somebody says so,
+    so this menu is the first thing anybody sees of plugins."""
     assert entries(window.plugins_menu) == [
         "No plugins installed",
+        "Install plugin...",
+        "Supplied with pycangui",
+        "Manage plugins...",
         "Reload plugins",
         "Open plugins folder",
     ]
@@ -371,4 +372,184 @@ def test_a_plugin_pane_comes_back_where_it_was_left(app, tmp_path, monkeypatch):
     second.show()
     settle(app)
     assert second.panes.docks["demo:screen"].isVisible(), "open when it was left open"
+    second.close()
+
+
+# --- installing one ------------------------------------------------------------------------
+def package_of(source: str, tmp_path, name: str = "demo") -> Path:
+    """A plugin package, as somebody would send you one."""
+    folder = tmp_path / "sent" / name
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "plugin.py").write_text(source, encoding="utf-8")
+    return plugin_package.pack(folder, tmp_path / f"{name}.zip")
+
+
+@pytest.fixture
+def agrees(monkeypatch):
+    """Somebody who reads the question and says yes."""
+    asked = []
+
+    def answer(_parent, title, text, *_a, **_k):
+        asked.append((title, text))
+        return QMessageBox.Yes
+
+    monkeypatch.setattr(plugin_manager.QMessageBox, "warning", answer)
+    return asked
+
+
+@pytest.fixture
+def refuses(monkeypatch):
+    monkeypatch.setattr(plugin_manager.QMessageBox, "warning", lambda *_a, **_k: QMessageBox.Cancel)
+
+
+def chooses(monkeypatch, path):
+    monkeypatch.setattr(folders, "open_file", lambda *_a, **_k: str(path))
+
+
+def test_a_package_is_unpacked_into_the_workspace_and_loaded(
+    app, window, tmp_path, agrees, monkeypatch
+):
+    """The whole point of the format: one file, and no instructions about where
+    to put it."""
+    chooses(monkeypatch, package_of(PANE.format(what="hello"), tmp_path))
+    window.plugin_actions.install_file()
+    settle(app)
+
+    assert (window.ctx.workspace_dir / "plugins" / "demo" / "plugin.py").is_file()
+    assert "Demo" in [r.label for r in window.plugins.working()]
+    assert "demo:screen" in window.panes.docks
+
+
+def test_what_it_is_about_to_run_is_said_before_it_runs_it(
+    app, window, tmp_path, agrees, monkeypatch
+):
+    """The one thing pycangui does that runs somebody else's code on purpose."""
+    chooses(monkeypatch, package_of(PANE.format(what="hello"), tmp_path))
+    window.plugin_actions.install_file()
+    _title, text = agrees[0]
+    assert "Python that runs as part of pycangui" in text
+
+
+def test_saying_no_installs_nothing(app, window, tmp_path, refuses, monkeypatch):
+    chooses(monkeypatch, package_of(PANE.format(what="hello"), tmp_path))
+    window.plugin_actions.install_file()
+    settle(app)
+    assert not (window.ctx.workspace_dir / "plugins" / "demo").exists()
+    assert window.plugins.loaded == {}
+
+
+def test_the_pane_of_one_just_installed_is_shown(app, window, tmp_path, agrees, monkeypatch):
+    """Every other pane opens hidden, because a plugin's screen is one among a
+    dozen.  The one you have this second asked for is the exception."""
+    chooses(monkeypatch, package_of(PANE.format(what="hello"), tmp_path))
+    window.plugin_actions.install_file()
+    settle(app)
+    assert window.panes.docks["demo:screen"].isVisible()
+
+
+def test_a_file_that_is_not_a_plugin_is_refused_with_a_reason(
+    app, window, tmp_path, agrees, monkeypatch
+):
+    (tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
+    chooses(monkeypatch, tmp_path / "notes.txt")
+    window.plugin_actions.install_file()
+    settle(app)
+    assert "not a zip" in window.log.toPlainText()
+    assert window.plugins.loaded == {}
+
+
+def test_one_pycangui_ships_can_be_installed_from_the_menu(app, window, agrees):
+    """And is then an ordinary plugin in the workspace, which is the copy that
+    runs -- so editing it is editing yours rather than the installation."""
+    window.plugin_actions.install_supplied("firmware")
+    settle(app)
+    assert (window.ctx.workspace_dir / "plugins" / "firmware" / "program.py").is_file()
+    assert "Firmware" in [r.label for r in window.plugins.working()]
+
+
+def test_what_is_already_installed_is_not_offered_again(app, window, agrees):
+    assert "firmware" in [s.name for s in window.plugin_actions.not_installed()]
+    window.plugin_actions.install_supplied("firmware")
+    settle(app)
+    assert "firmware" not in [s.name for s in window.plugin_actions.not_installed()]
+
+
+def test_a_plugin_can_be_written_back_out_as_a_package(app, window, tmp_path, agrees, monkeypatch):
+    """Which is how one of yours gets to somebody else, and the only way the
+    format exists in both directions."""
+    write_plugin(window, "demo", PANE.format(what="hello"))
+    window._reload_plugins()
+    monkeypatch.setattr(folders, "save_file", lambda *_a, **_k: str(tmp_path / "out.zip"))
+    window.plugin_actions.export("demo")
+
+    assert plugin_package.inspect(tmp_path / "out.zip").info.title == "Demo"
+
+
+def test_removing_one_takes_its_folder_and_its_pane(app, window, agrees):
+    write_plugin(window, "demo", PANE.format(what="hello"))
+    window._reload_plugins()
+    settle(app)
+    assert "demo:screen" in window.panes.docks
+
+    window.plugin_actions.uninstall("demo")
+    settle(app)
+    assert not (window.ctx.workspace_dir / "plugins" / "demo").exists()
+    assert "demo:screen" not in window.panes.docks
+    assert window.plugins.loaded == {}
+
+
+# --- and switching one off ---------------------------------------------------------------------
+def test_switched_off_means_not_loaded_at_all(app, window):
+    """Not merely hidden.  Off should leave the window exactly as it would be
+    if the plugin were not there."""
+    write_plugin(window, "demo", EVERYTHING)
+    window._reload_plugins()
+    settle(app)
+
+    window.plugin_actions.set_active("demo", False)
+    settle(app)
+    assert "demo:screen" not in window.panes.docks
+    assert window.plugins.working() == []
+    assert "Demo screen" not in [a.text() for a in window.view_menu.actions()]
+    assert len(window.trace.classifiers) == 4, "and its trace labeller went too"
+
+
+def test_one_switched_off_is_still_listed(app, window):
+    """A plugin somebody turned off six months ago should be findable, not
+    mysteriously absent."""
+    write_plugin(window, "demo", QUIET)
+    window._reload_plugins()
+    window.plugin_actions.set_active("demo", False)
+    settle(app)
+    assert "Quiet (switched off)" in entries(window.plugins_menu)
+    assert [r.label for r in window.plugins.inactive()] == ["Quiet"]
+
+
+def test_switching_it_back_on_brings_everything_back(app, window):
+    write_plugin(window, "demo", PANE.format(what="hello"))
+    window._reload_plugins()
+    window.plugin_actions.set_active("demo", False)
+    settle(app)
+    window.plugin_actions.set_active("demo", True)
+    settle(app)
+    assert window.panes.view("demo:screen").text() == "hello"
+
+
+def test_a_plugin_switched_off_stays_off_next_time(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = MainWindow()
+    first.show()
+    settle(app)
+    write_plugin(first, "demo", PANE.format(what="hello"))
+    first._reload_plugins()
+    first.plugin_actions.set_active("demo", False)
+    settle(app)
+    first.close()
+
+    second = MainWindow()
+    second.show()
+    settle(app)
+    assert "demo:screen" not in second.panes.docks
+    assert [r.label for r in second.plugins.inactive()] == ["Demo"]
     second.close()

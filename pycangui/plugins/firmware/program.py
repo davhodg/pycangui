@@ -16,8 +16,8 @@ images, one per processor.
 **Most devices do not do it this way.**  Firmware download over CANopen is
 very often a maker's own sequence of writes to objects of their own choosing,
 and no amount of standards reading will produce it.  That is exactly why this
-is a plugin: copy the folder into the workspace, edit ``steps`` to be what the
-device actually wants, and it replaces this one.  Nothing else has to change,
+is a plugin: installing it puts a copy in the workspace, so edit ``steps`` in
+that copy to be what the device actually wants.  Nothing else has to change,
 and the pane, the progress and the reporting go on working.
 
 Nothing here touches Qt or the bus directly.  It is handed something that can

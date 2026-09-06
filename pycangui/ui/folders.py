@@ -36,6 +36,7 @@ LOG = "log"  # captured traffic, recorded and replayed
 A2L = "a2l"
 SCRIPT = "script"
 EXPORT = "export"
+PLUGIN = "plugin"  # plugin packages, installed and exported
 
 PREFIX = "folders."
 
