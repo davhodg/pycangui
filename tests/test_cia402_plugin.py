@@ -387,3 +387,110 @@ def test_unloading_it_leaves_nothing_listening(app, window):
     app.processEvents()
     assert "cia402:main" not in window.panes.docks
     assert plugin_app._watchers == []
+
+
+# --- and putting it down again -------------------------------------------------------------------
+def test_a_drive_that_is_not_running_needs_nothing_taken_back():
+    assert cia402.stop_writes(3, READY) == []
+
+
+def test_stopping_halts_first_and_then_zeroes_a_rate_demand():
+    """Halt because it means stop in every mode; the zero afterwards so that
+    switching it back on later does not start from the old demand."""
+    writes = cia402.stop_writes(3, ENABLED)
+    assert writes == [
+        (cia402.CONTROLWORD, cia402.ENABLE_OPERATION | cia402.HALT),
+        (cia402.TARGET_VELOCITY, 0),
+    ]
+
+
+def test_a_position_target_is_never_zeroed():
+    """Zero is a *place*.  Writing it to 0x607A does not stop a drive part way
+    through a move -- it sends it to position zero, which may be the longest
+    move it has been asked for all day."""
+    writes = cia402.stop_writes(1, ENABLED)
+    assert writes == [(cia402.CONTROLWORD, cia402.ENABLE_OPERATION | cia402.HALT)]
+
+
+def test_removing_power_as_well_is_asked_for_rather_than_assumed():
+    """On a vertical axis it is the load that decides, and whether a brake
+    catches it is not something pycangui can know."""
+    assert cia402.stop_writes(3, ENABLED, disable=True)[-1] == (
+        cia402.CONTROLWORD,
+        cia402.DISABLE_VOLTAGE,
+    )
+
+
+def running(view, monkeypatch, mode=3):
+    """A pane that believes it has a drive turning."""
+    drive = wired(view, monkeypatch, ENABLED)
+    view.node.addItem("Node 5", 5)
+    view._took(cia402.MODE_DISPLAY, mode)
+    view._took(cia402.STATUSWORD, ENABLED)
+    drive.written.clear()
+    return drive
+
+
+def test_putting_the_pane_away_stops_the_drive(app, window, view, monkeypatch):
+    """A drive holds the last controlword and target it was given.  A window
+    that commanded motion and then went away has left a motor turning with
+    nobody watching the screen that says so."""
+    drive = running(view, monkeypatch)
+    view.set_visible_to_user(False)
+
+    assert drive.written == [
+        (cia402.CONTROLWORD.index, cia402.ENABLE_OPERATION | cia402.HALT),
+        (cia402.TARGET_VELOCITY.index, 0),
+    ]
+    assert "Halted node 5" in window.log.toPlainText()
+
+
+def test_closing_the_pane_for_good_stops_it_too(app, window, view, monkeypatch):
+    drive = running(view, monkeypatch)
+    window.panes.unregister("cia402:main")
+    app.processEvents()
+    assert drive.written, "the pane went, and took the demand with it"
+
+
+def test_closing_the_window_stops_it(app, window, view, monkeypatch):
+    """The one the pane facade cannot report: a pane is not removed when the
+    tool closes, it goes with the window."""
+    drive = running(view, monkeypatch)
+    window.close()
+    app.processEvents()
+    assert drive.written
+
+
+def test_a_stop_that_could_not_be_sent_is_said_loudly(app, window, view, monkeypatch):
+    """Silence here would read as success, and what it would mean is a motor
+    still turning."""
+    running(view, monkeypatch)
+    monkeypatch.setattr(view, "_quietly", lambda: None)
+    view.stop_demand(background=False)
+    assert "could NOT be halted" in window.log.toPlainText()
+
+
+def test_the_pane_says_loudly_when_a_motor_is_live(app, view, monkeypatch):
+    running(view, monkeypatch)
+    view.poller.start(2.0)
+    view._show_banner()
+    assert view.banner.isVisibleTo(view)
+    assert "DEMAND ACTIVE" in view.banner.text()
+
+    view.poller.stop()
+    view._show_banner()
+    assert "not known here" in view.banner.text(), "and stops asserting it once nothing is read"
+
+
+def test_no_banner_when_nothing_is_being_driven(app, view):
+    view._took(cia402.STATUSWORD, READY)
+    assert not view.banner.isVisibleTo(view)
+
+
+def test_losing_the_bus_while_it_is_running_is_reported(app, window, view, monkeypatch):
+    """There is no write to make -- the bus is what has gone -- so the only
+    honest response is to say so."""
+    running(view, monkeypatch)
+    window.bus.disconnected.emit()
+    app.processEvents()
+    assert "nothing here can stop it now" in window.log.toPlainText()
