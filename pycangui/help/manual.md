@@ -634,11 +634,17 @@ def register(app):
     app.add_menu_action("Do the thing", run_it, "what it will do")
 ```
 
+A plugin folder is a package rooted at itself, so a second file beside
+`plugin.py` is reached with `from . import helper`.  Name it absolutely and
+you reach some other copy of it -- for an installed plugin, the copy
+pycangui ships rather than the one you are editing.
+
 `app` is the whole API, and it offers:
 
 | | |
 |---|---|
 | `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu opens it |
+| `on_pane_shown(fn)` | `fn(name, on)` when one of *your* panes appears or is put away |
 | `add_menu_action(text, callback, tooltip)` | an entry under *Tools > Plugins > your plugin* |
 | `add_toolbar_button(text, callback, tooltip)` | a button on the toolbar |
 | `add_trace_labeller(fn)` | name frames in every trace: `fn(frame) -> str \| None` |
@@ -679,6 +685,45 @@ pane, the progress bar and the reporting go on working around it.
 While a device is being programmed it answers very little and slowly, so
 timeouts are the expected thing rather than a fault -- and pulling the power
 part way through is how a controller is turned into a brick.
+
+**Motor control (CiA 402)** drives a motor controller: its state, its mode, its
+target and what it is actually doing.
+
+Half of that screen could have been a custom pane, and it is worth knowing
+which half.  The modes, the targets and the actual values are ordinary objects
+at standard indices -- point a custom pane at 0x6060, 0x60FF and 0x606C and you
+have them, with no code at all.
+
+The other half cannot be.  A drive does nothing until it has been walked
+through a state machine -- 0x06, then 0x07, then 0x0F -- and *which* of those
+writes is needed depends on what the drive answered to the last one.  A fault
+is cleared by a rising edge rather than by a value, so it is two writes.  And
+the state is not a value: it is decoded from overlapping masks of the
+statusword, where "Ready to switch on" and "Switched on" differ in one bit
+while "Fault" is a different mask altogether.  No arrangement of boxes on a
+form expresses any of that.
+
+**Enable asks first**, once per drive per session, the same as joining a live
+bus or transmitting onto one: it is the moment a motor becomes able to move,
+and if a target is already set it may move immediately.
+
+What it refuses is as much of the point as what it does.  A drive still
+starting up, or still reacting to a fault, is left alone -- it leaves those
+states by itself, and a controlword written then is ignored rather than
+refused, which looks exactly like the tool having done nothing.  Quick stop is
+offered only to a drive that is running.  A target is not offered at all in the
+cyclic synchronous modes, where it has to arrive every cycle over a PDO and one
+written by hand would be stale before it got there.  A value too big for its
+object is refused rather than wrapped.  And the button that tells a profile
+position drive to take its target is offered only while the drive is already
+enabled, because making that happen means writing the enable controlword -- a
+button that quietly does what another button asks permission for is a hole in
+the permission.
+
+The numbers are counts, counts per second and per mille of rated torque, which
+is what the profile defines.  Turning those into millimetres or amps needs the
+gearing and the motor rating, which are the drive's business and not
+pycangui's.
 
 pycangui's own plugins are packaged, installed and loaded exactly the way one
 of yours is -- installing a supplied plugin packs it and unpacks it through the

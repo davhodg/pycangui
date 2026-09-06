@@ -44,6 +44,7 @@ import ast
 import importlib.util
 import sys
 import traceback
+import types
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -65,6 +66,22 @@ ENTRY = "plugin.py"
 #: most for the ones that travel: the copy in your workspace is yours, and the
 #: only way to know which of ours it started life as is for it to say.
 NO_VERSION = "0"
+
+#: Every plugin is imported as a module under this one, so that two plugins
+#: each carrying a ``drive.py`` get one each rather than one between them.
+PACKAGE = "pycangui_plugins"
+
+
+def _ensure_parent() -> None:
+    """A parent for the plugin modules to hang under.
+
+    It has no file of its own and never will: it exists so that each plugin
+    can be a package of its own, rooted at its own folder.
+    """
+    if PACKAGE not in sys.modules:
+        parent = types.ModuleType(PACKAGE)
+        parent.__path__ = []  # a namespace with nothing of its own in it
+        sys.modules[PACKAGE] = parent
 
 
 def builtin_dir() -> Path:
@@ -284,8 +301,18 @@ class Plugins:
 
     def _import(self, record: Loaded):
         try:
+            _ensure_parent()
             spec = importlib.util.spec_from_file_location(
-                f"pycangui_plugins.{record.name}", record.path
+                f"{PACKAGE}.{record.name}",
+                record.path,
+                # Loaded as a *package* rooted at the plugin's own folder, so
+                # that ``from . import whatever`` finds the file next to this
+                # one.  Without it a plugin split across several files can only
+                # reach its own modules by naming them absolutely -- which, for
+                # one installed from a package, would reach some other copy of
+                # them entirely, and editing the copy in the workspace would
+                # quietly do nothing.
+                submodule_search_locations=[str(record.path.parent)],
             )
             assert spec is not None and spec.loader is not None
             module = importlib.util.module_from_spec(spec)
@@ -304,6 +331,28 @@ class Plugins:
             self._undo(record)
         self.loaded.clear()
 
+    def forget_modules(self) -> None:
+        """Drop the imported code without taking anything back off the window.
+
+        For a window on its way out.  ``unload_all`` would remove the panes as
+        well, and by then the window has already written down where they were:
+        taking them away at that point would be undoing what was just saved.
+        What does have to go is the code, because Python holds imported modules
+        for the life of the process -- so the next workspace opened, with its
+        own plugin of the same name, would otherwise run this one's.
+        """
+        for record in self.loaded.values():
+            self._forget(record)
+
+    def _forget(self, record: Loaded) -> None:
+        # The plugin's own modules go too, not just its entry file: a plugin
+        # split across several files whose siblings stayed behind would be
+        # loaded again into the old versions of them, which is the opposite of
+        # what reloading is for.
+        gone = f"{PACKAGE}.{record.name}"
+        for loaded in [m for m in sys.modules if m == gone or m.startswith(f"{gone}.")]:
+            sys.modules.pop(loaded, None)
+
     def _undo(self, record: Loaded) -> None:
         if record.app is None:
             return
@@ -311,7 +360,7 @@ class Plugins:
             record.app.remove_all()
         except Exception:
             self.warn(f"Plugin {record.label} left something behind:\n{traceback.format_exc()}")
-        sys.modules.pop(f"pycangui_plugins.{record.name}", None)
+        self._forget(record)
 
     # --- what happened ------------------------------------------------------------------
     def errors(self) -> dict[str, str]:

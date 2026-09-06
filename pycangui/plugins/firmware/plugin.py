@@ -30,10 +30,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pycangui.plugins.firmware import program
-from pycangui.plugins.firmware.program import Device
 from pycangui.uds import images
 from pycangui.ui import folders
+
+# Relative, so that the copy of program.py sitting beside *this* file is
+# the one that runs.  Named absolutely, an installed plugin would reach
+# back into the one pycangui ships and editing your own would do nothing.
+from . import program
+from .program import Device
 
 API_VERSION = 1
 NAME = "Firmware"

@@ -825,6 +825,10 @@ class MainWindow(QMainWindow):
         # Parentless windows of their own, so they would keep the application
         # running after the main window had gone.
         self.panes.close_detached()
+        # After the layout has been written down, and without taking the panes
+        # back off a window that is going anyway: what has to go is the code,
+        # so that the next workspace runs its own plugins rather than these.
+        self.plugins.forget_modules()
         self.replay.stop()
         self.help_menu.shutdown()
         self.connect_bar.shutdown()
