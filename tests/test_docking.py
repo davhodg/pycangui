@@ -432,7 +432,7 @@ def open_dialog(app, window, then):
     settle(app)
 
 
-def test_a_pinned_detached_pane_stands_down_for_a_dialog(app, window):
+def test_a_pinned_detached_pane_stands_down_for_a_dialog(app, window, real_dialogs):
     """It was above everything, the dialog included.
 
     The dialog could not be read, and the window hiding it could not be moved
@@ -454,7 +454,7 @@ def test_a_pinned_detached_pane_stands_down_for_a_dialog(app, window):
     assert detached.isVisible() and detached.pane.isVisible()
 
 
-def test_a_pinned_floating_pane_stands_down_too(app, window):
+def test_a_pinned_floating_pane_stands_down_too(app, window, real_dialogs):
     dock = window.panes.docks["canopen"]
     float_out(app, dock)
     window.panes.bars["canopen"].pin.setChecked(True)
@@ -469,7 +469,7 @@ def test_a_pinned_floating_pane_stands_down_too(app, window):
     assert dock.widget().isVisible()
 
 
-def test_an_unpinned_pane_is_left_alone_by_a_dialog(app, window):
+def test_an_unpinned_pane_is_left_alone_by_a_dialog(app, window, real_dialogs):
     float_out(app, window.panes.docks["canopen"])
     settle(app)
     before = window.panes.docks["canopen"].windowFlags()

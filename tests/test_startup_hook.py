@@ -130,8 +130,8 @@ def test_a_virtual_channel_connects_without_asking(app, home, monkeypatch):
 
     monkeypatch.setattr(
         confirm.QMessageBox,
-        "warning",
-        lambda *_a, **_k: pytest.fail("it asked about a virtual bus"),
+        "exec",
+        lambda _box: pytest.fail("it asked about a virtual bus"),
     )
     write_startup(
         "def on_startup(window, *, ctx):\n"
@@ -151,8 +151,8 @@ def test_a_real_bus_still_raises_the_question(app, home, monkeypatch):
     asked = []
     monkeypatch.setattr(
         confirm.QMessageBox,
-        "warning",
-        lambda _p, _t, text, *a, **k: (asked.append(text), confirm.QMessageBox.Cancel)[1],
+        "exec",
+        lambda box: (asked.append(box.text()), confirm.QMessageBox.Cancel)[1],
     )
     write_startup(
         "def on_startup(window, *, ctx):\n"

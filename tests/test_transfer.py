@@ -389,7 +389,7 @@ def test_choosing_a_binary_asks_for_an_address(view, images_dir):
 def test_writing_to_the_ecu_is_asked_about_first(view, images_dir, monkeypatch):
     asked = []
     monkeypatch.setattr(
-        QMessageBox, "warning", lambda *a, **k: (asked.append(a[2]), QMessageBox.Cancel)[1]
+        QMessageBox, "exec", lambda box: (asked.append(box.text()), QMessageBox.Cancel)[1]
     )
     view.manager.client = ecu = FakeEcu()
     view.local.setText(images_dir("a.hex", (0x8000, bytes(16))))
@@ -401,9 +401,7 @@ def test_writing_to_the_ecu_is_asked_about_first(view, images_dir, monkeypatch):
 
 
 def test_reading_from_the_ecu_is_not_worth_a_question(view, tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        QMessageBox, "warning", lambda *a, **k: pytest.fail("an upload changes nothing")
-    )
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: pytest.fail("an upload changes nothing"))
     view.manager.client = FakeEcu(memory=bytes(8))
     view.local.setText(str(tmp_path / "out.bin"))
     view.operation.setCurrentIndex(view.operation.findData("upload"))
@@ -496,7 +494,7 @@ def test_erase_and_check_are_only_offered_for_a_download(view):
 
 
 def test_the_pane_passes_them_on(view, images_dir, monkeypatch):
-    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Yes)
     view.manager.client = ecu = FakeEcu()
     view.local.setText(images_dir("a.hex", (0x8000, bytes(8))))
     view._reload_image()
@@ -511,7 +509,7 @@ def test_the_pane_passes_them_on(view, images_dir, monkeypatch):
 def test_the_question_says_the_memory_will_be_erased(view, images_dir, monkeypatch):
     asked = []
     monkeypatch.setattr(
-        QMessageBox, "warning", lambda *a, **k: (asked.append(a[2]), QMessageBox.Cancel)[1]
+        QMessageBox, "exec", lambda box: (asked.append(box.text()), QMessageBox.Cancel)[1]
     )
     view.manager.client = FakeEcu()
     view.local.setText(images_dir("a.hex", (0x8000, bytes(8))))

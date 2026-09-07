@@ -38,7 +38,7 @@ from pycangui.uds.manager import UdsManager
 from pycangui.ui import folders
 from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.canopen_view import CanopenView
-from pycangui.ui.confirm import Confirmations, is_real
+from pycangui.ui.confirm import Confirmations, Remembered, is_real
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.custom_pane_view import CustomPaneView
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         self.hooks = Hooks(self.ctx)
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
-        self.confirm = Confirmations()
+        self.confirm = Confirmations(Remembered())
         BACKENDS.load_user_backends(
             self.ctx.backends_dir, self.events.information, self.events.warning
         )
@@ -273,6 +273,12 @@ class MainWindow(QMainWindow):
             "A file dialog opens where that sort of file was last used -- an EDS\n"
             "where the last EDS was, a firmware image where the last image was.\n"
             "This puts them all back to pycangui's own folders."
+        )
+        ask_again = tools_menu.addAction("Ask about everything again", self._ask_again)
+        ask_again.setToolTip(
+            "Bring back every question you told pycangui not to ask again --\n"
+            "joining a bus, transmitting, replaying, and the notice it shows\n"
+            "when it starts."
         )
         tools_menu.addSeparator()
         verbose = tools_menu.addAction("Verbose CAN logging")
@@ -996,6 +1002,22 @@ class MainWindow(QMainWindow):
             "pycangui's own folders again."
             if how_many
             else "No folders were being remembered."
+        )
+
+    def _ask_again(self) -> None:
+        """Put back every question somebody has told pycangui to stop asking.
+
+        The other half of the tick box.  A setting that can be turned on and not
+        off is a setting people are right to distrust, and this one turns off
+        the questions asked before pycangui can disturb equipment.
+        """
+        how_many = self.confirm.forget_everything()
+        self.events.information(
+            f"Forgot {how_many} remembered answer(s): pycangui will ask again before "
+            "joining a bus, transmitting or replaying, and will show its notice at the "
+            "next start."
+            if how_many
+            else "Nothing was being remembered; every question is already asked."
         )
 
     def _open_hooks_folder(self) -> None:

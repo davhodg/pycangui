@@ -1,26 +1,170 @@
-"""Questions asked once a session, before doing something with consequences.
+"""What the user has agreed to before pycangui disturbs equipment.
 
-Three things pycangui does can disturb equipment that is not its own: joining
-a live bus, transmitting onto one, and replaying a log onto one.  Each asks
-before the first time, and then stays out of the way -- a dialog on every
-send would be worse than useless, because it would be dismissed unread.
+Two shapes of the same subject.
+
+**Once, before anything.**  A notice at start-up saying what the tool is
+capable of, which has to be clicked through.  It is not a question about
+anything in particular; it is the sentence somebody should have read before
+their first connection rather than after their first mistake.
+
+**Once a session, per thing.**  Three things pycangui does can disturb
+equipment that is not its own: joining a live bus, transmitting onto one, and
+replaying a log onto one.  Each asks before the first time, and then stays out
+of the way -- a dialog on every send would be worse than useless, because it
+would be dismissed unread.
 
 The unit of "once" is the *key*, which spells out what was agreed to.  Keying
 the connect question on the bitrate rather than on the channel is deliberate:
 saying yes to 500 kbit/s is not saying yes to 125 kbit/s on the same bus, and
 the wrong bitrate is exactly the mistake the question is there to catch.
+
+Both offer to be remembered, and what "remembered" means is the interesting
+part.  An answer is kept **against the person who gave it, on the machine they
+gave it on**, in ``QSettings`` -- never in the workspace.  A workspace is a
+folder made to be copied, backed up and handed to a colleague, and an agreement
+that travelled inside one would mean somebody else's window, on somebody else's
+bench, quietly not asking.  The user name is stored alongside and checked, so
+that a settings store which does somehow arrive on another machine, or under
+another account, asks that person for themselves.
 """
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QMessageBox, QWidget
+import getpass
+
+from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QCheckBox, QMessageBox, QWidget
+
+#: Kept outside every workspace, deliberately.  See the module docstring.
+AGREED_SETTING = "confirmations/agreed"
+USER_SETTING = "confirmations/user"
+NOTICE_SETTING = "confirmations/notice-accepted-by"
+
+REMEMBER_LABEL = "Do not ask me this again on this machine"
+REMEMBER_TIP = (
+    "Kept for you, on this computer, outside any workspace -- so it does not\n"
+    "travel in a workspace handed to somebody else, and another account on\n"
+    "this machine is asked for itself.\n\n"
+    "Tools > Ask about everything again brings the questions back."
+)
+
+NOTICE_TITLE = "Before you start"
+NOTICE = (
+    "pycangui talks to real equipment.\n\n"
+    "Joining a bus at the wrong bitrate makes a controller signal an error on every "
+    "frame it sees, and those error frames go out on the wire -- they can drive the "
+    "nodes that are working off the bus.  Transmitting, replaying a log, writing "
+    "parameters, enabling a drive and downloading firmware all change what equipment "
+    "does, and not all of them can be undone.\n\n"
+    "Know what is on the bus before you join it, and what a device will do before you "
+    "write to it.\n\n"
+    "pycangui asks before each of those the first time you do it.  Nothing else it does "
+    "leaves this machine: it makes no network connection of its own accord.\n\n"
+    "Provided under the Apache License 2.0, without warranty of any kind."
+)
+NOTICE_AGAIN = "Do not show this again"
+
+
+def _who() -> str:
+    """The account this is being agreed by, or "" where that cannot be told."""
+    try:
+        return getpass.getuser()
+    except Exception:  # no password database, no USERNAME: not worth failing over
+        return ""
+
+
+class Remembered:
+    """Agreements kept between sessions, for one person on one machine.
+
+    A thin wrapper over ``QSettings`` rather than a store of our own, because
+    ``QSettings`` is already per user by construction -- the registry under
+    HKEY_CURRENT_USER on Windows, the account's own config directory
+    elsewhere -- which is most of what is wanted here.  The user name is
+    written alongside and checked on the way out, so that the one case
+    ``QSettings`` does not cover, a store copied somewhere else, is covered
+    too: it asks that person for themselves rather than assuming the answer
+    somebody else gave.
+    """
+
+    def __init__(self, settings: QSettings | None = None, user: str | None = None) -> None:
+        self._settings = settings if settings is not None else QSettings()
+        self._user = _who() if user is None else user
+
+    def keys(self) -> set[str]:
+        if self._settings.value(USER_SETTING, "") != self._user:
+            return set()  # somebody else's answers, which are not ours to use
+        stored = self._settings.value(AGREED_SETTING, [])
+        if isinstance(stored, str):  # a one-item list comes back as a string
+            stored = [stored]
+        return {str(key) for key in stored or []}
+
+    def add(self, key: str) -> None:
+        self._settings.setValue(USER_SETTING, self._user)
+        self._settings.setValue(AGREED_SETTING, sorted(self.keys() | {key}))
+
+    def notice_accepted(self) -> bool:
+        return bool(self._settings.value(NOTICE_SETTING, "")) and (
+            self._settings.value(NOTICE_SETTING, "") == self._user
+        )
+
+    def accept_notice(self) -> None:
+        self._settings.setValue(NOTICE_SETTING, self._user)
+
+    def clear(self) -> int:
+        """Forget everything, so every question comes back.  Returns how many."""
+        how_many = len(self.keys()) + (1 if self.notice_accepted() else 0)
+        for name in (AGREED_SETTING, USER_SETTING, NOTICE_SETTING):
+            self._settings.remove(name)
+        return how_many
+
+
+def accept_notice(parent: QWidget | None = None, remembered: Remembered | None = None) -> bool:
+    """Show the start-up notice.  False means the user chose not to go on.
+
+    Shown before the window is built rather than over the top of it, so that
+    nothing -- not a startup hook, not a workspace reopening its channels --
+    can have touched a bus before it has been read.
+
+    A notice that could not be dismissed for good would be dismissed unread by
+    the second week, which is why the tick box is there; it is kept against the
+    person who ticked it, so a colleague who picks the machine up is shown it
+    once themselves.
+    """
+    remembered = Remembered() if remembered is None else remembered
+    if remembered.notice_accepted():
+        return True
+    box = QMessageBox(
+        QMessageBox.Warning,
+        NOTICE_TITLE,
+        NOTICE,
+        QMessageBox.Ok | QMessageBox.Cancel,
+        parent,
+    )
+    box.button(QMessageBox.Ok).setText("Continue")
+    box.button(QMessageBox.Cancel).setText("Quit")
+    box.setDefaultButton(QMessageBox.Ok)
+    again = QCheckBox(NOTICE_AGAIN)
+    again.setToolTip(REMEMBER_TIP)
+    box.setCheckBox(again)
+    if box.exec() != QMessageBox.Ok:
+        return False
+    if again.isChecked():
+        remembered.accept_notice()
+    return True
 
 
 class Confirmations:
-    """Remembers which questions have already been answered yes this session."""
+    """Which questions have been answered yes, this session or for good.
 
-    def __init__(self) -> None:
-        self._agreed: set[str] = set()
+    ``remembered`` is what makes an answer outlive the session, and it is
+    optional so that anything constructing one of these for a test, or for a
+    pane of its own, gets the session-only behaviour rather than reaching into
+    the real user's settings by accident.
+    """
+
+    def __init__(self, remembered: Remembered | None = None) -> None:
+        self._store = remembered
+        self._agreed: set[str] = set(remembered.keys()) if remembered is not None else set()
 
     def agreed(self, key: str) -> bool:
         return key in self._agreed
@@ -31,19 +175,27 @@ class Confirmations:
         Defaults to Cancel: these dialogs appear in the middle of doing
         something else, and the safe answer should be the one you get by
         pressing return without reading carefully.
+
+        The tick box is offered only where there is somewhere to keep the
+        answer.  Offering it and then forgetting at the end of the session
+        would be a promise the dialog could not keep.
         """
         if key in self._agreed:
             return True
-        answer = QMessageBox.warning(
-            parent,
-            title,
-            text,
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
+        box = QMessageBox(
+            QMessageBox.Warning, title, text, QMessageBox.Yes | QMessageBox.Cancel, parent
         )
-        if answer != QMessageBox.Yes:
+        box.setDefaultButton(QMessageBox.Cancel)
+        again = None
+        if self._store is not None:
+            again = QCheckBox(REMEMBER_LABEL)
+            again.setToolTip(REMEMBER_TIP)
+            box.setCheckBox(again)
+        if box.exec() != QMessageBox.Yes:
             return False
         self._agreed.add(key)
+        if again is not None and again.isChecked():
+            self._store.add(key)
         return True
 
     def allow(self, key: str) -> None:
@@ -51,10 +203,16 @@ class Confirmations:
         self._agreed.add(key)
 
     def forget(self, key: str | None = None) -> None:
+        """Ask again this session.  What was remembered for good is untouched."""
         if key is None:
             self._agreed.clear()
         else:
             self._agreed.discard(key)
+
+    def forget_everything(self) -> int:
+        """Ask again, including the answers that were being kept for good."""
+        self._agreed.clear()
+        return self._store.clear() if self._store is not None else 0
 
 
 def is_real(interface: str) -> bool:

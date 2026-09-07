@@ -21,7 +21,11 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QCoreApplication, QSettings
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+
+#: Taken before anything patches it, so a test that wants a real dialog can
+#: have one back.
+_REAL_EXEC = {QDialog: QDialog.exec, QMessageBox: QMessageBox.exec}
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -41,6 +45,37 @@ def _isolate_settings(tmp_path_factory):
 @pytest.fixture(scope="session")
 def app():
     return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def _no_unanswered_dialogs(monkeypatch):
+    """A modal dialog nobody answered blocks forever.
+
+    Offscreen or not, ``exec`` runs its own event loop and waits, so a test
+    that reaches an unexpected dialog does not fail -- it hangs, which is the
+    worst thing in a suite to work out.  This turns that into an ordinary
+    failure naming the dialog.  A test that means to answer one patches
+    ``exec`` itself, and its patch replaces this one.
+    """
+
+    def refuse(self, *_args, **_kwargs):
+        raise AssertionError(
+            f"a modal {type(self).__name__} opened that no test answered: {self.windowTitle()!r}"
+        )
+
+    for widget in (QDialog, QMessageBox):
+        monkeypatch.setattr(widget, "exec", refuse)
+
+
+@pytest.fixture
+def real_dialogs(monkeypatch):
+    """Put ``exec`` back, for the few tests that mean to open a real dialog.
+
+    A test checking what happens *while* one is up has to have a real one, and
+    arranges to close it itself.
+    """
+    for widget in (QDialog, QMessageBox):
+        monkeypatch.setattr(widget, "exec", _REAL_EXEC[widget])
 
 
 @pytest.fixture(autouse=True)

@@ -21,7 +21,10 @@ opaque data rather than anything to read; *View > Reset layout* puts it back.
 
 Outside the workspaces are the things that belong to the machine rather than
 to what you are working on: `backends/`, which is about being able to talk to a
-bus at all, and the window's position on screen, which stays in `QSettings`.
+bus at all, the window's position on screen, and the questions you have told
+pycangui not to ask again -- all of which stay in `QSettings`.  The last of
+those is outside a workspace on purpose, so that an agreement about disturbing
+equipment cannot travel inside a folder you hand to somebody else.
 
 ## Where file dialogs open
 
