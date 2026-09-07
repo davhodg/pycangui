@@ -43,6 +43,7 @@ PAGES = (
     "signals.md",
     "event-log.md",
     "canopen.md",
+    "compare.md",
     "uds.md",
     "j1939.md",
     "xcp.md",

@@ -444,9 +444,7 @@ def test_agreeing_once_covers_the_session(window, app, monkeypatch):
     workspaces.create("drive")
     workspaces.create("other")
     times: list[int] = []
-    monkeypatch.setattr(
-        QMessageBox, "exec", lambda _box: (times.append(1), QMessageBox.Yes)[1]
-    )
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: (times.append(1), QMessageBox.Yes)[1])
     window._switch_workspace("drive")
     window._switch_workspace("other")
     assert len(times) == 1, "it is the same loss each time"

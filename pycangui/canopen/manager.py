@@ -733,6 +733,42 @@ class CanopenManager(QObject):
 
         self._worker.submit(job, done)
 
+    def read_objects(self, node_id: int, wanted, done) -> None:
+        """Read a named list of objects, for comparing a node against a file.
+
+        Named rather than discovered, and that is the point.  Reading a whole
+        object dictionary to compare it against a file is minutes of SDO
+        traffic to answer a question about the two hundred objects the file
+        actually holds -- and it needs an EDS loaded, which comparing against a
+        file does not.  The file says what matters; this reads that.
+
+        An object the node will not give up is left out rather than recorded as
+        a failure.  A device that does not implement an object is not a device
+        that disagrees about it, and the comparison says "only on one side"
+        because that is what is true.
+
+        ``done(values, error)`` is called on the GUI thread.
+        """
+        node = self.node(node_id)
+        if node is None:
+            done(None, f"Node {node_id} is not on the bus")
+            return
+        wanted = list(wanted)
+
+        def job() -> dict[tuple[int, int], object]:
+            values: dict[tuple[int, int], object] = {}
+            for i, (index, sub) in enumerate(wanted):
+                try:
+                    values[(index, sub)] = self._variable(node, index, sub).raw
+                except Exception:  # not implemented here: absent, not different
+                    pass
+                if i % 10 == 0:
+                    self.dcf_progress.emit(i, len(wanted))
+            self.dcf_progress.emit(len(wanted), len(wanted))
+            return values
+
+        self._worker.submit(job, done)
+
     def apply_dcf(self, node_id: int, path: str) -> None:
         """Write the parameter values from a DCF into the node."""
         if self.node(node_id) is None:
