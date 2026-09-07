@@ -53,6 +53,7 @@ anything a hook wants to say arrives where everything else does.
 | `j1939.py` | PGN names, SPN names and failure-mode descriptions |
 | `xcp.py` | the seed-to-key algorithm for CAL and the other resources |
 | `trace.py` | what to call a frame the trace does not recognise |
+| `startup.py` | what to do once the window is up -- see below |
 
 The tables in `j1939.py` are filled in rather than hidden inside pycangui:
 the PGN names and the failure modes are there to read, and adding a proprietary
@@ -62,6 +63,33 @@ descriptions, which no standard defines at all.
 
 The per-protocol pages say which hook does what in context:
 [CANopen](canopen.md), [UDS](uds.md), [J1939](j1939.md) and [XCP](xcp.md).
+
+## The startup hook
+
+`startup.py` is the odd one out.  Every other hook is *asked* something and
+returns an answer; this one is simply told that the window is open, and does
+whatever your setup needs doing -- connect the channel this product lives on,
+load its database, open the panes the job wants.  It is the thing somebody
+would otherwise do by hand every morning, written down once.
+
+It runs last: the channels, the protocol managers, the plugins and the saved
+layout all exist by the time it is called, so a pane it opens is not put away
+again by the layout arriving over the top of it.  It is handed the main window,
+and through it everything the [Python Console](console.md) has, under the same
+names -- what works in the console works here.
+
+**Connecting.**  Use `window.connect_channel(name, interface, channel, bitrate)`
+rather than reaching for the bus underneath it.  That joins a bus exactly as the
+Connect button does, which means a real interface still raises the question
+about the bitrate, once a session, as it would if you had pressed the button
+yourself.  A [workspace](workspaces.md) is a folder that gets copied and handed
+to a colleague, and one that silently joined a live bus on somebody else's bench
+because they opened it would be a bad thing to have built.  A `virtual` channel
+never asks, because nothing leaves pycangui.
+
+**Nothing it does can stop pycangui starting.**  If it raises, the traceback
+goes to the Event Log and the window opens anyway -- the tool you would need in
+order to fix a broken startup hook is the one that would not have started.
 
 ## Hooks, scripts and plugins
 
