@@ -13,6 +13,7 @@
 - [Databases, signals and the plot](signals.md) --- loading a DBC, watching signals, exporting CSV
 - [Event Log](event-log.md) --- everything the tool says, and at what level
 - [CANopen](canopen.md) --- object dictionary, PDO configuration, EMCY, DCF, LSS
+- [Compare](compare.md) --- two configurations side by side: file, device or EDS
 - [UDS](uds.md) --- sessions, DIDs, DTCs, routines and firmware transfer over ISO-TP
 - [J1939](j1939.md) --- address claims, DM1 faults, multi-packet messages
 - [XCP](xcp.md) --- measurements and characteristics from an A2L

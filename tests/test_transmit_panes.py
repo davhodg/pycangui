@@ -56,6 +56,7 @@ def test_transmit_is_offered_as_another_pane(app, window):
         "Additional Signals and Plot",
         "Additional Transmit",
         "Additional ASCII Log",
+        "Additional Compare",
     }
 
 
