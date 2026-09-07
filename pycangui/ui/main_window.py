@@ -317,8 +317,57 @@ class MainWindow(QMainWindow):
         self._default_state = self.saveState(LAYOUT_VERSION)
         self._restore_layout()
         self.panes.restore_state()
+        # Last, and deferred until the window is actually on screen: a startup
+        # hook that connects a real bus raises the bitrate question, and a
+        # modal dialog in front of a window that has not been shown yet is a
+        # dialog with nothing behind it.
+        QTimer.singleShot(0, self._run_startup_hook)
 
     # --- helpers -------------------------------------------------------------
+    def _run_startup_hook(self) -> None:
+        """Tell a workspace's own code that the window is up.
+
+        The one hook that answers no question: it is the setup somebody would
+        otherwise do by hand every morning.  Nothing it does can stop pycangui
+        starting -- ``hooks.call`` reports a traceback to the Event Log and
+        carries on -- because the tool needed to fix a broken startup hook is
+        the one that would not have started.
+        """
+        if self._closing:  # closed again before the event loop got here
+            return
+        self.hooks.call("startup", "on_startup", self)
+
+    def connect_channel(
+        self,
+        name: str,
+        interface: str,
+        channel: str,
+        bitrate: int,
+        fd: bool = False,
+        data_bitrate: int = 0,
+        extra: dict | None = None,
+    ) -> bool:
+        """Join a bus on a named channel, exactly as the Connect button does.
+
+        The sanctioned way for a hook or a plugin to connect, and the reason it
+        exists is the question rather than the connection: joining a real bus
+        asks about the bitrate once a session, and code reaching for
+        ``channels.get(name).connect_bus(...)`` would go round that.  A
+        workspace is a folder that gets copied and handed to a colleague, so
+        one that silently joined a live bus when they opened it is exactly the
+        thing to make the awkward path rather than the easy one.
+        """
+        bus = self.channels.get(name)
+        if bus is None:
+            self.events.warning(f"No channel called {name!r}")
+            return False
+        if not self._may_connect(name, interface, channel, bitrate, fd, extra):
+            return False
+        bus.connect_bus(interface, channel, bitrate, fd, extra, data_bitrate)
+        if bus.is_connected and name == self.channels.active:
+            self.connect_bar.set_connected(True)
+        return bus.is_connected
+
     def _console_namespace(self) -> dict:
         """What scripts and the console see.  Keep names stable: users rely on them."""
 
