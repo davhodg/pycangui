@@ -42,9 +42,7 @@ def drain(app, pred, timeout=8.0):
 def test_replays_onto_a_virtual_channel_without_asking(app, setup, monkeypatch):
     """Virtual is the no-hardware case, so it must not put a dialog in the way."""
     action, channels, _ = setup
-    monkeypatch.setattr(
-        QMessageBox, "warning", lambda *a, **k: pytest.fail("should not have asked")
-    )
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: pytest.fail("should not have asked"))
     received = []
     channels.active_bus().frames.connect(received.extend)
 
@@ -87,20 +85,20 @@ def test_replaying_onto_a_real_bus_asks_first(app, setup, monkeypatch):
     asked = []
 
     monkeypatch.setattr(
-        QMessageBox, "warning", lambda *a, **k: (asked.append(a[1]), QMessageBox.Cancel)[1]
+        QMessageBox, "exec", lambda box: (asked.append(box.windowTitle()), QMessageBox.Cancel)[1]
     )
     action.action.setChecked(True)
     assert action.player is None, "cancelling must not transmit onto a real bus"
     assert not action.action.isChecked()
     assert asked, "it has to ask before putting frames on a real bus"
 
-    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Yes)
     action.action.setChecked(True)
     drain(app, lambda: action.player is None)
     assert action.confirm.agreed(f"replay:{bus.channel_name}:{bus.description}")
 
     # Having said yes once, the same channel is not asked about again.
-    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: pytest.fail("should only ask once"))
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: pytest.fail("should only ask once"))
     action.action.setChecked(True)
     drain(app, lambda: action.player is None)
 

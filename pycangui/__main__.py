@@ -96,6 +96,7 @@ def main() -> int:
     # console -- it runs pythonw -- so an ImportError on the way up is a window
     # that never appears and not one word about why.
     try:
+        from pycangui.ui.confirm import accept_notice
         from pycangui.ui.main_window import MainWindow
         from pycangui.ui.session import Session
     except ImportError as exc:
@@ -107,6 +108,12 @@ def main() -> int:
             "anything missing before starting.",
         )
         return 1
+
+    # Before the window is built, and therefore before a workspace can reopen
+    # its channels or a startup hook can connect one: a notice read after the
+    # first connection is a notice that was too late.
+    if not accept_notice():
+        return 0
 
     # Held by a Session rather than a local, because switching workspace
     # replaces the window rather than reconfiguring it -- see ui/session.py.

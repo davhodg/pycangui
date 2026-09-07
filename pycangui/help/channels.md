@@ -65,13 +65,32 @@ nothing else.
 
 ## Before it disturbs equipment
 
-pycangui asks before it can disturb equipment that is not its own, once a
-session for each: joining a **real bus** (naming the bitrate, because a
+The first time you start pycangui it shows a notice saying what it is capable
+of, which you click through.  It is not a question about anything in
+particular -- it is the sentence worth having read before your first
+connection rather than after your first mistake.  Tick *Do not show this
+again* and it stays away.
+
+After that, pycangui asks before it can disturb equipment that is not its own,
+once a session for each: joining a **real bus** (naming the bitrate, because a
 controller at the wrong one cannot read a frame and signals an error on every
 one it sees, which can drive the working nodes off the bus), **transmitting**
 onto one, and **replaying** a log onto one.  A `virtual` channel never asks --
 nothing leaves pycangui.  Change the bitrate and the connect question comes
 back, since getting it wrong is what the question is for.
+
+Each of those questions carries a **Do not ask me this again on this machine**
+tick box.  What "remembered" means is worth knowing: an answer is kept for
+*you*, on *this computer*, and never inside a workspace.  A workspace is a
+folder made to be copied and handed to a colleague, and an agreement that
+travelled inside one would mean somebody else's window, on somebody else's
+bench, quietly not asking.  Another account on the same machine is asked for
+itself, and so is the same account on another machine.
+
+*Tools > Ask about everything again* brings the whole lot back, the start-up
+notice included.  A setting that can be turned on and not off is one you would
+be right to distrust, and this one turns off the questions asked before
+pycangui can disturb equipment.
 
 ## Recording and replay
 

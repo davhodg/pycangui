@@ -419,8 +419,8 @@ def test_switching_off_a_live_bus_asks_first(window, app, monkeypatch):
     seen: list[str] = []
     monkeypatch.setattr(
         QMessageBox,
-        "warning",
-        lambda _p, _t, text, *a, **k: (seen.append(text), QMessageBox.Cancel)[1],
+        "exec",
+        lambda box: (seen.append(box.text()), QMessageBox.Cancel)[1],
     )
     asked: list[str] = []
     window.reopen_requested.connect(asked.append)
@@ -429,7 +429,7 @@ def test_switching_off_a_live_bus_asks_first(window, app, monkeypatch):
     assert asked == [], "cancelled means stay"
     assert seen and "drive" in seen[0] and "cyclically" in seen[0]
 
-    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Yes)
     window._switch_workspace("drive")
     assert asked == ["drive"]
     bus.disconnect_bus()
@@ -445,7 +445,7 @@ def test_agreeing_once_covers_the_session(window, app, monkeypatch):
     workspaces.create("other")
     times: list[int] = []
     monkeypatch.setattr(
-        QMessageBox, "warning", lambda *a, **k: (times.append(1), QMessageBox.Yes)[1]
+        QMessageBox, "exec", lambda _box: (times.append(1), QMessageBox.Yes)[1]
     )
     window._switch_workspace("drive")
     window._switch_workspace("other")
