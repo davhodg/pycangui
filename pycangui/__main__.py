@@ -55,11 +55,13 @@ def selftest() -> int:
 
     # The manual is package data, so it is exactly the kind of file a build
     # drops silently -- which is what happened to the demo EDS for months.
+    # Every page, by name: one missing page is a topic that vanished, and a
+    # manual that still opens is the worst way for that to be found.
     try:
-        from pycangui.help import manual_text
+        from pycangui.help import missing_pages
 
-        if not manual_text().strip():
-            failures.append("pycangui/help/manual.md: not shipped with this build")
+        for page in missing_pages():
+            failures.append(f"pycangui/help/{page}: not shipped with this build")
     except Exception as exc:
         failures.append(f"pycangui.help: {exc}")
 

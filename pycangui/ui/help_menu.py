@@ -22,12 +22,14 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
+    QPushButton,
     QTabWidget,
     QTextBrowser,
     QVBoxLayout,
 )
 
 from pycangui import APP_NAME, __version__
+from pycangui import help as help_pages
 from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Release, latest_release
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
@@ -114,26 +116,92 @@ def missing_licence_files(frozen: bool) -> list[str]:
 
 
 class ManualDialog(QDialog):
-    """The shipped manual, rendered.
+    """The shipped manual, rendered, a page at a time.
 
-    Qt reads Markdown itself, so this is the same file the repository serves
+    Qt reads Markdown itself, so these are the same files the repository serves
     on the web with no conversion step to go stale.  The GitHub dialect is
     asked for by name because the manual is full of tables, and the CommonMark
     default does not have them.
+
+    The pages link to one another with ordinary relative links, which is what
+    lets them work unchanged in a browser.  Qt will not follow one by itself --
+    ``setMarkdown`` gives the document no location to be relative *to* -- so a
+    click arrives here as a bare filename and is looked up in the manual's own
+    list of pages.  Anything not in that list is a link out of the manual, and
+    goes to the browser.
+
+    Back and Contents are buttons as well as links at the top of each page.  A
+    page that can only be left from its first line is a page people scroll back
+    up through, and the one thing worse than a document too long to navigate is
+    a short one you cannot get out of.
     """
 
-    def __init__(self, parent: QMainWindow, text: str) -> None:
+    def __init__(self, parent: QMainWindow, text: str = "", page: str = help_pages.MANUAL) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"{APP_NAME} manual")
         self.resize(860, 700)
+        #: Where the reader has been, so that Back goes back rather than home.
+        self._history: list[str] = []
+        self._page = page
+
         self.view = QTextBrowser()
-        self.view.setOpenExternalLinks(True)
-        self.view.document().setMarkdown(text, QTextDocument.MarkdownDialectGitHub)
+        self.view.setOpenLinks(False)  # every link is ours to resolve first
+        self.view.anchorClicked.connect(self._follow)
+
+        self.back_button = QPushButton("Back")
+        self.back_button.clicked.connect(self.back)
+        self.contents_button = QPushButton("Contents")
+        self.contents_button.clicked.connect(lambda: self.show_page(help_pages.MANUAL))
+
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
+        buttons.addButton(self.back_button, QDialogButtonBox.ActionRole)
+        buttons.addButton(self.contents_button, QDialogButtonBox.ActionRole)
+
         layout = QVBoxLayout(self)
         layout.addWidget(self.view)
         layout.addWidget(buttons)
+
+        # ``text`` is still taken, so that anything holding a page already can
+        # show it; without one the front page is read like any other.
+        self._render(text or help_pages.page_text(page))
+        self._update_buttons()
+
+    def _render(self, text: str) -> None:
+        self.view.document().setMarkdown(text, QTextDocument.MarkdownDialectGitHub)
+        self.view.verticalScrollBar().setValue(0)  # a new page starts at its top
+
+    def show_page(self, name: str, remember: bool = True) -> bool:
+        """Open one page of the manual.  False if there is no such page."""
+        text = help_pages.page_text(name)
+        if not text:
+            return False
+        if remember and name != self._page:
+            self._history.append(self._page)
+        self._page = name
+        self._render(text)
+        self.setWindowTitle(
+            f"{APP_NAME} manual"
+            if name == help_pages.MANUAL
+            else f"{help_pages.title_of(name)} - {APP_NAME} manual"
+        )
+        self._update_buttons()
+        return True
+
+    def back(self) -> None:
+        if self._history:
+            self.show_page(self._history.pop(), remember=False)
+
+    def _update_buttons(self) -> None:
+        self.back_button.setEnabled(bool(self._history))
+        self.contents_button.setEnabled(self._page != help_pages.MANUAL)
+
+    def _follow(self, url: QUrl) -> None:
+        """A link: another page of the manual, or something outside it."""
+        if self.show_page(url.toString()):
+            return
+        if url.scheme() in ("http", "https"):
+            QDesktopServices.openUrl(url)
 
 
 class LicenceDialog(QDialog):
