@@ -38,7 +38,6 @@ from pycangui.uds.manager import UdsManager
 from pycangui.ui import folders
 from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.canopen_view import CanopenView
-from pycangui.ui.compare_view import CompareView
 from pycangui.ui.confirm import Confirmations, Remembered, is_real
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
@@ -201,7 +200,6 @@ class MainWindow(QMainWindow):
         self.uds_view = self.panes.view(self.panes.add("uds"))
         self.j1939_view = self.panes.view(self.panes.add("j1939"))
         self.xcp_view = self.panes.view(self.panes.add("xcp"))
-        self.compare_view = self.panes.view(self.panes.add("compare"))
         self.panes.add("log")
         self._open_ascii_panes()
         self.console = self.panes.view(self.panes.add("console"))
@@ -458,17 +456,6 @@ class MainWindow(QMainWindow):
                 "XCP",
                 Qt.RightDockWidgetArea,
                 lambda _name: XcpView(self.xcp, self.ctx),
-            ),
-            PaneKind(
-                # Several, because comparing is one question at a time: the
-                # unit that fails against the one beside it, and the file it
-                # was built from against the file it was shipped with, are two
-                # comparisons somebody wants open together.
-                "compare",
-                "Compare",
-                Qt.RightDockWidgetArea,
-                lambda name: CompareView(self.canopen, self.ctx, key=name),
-                several=True,
             ),
             PaneKind(
                 "custom",

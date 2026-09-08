@@ -111,6 +111,12 @@ While a device is being programmed it answers very little and slowly, so
 timeouts are the expected thing rather than a fault -- and pulling the power
 part way through is how a controller is turned into a brick.
 
+**[CANopen DCF compare](compare.md)** puts two configurations side by side --
+two files, or a file against a live device, or a device against the EDS it was
+built from -- and says what is different.  Comparing against a device reads only
+the objects the other side names, so it takes seconds and needs no EDS on the
+device.
+
 **Motor control (CiA 402)** drives a motor controller: its state, its mode, its
 target and what it is actually doing.
 

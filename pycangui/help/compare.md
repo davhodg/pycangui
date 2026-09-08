@@ -1,10 +1,13 @@
 [&larr; Contents](manual.md)
 
-# Compare
+# CANopen DCF Compare
 
-*What is different about the unit that fails* is the question this pane exists
-for, and it is the one pycangui could not answer at all: it could save a DCF
-and it could apply one, and there was nothing in between.
+A [plugin](plugins.md) that ships with pycangui.  *Plugins > Manage plugins...*
+installs it; until then it is not there.
+
+*What is different about the unit that fails* is the question it exists for, and
+it is the one pycangui could not answer at all: it could save a DCF and it could
+apply one, and there was nothing in between.
 
 Each side is a **DCF or EDS file**, or a **node on the bus**.  Pick two, press
 *Compare*, and what comes back is the objects they disagree about.
@@ -60,3 +63,11 @@ record.
 is *Apply DCF* in the [CANopen](canopen.md) pane.  Writing a chosen handful of
 differences into the device in front of you is a bigger thing than this pane
 and deserves a question of its own.
+
+## Why it is a plugin
+
+The same line the other two shipped plugins are drawn along.  pycangui's own
+job is *speaking* CANopen -- reading an object, writing one, capturing a
+dictionary into a DCF and putting one back.  What somebody then does with two
+captured configurations is a workflow built on top of that, and workflows are
+what plugins are for.  Uninstall it and the CANopen pane is exactly as it was.

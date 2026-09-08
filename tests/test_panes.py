@@ -405,7 +405,6 @@ def test_only_the_kinds_that_mean_something_twice_are_offered(window):
         "Additional Signals and Plot",
         "Additional Transmit",
         "Additional ASCII Log",
-        "Additional Compare",
     }
 
 
