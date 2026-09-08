@@ -59,11 +59,14 @@ def test_dbc_row_encodes_from_signals(stack):
     assert item.text(COL_DATA) == "01 C4 09 00"  # 250 rpm at 0.1 rpm/bit = 2500
 
     view.send_row(row)
-    wait_until(app, lambda: any(f.can_id == 0x123 for f in received))
-    assert received[-1].data == bytes.fromhex("01C40900")
+    # The one that was sent, not whichever arrived last: the demo device is on
+    # this bus too, so the tail of the list is anybody's.
+    ours = lambda: [f for f in received if f.can_id == 0x123]  # noqa: E731
+    wait_until(app, ours)
+    assert ours()[-1].data == bytes.fromhex("01C40900")
 
     # the round trip decodes back to what was typed
-    _msg, values = view.dbc.decode(received[-1])
+    _msg, values = view.dbc.decode(ours()[-1])
     assert values == {"PumpEnable": 1, "PumpSpeedDemand": pytest.approx(250)}
 
     saved = ctx.settings.get("tx.messages")[0]

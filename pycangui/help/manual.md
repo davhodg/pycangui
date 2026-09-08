@@ -13,7 +13,6 @@
 - [Databases, signals and the plot](signals.md) --- loading a DBC, watching signals, exporting CSV
 - [Event Log](event-log.md) --- everything the tool says, and at what level
 - [CANopen](canopen.md) --- object dictionary, PDO configuration, EMCY, DCF, LSS
-- [Compare](compare.md) --- two configurations side by side: file, device or EDS
 - [UDS](uds.md) --- sessions, DIDs, DTCs, routines and firmware transfer over ISO-TP
 - [J1939](j1939.md) --- address claims, DM1 faults, multi-packet messages
 - [XCP](xcp.md) --- measurements and characteristics from an A2L
@@ -32,6 +31,7 @@
 
 - [Hooks](hooks.md) --- customisable Python functions to support any device
 - [Plugins](plugins.md) --- code that adds a pane of its own, installed from a file
+- [CANopen DCF Compare](compare.md) --- a plugin: two configurations side by side
 - [Replaceable protocol back ends](backends.md) --- your own engine under a protocol pane
 
 ## Also

@@ -1,4 +1,4 @@
-"""Two configurations side by side: file against file, or file against device.
+"""Two CANopen configurations side by side: file against file, or file against device.
 
 The pane is two source pickers and a table, and almost all of it is the two
 pickers.  Which is right: comparing is the easy half, and *deciding what to
@@ -19,6 +19,13 @@ Nothing here writes.  Comparing tells you what is different; putting it right
 is the [Apply DCF] button in the CANopen pane, deliberately, because "write
 these seventeen selected differences into the device in front of me" is a
 bigger thing than this pane and deserves its own question.
+
+A plugin rather than part of the tool, on the same line the other two are
+drawn along: pycangui's own job is speaking CANopen -- reading an object,
+writing one, capturing a dictionary into a DCF and putting one back.  What
+somebody then *does* with two captured configurations is a workflow built on
+top of that, and workflows are what plugins are for.  Uninstall it and the
+CANopen pane is exactly as it was.
 """
 
 from __future__ import annotations
@@ -41,8 +48,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pycangui.canopen import compare as comparison
 from pycangui.ui import folders
+
+# Relative, so that the copy of compare.py beside *this* file is the one
+# that runs: an installed plugin naming it absolutely would reach back into
+# the one pycangui ships, and editing your own would do nothing.
+from . import compare as comparison
 
 #: What a side can be.  Kept as text because it is what the combo box holds
 #: and what gets written into the settings.
@@ -371,3 +382,25 @@ class CompareView(QWidget):
         self.left.restore(stored.get("left", {}))
         self.right.restore(stored.get("right", {}))
         self.differences_only.setChecked(bool(stored.get("differences_only", True)))
+
+
+API_VERSION = 1
+NAME = "CANopen DCF compare"
+VERSION = "1.0"
+DESCRIPTION = "Two CANopen configurations side by side: file, device or EDS."
+
+
+def register(app) -> None:
+    """Several, because comparing is one question at a time.
+
+    The unit that fails against the one beside it, and the file it was built
+    from against the file it shipped with, are two comparisons somebody wants
+    open together rather than one they keep re-entering.
+    """
+    app.add_pane(
+        "main",
+        "CANopen DCF Compare",
+        lambda name: CompareView(app.canopen, app.ctx, key=name),
+        area="right",
+        several=True,
+    )

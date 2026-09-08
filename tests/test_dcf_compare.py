@@ -15,8 +15,16 @@ from pathlib import Path
 import pytest
 
 from pycangui import resources
-from pycangui.canopen import compare
-from pycangui.canopen.compare import DIFFERENT, LEFT_ONLY, RIGHT_ONLY, SAME, Reading
+from pycangui.core import plugin_package
+from pycangui.core.plugins import builtin_dir
+from pycangui.plugins.dcf_compare import compare
+from pycangui.plugins.dcf_compare.compare import (
+    DIFFERENT,
+    LEFT_ONLY,
+    RIGHT_ONLY,
+    SAME,
+    Reading,
+)
 
 DEMO = str(resources.path("demo.eds"))
 
@@ -245,22 +253,51 @@ def window(app, tmp_path, monkeypatch):
     win.show()
     for _ in range(5):
         app.processEvents()
+    install(win)
+    for _ in range(5):
+        app.processEvents()
     yield win
     win.close()
 
 
+def install(window) -> None:
+    """As Plugins > Manage plugins does it, without the question in front."""
+    plugin_package.install_folder(
+        builtin_dir() / "dcf_compare", window.ctx.workspace_dir / "plugins"
+    )
+    window._reload_plugins()
+
+
 @pytest.fixture
 def view(window):
-    return window.panes.view("compare")
+    return window.panes.view("dcf_compare:main")
+
+
+def test_it_is_supplied_rather_than_present(app, tmp_path, monkeypatch):
+    """Comparing is a workflow built on CANopen rather than part of speaking
+    it, so it is installed by whoever wants it."""
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    bare = MainWindow()
+    assert "dcf_compare:main" not in bare.panes.docks
+    assert "dcf_compare" in [
+        s.name for s in __import__("pycangui.core.plugins", fromlist=["supplied"]).supplied()
+    ]
+    bare.close()
 
 
 def test_it_is_a_pane_like_any_other(app, window, view):
-    assert window.panes.docks["compare"].windowTitle() == "Compare"
+    assert window.panes.docks["dcf_compare:main"].windowTitle() == "CANopen DCF Compare"
     assert view is not None
+    assert window.plugins.errors() == {}
 
 
 def test_two_files_are_compared_when_asked(app, window, view, tmp_path):
-    from pycangui.ui.compare_view import FILE
+    from pycangui.plugins.dcf_compare.plugin import FILE
 
     before = written_dcf(tmp_path, {(0x1017, 0): "1000"}, 5, "before.dcf")
     after = written_dcf(tmp_path, {(0x1017, 0): "500"}, 5, "after.dcf")
@@ -276,7 +313,7 @@ def test_two_files_are_compared_when_asked(app, window, view, tmp_path):
 
 def test_the_columns_are_named_after_the_two_sides(app, window, view, tmp_path):
     """ "Left" and "Right" say nothing once there is something in them."""
-    from pycangui.ui.compare_view import FILE
+    from pycangui.plugins.dcf_compare.plugin import FILE
 
     for side, name in ((view.left, "before.dcf"), (view.right, "after.dcf")):
         side.kind.setCurrentText(FILE)
@@ -287,7 +324,7 @@ def test_the_columns_are_named_after_the_two_sides(app, window, view, tmp_path):
 
 
 def test_showing_everything_shows_what_agreed_too(app, window, view, tmp_path):
-    from pycangui.ui.compare_view import FILE
+    from pycangui.plugins.dcf_compare.plugin import FILE
 
     for side, value in ((view.left, "1000"), (view.right, "500")):
         side.kind.setCurrentText(FILE)
@@ -303,7 +340,7 @@ def test_showing_everything_shows_what_agreed_too(app, window, view, tmp_path):
 
 
 def test_a_file_that_will_not_read_is_reported_rather_than_compared(app, window, view, tmp_path):
-    from pycangui.ui.compare_view import FILE
+    from pycangui.plugins.dcf_compare.plugin import FILE
 
     bad = tmp_path / "notes.txt"
     bad.write_text("not a device file\n", encoding="utf-8")
@@ -325,7 +362,7 @@ def test_with_nothing_chosen_it_says_so(app, window, view):
 def test_a_node_is_read_for_the_objects_the_file_names(app, window, view, tmp_path):
     """The reason comparing against a device takes seconds rather than minutes,
     and the reason it works on a device nobody has an EDS for."""
-    from pycangui.ui.compare_view import FILE, NODE
+    from pycangui.plugins.dcf_compare.plugin import FILE, NODE
 
     asked = {}
 
@@ -348,7 +385,7 @@ def test_a_node_is_read_for_the_objects_the_file_names(app, window, view, tmp_pa
 
 
 def test_a_node_that_will_not_answer_is_reported(app, window, view, tmp_path):
-    from pycangui.ui.compare_view import FILE, NODE
+    from pycangui.plugins.dcf_compare.plugin import FILE, NODE
 
     window.canopen.read_objects = lambda _n, _w, done: done(None, "no reply")
     view.left.kind.setCurrentText(FILE)
@@ -363,7 +400,7 @@ def test_a_node_that_will_not_answer_is_reported(app, window, view, tmp_path):
 def test_two_nodes_with_nothing_to_say_what_to_read_are_refused(app, window, view):
     """Rather than reading a guessed-at range of indices and calling the result
     a comparison."""
-    from pycangui.ui.compare_view import NODE
+    from pycangui.plugins.dcf_compare.plugin import NODE
 
     for side in (view.left, view.right):
         side.kind.setCurrentText(NODE)
@@ -376,13 +413,14 @@ def test_two_nodes_with_nothing_to_say_what_to_read_are_refused(app, window, vie
 def test_what_the_two_sides_were_comes_back_next_time(app, tmp_path, monkeypatch):
     from PySide6.QtCore import QSettings
 
-    from pycangui.ui.compare_view import FILE
+    from pycangui.plugins.dcf_compare.plugin import FILE
     from pycangui.ui.main_window import MainWindow
 
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     first = MainWindow()
-    view = first.panes.view("compare")
+    install(first)
+    view = first.panes.view("dcf_compare:main")
     view.left.kind.setCurrentText(FILE)
     view.left.path.setText(str(written_dcf(tmp_path, {(0x1017, 0): "1"}, 5, "a.dcf")))
     view.right.kind.setCurrentText(FILE)
@@ -391,5 +429,5 @@ def test_what_the_two_sides_were_comes_back_next_time(app, tmp_path, monkeypatch
     first.close()
 
     again = MainWindow()
-    assert again.panes.view("compare").left.path.text().endswith("a.dcf")
+    assert again.panes.view("dcf_compare:main").left.path.text().endswith("a.dcf")
     again.close()
