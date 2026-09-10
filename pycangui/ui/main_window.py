@@ -409,6 +409,13 @@ class MainWindow(QMainWindow):
         second Event Log is the same log twice, a second UDS pane is two faces
         on one session, and a second transmit list is a question about which
         of them is sending.
+
+        The order here is the order of the View menu, and it is deliberate:
+        the panes that work on any bus first (trace, transmit, signals, then
+        the two logs), the protocol panes after them, and the two that are
+        about pycangui rather than about the bus -- a custom pane and the
+        console -- at the end.  Somebody who has not chosen a protocol yet
+        should not have to read past four of them to find the trace.
         """
         for kind in (
             PaneKind(
@@ -425,18 +432,31 @@ class MainWindow(QMainWindow):
                 shutdown=self._drop_trace,
             ),
             PaneKind(
+                # "CAN Transmit" for the same reason as "CAN Trace", and next
+                # to it in the menu: sending frames is the other half of
+                # watching them, and the two belong together rather than with
+                # a signal plot in between.
+                "tx",
+                "CAN Transmit",
+                Qt.BottomDockWidgetArea,
+                self._new_transmit,
+                several=True,
+            ),
+            PaneKind(
                 "scope",
                 "Signals and Plot",
                 Qt.LeftDockWidgetArea,
                 lambda _name: ScopeView(self.signals, self.bus.now, self.ctx),
                 several=True,
             ),
+            PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
             PaneKind(
-                "tx",
-                "Transmit",
+                "ascii",
+                "ASCII Log",
                 Qt.BottomDockWidgetArea,
-                self._new_transmit,
+                self._new_ascii,
                 several=True,
+                shutdown=self._drop_ascii,
             ),
             PaneKind(
                 "canopen",
@@ -469,15 +489,6 @@ class MainWindow(QMainWindow):
                 self._new_custom_pane,
                 several=True,
                 named=True,
-            ),
-            PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
-            PaneKind(
-                "ascii",
-                "ASCII Log",
-                Qt.BottomDockWidgetArea,
-                self._new_ascii,
-                several=True,
-                shutdown=self._drop_ascii,
             ),
             PaneKind(
                 "console",

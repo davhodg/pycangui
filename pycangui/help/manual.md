@@ -9,14 +9,14 @@
 ## Panes
 
 - [CAN Trace](trace.md) --- filtering and pausing without discarding anything
-- [Transmit](transmit.md) --- raw, DBC and CANopen RPDO messages, one-shot or cyclic
+- [CAN Transmit](transmit.md) --- raw, DBC and CANopen RPDO messages, one-shot or cyclic
 - [Databases, signals and the plot](signals.md) --- loading a DBC, watching signals, exporting CSV
 - [Event Log](event-log.md) --- everything the tool says, and at what level
+- [ASCII Log](ascii-log.md) --- reading a CAN id as text, one pane per id
 - [CANopen](canopen.md) --- object dictionary, PDO configuration, EMCY, DCF, LSS
 - [UDS](uds.md) --- sessions, DIDs, DTCs, routines and firmware transfer over ISO-TP
 - [J1939](j1939.md) --- address claims, DM1 faults, multi-packet messages
 - [XCP](xcp.md) --- measurements and characteristics from an A2L
-- [ASCII Log](ascii-log.md) --- reading a CAN id as text, one pane per id
 - [Custom panes](custom-panes.md) --- the objects a job needs, laid out as a form
 - [Python Console](console.md) --- the live objects, and running a script against them
 
