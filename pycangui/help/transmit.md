@@ -1,6 +1,6 @@
 [&larr; Contents](manual.md)
 
-# Transmit
+# CAN Transmit
 
 A transmit pane only sends while it is on screen.  Closing one stops whatever
 it was repeating -- frames arriving on a live bus from a pane nobody can see is

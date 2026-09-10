@@ -403,7 +403,7 @@ def test_only_the_kinds_that_mean_something_twice_are_offered(window):
     assert offered == {
         "Additional CAN Trace",
         "Additional Signals and Plot",
-        "Additional Transmit",
+        "Additional CAN Transmit",
         "Additional ASCII Log",
     }
 

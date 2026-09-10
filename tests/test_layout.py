@@ -55,5 +55,5 @@ def test_reset_layout_puts_the_extra_panes_away_again(app, window):
 def test_the_log_says_where_the_hidden_panes_went(app, window):
     text = window.log.toPlainText()
     assert "View menu" in text
-    for title in ("CANopen", "UDS", "J1939", "XCP", "Transmit", "Python Console"):
+    for title in ("CANopen", "UDS", "J1939", "XCP", "CAN Transmit", "Python Console"):
         assert title in text

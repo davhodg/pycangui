@@ -54,7 +54,7 @@ def test_transmit_is_offered_as_another_pane(app, window):
     assert offered == {
         "Additional CAN Trace",
         "Additional Signals and Plot",
-        "Additional Transmit",
+        "Additional CAN Transmit",
         "Additional ASCII Log",
     }
 

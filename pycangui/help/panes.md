@@ -4,7 +4,7 @@
 
 pycangui opens with three panes: the **CAN Trace** with the **Event Log** beside
 it, and **Signals and Plot** spanning underneath.  The rest (CANopen, UDS, J1939,
-XCP, Transmit, Python Console) start hidden, because which of them you want
+XCP, CAN Transmit, Python Console) start hidden, because which of them you want
 depends on what you have plugged in; turn any on in the **View** menu, and
 *View > Reset layout* puts everything back.  Panes are dockable, so drag them
 where you like: the arrangement is remembered.
@@ -35,7 +35,7 @@ time.
 ## More than one of a pane
 
 *View > Standard panes* opens a second [**CAN Trace**](trace.md),
-[**Signals and Plot**](signals.md) or [**Transmit**](transmit.md) -- the panes pycangui comes with that you can have more than one
+[**Signals and Plot**](signals.md) or [**CAN Transmit**](transmit.md) -- the panes pycangui comes with that you can have more than one
 of -- numbered after the first: CAN Trace 2, CAN Trace 3.  Each has settings
 of its own: its own filter, its own mode, its own plotted signals, its own
 list of messages, all remembered separately.  Two traces of the same capture
