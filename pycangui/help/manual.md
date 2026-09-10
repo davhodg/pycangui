@@ -31,7 +31,7 @@
 
 - [Hooks](hooks.md) --- customisable Python functions to support any device
 - [Plugins](plugins.md) --- code that adds a pane of its own, installed from a file
-- [CANopen DCF Compare](compare.md) --- a plugin: two configurations side by side
+- [CANopen DCF compare](compare.md) --- a plugin: two configurations side by side
 - [Replaceable protocol back ends](backends.md) --- your own engine under a protocol pane
 
 ## Also

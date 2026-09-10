@@ -173,7 +173,7 @@ def test_it_is_supplied_rather_than_present(app, bare):
 def test_it_installs_and_loads(app, window):
     """The first thing built through the plugin API, which was the point of
     building it that way: an API with no real screen behind it is a guess."""
-    assert "Firmware" in [r.label for r in window.plugins.working()]
+    assert "CANopen firmware (CiA 302-3)" in [r.label for r in window.plugins.working()]
     assert window.plugins.errors() == {}
 
 
@@ -185,8 +185,8 @@ def test_it_says_which_version_it_is(app, window):
 
 def test_it_brings_a_pane(app, window):
     assert "firmware:main" in window.panes.docks
-    assert window.panes.docks["firmware:main"].windowTitle() == "Firmware"
-    assert "Firmware" in [a.text() for a in window.view_menu.actions()]
+    assert window.panes.docks["firmware:main"].windowTitle() == "CANopen firmware"
+    assert "CANopen firmware" in [a.text() for a in window.view_menu.actions()]
 
 
 def test_a_users_own_replaces_it(app, window):

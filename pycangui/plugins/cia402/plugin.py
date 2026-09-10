@@ -46,7 +46,7 @@ from . import drive as cia402
 from .drive import Drive, Object
 
 API_VERSION = 1
-NAME = "Motor control (CiA 402)"
+NAME = "CANopen motor control (CiA 402)"
 VERSION = "1.0"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
@@ -657,7 +657,7 @@ def register(app) -> None:
     """
     app.add_pane(
         "main",
-        "Motor control",
+        "CANopen motor control",
         lambda _name: MotorView(app),
         area="right",
         shutdown=lambda view: view.stop_demand(background=False),

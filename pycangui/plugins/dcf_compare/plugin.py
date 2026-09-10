@@ -399,7 +399,7 @@ def register(app) -> None:
     """
     app.add_pane(
         "main",
-        "CANopen DCF Compare",
+        "CANopen DCF compare",
         lambda name: CompareView(app.canopen, app.ctx, key=name),
         area="right",
         several=True,

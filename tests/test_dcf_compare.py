@@ -291,7 +291,7 @@ def test_it_is_supplied_rather_than_present(app, tmp_path, monkeypatch):
 
 
 def test_it_is_a_pane_like_any_other(app, window, view):
-    assert window.panes.docks["dcf_compare:main"].windowTitle() == "CANopen DCF Compare"
+    assert window.panes.docks["dcf_compare:main"].windowTitle() == "CANopen DCF compare"
     assert view is not None
     assert window.plugins.errors() == {}
 

@@ -464,7 +464,7 @@ def test_one_pycangui_ships_can_be_installed_from_the_menu(app, window, agrees):
     window.plugin_actions.install_supplied("firmware")
     settle(app)
     assert (window.ctx.workspace_dir / "plugins" / "firmware" / "program.py").is_file()
-    assert "Firmware" in [r.label for r in window.plugins.working()]
+    assert "CANopen firmware (CiA 302-3)" in [r.label for r in window.plugins.working()]
 
 
 def test_what_is_already_installed_is_not_offered_again(app, window, agrees):
