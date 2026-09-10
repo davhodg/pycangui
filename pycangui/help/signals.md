@@ -16,6 +16,11 @@ alongside the list (rolling window, pause, follow); drag the splitter to give
 the plot the whole pane, or the list.  `resources/demo.dbc` matches the demo
 device.
 
+*Follow* keeps the newest samples in view as they arrive.  It follows the
+**data**, not the clock, so it stops when the data does: a quiet bus, or a
+disconnected one, holds the trace still rather than scrolling it off the left
+edge.
+
 ## Importing a measurement file
 
 **File > Import signals...** reads an **MDF** or **MF4** file -- what a
@@ -38,9 +43,9 @@ Imported signals appear under the file's name, beside the live ones.
 
 **They will not be on screen until you untick *Follow* and press *Fit*.**  A
 file sits at the times it was recorded at -- 235 seconds into somebody's test,
-or last Tuesday -- and *Follow* keeps the last few seconds of *now* in view,
-which is a different part of the number line entirely.  *Fit* zooms to
-whatever is plotted, wherever it is.
+or last Tuesday -- and *Follow* keeps the last few seconds of the live trace
+in view, which is a different part of the number line entirely.  *Fit* zooms
+to whatever is plotted, wherever it is.
 
 Reading MDF needs the `asammdf` library.  The Windows installer includes it.
 A `pip` installation leaves it out by default -- it brings pandas with it,

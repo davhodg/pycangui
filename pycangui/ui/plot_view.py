@@ -46,7 +46,10 @@ class PlotView(QWidget):
         self.pause.setToolTip("Hold the plot still.  Samples carry on being collected.")
         self.follow = QCheckBox("Follow")
         self.follow.setToolTip(
-            "Keep the newest samples in view as they arrive.\n\n"
+            "Keep the newest samples in view as they arrive.  The plot\n"
+            "follows the data, so it stops when the data does -- a quiet\n"
+            "bus, or a disconnected one, holds still rather than scrolling\n"
+            "the trace off the edge.\n\n"
             "Untick it to look at what is already there -- and to see data\n"
             "imported from a file at all, which sits at its own times rather\n"
             "than at the clock this window is running on."
@@ -117,16 +120,42 @@ class PlotView(QWidget):
         self.plot.enableAutoRange()
         self.plot.autoRange()
 
+    def _newest(self) -> float | None:
+        """The latest timestamp across the plotted signals, or None if none."""
+        times = [s.times[-1] for key in self._curves if (s := self.hub.get(key)) and s.times]
+        return max(times) if times else None
+
+    def _edge(self) -> float:
+        """Where the right hand edge goes while following.
+
+        The newest sample rather than the clock.  ``now()`` runs off
+        ``time.monotonic`` and advances whether or not a bus is open or a
+        single frame has arrived, so following it made the axis march left
+        for ever with the data standing still and sliding off the edge --
+        during a quiet trace, and on after disconnecting.  Following the data
+        stops when the data stops, which is also the right answer for a
+        connected but idle bus: a flat line marching left says nothing that a
+        stopped plot does not.
+
+        Never later than the clock, though.  A file imported at its own times
+        -- last Tuesday, or an epoch stamp -- would otherwise drag the window
+        off to wherever it was recorded and take the live trace off screen.
+        Finding imported data is what *Fit* is for.
+        """
+        now = self._now()
+        newest = self._newest()
+        return min(newest, now) if newest is not None else now
+
     def _redraw(self) -> None:
         if self.pause.isChecked() or not self._curves or not self.isVisible():
             return
         following = self.follow.isChecked()
-        now = self._now()
+        edge = self._edge()
         # Following, only the last few seconds are wanted and slicing to them
         # is most of what makes a live plot cheap.  Not following, everything
         # is wanted: an imported file lies outside any window measured back
         # from now, and slicing to one would show nothing and look empty.
-        t_from = now - self.window_s.value() if following else float("-inf")
+        t_from = edge - self.window_s.value() if following else float("-inf")
         for key, curve in self._curves.items():
             s = self.hub.get(key)
             if s is None:
@@ -134,4 +163,4 @@ class PlotView(QWidget):
             ts, vs = s.window(t_from)
             curve.setData(ts, vs)
         if following:
-            self.plot.setXRange(t_from, now, padding=0)
+            self.plot.setXRange(t_from, edge, padding=0)
