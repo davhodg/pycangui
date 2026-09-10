@@ -39,7 +39,21 @@ Repository = "https://github.com/davhodg/pycangui"
 Issues = "https://github.com/davhodg/pycangui/issues"
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff==0.16.*"]  # pinned: a new ruff must not break the build
+# MDF and MF4: measurement files, holding decoded signals rather than frames.
+# Optional for a pip installation because asammdf brings pandas with it -- some
+# eighty megabytes on disc -- for a format many people never open.  Nothing
+# imports it unless a file needs one, and pycangui offers to fetch it then.
+#
+# The Windows installer bundles it regardless.  A frozen build has no Python
+# environment to install into afterwards, so "fetch it when needed" is not on
+# offer there, and a dead end in the menu costs more than the megabytes.
+# asammdf is LGPL-3.0, the same terms as Qt and python-can, and ships on the
+# same basis: separately replaceable, and named in THIRD-PARTY-NOTICES.txt.
+mf4 = ["asammdf>=8"]
+# Pinned ruff: a new one must not break the build.  mf4 is pulled in so that
+# CI actually exercises the reader -- a reader nobody tests is a reader that
+# breaks -- and so that the build environment has what the bundle needs.
+dev = ["pytest", "ruff==0.16.*", "pycangui[mf4]"]
 
 [project.scripts]
 pycangui = "pycangui.__main__:main"

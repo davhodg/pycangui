@@ -45,8 +45,16 @@ class PlotView(QWidget):
         self.pause = QCheckBox("Pause")
         self.pause.setToolTip("Hold the plot still.  Samples carry on being collected.")
         self.follow = QCheckBox("Follow")
-        self.follow.setToolTip("Keep the newest samples in view as they arrive")
+        self.follow.setToolTip(
+            "Keep the newest samples in view as they arrive.\n\n"
+            "Untick it to look at what is already there -- and to see data\n"
+            "imported from a file at all, which sits at its own times rather\n"
+            "than at the clock this window is running on."
+        )
         self.follow.setChecked(True)
+        self.fit = QPushButton("Fit")
+        self.fit.setToolTip("Zoom to everything being plotted, wherever in time it is.")
+        self.fit.clicked.connect(self._fit)
         clear = QPushButton("Clear history")
         clear.setToolTip("Throw away the samples collected so far, for every signal")
         clear.clicked.connect(hub.clear)
@@ -55,6 +63,7 @@ class PlotView(QWidget):
         bar.addWidget(self.window_s)
         bar.addWidget(self.pause)
         bar.addWidget(self.follow)
+        bar.addWidget(self.fit)
         bar.addStretch()
         bar.addWidget(clear)
 
@@ -78,24 +87,51 @@ class PlotView(QWidget):
             s = self.hub.get(key)
             pen = pg.mkPen(COLOURS[len(self._curves) % len(COLOURS)], width=1.5)
             label = f"{s.name} [{s.unit}]" if s and s.unit else (s.name if s else key)
-            self._curves[key] = self.plot.plot([], [], pen=pen, name=label)
+            curve = self.plot.plot([], [], pen=pen, name=label)
+            # An imported file can be a million points, and pyqtgraph drawing
+            # every one of them into eight hundred pixels is time spent to no
+            # visible effect.  Peak downsampling keeps the spikes, which are
+            # the part somebody is looking for.
+            curve.setDownsampling(auto=True, method="peak")
+            curve.setClipToView(True)
+            self._curves[key] = curve
         elif not on and key in self._curves:
             self.plot.removeItem(self._curves.pop(key))
 
     def plotted(self) -> list[str]:
         return list(self._curves)
 
+    def _fit(self) -> None:
+        """Show everything that is plotted, wherever in time it happens to be.
+
+        The way to find imported data.  A file recorded yesterday, or one
+        exported from 235 s into a run, sits nowhere near the clock this
+        window is counting on, and hunting for it by dragging is no way to
+        find anything.
+        """
+        self.follow.setChecked(False)
+        # Redrawn first.  The curves are filled on a timer, so fitting before
+        # the next tick would fit whatever was on screen a moment ago -- and
+        # for a file just imported, that is nothing at all.
+        self._redraw()
+        self.plot.enableAutoRange()
+        self.plot.autoRange()
+
     def _redraw(self) -> None:
         if self.pause.isChecked() or not self._curves or not self.isVisible():
             return
+        following = self.follow.isChecked()
         now = self._now()
-        window = self.window_s.value()
-        t_from = now - window
+        # Following, only the last few seconds are wanted and slicing to them
+        # is most of what makes a live plot cheap.  Not following, everything
+        # is wanted: an imported file lies outside any window measured back
+        # from now, and slicing to one would show nothing and look empty.
+        t_from = now - self.window_s.value() if following else float("-inf")
         for key, curve in self._curves.items():
             s = self.hub.get(key)
             if s is None:
                 continue
             ts, vs = s.window(t_from)
             curve.setData(ts, vs)
-        if self.follow.isChecked():
+        if following:
             self.plot.setXRange(t_from, now, padding=0)

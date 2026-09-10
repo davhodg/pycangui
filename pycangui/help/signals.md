@@ -16,10 +16,42 @@ alongside the list (rolling window, pause, follow); drag the splitter to give
 the plot the whole pane, or the list.  `resources/demo.dbc` matches the demo
 device.
 
+## Importing a measurement file
+
+**File > Import signals...** reads an **MDF** or **MF4** file -- what a
+measurement tool or a data logger records -- and puts its signals on the plot
+beside the live ones.
+
+A CAN log and a measurement file are different things with similar names, and
+picking the wrong door is the usual confusion.  A log holds **frames** and is
+[replayed](channels.md) onto a channel; a measurement holds **signals somebody
+already decoded**, and there are no frames in it to replay.  A file can hold
+both, and then the pane says so.
+
+A real export holds thousands of channels, so nothing is read until you have
+said what you want: the file is described from its header, and you filter and
+tick.  Frame fields -- the id, the length, the flags a bus log carries -- are
+kept out of the list unless you ask for them, since there are hundreds and
+they are plumbing rather than measurements.
+
+Imported signals appear under the file's name, beside the live ones.
+
+**They will not be on screen until you untick *Follow* and press *Fit*.**  A
+file sits at the times it was recorded at -- 235 seconds into somebody's test,
+or last Tuesday -- and *Follow* keeps the last few seconds of *now* in view,
+which is a different part of the number line entirely.  *Fit* zooms to
+whatever is plotted, wherever it is.
+
+Reading MDF needs the `asammdf` library.  The Windows installer includes it.
+A `pip` installation leaves it out by default -- it brings pandas with it,
+some 100 MB on disc, for a format many people never open -- and offers to fetch it the
+first time you open a file that needs it, or you can ask for it up front with
+`pip install pycangui[mf4]`.
+
 **File > Export signals...** writes what has been decoded to a CSV: DBC
 signals, CANopen PDO values and XCP measurements alike.  [Recording](channels.md) writes raw
-CAN, which is right for a recording and means decoding it again elsewhere to
-get back what is already on screen here.
+CAN, which is right for a recording -- and what comes back the other way is
+*Import signals*, above.
 
 Each signal gets its own **Time (s)** column beside its values, with a blank
 column between signals:

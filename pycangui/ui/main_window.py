@@ -230,6 +230,13 @@ class MainWindow(QMainWindow):
         file_menu.addAction("Load DBC...", self._load_dbc_dialog)
         file_menu.addAction("Unload all DBCs", self._unload_dbcs)
         file_menu.addSeparator()
+        imported = file_menu.addAction("Import signals...", self._import_signals)
+        imported.setToolTip(
+            "Read the signals out of a measurement file -- MDF or MF4 -- and\n"
+            "put them on the plot beside the live ones.  A CAN log holds\n"
+            "frames and is replayed instead; this holds signals somebody has\n"
+            "already decoded."
+        )
         export = file_menu.addAction("Export signals...", self._export_signals)
         export.setToolTip(
             "Write every decoded signal to a CSV: DBC signals, CANopen PDO\n"
@@ -945,6 +952,84 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_error(self, text: str) -> None:
         self.events.error(f"ERROR: {text}")
+
+    def _import_signals(self) -> None:
+        """Read a measurement file's signals onto the plot.
+
+        Deliberately not the Replay button.  A log holds frames and is played
+        back onto a channel so that everything downstream sees traffic; a
+        measurement holds signals somebody already decoded, and playing those
+        back would mean inventing frames they never came from.  Two files, two
+        doors.
+        """
+        import sys
+
+        from pycangui.core import mdf
+        from pycangui.ui.import_signals import ChannelPicker, ensure_available
+
+        path = folders.open_file(
+            self,
+            self.ctx,
+            folders.MEASUREMENT,
+            "Import signals from a measurement file",
+            mdf.FILTER,
+            self.ctx.user_dir,
+        )
+        if not path:
+            return
+        if not mdf.looks_like_mdf(path):
+            # Checked from the first eight bytes, before the library is asked
+            # for: picking the wrong file should cost a sentence rather than a
+            # sixty megabyte download and then a sentence.
+            self.events.warning(f"{Path(path).name} is not an MDF file, whatever it is called")
+            return
+        if mdf.unfinalised(path):
+            self.events.warning(
+                f"{Path(path).name} was never closed by whatever wrote it. "
+                "Reading it anyway; most other tools will refuse it."
+            )
+        if not ensure_available(self, self.ctx, frozen=getattr(sys, "frozen", False)):
+            return
+
+        try:
+            summary = mdf.summarise(path)
+            listed = mdf.channels(path)
+        except Exception as exc:  # a file that is one and still will not parse
+            self.events.error(f"{Path(path).name} could not be read: {exc}")
+            return
+        if not listed:
+            self.events.warning(
+                f"{Path(path).name} holds no channels with anything in them. "
+                + ("It does hold raw frames: replay it instead." if summary.has_frames else "")
+            )
+            return
+
+        picker = ChannelPicker(self, Path(path), summary, listed)
+        if not picker.exec() or not (wanted := picker.chosen()):
+            return
+        self._read_signals(Path(path), wanted)
+
+    def _read_signals(self, path: Path, wanted: list[str]) -> None:
+        """Read the chosen signals in and hand them to the hub."""
+        from pycangui.core import mdf
+
+        try:
+            series = mdf.read(path, names=wanted)
+        except Exception as exc:
+            self.events.error(f"{path.name} could not be read: {exc}")
+            return
+        group = path.stem
+        points = 0
+        for one in series:
+            self.signals.set_series(group, one.name, one.times, one.values, one.unit)
+            points += len(one)
+        missing = len(wanted) - len(series)
+        self.events.information(
+            f"Imported {len(series)} signal(s), {points:,} points, from {path.name} as "
+            f'"{group}".  Untick Follow on the plot and press Fit to see them: they sit '
+            "at the times the file recorded, not at this window's clock."
+            + (f"  {missing} held nothing readable." if missing else "")
+        )
 
     def _export_signals(self) -> None:
         """Write the captured signal values where a spreadsheet can read them."""
