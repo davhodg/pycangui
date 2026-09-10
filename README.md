@@ -68,8 +68,8 @@ python -m venv .venv
 .venv\Scripts\python -m pytest
 ```
 
-The `[dev]` extra adds pytest and ruff.  The launcher does not install it --
-running the application does not need the test tools.
+The `[dev]` extra adds pytest, ruff and the MDF reader.  The launcher does not
+install it -- running the application does not need the test tools.
 
 ## Supported systems
 
@@ -102,9 +102,15 @@ packages, as the LGPL requires.
 | [udsoncan](https://github.com/pylessard/python-udsoncan) | UDS client | MIT |
 | [can-isotp](https://github.com/pylessard/python-can-isotp) | ISO-TP transport for UDS | MIT |
 | [bincopy](https://github.com/eerimoq/bincopy) | Intel HEX / S-record / binary firmware files | MIT |
+| [asammdf](https://github.com/danielhrisca/asammdf) | Reading MDF / MF4 measurement files | LGPL-3.0 |
 
 XCP on CAN and its A2L reader are implemented directly in pycangui (no XCP
 library dependency).
+
+asammdf is the one **optional** entry: the Windows installer bundles it, and a
+`pip` installation leaves it out until a measurement file needs it, because it
+brings pandas with it -- about 100 MB on disc for a format many people never
+open.  `pip install pycangui[mf4]` asks for it up front.
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets).  pycangui depends on
 **PySide6-Essentials** rather than the full PySide6, so the GPL-only add-on
@@ -124,18 +130,33 @@ build.cmd nosetup    stop after the checked application folder
 ```
 
 It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed
-package metadata, builds a **one-directory** bundle with PyInstaller (so Qt and
-python-can stay separate, replaceable DLLs, as the LGPL asks), checks the
-result, and then wraps it with **Inno Setup**.  The
-result is `dist\pycangui\pycangui.exe` and `dist\pycangui-<version>-setup.exe`;
-nothing needs to be installed on the target machine, not even Python.
+package metadata, builds a **one-directory** bundle with PyInstaller, checks
+the result, and then wraps it with **Inno Setup**.  The result is
+`dist\pycangui\pycangui.exe` and `dist\pycangui-<version>-setup.exe`; nothing
+needs to be installed on the target machine, not even Python.
 
-`build/check_build.py` fails the build if a **GPL-only Qt module** has crept in
-(shipping Qt Charts or the Virtual Keyboard would change the licence of the
-whole application), if a sample or hook template is missing, or if the built
-executable cannot import its protocol stacks and every python-can adapter
-backend -- it runs `pycangui.exe --selftest` to find out rather than guessing
-from file names.
+### What the installer includes, and why that is allowed
+
+**LGPL components are bundled.**  Qt (PySide6), python-can and asammdf are all
+LGPL-3.0 and all ship inside the installer.  The LGPL asks that they stay
+*replaceable*, not that they stay out: hence the **one-directory** build, where
+each is a separate DLL or package a user can substitute their own build of,
+rather than a single-file bundle with everything fused together.  Their
+licences are reproduced in `THIRD-PARTY-NOTICES.txt`, generated from installed
+package metadata so it cannot drift from what was actually shipped.
+
+**GPL-only components are not**, and this is the distinction that matters.
+PySide6 ships Qt Charts, Qt Data Visualization, Qt Graphs and the Virtual
+Keyboard in the same wheel as the LGPL modules, and those are GPL-3.0 or
+commercial with no LGPL option; one of them in the build would make the whole
+application GPL and contradict the Apache licence on the tin.  They are
+excluded in `pycangui.spec` and `build/check_build.py` fails the build if one
+appears anyway.
+
+`build/check_build.py` also fails the build if a sample or hook template is
+missing, or if the built executable cannot import its protocol stacks, the MDF
+reader and every python-can adapter backend -- it runs `pycangui.exe
+--selftest` to find out rather than guessing from file names.
 
 Adapter drivers are not bundled: install the vendor's driver and python-can
 finds it.  Hooks, back ends, EDS files and settings stay in `%APPDATA%\pycangui`

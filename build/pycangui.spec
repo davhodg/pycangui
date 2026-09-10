@@ -36,6 +36,15 @@ HIDDEN = [
     "j1939",
     "udsoncan",
     "bincopy",
+    # asammdf reads MDF and MF4 measurement files.  pycangui imports it only
+    # when a file needs one, so nothing static points at it and PyInstaller
+    # would leave it out; and its format blocks are picked by file version at
+    # run time, hence sweeping the package rather than naming the entry point.
+    "asammdf",
+    *collect_submodules("asammdf.blocks"),
+    # canmatrix, which asammdf reads databases through, loads its format
+    # modules by name from a registry -- the python-can backend pattern again.
+    *collect_submodules("canmatrix.formats"),
     # pywin32 is a distribution, not a module: name the modules it provides
     "pythoncom",  # can-j1939 imports this on Windows
     "win32com",
@@ -88,6 +97,15 @@ EXCLUDED = [
     "PySide6.QtWebEngineQuick",
     "PySide6.QtWebEngineWidgets",
     "PySide6.QtWebSockets",
+    # asammdf's own measurement GUI.  pycangui has its reader, not its
+    # application, and that application wants the Qt addons deliberately left
+    # out above -- so it would either bloat the build or half-import and fail.
+    "asammdf.gui",
+    "asammdf.app",
+    # Test suites that ship inside libraries.  pandas' alone is some 30 MB of
+    # a build nobody runs pytest in.
+    "pandas.tests",
+    "numpy.tests",
     # developer tooling that has no business in a release build
     "pytest",
     "ruff",

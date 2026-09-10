@@ -33,6 +33,7 @@ EDS = "eds"  # EDS and DCF: both are device configuration
 DBC = "dbc"
 IMAGE = "image"  # Intel HEX, S-record, raw binary
 LOG = "log"  # captured traffic, recorded and replayed
+MEASUREMENT = "measurement"  # MDF/MF4: decoded signals rather than frames
 A2L = "a2l"
 SCRIPT = "script"
 EXPORT = "export"

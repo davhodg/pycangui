@@ -53,6 +53,16 @@ def selftest() -> int:
     except Exception as exc:
         failures.append(f"can.interfaces: {exc}")
 
+    # asammdf is optional for a pip installation and bundled in a frozen one,
+    # so its absence is a failure only here.  A build that lost it would turn
+    # File > Import signals into a dialog saying the library cannot be
+    # installed in this build -- true, and no use to anybody.
+    if getattr(sys, "frozen", False):
+        try:
+            importlib.import_module("asammdf")
+        except Exception as exc:
+            failures.append(f"asammdf: {exc}")
+
     # The manual is package data, so it is exactly the kind of file a build
     # drops silently -- which is what happened to the demo EDS for months.
     # Every page, by name: one missing page is a topic that vanished, and a

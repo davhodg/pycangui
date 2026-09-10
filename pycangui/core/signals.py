@@ -72,6 +72,48 @@ class SignalHub(QObject):
                 self.push(group, name, t, value, units.get(name, ""))
         self.updated.emit()
 
+    def set_series(self, group: str, name: str, times, values, unit: str = "") -> str:
+        """Put a whole series in at once, as read from a file.
+
+        Not ``push`` in a loop, and the difference is the trimming: a live
+        signal is trimmed to the newest MAX_SAMPLES because the old values
+        stop mattering, and an imported one trimmed the same way would lose
+        its *beginning* -- which for something being analysed is the half
+        somebody is usually looking for.  A file is finite, so it is kept
+        whole.
+        """
+        key = f"{group}/{name}"
+        series = self._series.get(key)
+        if series is None:
+            series = self._series[key] = SignalSeries(group, name, unit)
+            new = True
+        else:
+            new = False
+        series.unit = unit or series.unit
+        series.times = list(times)
+        series.values = [float(v) for v in values]
+        if new:
+            self.added.emit(key)
+        self.updated.emit()
+        return key
+
+    def groups(self) -> list[str]:
+        """The sources signals have come from, in the order first seen."""
+        return list(dict.fromkeys(s.group for s in self._series.values()))
+
+    def forget_group(self, group: str) -> int:
+        """Drop everything from one source.  Returns how many series went.
+
+        An imported file is a thing somebody finishes with, and a signals list
+        that only ever grows is one nobody can find anything in.
+        """
+        going = [k for k, s in self._series.items() if s.group == group]
+        for key in going:
+            del self._series[key]
+        if going:
+            self.updated.emit()
+        return len(going)
+
     def keys(self) -> list[str]:
         return list(self._series)
 
