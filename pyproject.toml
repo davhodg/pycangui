@@ -53,7 +53,7 @@ mf4 = ["asammdf>=8"]
 # Pinned ruff: a new one must not break the build.  mf4 is pulled in so that
 # CI actually exercises the reader -- a reader nobody tests is a reader that
 # breaks -- and so that the build environment has what the bundle needs.
-dev = ["pytest", "ruff==0.16.*", "pycangui[mf4]"]
+dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pycangui[mf4]"]
 
 [project.scripts]
 pycangui = "pycangui.__main__:main"

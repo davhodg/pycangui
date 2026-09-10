@@ -68,8 +68,13 @@ python -m venv .venv
 .venv\Scripts\python -m pytest
 ```
 
-The `[dev]` extra adds pytest, ruff and the MDF reader.  The launcher does not
-install it -- running the application does not need the test tools.
+The `[dev]` extra adds pytest, pytest-xdist, ruff and the MDF reader.  The
+launcher does not install it -- running the application does not need the test
+tools.
+
+The suite is a thousand Qt tests and splits cleanly across processes, so
+`-n auto` runs it in well under a minute rather than six.  Leave it off when
+running a single file: starting the workers costs more than the file does.
 
 ## Supported systems
 
