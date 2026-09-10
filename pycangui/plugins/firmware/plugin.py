@@ -40,7 +40,7 @@ from . import program
 from .program import Device
 
 API_VERSION = 1
-NAME = "Firmware"
+NAME = "CANopen firmware (CiA 302-3)"
 VERSION = "1.0"
 DESCRIPTION = "Download firmware to a CANopen node (CiA 302-3)."
 
@@ -292,4 +292,4 @@ class FirmwareView(QWidget):
 
 
 def register(app) -> None:
-    app.add_pane("main", "Firmware", lambda _name: FirmwareView(app), area="right")
+    app.add_pane("main", "CANopen firmware", lambda _name: FirmwareView(app), area="right")

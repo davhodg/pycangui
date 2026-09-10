@@ -1,6 +1,6 @@
 [&larr; Contents](manual.md)
 
-# CANopen DCF Compare
+# CANopen DCF compare
 
 A [plugin](plugins.md) that ships with pycangui.  *Plugins > Manage plugins...*
 installs it; until then it is not there.

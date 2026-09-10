@@ -47,15 +47,21 @@ than silently not being there.
 ## Writing one
 
 ```python
-NAME = "Firmware"
+NAME = "Thermistor setup"
 VERSION = "1.0"  # yours; shown in the menu, and compared when one replaces another
 API_VERSION = 1  # what it was written against; refused if newer than pycangui
 
 
 def register(app):
-    app.add_pane("main", "Firmware", build_the_widget)
+    app.add_pane("main", "Thermistor setup", build_the_widget)
     app.add_menu_action("Do the thing", run_it, "what it will do")
 ```
+
+Say in the name what the plugin talks to, where that is not obvious: the ones
+supplied here are *CANopen* firmware and *CANopen* motor control, because
+neither sequence is the one a UDS or XCP device would want and a list of
+plugins reading "Firmware" tells nobody which. Where the profile number is how
+people refer to the thing -- CiA 402 is -- it earns its place in brackets.
 
 A plugin folder is a package rooted at itself, so a second file beside
 `plugin.py` is reached with `from . import helper`.  Name it absolutely and
@@ -94,7 +100,7 @@ copy of its pane appears beside the first.
 Supplied rather than installed: *Plugins > Manage plugins...* is where they
 are, and until one is installed none of it runs.
 
-**Firmware** downloads a program to a CANopen node by CiA 302-3: stop the
+**CANopen firmware** downloads a program to a CANopen node by CiA 302-3: stop the
 program (0x1F51), clear it, write the image as a domain (0x1F50), start it
 again.  Intel HEX, S-record and raw binary are all read; the image has to be
 one contiguous block, because a program download *is* one block of bytes and
@@ -117,8 +123,8 @@ built from -- and says what is different.  Comparing against a device reads only
 the objects the other side names, so it takes seconds and needs no EDS on the
 device.
 
-**Motor control (CiA 402)** drives a motor controller: its state, its mode, its
-target and what it is actually doing.
+**CANopen motor control (CiA 402)** drives a motor controller: its state, its mode,
+its target and what it is actually doing.
 
 Half of that screen could have been a custom pane, and it is worth knowing
 which half.  The modes, the targets and the actual values are ordinary objects

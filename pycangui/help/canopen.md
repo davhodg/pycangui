@@ -14,7 +14,7 @@ mean, so that is a hook).  The **SYNC producer** transmits sync
 messages so synchronous PDOs are exchanged, **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
-node -- so a device can be commissioned, captured and cloned.  What is *different* between two of them is the [CANopen DCF Compare](compare.md) plugin.
+node -- so a device can be commissioned, captured and cloned.  What is *different* between two of them is the [CANopen DCF compare](compare.md) plugin.
 
 A node that stops sending heartbeats is marked **lost** in the node list and
 reported in the Event Log; the timeout follows the producer time from object
