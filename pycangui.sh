@@ -60,9 +60,9 @@ BANNER
     echo "       PySide6, which is Qt."
     echo
     { if [ -n "$UV" ]; then
-        uv pip install --python .venv/bin/python -e ".[dev]"
+        uv pip install --python .venv/bin/python -e "."
       else
-        .venv/bin/python -m pip install -e ".[dev]"
+        .venv/bin/python -m pip install -e "."
       fi } || {
         echo
         echo "Setup failed.  The messages above say why; the usual causes are"
@@ -82,19 +82,28 @@ BANNER
  this folder later takes seconds not minutes.
 
 DONE
+elif cmp -s pyproject.toml .venv/.deps-ok; then
+    # Already checked against exactly this pyproject.toml.  The check costs a
+    # whole Python start -- a quarter of a second on every launch, for a
+    # question whose answer only changes when this file does -- so the answer
+    # is kept, as a copy of the file it was the answer to.
+    :
 elif ! .venv/bin/python build/check_deps.py >/dev/null 2>&1; then
     # A .venv built before a dependency was added is short of it, and nothing
-    # would say so beyond an ImportError on the way up.  Asked on every start,
-    # because that is when it matters.
+    # would say so beyond an ImportError on the way up.  Asked whenever
+    # pyproject.toml has changed since the last time it was asked.
     echo
     echo "pycangui needs libraries that this folder does not have yet."
     echo "Installing them; this is much quicker than the first setup was."
     echo
     if command -v uv >/dev/null 2>&1; then
-        uv pip install --python .venv/bin/python -e ".[dev]" || exit 1
+        uv pip install --python .venv/bin/python -e "." || exit 1
     else
-        .venv/bin/python -m pip install -e ".[dev]" || exit 1
+        .venv/bin/python -m pip install -e "." || exit 1
     fi
+    cp pyproject.toml .venv/.deps-ok
+else
+    cp pyproject.toml .venv/.deps-ok
 fi
 
 exec .venv/bin/python -m pycangui "$@"

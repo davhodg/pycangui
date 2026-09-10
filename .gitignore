@@ -9,6 +9,9 @@ __pycache__/
 # the build writes into it is ignored.
 dist/
 build/work/
+# setuptools' own scratch, from building a wheel out of this folder.
+build/lib/
+build/bdist.*/
 build_log.txt
 
 # Regenerated from the installed package metadata by build/notices.py

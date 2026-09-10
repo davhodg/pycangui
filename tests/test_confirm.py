@@ -256,45 +256,69 @@ def test_asking_about_everything_again_takes_it_all_back(app, monkeypatch, store
 
 
 # --- the notice at the start ------------------------------------------------------------------
-def test_the_notice_says_what_the_tool_can_do(app, monkeypatch, store):
+def test_the_notice_says_what_the_tool_can_do(app, monkeypatch):
     seen = {}
     monkeypatch.setattr(
         QMessageBox, "exec", lambda box: seen.update(text=box.text()) or QMessageBox.Ok
     )
-    assert accept_notice(None, store)
+    assert accept_notice()
     assert "real equipment" in seen["text"]
     assert "wrong bitrate" in seen["text"]
     assert "without warranty" in seen["text"]
 
 
-def test_quitting_the_notice_means_it_does_not_start(app, monkeypatch, store):
+def test_quitting_the_notice_means_it_does_not_start(app, monkeypatch):
     """A click-through nobody can decline is not an agreement."""
     monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Cancel)
-    assert not accept_notice(None, store)
-    assert not store.notice_accepted(), "declining is not an acceptance either"
+    assert not accept_notice()
 
 
-def test_it_comes_back_until_it_is_ticked(app, monkeypatch, store):
-    ticking(monkeypatch, answer=QMessageBox.Ok, tick=False)
-    assert accept_notice(None, store)
-
-    asked = []
-    monkeypatch.setattr(QMessageBox, "exec", lambda box: asked.append(1) or QMessageBox.Ok)
-    assert accept_notice(None, store)
-    assert asked, "not ticked, so shown again"
-
-
-def test_once_it_is_ticked_it_stays_away(app, monkeypatch, store):
-    ticking(monkeypatch, answer=QMessageBox.Ok, tick=True)
-    assert accept_notice(None, store)
-
-    monkeypatch.setattr(QMessageBox, "exec", lambda _box: pytest.fail("it was shown again"))
-    assert accept_notice(None, store)
+def test_it_cannot_be_switched_off(app, monkeypatch):
+    """The one dialog here with no "do not ask again" on it.  A notice
+    dismissed for good on the first afternoon is one the colleague who picks
+    the machine up in March never sees, and it costs a keypress a session."""
+    seen = []
+    monkeypatch.setattr(
+        QMessageBox, "exec", lambda box: seen.append(box.checkBox()) or QMessageBox.Ok
+    )
+    assert accept_notice()
+    assert accept_notice()
+    assert seen == [None, None], "no tick box, and shown again the next time"
 
 
-def test_a_colleague_picking_the_machine_up_sees_it_once(app, tmp_path, monkeypatch):
-    settings = QSettings(str(tmp_path / "agreed.ini"), QSettings.IniFormat)
-    ticking(monkeypatch, answer=QMessageBox.Ok, tick=True)
-    accept_notice(None, Remembered(settings, user="alice"))
+def test_the_slow_half_of_starting_up_happens_behind_it(app, monkeypatch):
+    """Which is what makes an unskippable notice cost nothing: a second and a
+    half of libraries loads while somebody reads it, instead of a second and a
+    half of nothing before anything appears."""
+    order = []
+    monkeypatch.setattr(
+        QMessageBox, "exec", lambda _box: order.append("answered") or QMessageBox.Ok
+    )
+    assert accept_notice(while_shown=lambda: order.append("loaded"))
+    assert order == ["loaded", "answered"], "loaded before the answer was waited for"
 
-    assert not Remembered(settings, user="bob").notice_accepted()
+
+def test_it_is_on_screen_before_the_slow_half_starts(app, monkeypatch):
+    """The whole point.  Doing the work first and showing the notice after
+    would be the same total and none of the benefit."""
+    was_visible = []
+    box = {}
+    real_show = QMessageBox.show
+
+    def remember_and_show(self):
+        box["it"] = self
+        return real_show(self)
+
+    monkeypatch.setattr(QMessageBox, "show", remember_and_show)
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Ok)
+    accept_notice(while_shown=lambda: was_visible.append(box["it"].isVisible()))
+    assert was_visible == [True]
+
+
+def test_a_build_with_nothing_to_show_it_still_loads(app, monkeypatch):
+    """``main`` falls back to loading in the open if the notice never ran the
+    callback, because not starting is worse than starting slowly."""
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Ok)
+    ran = []
+    assert accept_notice(while_shown=None) is True
+    assert ran == [], "nothing to run, and nothing broken by that"

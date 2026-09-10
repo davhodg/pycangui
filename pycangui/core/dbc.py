@@ -8,12 +8,18 @@ name and signal values, or None if no database knows the id.  Decoding errors
 from __future__ import annotations
 
 from pathlib import Path
-
-import cantools
-from cantools.database import Database, Message
+from typing import TYPE_CHECKING
 
 from pycangui.core.bus import Frame
 from pycangui.j1939 import pgn_mask
+
+if TYPE_CHECKING:  # for the annotations only, which are strings at run time
+    from cantools.database import Database, Message
+
+# cantools costs half a second to import and is needed only once a database is
+# actually loaded.  Most sessions never load one, and the ones that do are
+# already waiting for a file dialog by the time it matters -- so it is imported
+# where it is used rather than on the way to the first window.
 
 
 class DbcDecoder:
@@ -35,6 +41,8 @@ class DbcDecoder:
         rather than being the silent default.
         """
         path = str(path)
+        import cantools.database
+
         db = cantools.database.load_file(path, strict=strict)
         self.databases[path] = db
         self._rebuild()

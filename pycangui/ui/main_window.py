@@ -22,7 +22,6 @@ from pycangui.core.backends import BACKENDS
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
-from pycangui.core.demo import DemoDevice
 from pycangui.core.detect import DEMO_CHANNEL, summarise
 from pycangui.core.events import PROBLEMS, EventLog
 from pycangui.core.excepthook import ExceptionLogger
@@ -261,7 +260,7 @@ class MainWindow(QMainWindow):
         # delivering a click is not somewhere to be.
         self.panes.changed.connect(lambda: QTimer.singleShot(0, self._build_view_menu))
 
-        self._demo: DemoDevice | None = None
+        self._demo = None  # a DemoDevice, once vcan0 is connected to
         tools_menu = self.menuBar().addMenu("&Tools")
         tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
@@ -276,9 +275,8 @@ class MainWindow(QMainWindow):
         )
         ask_again = tools_menu.addAction("Ask about everything again", self._ask_again)
         ask_again.setToolTip(
-            "Bring back every question you told pycangui not to ask again --\n"
-            "joining a bus, transmitting, replaying, and the notice it shows\n"
-            "when it starts."
+            "Bring back every question you told pycangui not to ask again:\n"
+            "joining a bus, transmitting and replaying."
         )
         tools_menu.addSeparator()
         verbose = tools_menu.addAction("Verbose CAN logging")
@@ -1014,8 +1012,7 @@ class MainWindow(QMainWindow):
         how_many = self.confirm.forget_everything()
         self.events.information(
             f"Forgot {how_many} remembered answer(s): pycangui will ask again before "
-            "joining a bus, transmitting or replaying, and will show its notice at the "
-            "next start."
+            "joining a bus, transmitting or replaying."
             if how_many
             else "Nothing was being remembered; every question is already asked."
         )
@@ -1177,6 +1174,10 @@ class MainWindow(QMainWindow):
         )
         if wanted and self._demo is None:
             try:
+                # Imported here: the demo device brings the j1939 library
+                # with it, and it exists only while vcan0 is connected.
+                from pycangui.core.demo import DemoDevice
+
                 self._demo = DemoDevice(DEMO_CHANNEL, self)
             except Exception as exc:
                 self.events.warning(f"Demo device failed to start: {exc}")

@@ -2,10 +2,13 @@
 
 Two shapes of the same subject.
 
-**Once, before anything.**  A notice at start-up saying what the tool is
-capable of, which has to be clicked through.  It is not a question about
-anything in particular; it is the sentence somebody should have read before
-their first connection rather than after their first mistake.
+**Once, before anything, every time.**  A notice at start-up saying what the
+tool is capable of, which has to be clicked through and cannot be switched off.
+It is not a question about anything in particular, which is why it is the one
+dialog here with no "do not ask again" on it: a notice dismissed for good on
+the first afternoon is one that the colleague who picks the machine up in March
+never sees.  It is also where the slow half of starting up hides -- the
+libraries load behind it, so the notice costs no time at all.
 
 **Once a session, per thing.**  Three things pycangui does can disturb
 equipment that is not its own: joining a live bus, transmitting onto one, and
@@ -31,14 +34,14 @@ another account, asks that person for themselves.
 from __future__ import annotations
 
 import getpass
+from collections.abc import Callable
 
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QCheckBox, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QCheckBox, QMessageBox, QWidget
 
 #: Kept outside every workspace, deliberately.  See the module docstring.
 AGREED_SETTING = "confirmations/agreed"
 USER_SETTING = "confirmations/user"
-NOTICE_SETTING = "confirmations/notice-accepted-by"
 
 REMEMBER_LABEL = "Do not ask me this again on this machine"
 REMEMBER_TIP = (
@@ -62,7 +65,6 @@ NOTICE = (
     "leaves this machine: it makes no network connection of its own accord.\n\n"
     "Provided under the Apache License 2.0, without warranty of any kind."
 )
-NOTICE_AGAIN = "Do not show this again"
 
 
 def _who() -> str:
@@ -102,37 +104,36 @@ class Remembered:
         self._settings.setValue(USER_SETTING, self._user)
         self._settings.setValue(AGREED_SETTING, sorted(self.keys() | {key}))
 
-    def notice_accepted(self) -> bool:
-        return bool(self._settings.value(NOTICE_SETTING, "")) and (
-            self._settings.value(NOTICE_SETTING, "") == self._user
-        )
-
-    def accept_notice(self) -> None:
-        self._settings.setValue(NOTICE_SETTING, self._user)
-
     def clear(self) -> int:
         """Forget everything, so every question comes back.  Returns how many."""
-        how_many = len(self.keys()) + (1 if self.notice_accepted() else 0)
-        for name in (AGREED_SETTING, USER_SETTING, NOTICE_SETTING):
+        how_many = len(self.keys())
+        for name in (AGREED_SETTING, USER_SETTING):
             self._settings.remove(name)
         return how_many
 
 
-def accept_notice(parent: QWidget | None = None, remembered: Remembered | None = None) -> bool:
+def accept_notice(
+    parent: QWidget | None = None, while_shown: Callable[[], None] | None = None
+) -> bool:
     """Show the start-up notice.  False means the user chose not to go on.
 
     Shown before the window is built rather than over the top of it, so that
     nothing -- not a startup hook, not a workspace reopening its channels --
     can have touched a bus before it has been read.
 
-    A notice that could not be dismissed for good would be dismissed unread by
-    the second week, which is why the tick box is there; it is kept against the
-    person who ticked it, so a colleague who picks the machine up is shown it
-    once themselves.
+    **Every time, with no way to switch it off**, which is the one place in
+    pycangui where a dialog is not offered a tick box.  The per-action
+    questions are answered once because they are about a thing you are doing
+    on purpose; this is not a question at all.  A notice dismissed for good on
+    the first afternoon is a notice the colleague who picks the machine up in
+    March never sees, and it costs one keypress a session.
+
+    ``while_shown`` is called once the notice is on screen and before the
+    answer is waited for.  That is where the slow half of starting up goes: a
+    second of libraries loads behind a dialog somebody is reading, instead of
+    a second of nothing before one appears.  The safety notice pays for itself
+    twice.
     """
-    remembered = Remembered() if remembered is None else remembered
-    if remembered.notice_accepted():
-        return True
     box = QMessageBox(
         QMessageBox.Warning,
         NOTICE_TITLE,
@@ -143,14 +144,14 @@ def accept_notice(parent: QWidget | None = None, remembered: Remembered | None =
     box.button(QMessageBox.Ok).setText("Continue")
     box.button(QMessageBox.Cancel).setText("Quit")
     box.setDefaultButton(QMessageBox.Ok)
-    again = QCheckBox(NOTICE_AGAIN)
-    again.setToolTip(REMEMBER_TIP)
-    box.setCheckBox(again)
-    if box.exec() != QMessageBox.Ok:
-        return False
-    if again.isChecked():
-        remembered.accept_notice()
-    return True
+    if while_shown is not None:
+        # Painted first, then the slow work: the point is that something is on
+        # screen while it happens.  Done here rather than on a timer inside
+        # exec() so that it has demonstrably run by the time anybody answers.
+        box.show()
+        QApplication.processEvents()
+        while_shown()
+    return box.exec() == QMessageBox.Ok
 
 
 class Confirmations:
