@@ -29,6 +29,7 @@ class Context:
         self.workspace: str = workspaces.active()
         self.workspace_dir: Path = workspaces.active_dir()
         self.hooks_dir: Path = workspaces.hooks_dir()
+        self.nodes_dir: Path = workspaces.nodes_dir()
         self.eds_dir: Path = workspaces.eds_dir()
         self.settings = Settings(workspaces.settings_path())
         #: The dock arrangement, in the workspace folder rather than in

@@ -124,6 +124,15 @@ def eds_dir() -> Path:
     return _made(active_dir() / "eds")
 
 
+def nodes_dir() -> Path:
+    """Virtual nodes: the devices a user writes to stand in for real ones.
+
+    Beside the hooks, and for the same reason -- a node is knowledge about a
+    product, and travels with the workspace that describes that product.
+    """
+    return _made(active_dir() / "nodes")
+
+
 def custom_panes_dir() -> Path:
     """The panes the user built.  Beside the hooks, because one of these is
     knowledge about a product in exactly the way a hook is, and the two travel
