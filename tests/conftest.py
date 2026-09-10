@@ -87,6 +87,15 @@ def _drain_qt_events():
     if instance is not None:
         for _ in range(3):
             instance.processEvents()
-    gc.collect()
+    # The younger generations, not everything.  What has to go is the test's
+    # own wreckage, which by definition has survived at most one collection
+    # and so is still in generation 0 or 1; generation 2 holds the session's
+    # QApplication and every imported module, which this was never trying to
+    # free.  Walking those a thousand times over was a quarter of the run,
+    # and grew as the heap did.  It is the safer direction too: the crash
+    # this guards against came from collecting too eagerly against a queue
+    # that had not drained, so leaving something alive a moment longer
+    # cannot bring it back.
+    gc.collect(1)
     if instance is not None:
         instance.processEvents()

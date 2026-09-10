@@ -35,7 +35,8 @@ if errorlevel 1 goto :fail
 
 echo.
 echo === Tests =========================================================
-"%PYTHON%" -m pytest -q tests
+rem -n auto: a thousand Qt tests split cleanly across processes.
+"%PYTHON%" -m pytest -q -n auto tests
 if errorlevel 1 goto :fail
 
 echo.
