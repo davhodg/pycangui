@@ -359,3 +359,66 @@ def test_a_box_being_typed_into_is_not_overwritten(app, tmp_path, monkeypatch):
     widget.set_value(0x2001, 0, 4321, None)
     assert widget.edit.text() == "999", "what was being typed is still there"
     window.close()
+
+
+# --- whose answer is this ----------------------------------------------------------------
+def test_an_answer_nobody_polled_for_does_not_finish_a_round(app, pane):
+    """A source answers in the order it was asked, so the oldest waiting
+    request for an object is whose answer this is.  Anything else and a round
+    is finished by an answer it never asked for."""
+    _window, view = pane
+    view.bind(FakeNode(delay_ms=50))
+    pump(app, 0.2)  # let the reads bind() started actually land
+
+    told = []
+    view.poller.answered = lambda index, sub: told.append((index, sub))
+    view._widgets[0].read_requested.emit(0x2001, 0)  # somebody pressing Read
+    pump(app, 0.15)
+    assert told == [], "a read by hand is not an answer to a poll"
+
+
+def test_an_answer_polling_did_ask_for_reaches_it(app, pane):
+    _window, view = pane
+    view.bind(FakeNode(delay_ms=10))
+    pump(app, 0.1)
+
+    told = []
+    view.poller.answered = lambda index, sub: told.append((index, sub))
+    view._on_poll_read(0x2001, 0)
+    pump(app, 0.1)
+    assert told == [(0x2001, 0)]
+
+
+def test_reading_by_hand_while_polling_does_not_flatter_the_rate(app, pane):
+    """The bug this pair exists for.  Reading a pane while it polled used to
+    finish whichever round was in flight, and the rate then read faster than
+    the bus was really managing -- which is the one thing that number is there
+    not to do."""
+    _window, view = pane
+    view.bind(FakeNode(delay_ms=50))
+    pump(app, 0.2)
+    view.poll_hz.setValue(50.0)
+    view.poll.setChecked(True)
+    pump(app, 0.2)
+
+    for _ in range(5):
+        view._widgets[0].read_requested.emit(0x2001, 0)
+        pump(app, 0.05)
+    assert "asked for 50" in view.poll_rate.text(), view.poll_rate.text()
+
+
+def test_reads_that_are_never_answered_do_not_pile_up(app, pane):
+    """A source that answers some and not others would otherwise grow this
+    list for as long as the polling ran."""
+    from pycangui.ui.custom_pane_view import MAX_WAITING
+
+    _window, view = pane
+
+    class Silent(FakeNode):
+        def request(self, index, sub):
+            self.reads += 1  # asked, and never answered
+
+    view.bind(Silent())
+    for _ in range(MAX_WAITING * 3):
+        view._on_poll_read(0x2001, 0)
+    assert len(view._asked[(0x2001, 0)]) == MAX_WAITING

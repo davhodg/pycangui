@@ -49,6 +49,10 @@ from pycangui.custom_panes.source import FileSource, NodeSource, Source
 from pycangui.ui import field_widgets, folders
 from pycangui.ui.persist import remember
 
+#: How many unanswered reads of one object to keep track of.  Past this,
+#: the oldest are ones whose answers are never coming.
+MAX_WAITING = 8
+
 #: Offered in the source selector, above whatever nodes are on the bus.
 FILE_ENTRY = "Open a DCF or EDS..."
 
@@ -97,8 +101,11 @@ class CustomPaneView(QWidget):
         self._now = now or time.monotonic
         self.source: Source | None = None
         self._widgets: list[field_widgets.FieldWidget] = []
+        #: Per object, oldest first: True where polling asked for the read
+        #: and False where a person did.  See ``_request``.
+        self._asked: dict[tuple[int, int], list[bool]] = {}
         self.poller = Poller(self)
-        self.poller.read.connect(self._on_read_requested)
+        self.poller.read.connect(self._on_poll_read)
         # rate is connected once the label it writes to exists, below.
 
         self.heading = QLabel()
@@ -278,10 +285,29 @@ class CustomPaneView(QWidget):
         self.poll_rate.setText(rate_text(requested, achieved, self.poller.running))
 
     # --- and back again ------------------------------------------------------------------
+    def _on_poll_read(self, index: int, sub: int) -> None:
+        self._request(index, sub, polling=True)
+
     def _on_read_requested(self, index: int, sub: int) -> None:
+        self._request(index, sub, polling=False)
+
+    def _request(self, index: int, sub: int, polling: bool) -> None:
+        """Ask the source for a value, and remember who wanted it.
+
+        Who wanted it is the whole point.  A source answers in the order it
+        was asked, so the oldest waiting request for an object is the one this
+        answer belongs to -- and a round of polling must be finished by *its
+        own* answers, not by one that happened to arrive while it was waiting.
+        """
         if self.source is None:
             self.ctx.warn(f"{self.pane.title or self.name}: no node or file selected")
             return
+        waiting = self._asked.setdefault((index, sub), [])
+        waiting.append(polling)
+        # A source that answers some reads and not others would otherwise grow
+        # this list for as long as the polling runs.  The oldest are the ones
+        # whose answers are never coming.
+        del waiting[:-MAX_WAITING]
         self.source.request(index, sub)
 
     def _on_write_requested(self, index: int, sub: int, raw: Any) -> None:
@@ -295,7 +321,13 @@ class CustomPaneView(QWidget):
         # sub-indices of one object, and only it knows which.
         for widget in self._widgets:
             widget.set_value(index, sub, raw, error)
-        self.poller.answered(index, sub)
+        # Only if this answer is one polling asked for.  Reading a pane by
+        # hand while it polls used to finish whichever round was in flight,
+        # and the rate then read faster than the bus was really managing --
+        # which is the one thing the rate is there not to do.
+        waiting = self._asked.get((index, sub))
+        if waiting and waiting.pop(0):
+            self.poller.answered(index, sub)
         if not error:
             self._to_signals(index, sub, raw)
 
