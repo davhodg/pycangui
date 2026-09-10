@@ -21,19 +21,45 @@ and Python scripting, on any adapter supported by python-can.  Apache-2.0.
 Full details in [the manual](pycangui/help/manual.md), which is also under
 **Help > Documentation** in the application.
 
-## Running
+## Installing
 
-Double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux / macOS).
-Python 3.12 or newer must be on the PATH.
+Three ways in, and which one you want depends on whether you have Python and
+whether you want to care.
+
+**The installer** -- `pycangui-<version>-setup.exe` from the releases page.
+Nothing else is needed: **not even Python.**  It installs a self-contained
+application, offers a desktop shortcut, and uninstalls cleanly.  This is the
+one to give somebody who wants a CAN tool rather than a Python package.
+
+**From the source folder** -- double-click `pycangui.cmd` (Windows) or run
+`./pycangui.sh` (Linux, macOS).  Python 3.12 or newer must be on the PATH.
 
 The first run sets itself up: it creates a *virtual environment* -- a folder
 called `.venv` holding its own copy of Python and only the libraries pycangui
 needs, so nothing else on the machine is touched -- and downloads about 90 MB
 into it.  That takes a few minutes once; every later start is immediate, and
-deleting `.venv` undoes it.  If `uv` is installed it is used instead of pip,
-which makes rebuilding that folder later a matter of seconds.
+deleting `.venv` undoes the whole thing.  If `uv` is installed it is used
+instead of pip, which makes rebuilding that folder a matter of seconds.
 
-For development:
+The launcher keeps its own `.venv` on purpose and will not use an environment
+you already have.  That is the point of it: it is the way in for somebody who
+does not want to think about Python environments, and one that sometimes used
+yours and sometimes did not would be worse than one that never does.
+
+**With pip** -- if you already have a Python environment and would rather
+pycangui went in it, install the wheel and ignore the launcher entirely:
+
+```
+pip install pycangui-0.0.1-py3-none-any.whl    # from the releases page
+pycangui                                        # installs a command of that name
+```
+
+or from a checkout, `pip install -e .` for the same thing reading the source.
+Nothing about pycangui needs the launcher: it is an ordinary Python package
+with an ordinary entry point, and this path leaves the choice of environment
+to you.
+
+### For development
 
 ```
 python -m venv .venv
@@ -41,6 +67,9 @@ python -m venv .venv
 .venv\Scripts\python -m pycangui
 .venv\Scripts\python -m pytest
 ```
+
+The `[dev]` extra adds pytest and ruff.  The launcher does not install it --
+running the application does not need the test tools.
 
 ## Supported systems
 
