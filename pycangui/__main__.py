@@ -91,34 +91,53 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_NAME)  # QSettings uses these two for the registry/ini path
 
-    # Imported here rather than at the top of the file so that a library which
-    # is not installed becomes a dialog.  Started from pycangui.cmd there is no
-    # console -- it runs pythonw -- so an ImportError on the way up is a window
-    # that never appears and not one word about why.
-    try:
-        from pycangui.ui.confirm import accept_notice
-        from pycangui.ui.main_window import MainWindow
-        from pycangui.ui.session import Session
-    except ImportError as exc:
+    # confirm.py is cheap -- Qt widgets and nothing else -- and has to come
+    # before the expensive imports, because it is what covers them.
+    from pycangui.ui.confirm import accept_notice
+
+    loaded: dict = {}
+
+    def load() -> None:
+        """The slow half of starting up, done behind the notice.
+
+        A second and a half of libraries -- Qt's plotting, python-can, canopen
+        -- with nothing on screen while it happens is how a tool comes to feel
+        heavy.  Behind a dialog somebody is reading, it is free.
+
+        Imported here rather than at the top of the file for a second reason
+        as well: a library which is not installed becomes a dialog.  Started
+        from pycangui.cmd there is no console -- it runs pythonw -- so an
+        ImportError on the way up is a window that never appears and not one
+        word about why.
+        """
+        try:
+            from pycangui.ui.main_window import MainWindow
+            from pycangui.ui.session import Session
+
+            # Held by a Session rather than a local, because switching
+            # workspace replaces the window rather than reconfiguring it.
+            loaded["session"] = Session(MainWindow)
+        except ImportError as exc:
+            loaded["error"] = exc
+
+    # Before the window is built, and therefore before a workspace can reopen
+    # its channels or a startup hook can connect one: a notice read after the
+    # first connection is a notice that was too late.
+    if not accept_notice(while_shown=load):
+        return 0
+    if not loaded:  # nothing ran it, so do it here rather than not at all
+        load()
+    if (missing := loaded.get("error")) is not None:
         QMessageBox.critical(
             None,
             f"{APP_NAME} cannot start",
-            f"A library {APP_NAME} needs is missing:\n\n    {exc}\n\n"
+            f"A library {APP_NAME} needs is missing:\n\n    {missing}\n\n"
             "Start it with pycangui.cmd (or pycangui.sh), which installs "
             "anything missing before starting.",
         )
         return 1
 
-    # Before the window is built, and therefore before a workspace can reopen
-    # its channels or a startup hook can connect one: a notice read after the
-    # first connection is a notice that was too late.
-    if not accept_notice():
-        return 0
-
-    # Held by a Session rather than a local, because switching workspace
-    # replaces the window rather than reconfiguring it -- see ui/session.py.
-    session = Session(MainWindow)
-    session.open()
+    loaded["session"].open()
     return app.exec()
 
 

@@ -21,7 +21,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-import bincopy
+# bincopy brings pyelftools with it and costs a third of a second, for a
+# thing that only happens when somebody picks a firmware file.  Imported in
+# the two functions that read and write one.
 
 #: Suffixes that mean "this file has no addresses in it".
 BINARY_SUFFIXES = {".bin", ".raw", ".img", ".rom", ".dat"}
@@ -123,6 +125,8 @@ def read(path: str, address: int | None = None) -> Image:
     if not raw:
         raise ImageError("the file is empty")
 
+    import bincopy
+
     binfile = bincopy.BinFile()
     fmt = _sniff(raw)
     if fmt is not None:
@@ -157,6 +161,8 @@ def write(path: str, address: int, data: bytes) -> str:
     padded, nothing cropped, nothing filled in.  Returns the format used, for
     the log.
     """
+    import bincopy
+
     binfile = bincopy.BinFile()
     binfile.add_binary(data, address=address)
     suffix = Path(path).suffix.lower()

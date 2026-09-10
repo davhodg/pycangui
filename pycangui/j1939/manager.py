@@ -8,10 +8,13 @@ Its callbacks run on its own job thread, so they only emit Qt signals.
 from __future__ import annotations
 
 import time
+from typing import TYPE_CHECKING
 
 import can
-import j1939 as j1939lib
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
+
+if TYPE_CHECKING:  # annotations only, which are strings at run time
+    import j1939 as j1939lib
 
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.hooks import Hooks
@@ -44,17 +47,29 @@ PGN_REQUEST = 59904
 PGN_DM1 = 65226
 PGN_DM2 = 65227
 
-TESTER_NAME = j1939lib.Name(
-    arbitrary_address_capable=True,
-    industry_group=j1939lib.Name.IndustryGroup.Global,
-    vehicle_system_instance=0,
-    vehicle_system=0,
-    function=129,  # off-board diagnostic service tool
-    function_instance=0,
-    ecu_instance=0,
-    manufacturer_code=0,
-    identity_number=0x1CAFE,
-)
+
+def tester_name():
+    """The NAME this tool claims an address under.
+
+    Built when it is asked for rather than at import.  The j1939 library brings
+    numpy with it and costs half a second, and a session that never opens the
+    J1939 pane -- which is most of them -- should not pay that on the way to
+    its first window.  Every use of the library below is inside a method for
+    the same reason.
+    """
+    import j1939 as j1939lib
+
+    return j1939lib.Name(
+        arbitrary_address_capable=True,
+        industry_group=j1939lib.Name.IndustryGroup.Global,
+        vehicle_system_instance=0,
+        vehicle_system=0,
+        function=129,  # off-board diagnostic service tool
+        function_instance=0,
+        ecu_instance=0,
+        manufacturer_code=0,
+        identity_number=0x1CAFE,
+    )
 
 
 class J1939Manager(QObject):
@@ -82,6 +97,8 @@ class J1939Manager(QObject):
     # --- bus lifecycle ---------------------------------------------------------
     @Slot(str)
     def _on_bus_connected(self, _desc: str) -> None:
+        import j1939 as j1939lib
+
         self.ecu = j1939lib.ElectronicControlUnit(send_message=self._send_message)
         # The bus echoes our own tx (receive_own_messages, for the trace).  The
         # ECU must not see those: its own address claim echoed back looks like a
@@ -163,7 +180,7 @@ class J1939Manager(QObject):
             self.log.emit("J1939: not connected")
             return
         self.release_address()
-        self.ca = self.ecu.add_ca(name=TESTER_NAME, device_address=address)
+        self.ca = self.ecu.add_ca(name=tester_name(), device_address=address)
         self.ca.start()
         self.log.emit(f"J1939: claiming address {address:02X}")
         # The claim resolves on the ECU thread (250 ms contention window); check after that.
@@ -172,6 +189,8 @@ class J1939Manager(QObject):
     def _check_claim(self) -> None:
         if self.ca is None:
             return
+        import j1939 as j1939lib
+
         if self.ca.state == j1939lib.ControllerApplication.State.NORMAL:
             self.log.emit(f"J1939: address {self.ca.device_address:02X} claimed")
             self.claimed.emit(self.ca.device_address)
@@ -191,6 +210,8 @@ class J1939Manager(QObject):
 
     @property
     def own_address(self) -> int | None:
+        import j1939 as j1939lib
+
         if self.ca is not None and self.ca.state == j1939lib.ControllerApplication.State.NORMAL:
             return self.ca.device_address
         return None

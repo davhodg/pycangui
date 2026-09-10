@@ -65,11 +65,17 @@ nothing else.
 
 ## Before it disturbs equipment
 
-The first time you start pycangui it shows a notice saying what it is capable
-of, which you click through.  It is not a question about anything in
-particular -- it is the sentence worth having read before your first
-connection rather than after your first mistake.  Tick *Do not show this
-again* and it stays away.
+Every time pycangui starts it shows a notice saying what it is capable of,
+which you click through.  It is not a question about anything in particular --
+it is the sentence worth having read before your first connection rather than
+after your first mistake.
+
+**It is the one dialog here you cannot switch off.**  A notice dismissed for
+good on the first afternoon is one that the colleague who picks the machine up
+in March never sees, and it costs a keypress a session.  It also costs no time
+at all: the libraries pycangui needs load behind it while you read, so what it
+replaced was a second and a half of nothing on screen rather than a second and
+a half of anything.
 
 After that, pycangui asks before it can disturb equipment that is not its own,
 once a session for each: joining a **real bus** (naming the bitrate, because a
@@ -87,8 +93,7 @@ travelled inside one would mean somebody else's window, on somebody else's
 bench, quietly not asking.  Another account on the same machine is asked for
 itself, and so is the same account on another machine.
 
-*Tools > Ask about everything again* brings the whole lot back, the start-up
-notice included.  A setting that can be turned on and not off is one you would
+*Tools > Ask about everything again* brings the whole lot back.  A setting that can be turned on and not off is one you would
 be right to distrust, and this one turns off the questions asked before
 pycangui can disturb equipment.
 

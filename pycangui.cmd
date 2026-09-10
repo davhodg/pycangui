@@ -57,14 +57,15 @@ if defined UV (
 if errorlevel 1 goto :fail
 
 echo.
-echo  [3/3] Installing pycangui and its libraries.
+echo  [3/3] Installing pycangui and the libraries it runs on.
+echo        Not the test tools -- see the README if you want those.
 echo        Each package is listed as it downloads; the big one is
 echo        PySide6, which is Qt.
 echo.
 if defined UV (
-    uv pip install --python ".venv\Scripts\python.exe" -e ".[dev]"
+    uv pip install --python ".venv\Scripts\python.exe" -e "."
 ) else (
-    ".venv\Scripts\python.exe" -m pip install -e ".[dev]"
+    ".venv\Scripts\python.exe" -m pip install -e "."
 )
 if errorlevel 1 goto :fail
 
@@ -82,11 +83,18 @@ echo.
 
 rem A .venv built before a dependency was added is short of it, and the
 rem launcher below runs pythonw, which has no console for the ImportError
-rem to appear in: the window would simply never open.  So ask on every
-rem start, not only when .venv is missing altogether.
+rem to appear in: the window would simply never open.  So ask -- but only
+rem when the answer could have changed.
+rem
+rem The check costs a whole Python start, a quarter of a second on every
+rem launch, to answer a question whose answer only changes when pyproject.toml
+rem does.  So the answer is kept as a copy of the file it was the answer to,
+rem and fc compares the two: identical means asked and answered already.
 :check
-".venv\Scripts\python.exe" "build\check_deps.py" >nul 2>&1
+fc /b "pyproject.toml" ".venv\.deps-ok" >nul 2>&1
 if not errorlevel 1 goto :run
+".venv\Scripts\python.exe" "build\check_deps.py" >nul 2>&1
+if not errorlevel 1 goto :stamp
 echo.
 echo  pycangui needs libraries that this folder does not have yet.
 echo  Installing them; this is much quicker than the first setup was.
@@ -94,11 +102,16 @@ echo.
 set UV=
 where uv >nul 2>&1 && set UV=1
 if defined UV (
-    uv pip install --python ".venv\Scripts\python.exe" -e ".[dev]"
+    uv pip install --python ".venv\Scripts\python.exe" -e "."
 ) else (
-    ".venv\Scripts\python.exe" -m pip install -e ".[dev]"
+    ".venv\Scripts\python.exe" -m pip install -e "."
 )
 if errorlevel 1 goto :fail
+
+rem Written only after a successful check or install, so a failed one is asked
+rem again next time rather than remembered as an answer.
+:stamp
+copy /y "pyproject.toml" ".venv\.deps-ok" >nul
 
 :run
 start "" ".venv\Scripts\pythonw.exe" -m pycangui %*

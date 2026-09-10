@@ -59,6 +59,7 @@ def test_a_missing_library_is_a_dialog_rather_than_a_silent_death(app, monkeypat
 
     shown = []
     monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: shown.append(a[2]))
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Ok)  # the notice
     # None in sys.modules is what Python turns into an ImportError on import.
     monkeypatch.setitem(sys.modules, "pycangui.ui.main_window", None)
     monkeypatch.setattr(sys, "argv", ["pycangui"])
@@ -66,6 +67,35 @@ def test_a_missing_library_is_a_dialog_rather_than_a_silent_death(app, monkeypat
     assert entry.main() == 1
     assert shown and "missing" in shown[0]
     assert "pycangui.cmd" in shown[0], "and say what to do about it"
+
+
+def test_the_notice_is_shown_before_anything_is_loaded(app, monkeypatch):
+    """It is what the loading hides behind, so the order is the feature: a
+    notice shown after the libraries had loaded would be the same total time
+    and none of the benefit."""
+    import pycangui.__main__ as entry
+
+    order = []
+    monkeypatch.setattr(
+        QMessageBox, "exec", lambda _box: order.append("notice answered") or QMessageBox.Cancel
+    )
+    monkeypatch.setattr(sys, "argv", ["pycangui"])
+    monkeypatch.setitem(sys.modules, "pycangui.ui.main_window", None)
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: order.append("gave up"))
+
+    assert entry.main() == 0, "quitting at the notice starts nothing"
+    assert order == ["notice answered"], "and nothing was built to be given up on"
+
+
+def test_quitting_at_the_notice_opens_no_window(app, monkeypatch):
+    import pycangui.__main__ as entry
+
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Cancel)
+    monkeypatch.setattr(sys, "argv", ["pycangui"])
+    opened = []
+    monkeypatch.setattr("pycangui.ui.session.Session.open", lambda self: opened.append(1))
+    assert entry.main() == 0
+    assert not opened
 
 
 def test_the_selftest_covers_the_libraries_that_move_firmware():
@@ -81,4 +111,29 @@ def test_the_launcher_checks_before_every_start(name):
     """Not only when .venv is absent -- that was the whole bug."""
     text = (PROJECT / name).read_text(encoding="utf-8")
     assert "check_deps.py" in text, f"{name} never notices a new dependency"
-    assert 'install -e ".[dev]"' in text
+    assert 'install -e "."' in text
+    assert ".[dev]" not in text, "a user's launcher has no business installing the test tools"
+
+
+# --- the check that runs before every start ------------------------------------------------
+@pytest.mark.parametrize("name", ("pycangui.cmd", "pycangui.sh"))
+def test_the_dependency_check_is_not_repeated_for_an_unchanged_pyproject(name):
+    """It costs a whole Python start -- a quarter of a second on every launch --
+    to answer a question whose answer only changes when pyproject.toml does.
+
+    So the answer is kept as a copy of the file it was the answer to: identical
+    means asked and answered, and any edit at all asks again.
+    """
+    text = (PROJECT / name).read_text(encoding="utf-8")
+    assert ".deps-ok" in text, f"{name} runs the check on every start"
+    assert "check_deps.py" in text, "and still runs it when the answer could have changed"
+
+
+@pytest.mark.parametrize("name", ("pycangui.cmd", "pycangui.sh"))
+def test_the_stamp_is_only_written_after_a_good_answer(name):
+    """A failed check remembered as an answer would be a .venv short of a
+    library that nothing ever looks at again."""
+    text = (PROJECT / name).read_text(encoding="utf-8")
+    stamp = text.index(".deps-ok", text.index("check_deps.py"))
+    installed = text.index('install -e "."')
+    assert stamp > installed, f"{name} stamps before it has installed anything"
