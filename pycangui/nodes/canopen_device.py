@@ -1,0 +1,120 @@
+"""A CANopen device: heartbeat, SDO server, and a TPDO that means something.
+
+The one to copy if your product speaks CANopen.  Almost all of what a CANopen
+node has to do is the same for every node -- answer SDO reads and writes,
+produce a heartbeat, obey NMT -- so ``node.canopen()`` does all of it from
+your EDS and hands back the server.  What is left in this file is the only
+part that is actually about your device: what its measurements do.
+
+This one slews a speed toward whatever is written to *Speed demand*, counts
+an odometer, and transmits both in TPDO1.  Write to it with an SDO from the
+CANopen pane, or send it RPDO1, and watch the trace.
+
+To make it yours: change ``EDS`` to your own file in the workspace ``eds``
+folder, change ``NODE_ID``, and rewrite ``poll``.
+"""
+
+from __future__ import annotations
+
+import struct
+
+from pycangui import resources
+
+NAME = "CANopen device"
+DESCRIPTION = "Heartbeat, SDO server and a cyclic TPDO, built from an EDS."
+RATE_HZ = 10
+
+#: Your device's EDS.  ``ctx.eds_dir / "yours.eds"`` once you have one; the
+#: shipped sample is here so this file works the moment it is started.
+EDS = resources.path("demo.eds")
+NODE_ID = 5
+
+#: How fast the measured speed may change per poll, so it ramps rather than
+#: jumping -- which is what makes it look like a machine on the plot.
+SLEW = 50
+
+SPEED_DEMAND = 0x2001  # written by whoever is commanding this device
+MEASUREMENTS = 0x2000  # what it reports back: speed at sub 1, odometer at 2
+
+
+def start(node, *, ctx):
+    """Stand the CANopen server up, and put the device in a sane state.
+
+    Called once, before the first poll.  Everything built here is reached
+    again through ``node.state``, which is this node's own and is not shared
+    with a second copy of it on another channel.
+    """
+    device = node.canopen(EDS, NODE_ID)
+    device.nmt.state = "PRE-OPERATIONAL"
+    device.nmt.start_heartbeat(500)
+
+    # Read from the EDS, but deliberately not started on a timer of its own:
+    # poll() below transmits it, so that it stops when the device is not
+    # operational.  A periodic task would go on sending regardless, and the
+    # NMT buttons in the CANopen pane would appear to do nothing.
+    tpdo = device.tpdo[1]
+    tpdo.read(from_od=True)
+
+    # An RPDO is how a controller commands this device without an SDO for
+    # every value.  canopen leaves applying one to the application, which is
+    # what the callback below is for.
+    rpdo = device.rpdo[1]
+    rpdo.read(from_od=True)
+    rpdo.add_callback(lambda pdo_map: _apply(device, pdo_map))
+
+    node.state.device = device
+    node.state.tpdo = tpdo
+    node.state.speed = 0
+    node.state.odometer = 0
+    node.log(f"CANopen node {NODE_ID} is up")
+
+
+def poll(node, *, ctx):
+    """The device's own behaviour, ten times a second.
+
+    Everything above this line is CANopen boilerplate that every node shares.
+    This is the part that is about the machine.
+    """
+    device, tpdo = node.state.device, node.state.tpdo
+    demand = struct.unpack("<h", device.get_data(SPEED_DEMAND, 0))[0]
+
+    step = max(-SLEW, min(SLEW, demand - node.state.speed))
+    node.state.speed += step
+    node.state.odometer += abs(node.state.speed)
+
+    device.set_data(MEASUREMENTS, 1, struct.pack("<h", node.state.speed))
+    device.set_data(MEASUREMENTS, 2, struct.pack("<I", node.state.odometer))
+    tpdo["Measurements.Motor speed"].raw = node.state.speed
+    tpdo["Measurements.Odometer"].raw = node.state.odometer
+
+    # A CANopen device transmits process data only while it is operational,
+    # which is most of what the NMT state is for.  Start the node from the
+    # CANopen pane and the TPDO appears in the trace; stop it and it goes.
+    #
+    # transmit() rather than update(): update() feeds a periodic task, and
+    # this PDO deliberately has none -- one running on canopen's own thread
+    # would go on sending through a stop, and at a rate this file does not
+    # set.  Sending it here means the TPDO rate is RATE_HZ, where a reader
+    # would look for it.
+    if device.nmt.state == "OPERATIONAL":
+        tpdo.transmit()
+
+
+def stop(node, *, ctx):
+    """Put the device away.
+
+    The bus and the notifier are pycangui's to close.  The heartbeat runs on
+    a thread of canopen's own, and was started here, so it is stopped here.
+    """
+    node.state.device.nmt.stop_heartbeat()
+
+
+def _apply(device, pdo_map):
+    """Copy a received RPDO into the object dictionary.
+
+    canopen decodes the frame and stops there, on the reasonable grounds that
+    only the application knows whether a written value should be accepted.
+    This one accepts everything.
+    """
+    for var in pdo_map:
+        device.set_data(var.index, var.subindex, var.get_data())

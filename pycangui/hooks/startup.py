@@ -29,8 +29,8 @@ def on_startup(window, *, ctx) -> None:
     ``window`` is the main window, and through it everything the Python Console
     pane has: ``window.channels``, ``window.bus``, ``window.canopen``,
     ``window.uds``, ``window.j1939``, ``window.xcp``, ``window.dbc``,
-    ``window.panes``.  Same objects, same names -- what works in the console
-    works here.
+    ``window.panes``, ``window.vnodes``.  Same objects, same names -- what
+    works in the console works here.
 
     **Connecting.**  Use ``window.connect_channel(...)`` rather than reaching
     for the bus directly.  It joins a bus exactly as the Connect button does,
@@ -55,6 +55,10 @@ def on_startup(window, *, ctx) -> None:
 
         # Load the database this product's messages are described by.
         # window.dbc.load(str(ctx.workspace_dir / "product.dbc"))
+
+        # Stand up the rest of the bus: the devices this product expects to
+        # be talking to, so it does not sit in a fault state on the bench.
+        # window.vnodes.start("canopen_device", "vcan0")
 
         # Open the panes this job wants, wherever they were left.
         # window.panes.show("canopen")

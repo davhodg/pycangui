@@ -35,6 +35,8 @@ REQUIRED_FILES = (
     "pycangui/resources/demo.dbc",
     "pycangui/resources/demo.a2l",
     "pycangui/hooks/canopen.py",
+    "pycangui/nodes/canopen_device.py",
+    "pycangui/nodes/gateway.py",
     "pycangui/hooks/uds.py",
     "pycangui/hooks/j1939.py",
     "pycangui/hooks/xcp.py",

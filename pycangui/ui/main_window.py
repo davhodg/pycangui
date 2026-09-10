@@ -31,6 +31,8 @@ from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.plugins import Plugins
 from pycangui.core.signals import SignalHub
+from pycangui.core.vnodes import INTERFACE as VIRTUAL_INTERFACE
+from pycangui.core.vnodes import VirtualNodes
 from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.uds.manager import UdsManager
@@ -51,6 +53,7 @@ from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
 from pycangui.ui.uds_view import UdsView
+from pycangui.ui.vnode_dialog import VirtualNodeDialog
 from pycangui.ui.workspace_menu import SWITCH_WHILE_CONNECTED, WorkspaceMenu
 from pycangui.ui.xcp_view import XcpView
 from pycangui.xcp.manager import XcpManager
@@ -139,6 +142,10 @@ class MainWindow(QMainWindow):
         self.exceptions = ExceptionLogger(self.events.post)
         self.exceptions.install()
         self.hooks = Hooks(self.ctx)
+        #: The rest of the bus, written in Python.  Reachable from the console
+        #: and from a startup hook, because standing up the devices a test
+        #: needs is setup, and setup belongs in a file.
+        self.vnodes = VirtualNodes(self.ctx, is_virtual=self._channel_is_virtual, parent=self)
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
         self.confirm = Confirmations(Remembered())
@@ -274,6 +281,12 @@ class MainWindow(QMainWindow):
         tools_menu.addAction("Reload hooks", self._reload_hooks)
         tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
         tools_menu.addSeparator()
+        virtual = tools_menu.addAction("Virtual nodes...", self._virtual_nodes)
+        virtual.setToolTip(
+            "Devices pycangui pretends to be, so a real one has something\n"
+            "to talk to.  Each is a Python file in the workspace you can edit."
+        )
+        tools_menu.addSeparator()
         forget = tools_menu.addAction("Forget remembered folders", self._forget_folders)
         forget.setToolTip(
             "A file dialog opens where that sort of file was last used -- an EDS\n"
@@ -379,6 +392,29 @@ class MainWindow(QMainWindow):
             self.connect_bar.set_connected(True)
         return bus.is_connected
 
+    def _virtual_nodes(self) -> None:
+        """Tools > Virtual nodes.  Not modal: a node started here is meant to
+        be watched in the trace, and a dialog held over the top of it would be
+        an odd way to arrange that."""
+        if getattr(self, "_vnode_dialog", None) is None:
+            self._vnode_dialog = VirtualNodeDialog(self, self.vnodes, self.channels)
+        self._vnode_dialog.refresh()
+        self._vnode_dialog.show()
+        self._vnode_dialog.raise_()
+
+    def _channel_is_virtual(self, name: str) -> bool:
+        """Whether a virtual node may stand on this channel.
+
+        A name the application has never heard of is fine -- python-can's
+        virtual buses rendezvous by name inside one process, so a node can
+        invent a channel and talk to itself on it.  What is refused is a name
+        this window has open on a real adapter: a second handle on one piece
+        of hardware is backend dependent at best, and disturbing equipment is
+        something pycangui asks about rather than does.
+        """
+        bus = self.channels.get(name)
+        return bus is None or not bus.interface or bus.interface == VIRTUAL_INTERFACE
+
     def _console_namespace(self) -> dict:
         """What scripts and the console see.  Keep names stable: users rely on them."""
 
@@ -394,6 +430,7 @@ class MainWindow(QMainWindow):
             "j1939": self.j1939,
             "xcp": self.xcp,
             "hooks": self.hooks,
+            "vnodes": self.vnodes,
             "window": self,
             "recorder": self.recorder,
             "send": send,
@@ -915,6 +952,9 @@ class MainWindow(QMainWindow):
         self.log_bridge.detach()
         self.exceptions.remove()
         self.recorder.stop()
+        # Before the channels go: a node holding a bus open outlives the
+        # window, and a process that will not exit is worse than a bug.
+        self.vnodes.stop_all()
         self._stop_demo()
         self.bus.close()  # stop the facade before its channels go away
         self.channels.shutdown()

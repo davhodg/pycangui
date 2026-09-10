@@ -74,6 +74,10 @@ include = ["pycangui*"]
 [tool.setuptools.package-data]
 "pycangui.resources" = ["*"]
 "pycangui.help" = ["*"]
+# Shipped virtual nodes are copied into a workspace as source, so a wheel
+# must carry the .py files rather than only importable modules.
+"pycangui.nodes" = ["*.py"]
+"pycangui.hooks" = ["*.py"]
 
 [tool.ruff]
 line-length = 100
