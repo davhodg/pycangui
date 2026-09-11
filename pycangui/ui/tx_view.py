@@ -522,6 +522,8 @@ class TxView(QWidget):
             return data
         sent = self._sent.get(row, 0)
         self._sent[row] = sent + 1
+        if (counter and counter.signal) or (checksum and checksum.signal):
+            return self._payload_by_signal(row, can_id, counter, checksum, sent) or data
         # In two passes, so the hook is handed the same bytes the built-in
         # algorithms would see: the counter goes in first, and only then is
         # anybody asked what the checksum over them should be.  Handing over
@@ -530,11 +532,56 @@ class TxView(QWidget):
         data = tx_fields.apply(data, counter, None, sent=sent)
         computed = None
         if checksum is not None and self.hooks is not None:
-            # A maker's checksum is nobody's standard; the hook decides the
-            # arithmetic and the configuration still decides where it goes.
-            name = self.item(row).text(COL_NAME) or self.item(row).data(0, ROLE_MESSAGE) or ""
-            computed = self.hooks.call("transmit", "checksum", name, can_id, data)
+            computed = self._ask_hook(row, can_id, data)
         return tx_fields.apply(data, None, checksum, computed=computed)
+
+    def _ask_hook(self, row: int, can_id: int, data: bytes) -> int | None:
+        """A maker's checksum is nobody's standard: the hook decides the
+        arithmetic, and the configuration still decides where it goes."""
+        name = self.item(row).text(COL_NAME) or self.item(row).data(0, ROLE_MESSAGE) or ""
+        return self.hooks.call("transmit", "checksum", name, can_id, data)
+
+    def _payload_by_signal(
+        self,
+        row: int,
+        can_id: int,
+        counter: Counter | None,
+        checksum: Checksum | None,
+        sent: int,
+    ) -> bytes | None:
+        """The frame for a row whose fields are named database signals.
+
+        Re-encoded rather than patched.  A signal is not necessarily
+        byte-aligned -- it may be three bits straddling a byte boundary, and
+        in either of the two bit-numbering conventions -- so there is no byte
+        to poke.  The database knows where the bits go; asking it twice is
+        cheaper than reimplementing it once.
+
+        Returns None where the message is not in the database any more, and
+        the caller sends the bytes it already had rather than nothing.
+        """
+        item = self.item(row)
+        message = self.dbc.message_by_name(item.data(0, ROLE_MESSAGE) or "")
+        if message is None:
+            self.ctx.warn(f"TX row {row + 1}: its message is not in the loaded database")
+            return None
+        values = self._child_values(item, names=True)
+        hook = None
+        if checksum is not None and self.hooks is not None:
+            hook = lambda frame: self._ask_hook(row, can_id, frame)  # noqa: E731
+        try:
+            return tx_fields.apply_signals(
+                lambda v: message.encode(v, padding=False, strict=False),
+                values,
+                counter,
+                checksum,
+                sent=sent,
+                counter_bits=_signal_bits(message, counter.signal) if counter else None,
+                hook=hook,
+            )
+        except Exception as exc:  # a renamed signal, or one out of range
+            self.ctx.warn(f"TX {message.name}: {exc}")
+            return None
 
     def _describe_fields(self, row: int) -> None:
         counter, checksum = self.fields(row)
@@ -547,16 +594,32 @@ class TxView(QWidget):
         except ValueError:
             can_id, data = 0, b"\x00" * 8
         counter, checksum = self.fields(row)
+        item = self.item(row)
+        message = (
+            self.dbc.message_by_name(item.data(0, ROLE_MESSAGE) or "")
+            if item.data(0, ROLE_KIND) == "dbc"
+            else None
+        )
+        extra = {}
+        if message is not None:
+            # Offered by name, and previewed through the database, so the
+            # bytes on screen are the bytes the database will pack.
+            extra = {
+                "signals": [s.name for s in message.signals],
+                "encode": lambda v: message.encode(v, padding=False, strict=False),
+                "values": self._child_values(item, names=True),
+                "bits": {s.name: s.length for s in message.signals},
+            }
         dialog = TxFieldsDialog(
             self,
             data,
             counter,
             checksum,
-            label=self.item(row).text(COL_NAME) or f"{can_id:X}",
+            label=item.text(COL_NAME) or (message.name if message else f"{can_id:X}"),
+            **extra,
         )
         if dialog.exec() != QDialog.Accepted:
             return False
-        item = self.item(row)
         item.setData(0, ROLE_COUNTER, tx_fields.counter_to_dict(dialog.counter()))
         item.setData(0, ROLE_CHECKSUM, tx_fields.checksum_to_dict(dialog.checksum()))
         self._describe_fields(row)
@@ -784,6 +847,19 @@ class TxView(QWidget):
         self._loading = False
         for spec in specs:
             self.add_message(spec)
+
+
+def _signal_bits(message, name: str) -> int | None:
+    """How many bits a named signal has, so a counter knows where to wrap.
+
+    A placement knows it is a nibble; a signal does not say so itself, and a
+    four-bit counter that counted to 255 would be rejected by the receiver at
+    the sixteenth frame.
+    """
+    for signal in message.signals:
+        if signal.name == name:
+            return signal.length
+    return None
 
 
 def _default_value(signal) -> float:

@@ -219,3 +219,109 @@ def test_a_row_can_say_what_it_is_doing():
     checksum = Checksum(at=Placement(byte=7), algorithm="crc8_2f")
     assert tx.describe(counter, checksum) == "count b1.lo, crc8_2f b7"
     assert tx.describe(None, None) == ""
+
+
+# --- the same, addressed by database signal ------------------------------------
+class FakeMessage:
+    """A stand-in database message: signals at fixed byte positions.
+
+    Deliberately not cantools.  What is being tested here is the two-encode
+    dance, not the packing -- a real database is exercised in
+    test_tx_counters, where the pane has one.
+    """
+
+    def __init__(self, layout, length=8):
+        self.layout = layout  # name -> byte index
+        self.length = length
+        self.encodes = 0
+
+    def encode(self, values):
+        self.encodes += 1
+        out = bytearray(self.length)
+        for name, index in self.layout.items():
+            out[index] = int(values.get(name, 0)) & 0xFF
+        return bytes(out)
+
+
+def test_a_counter_in_a_signal_is_set_rather_than_patched():
+    message = FakeMessage({"Speed": 0, "Alive": 6})
+    counter = Counter(signal="Alive")
+    out = tx.apply_signals(message.encode, {"Speed": 9}, counter, sent=3)
+    assert out[6] == 3 and out[0] == 9
+
+
+def test_a_signal_counter_takes_its_width_from_the_database():
+    """A placement knows it is a nibble; a signal does not, so the database
+    has to say -- otherwise a four-bit counter would count to 255 and the
+    receiver would see it jump."""
+    counter = Counter(signal="Alive")
+    assert [counter.value(n, bits=4) for n in (15, 16, 17)] == [15, 0, 1]
+    assert counter.value(16) == 16, "with nothing said, a byte"
+
+
+def test_a_signal_checksum_is_hashed_with_itself_set_to_zero():
+    """Not by leaving bytes out: a signal may share a byte with real data,
+    and dropping the byte would drop that too."""
+    message = FakeMessage({"A": 0, "B": 1, "Crc": 7})
+    checksum = Checksum(signal="Crc", algorithm="sum8")
+    out = tx.apply_signals(message.encode, {"A": 0x10, "B": 0x20}, checksum=checksum)
+    assert out[7] == 0x30, "the sum of the frame with Crc zeroed"
+    assert message.encodes == 2, "once to hash, once for real"
+
+
+def test_the_signal_checksum_covers_the_signal_counter():
+    """The ordering rule again, on the database path."""
+    message = FakeMessage({"Alive": 0, "Crc": 7})
+    counter = Counter(signal="Alive")
+    checksum = Checksum(signal="Crc", algorithm="sum8")
+    for n in (0, 1, 7):
+        out = tx.apply_signals(message.encode, {}, counter, checksum, sent=n)
+        assert out[0] == n
+        assert out[7] == sum(out[:7]) & 0xFF, f"frame {n}: stale"
+
+
+def test_a_hook_on_the_signal_path_sees_the_zeroed_frame():
+    """The same bytes the named algorithms get, so a hook and an algorithm
+    are interchangeable rather than subtly different."""
+    message = FakeMessage({"Alive": 0, "Crc": 7})
+    seen = []
+    out = tx.apply_signals(
+        message.encode,
+        {},
+        Counter(signal="Alive"),
+        Checksum(signal="Crc"),
+        sent=2,
+        hook=lambda frame: seen.append(bytes(frame)) or 0x99,
+    )
+    assert seen and seen[0][0] == 2, "the counter was already in it"
+    assert seen[0][7] == 0, "and its own field was not"
+    assert out[7] == 0x99
+
+
+def test_the_two_ways_of_addressing_are_exclusive():
+    """A field cannot be in two places, and silently preferring one would be
+    a configuration that does something other than it says."""
+    with pytest.raises(FieldError, match="not both"):
+        Counter(at=Placement(byte=0), signal="Alive")
+    with pytest.raises(FieldError, match="not both"):
+        Counter()
+
+
+def test_using_the_wrong_function_for_the_kind_of_field_says_so():
+    with pytest.raises(FieldError, match="use apply_signals"):
+        tx.apply(bytes(8), Counter(signal="Alive"))
+    with pytest.raises(FieldError, match="use apply"):
+        tx.apply_signals(lambda v: bytes(8), {}, Counter(at=Placement(byte=0)))
+
+
+def test_a_signal_configuration_survives_being_written_down():
+    counter = Counter(signal="AliveCounter", start=1, wrap=15)
+    checksum = Checksum(signal="Crc", algorithm="crc8_2f")
+    assert tx.counter_from_dict(tx.counter_to_dict(counter)) == counter
+    assert tx.checksum_from_dict(tx.checksum_to_dict(checksum)) == checksum
+
+
+def test_a_row_says_the_signal_names_it_is_using():
+    counter = Counter(signal="AliveCounter")
+    checksum = Checksum(signal="Crc", algorithm="crc8_2f")
+    assert tx.describe(counter, checksum) == "count AliveCounter, crc8_2f Crc"
