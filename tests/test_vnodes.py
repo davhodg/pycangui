@@ -236,13 +236,26 @@ def test_asking_for_a_kind_that_is_not_there_says_which(app, manager):
         manager.start("nonesuch", "vtest11")
 
 
-def test_a_real_channel_is_refused(app, folder, ctx):
-    """Standing a second device on somebody's adapter is not something to do
-    quietly, and this is the wrong layer to ask the question in."""
+def test_a_node_is_not_started_if_the_question_is_declined(app, folder, ctx):
+    """A node transmits, and transmitting onto a real bus is what pycangui
+    asks about everywhere else.  One that joined quietly would be the hole
+    in that."""
     write(folder, "quiet", "def poll(node, *, ctx): pass\n")
-    manager = VirtualNodes(ctx, is_virtual=lambda name: name != "CAN 1")
-    with pytest.raises(NodeError, match="real adapter"):
+    manager = VirtualNodes(ctx, may_transmit=lambda _channels: False)
+    with pytest.raises(NodeError, match="not agreed"):
         manager.start("quiet", "CAN 1")
+    assert manager.running() == []
+
+
+def test_the_question_is_asked_once_with_every_channel(app, folder, ctx):
+    """A gateway stands on two, and being asked twice for one action is a
+    dialog people learn to dismiss without reading."""
+    write(folder, "quiet", "def poll(node, *, ctx): pass\n")
+    asked = []
+    manager = VirtualNodes(ctx, may_transmit=lambda channels: asked.append(channels) or True)
+    manager.start("quiet", "va", extra=["vb"])
+    manager.stop_all()
+    assert asked == [["va", "vb"]]
 
 
 # --- more than one bus, which is all a gateway is ---------------------------------
@@ -416,3 +429,55 @@ def test_an_sdo_write_reaches_the_device_and_is_answered(app, canopen_bus):
     assert spin(app, 2.0, until=lambda: node.state.speed == 500), (
         f"speed reached {node.state.speed}, not the 500 that was demanded"
     )
+
+
+# --- joining a bus the application already has open ------------------------------
+def test_a_node_joins_an_open_channel_rather_than_opening_a_second(app, folder, ctx):
+    """What makes a node on real hardware possible at all.  A second handle
+    on one physical channel is backend dependent and refused outright by
+    several drivers -- and unnecessary, because a perfectly good handle is
+    already there."""
+    from pycangui.core.bus import BusManager
+
+    write(folder, "shouter", "def poll(node, *, ctx): node.send(0x321, b'\x01')\n")
+    manager_bus = BusManager()
+    manager_bus.connect_bus("virtual", "vjoin", 500000, False)
+    watching = can.Bus(interface="virtual", channel="vjoin")
+    nodes = VirtualNodes(ctx, bus_for=lambda name: manager_bus if name == "vjoin" else None)
+    try:
+        node = nodes.start("shouter", "vjoin", rate_hz=50)
+        assert node.bus() is manager_bus.bus, "it opened one of its own"
+        assert pump(app, watching) is not None, "nothing reached the bus"
+    finally:
+        nodes.stop_all()
+        watching.shutdown()
+        manager_bus.disconnect_bus()
+
+
+def test_stopping_leaves_a_borrowed_bus_open(app, folder, ctx):
+    """It is the application's channel.  A node that closed it on the way
+    out would disconnect the window."""
+    from pycangui.core.bus import BusManager
+
+    write(folder, "quiet", "def on_frame(node, frame, *, ctx): pass\n")
+    manager_bus = BusManager()
+    manager_bus.connect_bus("virtual", "vjoin2", 500000, False)
+    nodes = VirtualNodes(ctx, bus_for=lambda _name: manager_bus)
+    try:
+        node = nodes.start("quiet", "vjoin2")
+        nodes.stop(node)
+        assert manager_bus.is_connected, "the node closed the application's bus"
+    finally:
+        manager_bus.disconnect_bus()
+
+
+def test_a_node_still_invents_a_channel_nobody_has_open(app, folder, manager):
+    """The case that needs nothing configured and nothing plugged in, which
+    is most of why a virtual node is useful in the first place."""
+    write(manager.ctx.nodes_dir, "shouter", "def poll(node, *, ctx): node.send(0x99, b'')\n")
+    listening = can.Bus(interface="virtual", channel="vinvented")
+    try:
+        manager.start("shouter", "vinvented", rate_hz=50)
+        assert pump(app, listening) is not None
+    finally:
+        listening.shutdown()

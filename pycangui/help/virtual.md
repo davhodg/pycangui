@@ -120,12 +120,26 @@ block list, which is a starting point rather than a policy: what should cross
 between two segments is a question about your system, so pycangui does not
 answer it.
 
-## What a node cannot do yet
+## Which bus a node stands on
 
-**Virtual channels only.**  A node opens its own bus, and python-can's virtual
-buses find each other by name inside one process, which is what makes a node
-possible with nothing plugged in.  A real adapter is a different question -- a
-second open handle on one physical channel is backend-dependent, and disturbing
-equipment is something pycangui asks about rather than does quietly -- so
-starting a node on a connected real channel is refused for now, with a message
-saying why.
+Two routes, chosen for you:
+
+- **A channel this window already has open** is *joined*, not opened again.
+  The node shares the one bus the application has, so its frames appear in
+  the trace beside everything else, and no second handle on the hardware is
+  needed -- which is what makes a node on a real adapter work at all. Several
+  drivers refuse a second handle on one physical channel outright.
+- **Any other name** gets a virtual bus of the node's own. python-can's
+  virtual buses find each other by name inside one process, so a node can
+  invent a channel and talk to itself on it with nothing configured and
+  nothing plugged in.
+
+**A real adapter asks first.** A node transmits, and transmitting onto a real
+bus is what pycangui asks about everywhere else; one that joined quietly
+would be the hole in that. The question is asked once for the whole node --
+a gateway standing on two channels is one action, not two -- and *Ask about
+everything again* in the Tools menu brings it back if you tick it away.
+
+Stopping a node closes only the buses it opened. A borrowed channel is the
+application's, and a node that closed it on the way out would disconnect the
+window.

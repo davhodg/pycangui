@@ -72,9 +72,12 @@ class VirtualNodeDialog(QDialog):
         self.channel = QComboBox()
         self.channel.setEditable(True)
         self.channel.setToolTip(
-            "Which channel to stand this node on.  A name nothing else uses is\n"
-            "fine -- virtual buses find each other by name -- but to see the\n"
-            "node in the trace, use the channel this window is connected to."
+            "Which channel to stand this node on.\n\n"
+            "A channel this window already has open is joined rather than\n"
+            "opened again, so the node shows up in the trace -- and a real\n"
+            "adapter asks first, because a node transmits.\n\n"
+            "A name nothing else uses works too: virtual buses find each\n"
+            "other by name, so a node can talk to itself on one."
         )
         self.second = QComboBox()
         self.second.setEditable(True)
