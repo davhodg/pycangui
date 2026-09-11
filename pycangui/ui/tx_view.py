@@ -22,7 +22,7 @@ worst kind of wrong.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt, Signal, Slot
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -42,17 +42,32 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.canopen.manager import CanopenManager
+from pycangui.core import tx_fields
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
+from pycangui.core.tx_fields import Checksum, Counter
 from pycangui.ui.confirm import Confirmations, is_real
+from pycangui.ui.tx_fields_dialog import TxFieldsDialog
 
-COL_NAME, COL_ID, COL_EXT, COL_FD, COL_DATA, COL_PERIOD, COL_CYCLIC, COL_UNIT = range(8)
-HEADERS = ("Message / Signal", "ID", "Ext", "FD", "Data / Value", "Period ms", "Cyclic", "Unit")
+COL_NAME, COL_ID, COL_EXT, COL_FD, COL_DATA, COL_PERIOD, COL_CYCLIC, COL_UNIT, COL_FIELDS = range(9)
+HEADERS = (
+    "Message / Signal",
+    "ID",
+    "Ext",
+    "FD",
+    "Data / Value",
+    "Period ms",
+    "Cyclic",
+    "Unit",
+    "Counter / checksum",
+)
 ROLE_KIND = Qt.UserRole  # "raw" | "dbc" | "rpdo" on message rows, "signal" on children
 ROLE_MESSAGE = Qt.UserRole + 1  # DBC message name
 ROLE_NODE = Qt.UserRole + 2  # CANopen node id
 ROLE_PDO = Qt.UserRole + 3  # CANopen RPDO number
+ROLE_COUNTER = Qt.UserRole + 4  # the counter configuration, as a dict
+ROLE_CHECKSUM = Qt.UserRole + 5  # the checksum configuration, as a dict
 DEFAULT_RAW = {"kind": "raw", "id": "123", "data": "00 11 22 33", "period": 100, "name": ""}
 
 
@@ -153,6 +168,7 @@ class TxView(QWidget):
         canopen: CanopenManager,
         confirm: Confirmations | None = None,
         key: str = "tx",
+        hooks=None,
     ) -> None:
         super().__init__()
         self.bus = bus
@@ -164,7 +180,17 @@ class TxView(QWidget):
         self.confirm = confirm if confirm is not None else Confirmations()
         self.dbc = dbc
         self.canopen = canopen
+        #: Where a bespoke checksum comes from.  Optional: a transmit pane
+        #: built by a plugin or stood up in a test has no hooks, and every
+        #: checksum in the list then comes from the named algorithms.
+        self.hooks = hooks
         self._tasks: dict[int, object] = {}  # top-level row -> periodic task
+        #: Rows pycangui times itself, because every frame of them differs.
+        #: See _start_row: an adapter repeating fixed bytes cannot carry a
+        #: counter, and updating a free-running task races it.
+        self._timers: dict[int, QTimer] = {}
+        #: How many frames each row has sent, which is what the counter counts.
+        self._sent: dict[int, int] = {}
         self._loading = False
 
         self.tree = QTreeWidget()
@@ -215,10 +241,17 @@ class TxView(QWidget):
         )
         rpdo_action.triggered.connect(lambda _=False: self._add_rpdo())
         add.setMenu(self.add_menu)
+        fields = QPushButton("Counter / checksum...")
+        fields.setToolTip(
+            "Give the selected message a rolling counter, a checksum over\n"
+            "its own bytes, or both -- computed fresh for every frame sent.\n"
+            "Without them a receiver that checks either one rejects the lot."
+        )
+        fields.clicked.connect(self.edit_fields_selected)
         remove = QPushButton("Remove selected")
         remove.clicked.connect(self.remove_selected)
         bar = QHBoxLayout()
-        for b in (send, stop_all, add, remove):
+        for b in (send, stop_all, add, fields, remove):
             bar.addWidget(b)
         bar.addStretch()
 
@@ -253,12 +286,21 @@ class TxView(QWidget):
             ]
         )
         item.setData(0, ROLE_KIND, kind)
+        item.setData(0, ROLE_COUNTER, spec.get("counter"))
+        item.setData(0, ROLE_CHECKSUM, spec.get("checksum"))
         flags = item.flags() | Qt.ItemIsEditable
         item.setFlags(flags)
         item.setCheckState(COL_EXT, Qt.Checked if spec.get("ext") else Qt.Unchecked)
         item.setCheckState(COL_FD, Qt.Checked if spec.get("fd") else Qt.Unchecked)
         item.setCheckState(COL_CYCLIC, Qt.Unchecked)
         self.tree.addTopLevelItem(item)
+        item.setText(
+            COL_FIELDS,
+            tx_fields.describe(
+                tx_fields.counter_from_dict(spec.get("counter")),
+                tx_fields.checksum_from_dict(spec.get("checksum")),
+            ),
+        )
 
         if kind == "dbc":
             name = spec.get("message", "")
@@ -354,6 +396,8 @@ class TxView(QWidget):
             "data": item.text(COL_DATA),
             "period": item.text(COL_PERIOD),
             "name": item.text(COL_NAME),
+            "counter": item.data(0, ROLE_COUNTER),
+            "checksum": item.data(0, ROLE_CHECKSUM),
         }
         if spec["kind"] in ("dbc", "rpdo"):
             spec["expanded"] = item.isExpanded()
@@ -453,6 +497,85 @@ class TxView(QWidget):
             "Transmit on this channel?",
         )
 
+    # --- counters and checksums -----------------------------------------------------
+    def fields(self, row: int) -> tuple[Counter | None, Checksum | None]:
+        """What this row computes for itself, if anything."""
+        item = self.item(row)
+        return (
+            tx_fields.counter_from_dict(item.data(0, ROLE_COUNTER)),
+            tx_fields.checksum_from_dict(item.data(0, ROLE_CHECKSUM)),
+        )
+
+    def computes(self, row: int) -> bool:
+        return any(self.fields(row))
+
+    def _payload(self, row: int, data: bytes, can_id: int) -> bytes:
+        """The bytes for this row's next frame, counter and checksum included.
+
+        Every call advances the counter, because every call is a frame going
+        out.  A one-shot send of a counted message counts too -- a receiver
+        does not know or care which button sent it, and a manual send that
+        repeated the last value would be rejected like any other repeat.
+        """
+        counter, checksum = self.fields(row)
+        if counter is None and checksum is None:
+            return data
+        sent = self._sent.get(row, 0)
+        self._sent[row] = sent + 1
+        # In two passes, so the hook is handed the same bytes the built-in
+        # algorithms would see: the counter goes in first, and only then is
+        # anybody asked what the checksum over them should be.  Handing over
+        # the payload as typed would be the very trap the ordering exists to
+        # avoid, one layer further out.
+        data = tx_fields.apply(data, counter, None, sent=sent)
+        computed = None
+        if checksum is not None and self.hooks is not None:
+            # A maker's checksum is nobody's standard; the hook decides the
+            # arithmetic and the configuration still decides where it goes.
+            name = self.item(row).text(COL_NAME) or self.item(row).data(0, ROLE_MESSAGE) or ""
+            computed = self.hooks.call("transmit", "checksum", name, can_id, data)
+        return tx_fields.apply(data, None, checksum, computed=computed)
+
+    def _describe_fields(self, row: int) -> None:
+        counter, checksum = self.fields(row)
+        self.item(row).setText(COL_FIELDS, tx_fields.describe(counter, checksum))
+
+    def edit_fields(self, row: int) -> bool:
+        """The dialog, for one row.  True if something was changed."""
+        try:
+            can_id, data, _ext, _fd, _period = self._message(row)
+        except ValueError:
+            can_id, data = 0, b"\x00" * 8
+        counter, checksum = self.fields(row)
+        dialog = TxFieldsDialog(
+            self,
+            data,
+            counter,
+            checksum,
+            label=self.item(row).text(COL_NAME) or f"{can_id:X}",
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return False
+        item = self.item(row)
+        item.setData(0, ROLE_COUNTER, tx_fields.counter_to_dict(dialog.counter()))
+        item.setData(0, ROLE_CHECKSUM, tx_fields.checksum_to_dict(dialog.checksum()))
+        self._describe_fields(row)
+        # Restart it if it was running: which timer it belongs on has just
+        # changed, and so has the payload.
+        if row in self._tasks or row in self._timers:
+            self._stop_row(row)
+            self._start_row(row)
+        self._save()
+        return True
+
+    @Slot()
+    def edit_fields_selected(self) -> None:
+        rows = sorted({r for i in self.tree.selectedItems() if (r := self._row_of(i)) is not None})
+        if not rows:
+            self.ctx.warn("TX: select a message first")
+            return
+        self.edit_fields(rows[0])
+
     # --- sending -----------------------------------------------------------------------
     def send_row(self, row: int) -> None:
         if not self._may_transmit():
@@ -462,7 +585,7 @@ class TxView(QWidget):
         except ValueError as exc:
             self.ctx.warn(f"TX {exc}")
             return
-        self.bus.send(can_id, data, extended=ext, fd=fd)
+        self.bus.send(can_id, self._payload(row, data, can_id), extended=ext, fd=fd)
 
     @Slot()
     def send_selected(self) -> None:
@@ -517,22 +640,59 @@ class TxView(QWidget):
             self.ctx.warn(f"TX {exc}")
             self._set_cyclic(row, False)
             return
+        if self.computes(row):
+            # Our own timer, one frame at a time.  The adapter's cyclic task
+            # repeats fixed bytes, and a counter has to differ on every frame
+            # -- modifying a free-running task instead would race it, so some
+            # frames would carry a repeated count and some would skip one,
+            # which is exactly what the receiver is checking for.  The cost is
+            # the GUI's jitter in place of the adapter's timing.
+            self._sent.setdefault(row, 0)
+            timer = QTimer(self, interval=max(1, round(period * 1000)))
+            timer.timeout.connect(lambda r=row: self._tick(r))
+            timer.start()
+            self._timers[row] = timer
+            return
         task = self.bus.send_periodic(can_id, data, period, extended=ext, fd=fd)
         if task is None:
             self._set_cyclic(row, False)
             return
         self._tasks[row] = task
 
+    def _tick(self, row: int) -> None:
+        """One frame of a counted message.
+
+        Stops itself rather than complaining once per period: a row that
+        cannot be built now will not build in ten milliseconds either, and a
+        warning at the period is a log nobody can read.
+        """
+        try:
+            can_id, data, ext, fd, _period = self._message(row)
+        except ValueError as exc:
+            self.ctx.warn(f"TX {exc}")
+            self._stop_row(row)
+            self._set_cyclic(row, False)
+            return
+        self.bus.send(can_id, self._payload(row, data, can_id), extended=ext, fd=fd)
+
     def _stop_row(self, row: int) -> None:
         task = self._tasks.pop(row, None)
         if task is not None:
             task.stop()
+        timer = self._timers.pop(row, None)
+        if timer is not None:
+            timer.stop()
+            timer.deleteLater()
 
     def _rebuild_tasks(self) -> None:
         """Row numbers shift when rows are removed; restart from the checkboxes."""
         for task in self._tasks.values():
             task.stop()
+        for timer in self._timers.values():
+            timer.stop()
+            timer.deleteLater()
         self._tasks = {}
+        self._timers = {}
         for row in range(self.message_count()):
             if self.item(row).checkState(COL_CYCLIC) == Qt.Checked:
                 self._start_row(row)
@@ -555,18 +715,22 @@ class TxView(QWidget):
 
     def cyclic_count(self) -> int:
         """How many messages in this list are repeating right now."""
-        return len(self._tasks)
+        return len(self._tasks) + len(self._timers)
 
     @Slot()
     def stop_all(self) -> None:
         """Stop everything repeating in *this* list."""
-        for row in list(self._tasks):
+        for row in [*self._tasks, *self._timers]:
             self._stop_row(row)
             self._set_cyclic(row, False)
 
     @Slot()
     def _on_disconnected(self) -> None:
         self._tasks.clear()  # the bus stops its own tasks
+        for timer in self._timers.values():  # ours it does not know about
+            timer.stop()
+            timer.deleteLater()
+        self._timers.clear()
         for row in range(self.message_count()):
             self._set_cyclic(row, False)
 

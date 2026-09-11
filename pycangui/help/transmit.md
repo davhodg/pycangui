@@ -25,3 +25,51 @@ cycling is updated live.
 Select several rows -- Ctrl+A takes the lot -- and *Send selected*, *Remove
 selected* and the space bar all work on the whole selection, so starting or
 stopping a set of cyclic messages is one keypress rather than one tick per row.
+
+## Counters and checksums
+
+A message that carries a rolling counter and a checksum over its own bytes is
+completely ordinary -- most safety-relevant messages have both -- and a
+receiver that checks either one rejects every frame of a message that never
+changes.  Select the row and press *Counter / checksum...*.
+
+A **counter** goes in a whole byte or in either nibble of one, since a
+four-bit counter sharing a byte is at least as common as a whole one.  It
+starts where you say, steps by what you say, and wraps at whatever the field
+holds unless you give it a smaller number -- plenty of protocols count 0 to 5
+in a nibble that could hold sixteen.
+
+A **checksum** is computed *after* the counter has been written, over the
+whole message except its own bytes.  That default is the usual rule and the
+one that is easy to get wrong: including the checksum's own bytes means
+hashing a field that is about to be overwritten, so the number never matches
+at the other end.  Give it an explicit byte range where a protocol wants one.
+
+| Algorithm | Where you meet it |
+|-----------|-------------------|
+| XOR, 8-bit sum | Simple in-house protocols |
+| Sum, two's complement | The bytes plus the checksum total zero |
+| CRC-8 / SAE J1850 | AUTOSAR E2E profile 1 |
+| CRC-8 / 0x2F | AUTOSAR CRC8H2F |
+| CRC-16 / CCITT | Two bytes, either endianness |
+
+**Not in the list?**  A maker's own arithmetic is nobody's standard, so it
+goes in the `transmit.checksum` [hook](hooks.md): return a number and it is
+written wherever the dialog says, return `None` and the chosen algorithm
+stands.  The hook is handed the payload with the counter already in it, which
+is the same view the built-in algorithms get.
+
+The dialog shows the next few frames as bytes before you send anything.  A
+wrong checksum is invisible from the sending end -- the frames go out looking
+perfectly healthy -- so seeing them written out is the only check available
+without a device to reject them.
+
+**One thing changes when you use either.**  A message with a counter or a
+checksum is sent by pycangui's own timer rather than handed to the adapter as
+a repeating message, because every frame has to differ and an adapter repeats
+fixed bytes.  Expect slightly less even timing than a hardware-timed cyclic
+message would give you.  Messages without either are unaffected.
+
+A one-shot *Send* of a counted message advances the counter too: a receiver
+has no idea which button sent a frame, and one that repeated the last count
+would be rejected like any other repeat.

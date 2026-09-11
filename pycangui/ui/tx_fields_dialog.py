@@ -1,0 +1,288 @@
+"""Setting up a message's counter and checksum.
+
+Two groups, each switched on by its own checkbox, because a message may have
+either, both or neither and the common case is neither.  A preview of the
+next few frames sits at the bottom: a checksum is invisible from the sending
+end -- the frames go out looking fine whether or not the arithmetic is what
+the device expects -- so the one thing this dialog can usefully do is show
+the bytes before anybody puts them on a bus.
+"""
+
+from __future__ import annotations
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPlainTextEdit,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
+
+from pycangui.core import tx_fields as tx
+
+TITLE = "Counter and checksum"
+
+WHY = (
+    "A receiver that checks a rolling counter or a checksum rejects every "
+    "frame of a message that never changes.  Set them here and each frame is "
+    "computed as it is sent."
+)
+
+TIMING_NOTE = (
+    "A message with either of these is sent by pycangui's own timer rather "
+    "than by the adapter, because every frame has to differ.  Expect a little "
+    "more jitter in the period than the adapter would give you."
+)
+
+PARTS = [("Whole byte", tx.WHOLE), ("Low nibble", tx.LOW), ("High nibble", tx.HIGH)]
+PREVIEW_FRAMES = 4
+
+
+class PlacementBox(QWidget):
+    """Which byte, and which part of it."""
+
+    def __init__(self, parent: QWidget, allow_two: bool, changed) -> None:
+        super().__init__(parent)
+        self.byte = QSpinBox()
+        self.byte.setRange(0, 63)
+        self.byte.setPrefix("byte ")
+        self.part = QComboBox()
+        for label, value in PARTS:
+            self.part.addItem(label, value)
+        self.endian = QComboBox()
+        self.endian.addItem("big endian", tx.BIG)
+        self.endian.addItem("little endian", tx.LITTLE)
+        self.endian.setVisible(allow_two)
+        self._allow_two = allow_two
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self.byte)
+        row.addWidget(self.part)
+        row.addWidget(self.endian)
+        row.addStretch()
+
+        self.byte.valueChanged.connect(changed)
+        self.part.currentIndexChanged.connect(changed)
+        self.endian.currentIndexChanged.connect(changed)
+
+    def set_two_bytes(self, two: bool) -> None:
+        """A 16-bit checksum is two whole bytes; nibbles stop making sense."""
+        self.part.setEnabled(not two)
+        self.endian.setVisible(two)
+        if two:
+            self.part.setCurrentIndex(0)
+
+    def value(self) -> tx.Placement:
+        two = self._allow_two and self.endian.isVisible()
+        return tx.Placement(
+            byte=self.byte.value(),
+            part=tx.WHOLE if two else self.part.currentData(),
+            width=2 if two else 1,
+            endian=self.endian.currentData(),
+        )
+
+    def set_value(self, at: tx.Placement) -> None:
+        self.byte.setValue(at.byte)
+        self.part.setCurrentIndex(max(0, [p for _l, p in PARTS].index(at.part)))
+        self.endian.setCurrentIndex(0 if at.endian == tx.BIG else 1)
+
+
+class TxFieldsDialog(QDialog):
+    def __init__(
+        self,
+        parent: QWidget,
+        payload: bytes,
+        counter: tx.Counter | None = None,
+        checksum: tx.Checksum | None = None,
+        label: str = "",
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"{TITLE} -- {label}" if label else TITLE)
+        self.resize(520, 560)
+        self._payload = payload or b"\x00" * 8
+
+        why = QLabel(WHY)
+        why.setWordWrap(True)
+
+        # --- the counter ---
+        self.use_counter = QCheckBox("Add a counter")
+        self.counter_at = PlacementBox(self, allow_two=False, changed=self._refresh)
+        self.start = QSpinBox()
+        self.start.setRange(0, 65535)
+        self.step = QSpinBox()
+        self.step.setRange(1, 255)
+        self.step.setValue(1)
+        self.wrap = QSpinBox()
+        self.wrap.setRange(0, 65536)
+        self.wrap.setSpecialValueText("as many as the field holds")
+        self.wrap.setToolTip(
+            "Count 0, 1, 2 ... up to one less than this, then back to the start.\n"
+            "Left alone it wraps at whatever the byte or nibble holds, which is\n"
+            "what most messages do."
+        )
+        counter_form = QFormLayout()
+        counter_form.addRow("Put it in:", self.counter_at)
+        counter_form.addRow("Start at:", self.start)
+        counter_form.addRow("Step by:", self.step)
+        counter_form.addRow("Wrap at:", self.wrap)
+        self.counter_box = QGroupBox()
+        self.counter_box.setLayout(counter_form)
+
+        # --- the checksum ---
+        self.use_checksum = QCheckBox("Add a checksum")
+        self.algorithm = QComboBox()
+        for key, name in tx.ALGORITHM_NAMES.items():
+            self.algorithm.addItem(name, key)
+        self.checksum_at = PlacementBox(self, allow_two=True, changed=self._refresh)
+        self.whole = QCheckBox("Over the whole message except the checksum itself")
+        self.whole.setChecked(True)
+        self.whole.setToolTip(
+            "The usual rule.  Including the checksum's own bytes means hashing\n"
+            "a field that is about to be overwritten, so the number never\n"
+            "matches at the other end."
+        )
+        self.first = QSpinBox()
+        self.first.setRange(0, 63)
+        self.last = QSpinBox()
+        self.last.setRange(0, 63)
+        self.last.setValue(6)
+        over = QHBoxLayout()
+        over.addWidget(QLabel("bytes"))
+        over.addWidget(self.first)
+        over.addWidget(QLabel("to"))
+        over.addWidget(self.last)
+        over.addStretch()
+        checksum_form = QFormLayout()
+        checksum_form.addRow("Algorithm:", self.algorithm)
+        checksum_form.addRow("Put it in:", self.checksum_at)
+        checksum_form.addRow("", self.whole)
+        checksum_form.addRow("Computed over:", over)
+        self.checksum_box = QGroupBox()
+        self.checksum_box.setLayout(checksum_form)
+
+        hook_note = QLabel(
+            "Not in the list?  A maker's own arithmetic goes in the "
+            "<b>transmit.checksum</b> hook, and is written wherever you put it here."
+        )
+        hook_note.setWordWrap(True)
+        hook_note.setTextFormat(Qt.RichText)
+
+        # --- what it will send ---
+        self.preview = QPlainTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setFont(QFont("Consolas", 9))
+        self.preview.setFixedHeight(90)
+        preview_box = QGroupBox("The next few frames")
+        inside = QVBoxLayout(preview_box)
+        inside.addWidget(self.preview)
+
+        timing = QLabel(TIMING_NOTE)
+        timing.setWordWrap(True)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(why)
+        layout.addWidget(self.use_counter)
+        layout.addWidget(self.counter_box)
+        layout.addWidget(self.use_checksum)
+        layout.addWidget(self.checksum_box)
+        layout.addWidget(hook_note)
+        layout.addWidget(preview_box)
+        layout.addWidget(timing)
+        layout.addWidget(buttons)
+
+        for widget in (self.use_counter, self.use_checksum, self.whole):
+            widget.toggled.connect(self._refresh)
+        for widget in (self.start, self.step, self.wrap, self.first, self.last):
+            widget.valueChanged.connect(self._refresh)
+        self.algorithm.currentIndexChanged.connect(self._algorithm_changed)
+
+        self._load(counter, checksum)
+        self._algorithm_changed()
+
+    # --- filling in and reading back --------------------------------------------
+    def _load(self, counter: tx.Counter | None, checksum: tx.Checksum | None) -> None:
+        self.use_counter.setChecked(counter is not None)
+        if counter is not None:
+            self.counter_at.set_value(counter.at)
+            self.start.setValue(counter.start)
+            self.step.setValue(counter.step)
+            self.wrap.setValue(counter.wrap)
+        else:
+            self.counter_at.byte.setValue(0)
+            self.counter_at.part.setCurrentIndex(1)  # a nibble, the common case
+
+        self.use_checksum.setChecked(checksum is not None)
+        if checksum is not None:
+            index = self.algorithm.findData(checksum.algorithm)
+            self.algorithm.setCurrentIndex(max(0, index))
+            self.checksum_at.set_value(checksum.at)
+            self.whole.setChecked(checksum.first is None and checksum.last is None)
+            if checksum.first is not None:
+                self.first.setValue(checksum.first)
+            if checksum.last is not None:
+                self.last.setValue(checksum.last)
+        else:
+            self.checksum_at.byte.setValue(max(0, len(self._payload) - 1))
+
+    def _algorithm_changed(self) -> None:
+        self.checksum_at.set_two_bytes(tx.width_of(self.algorithm.currentData()) == 2)
+        self._refresh()
+
+    def counter(self) -> tx.Counter | None:
+        if not self.use_counter.isChecked():
+            return None
+        return tx.Counter(
+            at=self.counter_at.value(),
+            start=self.start.value(),
+            step=self.step.value(),
+            wrap=self.wrap.value(),
+        )
+
+    def checksum(self) -> tx.Checksum | None:
+        if not self.use_checksum.isChecked():
+            return None
+        whole = self.whole.isChecked()
+        return tx.Checksum(
+            at=self.checksum_at.value(),
+            algorithm=self.algorithm.currentData(),
+            first=None if whole else self.first.value(),
+            last=None if whole else self.last.value(),
+        )
+
+    # --- the preview, which is the point of the dialog ----------------------------
+    def _refresh(self) -> None:
+        self.counter_box.setEnabled(self.use_counter.isChecked())
+        self.checksum_box.setEnabled(self.use_checksum.isChecked())
+        self.first.setEnabled(not self.whole.isChecked())
+        self.last.setEnabled(not self.whole.isChecked())
+        self.preview.setPlainText(self._frames())
+
+    def _frames(self) -> str:
+        try:
+            counter, checksum = self.counter(), self.checksum()
+        except tx.FieldError as exc:
+            return str(exc)
+        if counter is None and checksum is None:
+            return "  ".join(f"{b:02X}" for b in self._payload) + "    (every frame the same)"
+        lines = []
+        for n in range(PREVIEW_FRAMES):
+            try:
+                out = tx.apply(self._payload, counter, checksum, sent=n)
+            except tx.FieldError as exc:
+                return str(exc)
+            lines.append(f"{n + 1}:  " + " ".join(f"{b:02X}" for b in out))
+        return "\n".join(lines)
