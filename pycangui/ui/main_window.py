@@ -31,7 +31,6 @@ from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.plugins import Plugins
 from pycangui.core.signals import SignalHub
-from pycangui.core.vnodes import INTERFACE as VIRTUAL_INTERFACE
 from pycangui.core.vnodes import VirtualNodes
 from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
@@ -142,13 +141,18 @@ class MainWindow(QMainWindow):
         self.exceptions = ExceptionLogger(self.events.post)
         self.exceptions.install()
         self.hooks = Hooks(self.ctx)
-        #: The rest of the bus, written in Python.  Reachable from the console
-        #: and from a startup hook, because standing up the devices a test
-        #: needs is setup, and setup belongs in a file.
-        self.vnodes = VirtualNodes(self.ctx, is_virtual=self._channel_is_virtual, parent=self)
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
         self.confirm = Confirmations(Remembered())
+        #: The rest of the bus, written in Python.  Reachable from the console
+        #: and from a startup hook, because standing up the devices a test
+        #: needs is setup, and setup belongs in a file.
+        self.vnodes = VirtualNodes(
+            self.ctx,
+            bus_for=self.channels.get,
+            may_transmit=self._nodes_may_transmit,
+            parent=self,
+        )
         BACKENDS.load_user_backends(
             self.ctx.backends_dir, self.events.information, self.events.warning
         )
@@ -402,18 +406,34 @@ class MainWindow(QMainWindow):
         self._vnode_dialog.show()
         self._vnode_dialog.raise_()
 
-    def _channel_is_virtual(self, name: str) -> bool:
-        """Whether a virtual node may stand on this channel.
+    def _nodes_may_transmit(self, channels: list[str]) -> bool:
+        """Ask before a virtual node goes onto real equipment.
 
-        A name the application has never heard of is fine -- python-can's
-        virtual buses rendezvous by name inside one process, so a node can
-        invent a channel and talk to itself on it.  What is refused is a name
-        this window has open on a real adapter: a second handle on one piece
-        of hardware is backend dependent at best, and disturbing equipment is
-        something pycangui asks about rather than does.
+        A node transmits, and transmitting onto a real bus is the thing
+        pycangui asks about everywhere else; one that joined quietly would be
+        the hole in that.  Asked once for the whole node rather than once per
+        channel, because a gateway stands on two and a dialog that appears
+        twice for one action is one people learn to dismiss.
+
+        A virtual channel asks nothing, as everywhere else.
         """
-        bus = self.channels.get(name)
-        return bus is None or not bus.interface or bus.interface == VIRTUAL_INTERFACE
+        real = [
+            name
+            for name in channels
+            if (bus := self.channels.get(name)) is not None and is_real(bus.interface)
+        ]
+        if not real:
+            return True
+        where = ", ".join(real)
+        return self.confirm.ask(
+            self,
+            f"vnode:{where}",
+            "Run a virtual node on a real CAN bus?",
+            f"{where} is connected to real equipment.\n\n"
+            "A virtual node transmits: it will put frames onto that bus, and "
+            "the devices on it will act on them.\n\n"
+            "Start the node here?",
+        )
 
     def _console_namespace(self) -> dict:
         """What scripts and the console see.  Keep names stable: users rely on them."""
