@@ -12,6 +12,13 @@ from pycangui.core.bus import BusManager
 from pycangui.core.demo import DemoDevice
 
 
+class _Empty:
+    """Stands in for a config that has not arrived yet, so a wait can ask
+    about its entries without checking for None first."""
+
+    entries = ()
+
+
 def wait_until(pred, timeout=8.0):
     deadline = time.monotonic() + timeout
     while not pred():
@@ -36,10 +43,18 @@ def stack(app, tmp_path, monkeypatch):
     bus.disconnect_bus()
 
 
+def named(manager, node_id=5):
+    return {f"{c.direction}{c.number}": c for c in manager.pdo_configs(node_id)}
+
+
 def test_pdo_configs_from_the_eds(stack):
     manager, _demo, _tmp = stack
-    wait_until(lambda: manager.pdo_configs(5))
-    configs = {f"{c.direction}{c.number}": c for c in manager.pdo_configs(5)}
+    # Wait for the mapping to be *complete*, not merely present.  The configs
+    # are read over SDO one entry at a time, so a truthy list is a list that
+    # may still be filling -- and asserting on it caught TPDO1 with two of its
+    # three entries whenever the machine was busy enough.
+    wait_until(lambda: len(named(manager).get("TPDO1", _Empty()).entries) == 3)
+    configs = named(manager)
     assert set(configs) >= {"TPDO1", "RPDO1"}
 
     tpdo = configs["TPDO1"]

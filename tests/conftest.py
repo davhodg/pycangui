@@ -91,11 +91,19 @@ def _drain_qt_events():
     # own wreckage, which by definition has survived at most one collection
     # and so is still in generation 0 or 1; generation 2 holds the session's
     # QApplication and every imported module, which this was never trying to
-    # free.  Walking those a thousand times over was a quarter of the run,
-    # and grew as the heap did.  It is the safer direction too: the crash
-    # this guards against came from collecting too eagerly against a queue
-    # that had not drained, so leaving something alive a moment longer
-    # cannot bring it back.
+    # free.  Walking those a thousand times over cost more than the whole of
+    # the rest of the fixture, and grew as the heap did: a full collect here
+    # is 78s against 48s for the suite.
+    #
+    # What this gives up, and it is worth being honest about it: an object
+    # that survived two collections mid-test is in generation 2, so it is
+    # freed by Python's own automatic sweep at some arbitrary later moment
+    # rather than here, where the queue has just been drained.  That is a
+    # slightly worse moment, not a new hazard -- the automatic sweep runs
+    # during tests whatever this line does.  A worker did die once under
+    # parallel load (test_replay_action, unreproduced in a dozen runs since);
+    # if that comes back, putting the full collect here is the first thing
+    # to try.
     gc.collect(1)
     if instance is not None:
         instance.processEvents()
