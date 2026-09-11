@@ -362,7 +362,13 @@ def test_the_transmit_buttons_are_grouped_by_what_they_do(app, tmp_path, monkeyp
         for i in range(bar.count())
         if bar.itemAt(i).widget() is not None
     ]
-    assert buttons == ["Send selected", "Stop all cyclic", "Add", "Remove selected"]
+    assert buttons == [
+        "Send selected",
+        "Stop all cyclic",
+        "Add",
+        "Counter / checksum...",
+        "Remove selected",
+    ]
     sources = [a.text() for a in window.tx.add_menu.actions()]
     assert sources == ["Raw message", "From DBC...", "CANopen RPDO..."], "the three, in a menu"
     window.close()
