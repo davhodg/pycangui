@@ -15,7 +15,9 @@ Threads, and why:
 from __future__ import annotations
 
 import time
+from collections import deque
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 import canopen
@@ -42,6 +44,15 @@ INTEGER_TYPES = {*datatypes.SIGNED_TYPES, *datatypes.UNSIGNED_TYPES, datatypes.B
 MISSED_HEARTBEATS = 3
 MIN_HEARTBEAT_GAP_S = 0.01  # the shortest gap that can be a real heartbeat period
 MIN_HEARTBEAT_TIMEOUT_S = 1.0
+
+#: How many gaps to judge the period from, and how few is too few to judge at
+#: all.  The median of several is used rather than the latest one: a producer
+#: that stalls and then sends twice in quick succession puts one short gap
+#: among the good ones, and taking the latest would read that burst as the
+#: period and call a healthy node lost a moment later.  A median ignores it;
+#: a mean would be dragged by it.
+HEARTBEAT_SAMPLES = 5
+HEARTBEAT_MIN_SAMPLES = 3
 
 #: Bit timing table 1 of CiA 305, as (index, bit rate).
 LSS_BIT_TIMINGS: tuple[tuple[int, int], ...] = (
@@ -85,6 +96,12 @@ class CanopenManager(QObject):
         #: node_id -> when its last heartbeat arrived, and the interval between
         #: the last two.  A node is called lost after MISSED_HEARTBEATS of them.
         self.last_heartbeat: dict[int, float] = {}
+        #: The same arrivals on the *bus* clock, for measuring the period.
+        #: Separate because the two questions want different clocks -- see
+        #: _on_heartbeat.
+        self._heartbeat_stamp: dict[int, float] = {}
+        #: The last few gaps per node, which the period is the median of.
+        self._heartbeat_gaps: dict[int, deque[float]] = {}
         self.heartbeat_interval: dict[int, float] = {}
         self.lost_nodes: set[int] = set()
         self._liveness = QTimer(self, interval=250, timeout=self._check_liveness)
@@ -128,20 +145,40 @@ class CanopenManager(QObject):
                 pass
 
     # --- callbacks on the Notifier thread: emit only -------------------------
-    def _on_heartbeat(self, can_id: int, data: bytearray, _timestamp: float) -> None:
+    def _on_heartbeat(self, can_id: int, data: bytearray, timestamp: float) -> None:
         if not data:
             return
         node_id = can_id - 0x700
         now = time.monotonic()
-        if (previous := self.last_heartbeat.get(node_id)) is not None:
-            gap = now - previous
+        # Two clocks, deliberately.  The *period* is measured from when the
+        # frames arrived -- what the driver stamped them with -- and the
+        # *liveness* from now, because "nothing for nine seconds" is a
+        # question about the present and a bus clock may be an epoch.
+        #
+        # Measuring the period from this callback instead read 11 ms for a
+        # 500 ms heartbeat whenever the machine was busy.  The notifier hands
+        # over whatever queued while the GUI was elsewhere, several at once,
+        # so the gap between callbacks is the gap between two deliveries
+        # rather than between two heartbeats -- which shortened the liveness
+        # timeout by a factor of forty and called a healthy node lost.
+        arrived = timestamp or now
+        if (previous := self._heartbeat_stamp.get(node_id)) is not None:
+            gap = arrived - previous
             # A producer time of 0x1017 is in milliseconds and nobody sets
             # one below about ten.  A shorter gap than that is two frames
             # arriving together -- a periodic task catching up after the
             # machine stalled -- and taking it for the period would make
             # the liveness timeout far shorter than the node deserves.
             if MIN_HEARTBEAT_GAP_S < gap < 60:
-                self.heartbeat_interval[node_id] = gap
+                gaps = self._heartbeat_gaps.setdefault(node_id, deque(maxlen=HEARTBEAT_SAMPLES))
+                gaps.append(gap)
+                # Not published until there is enough to judge from.  One gap
+                # is an anecdote, and a wrong period is worse than none: it
+                # produces a timeout, and the timeout decides whether a node
+                # gets reported lost.
+                if len(gaps) >= HEARTBEAT_MIN_SAMPLES:
+                    self.heartbeat_interval[node_id] = median(gaps)
+        self._heartbeat_stamp[node_id] = arrived
         self.last_heartbeat[node_id] = now
         state = NMT_STATES.get(data[0] & 0x7F, f"0x{data[0]:02X}")
         self.node_seen.emit(node_id, state)
@@ -156,7 +193,9 @@ class CanopenManager(QObject):
 
         Uses the producer time from object 0x1017 when the EDS or the node has
         given us one, otherwise the interval observed on the bus.  Returns 0
-        when only one heartbeat has been seen: there is nothing to judge yet.
+        until a few heartbeats have been seen: there is nothing to judge from
+        yet, and a timeout guessed from one gap would be a node reported lost
+        on the strength of an anecdote.
         """
         interval = None
         node = self.node(node_id)
@@ -190,6 +229,8 @@ class CanopenManager(QObject):
 
     def forget_nodes(self) -> None:
         self.last_heartbeat.clear()
+        self._heartbeat_stamp.clear()
+        self._heartbeat_gaps.clear()
         self.heartbeat_interval.clear()
         self.lost_nodes.clear()
 
