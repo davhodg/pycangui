@@ -53,6 +53,26 @@ at the other end.  Give it an explicit byte range where a protocol wants one.
 | CRC-8 / 0x2F | AUTOSAR CRC8H2F |
 | CRC-16 / CCITT | Two bytes, either endianness |
 
+### By signal, on a DBC row
+
+On a message from a database, *Put it in* offers the message's **signals** by
+name as well as a byte position.  Name one and the database decides where the
+bits go -- which is both harder to get wrong than counting bytes and less work
+underneath: a signal that is three bits straddling a byte boundary, in either
+of CAN's two bit-numbering conventions, is the database's problem and not
+yours.
+
+A checksum named this way is computed over the frame **with its own signal set
+to zero**, rather than by leaving whole bytes out.  A signal can share a byte
+with data that has to survive, so dropping the byte would drop that too.
+
+The counter's width comes from the database as well, so a one-bit counter
+counts 0, 1, 0, 1 without being told to.
+
+Whatever you type into a counter or checksum signal in the expanded row is
+overwritten when the frame is sent -- the point of naming it is that pycangui
+fills it in.
+
 **Not in the list?**  A maker's own arithmetic is nobody's standard, so it
 goes in the `transmit.checksum` [hook](hooks.md): return a number and it is
 written wherever the dialog says, return `None` and the chosen algorithm

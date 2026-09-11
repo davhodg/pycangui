@@ -105,11 +105,28 @@ class TxFieldsDialog(QDialog):
         counter: tx.Counter | None = None,
         checksum: tx.Checksum | None = None,
         label: str = "",
+        signals: list[str] | None = None,
+        encode=None,
+        values: dict | None = None,
+        bits: dict[str, int] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"{TITLE} -- {label}" if label else TITLE)
-        self.resize(520, 560)
+        self.resize(560, 620)
         self._payload = payload or b"\x00" * 8
+        #: The database signals of this message, where it has any.  Naming a
+        #: field beats counting to it, and is simpler underneath as well: the
+        #: database does the bit packing, so no byte or nibble has to be
+        #: worked out, and a signal that straddles a byte is not a problem
+        #: anybody has to think about.
+        self._signals = signals or []
+        #: How to turn signal values into bytes, so the preview still works
+        #: when the fields are named rather than placed.  The preview is most
+        #: of what this dialog is for, and losing it on the database path
+        #: would be losing it exactly where the arithmetic is least visible.
+        self._encode = encode
+        self._values = values or {}
+        self._bits = bits or {}
 
         why = QLabel(WHY)
         why.setWordWrap(True)
@@ -130,8 +147,11 @@ class TxFieldsDialog(QDialog):
             "Left alone it wraps at whatever the byte or nibble holds, which is\n"
             "what most messages do."
         )
+        self.counter_where = self._where_box()
         counter_form = QFormLayout()
-        counter_form.addRow("Put it in:", self.counter_at)
+        counter_form.addRow("Put it in:", self.counter_where)
+        self._counter_at_row = counter_form.rowCount()
+        counter_form.addRow("", self.counter_at)
         counter_form.addRow("Start at:", self.start)
         counter_form.addRow("Step by:", self.step)
         counter_form.addRow("Wrap at:", self.wrap)
@@ -162,11 +182,16 @@ class TxFieldsDialog(QDialog):
         over.addWidget(QLabel("to"))
         over.addWidget(self.last)
         over.addStretch()
+        self.checksum_where = self._where_box()
         checksum_form = QFormLayout()
         checksum_form.addRow("Algorithm:", self.algorithm)
-        checksum_form.addRow("Put it in:", self.checksum_at)
+        checksum_form.addRow("Put it in:", self.checksum_where)
+        self._checksum_at_row = checksum_form.rowCount()
+        checksum_form.addRow("", self.checksum_at)
         checksum_form.addRow("", self.whole)
         checksum_form.addRow("Computed over:", over)
+        self._checksum_form = checksum_form
+        self._counter_form = counter_form
         self.checksum_box = QGroupBox()
         self.checksum_box.setLayout(checksum_form)
 
@@ -213,11 +238,36 @@ class TxFieldsDialog(QDialog):
         self._load(counter, checksum)
         self._algorithm_changed()
 
+    # --- naming a field rather than counting to it --------------------------------
+    def _where_box(self) -> QComboBox:
+        """At a position, or in one of the message's signals.
+
+        Only offered where the message has signals: a raw row is bytes and
+        nothing else, and an empty list of names would be a choice that
+        cannot be made.
+        """
+        box = QComboBox()
+        box.addItem("a byte position", "")
+        for name in self._signals:
+            box.addItem(f"signal {name}", name)
+        box.setVisible(bool(self._signals))
+        box.currentIndexChanged.connect(self._refresh)
+        return box
+
+    def _signal_of(self, box: QComboBox) -> str:
+        return box.currentData() if self._signals else ""
+
+    def _select_signal(self, box: QComboBox, name: str) -> None:
+        index = box.findData(name)
+        box.setCurrentIndex(index if index >= 0 else 0)
+
     # --- filling in and reading back --------------------------------------------
     def _load(self, counter: tx.Counter | None, checksum: tx.Checksum | None) -> None:
         self.use_counter.setChecked(counter is not None)
         if counter is not None:
-            self.counter_at.set_value(counter.at)
+            self._select_signal(self.counter_where, counter.signal)
+            if counter.at is not None:
+                self.counter_at.set_value(counter.at)
             self.start.setValue(counter.start)
             self.step.setValue(counter.step)
             self.wrap.setValue(counter.wrap)
@@ -229,7 +279,9 @@ class TxFieldsDialog(QDialog):
         if checksum is not None:
             index = self.algorithm.findData(checksum.algorithm)
             self.algorithm.setCurrentIndex(max(0, index))
-            self.checksum_at.set_value(checksum.at)
+            self._select_signal(self.checksum_where, checksum.signal)
+            if checksum.at is not None:
+                self.checksum_at.set_value(checksum.at)
             self.whole.setChecked(checksum.first is None and checksum.last is None)
             if checksum.first is not None:
                 self.first.setValue(checksum.first)
@@ -245,8 +297,10 @@ class TxFieldsDialog(QDialog):
     def counter(self) -> tx.Counter | None:
         if not self.use_counter.isChecked():
             return None
+        signal = self._signal_of(self.counter_where)
         return tx.Counter(
-            at=self.counter_at.value(),
+            at=None if signal else self.counter_at.value(),
+            signal=signal,
             start=self.start.value(),
             step=self.step.value(),
             wrap=self.wrap.value(),
@@ -256,8 +310,10 @@ class TxFieldsDialog(QDialog):
         if not self.use_checksum.isChecked():
             return None
         whole = self.whole.isChecked()
+        signal = self._signal_of(self.checksum_where)
         return tx.Checksum(
-            at=self.checksum_at.value(),
+            at=None if signal else self.checksum_at.value(),
+            signal=signal,
             algorithm=self.algorithm.currentData(),
             first=None if whole else self.first.value(),
             last=None if whole else self.last.value(),
@@ -267,8 +323,18 @@ class TxFieldsDialog(QDialog):
     def _refresh(self) -> None:
         self.counter_box.setEnabled(self.use_counter.isChecked())
         self.checksum_box.setEnabled(self.use_checksum.isChecked())
-        self.first.setEnabled(not self.whole.isChecked())
-        self.last.setEnabled(not self.whole.isChecked())
+        # A named signal has no byte position to choose, and leaving the
+        # spinner on screen would invite somebody to set it and then wonder
+        # why nothing moved.
+        self.counter_at.setVisible(not self._signal_of(self.counter_where))
+        by_signal = bool(self._signal_of(self.checksum_where))
+        self.checksum_at.setVisible(not by_signal)
+        # Nor a byte range: a signal's own bits are zeroed instead of whole
+        # bytes being left out, because a signal can share a byte with data
+        # that has to survive.
+        self.whole.setVisible(not by_signal)
+        self.first.setEnabled(not by_signal and not self.whole.isChecked())
+        self.last.setEnabled(not by_signal and not self.whole.isChecked())
         self.preview.setPlainText(self._frames())
 
     def _frames(self) -> str:
@@ -278,11 +344,26 @@ class TxFieldsDialog(QDialog):
             return str(exc)
         if counter is None and checksum is None:
             return "  ".join(f"{b:02X}" for b in self._payload) + "    (every frame the same)"
+        by_signal = bool((counter and counter.signal) or (checksum and checksum.signal))
+        if by_signal and self._encode is None:
+            return "The database packs these; the row itself will show the bytes."
         lines = []
         for n in range(PREVIEW_FRAMES):
             try:
-                out = tx.apply(self._payload, counter, checksum, sent=n)
+                if by_signal:
+                    out = tx.apply_signals(
+                        self._encode,
+                        self._values,
+                        counter,
+                        checksum,
+                        sent=n,
+                        counter_bits=self._bits.get(counter.signal) if counter else None,
+                    )
+                else:
+                    out = tx.apply(self._payload, counter, checksum, sent=n)
             except tx.FieldError as exc:
                 return str(exc)
+            except Exception as exc:  # the database refused the values
+                return f"{type(exc).__name__}: {exc}"
             lines.append(f"{n + 1}:  " + " ".join(f"{b:02X}" for b in out))
         return "\n".join(lines)

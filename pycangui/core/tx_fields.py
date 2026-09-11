@@ -178,37 +178,61 @@ ALGORITHM_NAMES: dict[str, str] = {
 # --- the two fields --------------------------------------------------------------------
 @dataclass(frozen=True)
 class Counter:
-    """A value that moves on every frame sent."""
+    """A value that moves on every frame sent.
 
-    at: Placement
+    Either at a byte or nibble position, or -- where the message comes from a
+    database -- in a named signal, and then the database decides where the
+    bits go.  Exactly one of the two, because a field cannot be in two places.
+    """
+
+    at: Placement | None = None
+    #: The database signal to put it in, instead of ``at``.
+    signal: str = ""
     start: int = 0
     step: int = 1
     #: Wrap at this many counts.  Zero means "whatever the field holds", which
     #: is what almost everybody wants and saves saying 16 for a nibble.
     wrap: int = 0
 
-    @property
-    def modulus(self) -> int:
-        """What the count wraps at: the configured wrap, or the field's own."""
-        return self.wrap if self.wrap > 0 else self.at.modulus
+    def __post_init__(self) -> None:
+        if (self.at is None) == (not self.signal):
+            raise FieldError("a counter goes either at a position or in a signal, not both")
 
-    def value(self, sent: int) -> int:
+    def modulus(self, bits: int | None = None) -> int:
+        """What the count wraps at.
+
+        The configured wrap wins.  Failing that a placement knows its own
+        size; a signal does not, so its width comes from the database and
+        arrives here as ``bits``.  With neither, a byte is the assumption
+        least likely to surprise.
+        """
+        if self.wrap > 0:
+            return self.wrap
+        if self.at is not None:
+            return self.at.modulus
+        return (1 << bits) if bits else 256
+
+    def value(self, sent: int, bits: int | None = None) -> int:
         """The value for the ``sent``-th frame, counting from zero."""
-        return (self.start + self.step * sent) % self.modulus
+        return (self.start + self.step * sent) % self.modulus(bits)
 
 
 @dataclass(frozen=True)
 class Checksum:
     """A value computed over the payload, after the counter is in it."""
 
-    at: Placement
+    at: Placement | None = None
+    #: The database signal to put it in, instead of ``at``.
+    signal: str = ""
     algorithm: str = "xor"
-    #: Which bytes to compute over, inclusive.  ``None`` means the whole
-    #: message *except* the checksum's own bytes -- the usual rule, and the
-    #: one that is easy to get wrong by including them and hashing a field
-    #: that is about to change.
+    #: Which bytes to compute over, inclusive.  ``None`` for both means the
+    #: default for the kind of field this is -- see ``over``.
     first: int | None = None
     last: int | None = None
+
+    def __post_init__(self) -> None:
+        if (self.at is None) == (not self.signal):
+            raise FieldError("a checksum goes either at a position or in a signal, not both")
 
     def function(self) -> Callable[[bytes], int]:
         if self.algorithm not in ALGORITHMS:
@@ -216,8 +240,22 @@ class Checksum:
         return ALGORITHMS[self.algorithm][0]
 
     def over(self, length: int) -> list[int]:
-        """The byte positions this checksum is computed from."""
+        """The byte positions this checksum is computed from.
+
+        With no range given, the default depends on how the field is
+        addressed, and both defaults say the same thing: *do not let the
+        checksum's own bits affect it*.
+
+        * At a **position**, that means leaving its bytes out -- hashing a
+          field about to be overwritten never matches at the other end.
+        * In a **signal**, its bits may share a byte with something else, so
+          leaving whole bytes out would drop real data.  Instead the whole
+          frame is hashed with the signal set to zero, which the caller
+          arranges; see ``apply_signals``.
+        """
         if self.first is None and self.last is None:
+            if self.at is None:
+                return list(range(length))
             mine = set(self.at.covers())
             return [i for i in range(length) if i not in mine]
         first = 0 if self.first is None else self.first
@@ -257,11 +295,60 @@ def apply(
     """
     out = bytearray(data)
     if counter is not None:
+        if counter.at is None:
+            raise FieldError("this counter is in a signal; use apply_signals")
         counter.at.write(out, counter.value(sent))
     if checksum is not None:
+        if checksum.at is None:
+            raise FieldError("this checksum is in a signal; use apply_signals")
         value = checksum.value(out) if computed is None else computed
         checksum.at.write(out, value)
     return bytes(out)
+
+
+def apply_signals(
+    encode: Callable[[dict], bytes],
+    values: dict,
+    counter: Counter | None = None,
+    checksum: Checksum | None = None,
+    sent: int = 0,
+    computed: int | None = None,
+    counter_bits: int | None = None,
+    hook=None,
+) -> bytes:
+    """The same, for a message whose bytes come from a database.
+
+    ``encode`` turns a dictionary of signal values into the payload -- the
+    database's job, and the reason this path is *simpler* than the positional
+    one rather than harder.  Where the bits of a signal live, whether they
+    straddle a byte, and which of the two bit-numbering conventions the file
+    uses are all questions the database has already answered.
+
+    The checksum is computed over the frame encoded with its **own signal set
+    to zero**, and the frame is then encoded again with the real value.  Two
+    encodes rather than patching bytes: a signal is not necessarily
+    byte-aligned, so there is no byte to patch, and zeroing is the convention
+    a database-described checksum is defined by in any case.
+
+    ``hook`` is called with the zeroed frame if given, so a bespoke checksum
+    sees exactly what the named algorithms see.
+    """
+    values = dict(values)
+    if counter is not None:
+        if not counter.signal:
+            raise FieldError("this counter is at a position; use apply")
+        values[counter.signal] = counter.value(sent, counter_bits)
+    if checksum is None:
+        return encode(values)
+    if not checksum.signal:
+        raise FieldError("this checksum is at a position; use apply")
+    # Zeroed first, so what is hashed cannot include the answer.
+    values[checksum.signal] = 0
+    blank = encode(values)
+    if computed is None and hook is not None:
+        computed = hook(blank)
+    values[checksum.signal] = checksum.value(blank) if computed is None else computed
+    return encode(values)
 
 
 # --- saving and loading ----------------------------------------------------------------
@@ -281,8 +368,10 @@ def placement_from_dict(raw: dict) -> Placement:
 def counter_from_dict(raw: dict | None) -> Counter | None:
     if not raw:
         return None
+    signal = str(raw.get("signal", "") or "")
     return Counter(
-        at=placement_from_dict(raw.get("at", {})),
+        at=None if signal else placement_from_dict(raw.get("at", {})),
+        signal=signal,
         start=int(raw.get("start", 0)),
         step=int(raw.get("step", 1)),
         wrap=int(raw.get("wrap", 0)),
@@ -293,7 +382,8 @@ def counter_to_dict(counter: Counter | None) -> dict | None:
     if counter is None:
         return None
     return {
-        "at": placement_to_dict(counter.at),
+        "at": None if counter.at is None else placement_to_dict(counter.at),
+        "signal": counter.signal,
         "start": counter.start,
         "step": counter.step,
         "wrap": counter.wrap,
@@ -304,8 +394,10 @@ def checksum_from_dict(raw: dict | None) -> Checksum | None:
     if not raw:
         return None
     first, last = raw.get("first"), raw.get("last")
+    signal = str(raw.get("signal", "") or "")
     return Checksum(
-        at=placement_from_dict(raw.get("at", {})),
+        at=None if signal else placement_from_dict(raw.get("at", {})),
+        signal=signal,
         algorithm=str(raw.get("algorithm", "xor")),
         first=None if first is None else int(first),
         last=None if last is None else int(last),
@@ -316,7 +408,8 @@ def checksum_to_dict(checksum: Checksum | None) -> dict | None:
     if checksum is None:
         return None
     return {
-        "at": placement_to_dict(checksum.at),
+        "at": None if checksum.at is None else placement_to_dict(checksum.at),
+        "signal": checksum.signal,
         "algorithm": checksum.algorithm,
         "first": checksum.first,
         "last": checksum.last,
@@ -327,9 +420,9 @@ def describe(counter: Counter | None, checksum: Checksum | None) -> str:
     """A short phrase for the transmit list, so a row says what it is doing."""
     parts = []
     if counter is not None:
-        parts.append(f"count {_where(counter.at)}")
+        parts.append(f"count {counter.signal or _where(counter.at)}")
     if checksum is not None:
-        parts.append(f"{checksum.algorithm} {_where(checksum.at)}")
+        parts.append(f"{checksum.algorithm} {checksum.signal or _where(checksum.at)}")
     return ", ".join(parts)
 
 
