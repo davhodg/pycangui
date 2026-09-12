@@ -54,6 +54,21 @@ MIN_HEARTBEAT_TIMEOUT_S = 1.0
 HEARTBEAT_SAMPLES = 5
 HEARTBEAT_MIN_SAMPLES = 3
 
+#: Said after every DCF that wrote anything.  A node that answers an SDO
+#: write without an abort has accepted the value -- that is what the positive
+#: response means, and checking it by reading it straight back only proves
+#: the node can remember it until the next question.  What nobody can see
+#: from here is whether it *keeps* it: a value that was never stored, or
+#: silently clamped on the way into the saved image, reads back perfectly
+#: until the power goes off.  So the honest advice is a power cycle and a
+#: comparison, and pycangui says so rather than implying its own check was
+#: the last word.
+VERIFY_NOTE = (
+    "  The node accepted those writes.  To be sure they survive, store them, "
+    "power-cycle node {node_id} and compare it against the DCF in the "
+    "CANopen DCF compare pane."
+)
+
 #: Bit timing table 1 of CiA 305, as (index, bit rate).
 LSS_BIT_TIMINGS: tuple[tuple[int, int], ...] = (
     (0, 1_000_000),
@@ -817,35 +832,45 @@ class CanopenManager(QObject):
             return
         node = self.node(node_id)
 
-        def job() -> tuple[int, int, list[str]]:
+        def job() -> tuple[int, int, list[tuple[int, int, str]]]:
             source = canopen.import_od(path, node_id)
             wanted = [
                 var
                 for var in _all_variables(source)
                 if var.value is not None and var.writable and var.index >= 0x1000
             ]
-            written, failures = 0, []
+            written: int = 0
+            failures: list[tuple[int, int, str]] = []
             for i, var in enumerate(wanted):
                 try:
                     self._variable(node, var.index, var.subindex).raw = var.value
                     written += 1
                 except Exception as exc:
-                    failures.append(f"{var.index:04X}:{var.subindex:02X} ({exc})")
+                    failures.append((var.index, var.subindex, _reason(exc)))
                 if i % 5 == 0:
                     self.dcf_progress.emit(i, len(wanted))
             self.dcf_progress.emit(len(wanted), len(wanted))
             return written, len(wanted), failures
 
-        def done(result: tuple[int, int, list[str]] | None, error: str | None) -> None:
+        def done(
+            result: tuple[int, int, list[tuple[int, int, str]]] | None, error: str | None
+        ) -> None:
             if error:
                 self.message.emit(f"Node {node_id}: DCF apply failed ({error})")
                 return
             written, total, failures = result
             self.message.emit(f"Node {node_id}: {written}/{total} parameters written from the DCF")
-            for failure in failures[:10]:
-                self.message.emit(f"  not written: {failure}")
-            if len(failures) > 10:
-                self.message.emit(f"  ... and {len(failures) - 10} more")
+            # Grouped by reason rather than listed one per line.  A DCF that
+            # goes wrong usually goes wrong the same way two hundred times --
+            # one read-only object, or one value the node's range rejects --
+            # and two hundred identical lines say it worse than one does.
+            for reason, where in _by_reason(failures).items():
+                shown = ", ".join(f"{index:04X}:{sub:02X}" for index, sub in where[:12])
+                more = f" ... and {len(where) - 12} more" if len(where) > 12 else ""
+                self.message.emit(f"  {len(where)} refused -- {reason}")
+                self.message.emit(f"    {shown}{more}")
+            if written:
+                self.message.emit(VERIFY_NOTE.format(node_id=node_id))
             self.read_pdo_config(node_id)
 
         self._worker.submit(job, done)
@@ -921,6 +946,28 @@ class CanopenManager(QObject):
                 except Exception:  # value out of range for the mapped type
                     var.raw = int(values[var.name])
         return pdo_map.cob_id, bytes(pdo_map.data)
+
+
+def _reason(exc: Exception) -> str:
+    """Why one SDO write did not happen, in the node's own words.
+
+    An abort code is the answer the device gave, so it is quoted as a code
+    *and* as its meaning: the code is what goes in a bug report to the maker,
+    the meaning is what tells the person in front of the machine whether they
+    have a read-only object or a value out of range.
+    """
+    if isinstance(exc, canopen.SdoAbortedError):
+        described = canopen.SdoAbortedError.CODES.get(exc.code)
+        return f"abort 0x{exc.code:08X}" + (f", {described}" if described else "")
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _by_reason(failures: list[tuple[int, int, str]]) -> dict[str, list[tuple[int, int]]]:
+    """Group (index, sub, reason) by reason, keeping the order they happened."""
+    grouped: dict[str, list[tuple[int, int]]] = {}
+    for index, sub, reason in failures:
+        grouped.setdefault(reason, []).append((index, sub))
+    return grouped
 
 
 def _all_variables(od) -> list[ODVariable]:
