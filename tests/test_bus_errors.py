@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Error frames and controller state: telling a broken bus from a quiet one."""
 
 import time

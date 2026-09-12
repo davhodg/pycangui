@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Opening a measurement file and getting its signals onto the plot.
 
 Recording has always written raw CAN, and the manual said so apologetically:

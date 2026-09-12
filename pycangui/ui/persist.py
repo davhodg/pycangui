@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Remember a widget's value between runs.
 
 pycangui already keeps two stores.  The window's own layout -- where the panes

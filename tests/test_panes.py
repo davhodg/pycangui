@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Several of one pane: a second trace, a second plot, and a name each.
 
 Every dock used to be a singleton, and the main window named each one by a

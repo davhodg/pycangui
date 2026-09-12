@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A plugin as one file: the thing you send somebody.
 
 Installed, a plugin is a folder -- it has to be, so that it can bring its own

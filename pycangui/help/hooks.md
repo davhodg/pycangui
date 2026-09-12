@@ -24,6 +24,12 @@ On first run each file is copied there complete, with the default behaviour and
 commented examples already in it, so there is never an empty file to start
 from.  **Your copies are never overwritten.**
 
+They are also yours in the other sense.  The templates are released under
+MIT-0, which claims no copyright and asks for no credit -- the first lines of
+each file say so -- so a seed-key algorithm or a table of your own identifiers
+written into one carries no conditions from pycangui.  Keep it private, share
+it, or ship it with your product.
+
 *Tools > Reload hooks* reads the files again, so an edit of your own takes
 effect without restarting.  It changes nothing on disk.
 

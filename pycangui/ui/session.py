@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """One window at a time, replaced when the workspace changes.
 
 Switching workspace is a full reload.  The settings, the hooks, the EDS

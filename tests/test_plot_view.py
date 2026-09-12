@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The plot's rolling window, and what its right hand edge is measured from.
 
 Reported: the plot keeps scrolling during a live trace, and carries on

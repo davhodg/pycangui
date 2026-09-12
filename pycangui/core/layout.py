@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The dock arrangement, kept with the workspace rather than in QSettings.
 
 Qt hands out an opaque block of bytes for a window's dock layout and for a

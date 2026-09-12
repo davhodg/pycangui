@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Recording traffic to a file and replaying it.
 
 Both directions use python-can's own readers and writers, so every format it

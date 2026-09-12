@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Heartbeat liveness (the consumer side) and LSS commissioning."""
 
 import struct

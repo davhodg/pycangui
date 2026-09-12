@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """CAN FD: the data rate, and ISO-TP frames longer than eight bytes.
 
 Eight bytes a frame is what makes UDS over a classic bus slow -- a flow

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Where a file dialog opens, and how to get back to where it started.
 
 Windows remembers a last-used folder per application, which is no help here:

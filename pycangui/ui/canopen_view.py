@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """CANopen pane: node list with NMT control, object dictionary browser with
 SDO read/write, live PDO values.
 

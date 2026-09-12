@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """One offscreen QApplication for the whole test session, and a drain between
 tests.
 

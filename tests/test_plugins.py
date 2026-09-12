@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """User code that adds screens, and what happens when it goes wrong.
 
 A hook answers a question pycangui already knows to ask.  A plugin adds

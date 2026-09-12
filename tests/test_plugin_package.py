@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A plugin as one file: what goes in, what comes out, and what is refused.
 
 Installed, a plugin is a folder.  Distributed, a folder is useless -- it

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Read an IXXAT (or any) channel with python-can alone, no pycangui involved.
 
 Isolates the adapter and the bus from the application: if this is silent too,

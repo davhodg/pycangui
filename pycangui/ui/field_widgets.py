@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The seven ways a pane can show an object, and no eighth.
 
 A manufacturer's tool has two dozen hand-built configuration screens, and

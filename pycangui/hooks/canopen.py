@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: MIT-0
+#
+# A starting point, copied into your workspace for you to change.  It is
+# yours to edit, keep private or give away: pycangui claims nothing in it
+# and asks for no credit, so what you write here needs nobody's permission.
 """pycangui CANopen hooks -- edit freely, this file is yours.
 
 Each function below is called by pycangui at a decision point.  Return a value

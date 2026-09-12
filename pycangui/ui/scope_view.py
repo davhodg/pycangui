@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Signals and Plot in one pane.
 
 The two belong together: the checkbox that plots a signal lives in the signal

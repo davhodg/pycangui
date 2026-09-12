@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Persistent key/value store for things the GUI remembers (identity -> EDS
 file, last used adapter, ...).  One JSON file, dotted keys, saved on change.
 

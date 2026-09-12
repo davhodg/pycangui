@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """J1939 helpers, DBC PGN matching, and the manager against the demo engine."""
 
 import struct

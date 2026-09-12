@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Text that a device prints onto the bus.
 
 Some devices use a CAN id as a console: ASCII in the data bytes of an ordinary

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """LSS pane: commission a node -- give it a node-ID and a bit rate before it
 has a usable node-ID at all.
 

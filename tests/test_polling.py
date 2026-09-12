@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Reading the same objects over and over, and saying how fast that really went.
 
 The requested rate is a ceiling, not a promise.  An SDO read is a request and a

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """SAE J1939 helpers that need no library: 29-bit id layout, PGN names,
 DM1 parsing, NAME decoding.  The transport (TP.BAM / TP.CM) and address
 claiming come from the `can-j1939` package in ``manager.py``."""

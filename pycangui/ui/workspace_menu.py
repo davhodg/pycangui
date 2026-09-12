@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """File > Workspace: save as, switch to, manage.
 
 The whole surface, and deliberately three items.  There is no Save and no

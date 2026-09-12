@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Simulated nodes: the rest of the bus, written in Python.
 
 The thing being tested is a *mechanism*, so most of these run a node file

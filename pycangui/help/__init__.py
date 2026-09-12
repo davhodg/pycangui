@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The manual, shipped with the application: a page per topic.
 
 Inside the package rather than beside the README so that it survives a

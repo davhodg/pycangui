@@ -88,9 +88,14 @@ python -m venv .venv
 .venv\Scripts\python -m pytest
 ```
 
-The `[dev]` extra adds pytest, pytest-xdist, ruff and the MDF reader.  The
-launcher does not install it -- running the application does not need the test
-tools.
+The `[dev]` extra adds pytest, pytest-xdist, ruff, pdoc and the MDF reader.
+The launcher does not install it -- running the application does not need the
+test tools.
+
+`python build/api_docs.py` writes API pages for people writing hooks,
+simulated nodes and plugins to `dist/api-docs/`.  Only that surface, not the
+whole package: the manual says how to extend pycangui, and these pages are
+where to look up exactly what an object offers.
 
 The suite is a thousand Qt tests and splits cleanly across processes, so
 `-n auto` runs it in well under a minute rather than six.  Leave it off when
@@ -205,5 +210,11 @@ change between tags.
 
 pycangui is free software, licensed under the Apache License 2.0; see
 `LICENSE` and `NOTICE`.
+
+The hook and simulated-node templates in `pycangui/hooks` and `pycangui/nodes`
+are the exception.  They are copied into your workspace to be edited, and are
+released under MIT-0 (`LICENSES/MIT-0.txt`) with no copyright claimed, so what
+you write in them carries no conditions.  Every file names its licence in its
+first line.
 
 Development has made use of Anthropic's Claude.

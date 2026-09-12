@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Fields a transmitted message computes for itself: counters and checksums.
 
 A message that carries a rolling counter and a checksum over its own bytes is

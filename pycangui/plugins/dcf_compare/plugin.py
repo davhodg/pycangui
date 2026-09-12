@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Two CANopen configurations side by side: file against file, or file against device.
 
 The pane is two source pickers and a table, and almost all of it is the two

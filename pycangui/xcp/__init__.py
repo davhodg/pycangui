@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """XCP on CAN (ASAM MCD-1 XCP), implemented directly on the shared bus.
 
 Only the command/response layer needed for measurement and calibration is

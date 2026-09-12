@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Firmware images: Intel HEX, Motorola S-record and raw binary.
 
 Reading and writing is bincopy's job.  What is here is the part bincopy

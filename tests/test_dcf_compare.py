@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Two configurations side by side, and what is different about them.
 
 "What is different about the unit that fails" is the question a commissioning

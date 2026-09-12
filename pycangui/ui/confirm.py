@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """What the user has agreed to before pycangui disturbs equipment.
 
 Two shapes of the same subject.

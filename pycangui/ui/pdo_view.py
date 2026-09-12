@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """PDO configuration pane: the communication and mapping parameters of a
 node's TPDOs and RPDOs, editable and writable back to the node.
 

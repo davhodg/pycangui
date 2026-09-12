@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Firmware download over CANopen, and the plugin API carrying a real screen.
 
 The sequence is CiA 302-3, which is the only written-down way of doing this --

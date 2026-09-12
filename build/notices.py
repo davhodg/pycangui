@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Generate THIRD-PARTY-NOTICES.txt from what is actually installed.
 
 Reading the licences out of the installed package metadata means the file

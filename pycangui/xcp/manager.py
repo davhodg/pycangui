@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """XCP pane logic: A2L handling, seed-and-key, read/write, measurement polling.
 
 The protocol itself lives behind an :class:`~pycangui.xcp.engine.XcpEngine`

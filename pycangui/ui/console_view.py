@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Interactive Python console dock.
 
 Built on the standard library's ``code.InteractiveConsole`` so it behaves like

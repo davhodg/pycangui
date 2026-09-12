@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Everything the application has to say, and how much it matters.
 
 Every line that reaches the Event Log comes through here, with a level.  That

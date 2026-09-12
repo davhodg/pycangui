@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Hook loader behaviour: copy-on-first-run, override, fallback, isolation, stubs."""
 
 from pathlib import Path
@@ -124,6 +126,28 @@ def test_update_stubs_adds_the_imports_the_new_code_needs(home, hooks):
     assert hooks.errors() == {}  # the file really does load
     assert hooks.call("canopen", "node_name", IDENT) == "mine"
     assert hooks.update_stubs() == {}  # and running it again changes nothing
+
+
+def test_added_imports_go_under_the_licence_header_and_docstring(home, hooks):
+    """Put above them, the SPDX line moved down the file to where licence
+    scanners do not look, and the docstring became a stray string."""
+    import ast
+
+    user_file = workspaces.hooks_dir() / "canopen.py"
+    user_file.write_text(
+        "# SPDX-License-Identifier: MIT-0\n"
+        '"""My hooks."""\n'
+        "\n"
+        'def node_name(identity, *, ctx):\n    return "mine"\n'
+    )
+    hooks.update_stubs()
+
+    text = user_file.read_text()
+    assert text.startswith("# SPDX-License-Identifier: MIT-0\n")
+    assert ast.get_docstring(ast.parse(text)) == "My hooks."
+    hooks.reload()
+    assert hooks.errors() == {}, "a future import after the docstring is still legal"
+    assert hooks.call("canopen", "node_name", IDENT) == "mine"
 
 
 def test_a_hook_written_for_an_older_signature_is_not_called(home, log):

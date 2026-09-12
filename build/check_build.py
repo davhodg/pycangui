@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Check a built distribution before it is wrapped in an installer.
 
 Two things are worth failing the build over:
@@ -42,6 +44,7 @@ REQUIRED_FILES = (
     "pycangui/hooks/xcp.py",
     "pycangui/hooks/trace.py",
     "LICENSE",
+    "LICENSES/MIT-0.txt",
     "NOTICE",
     "THIRD-PARTY-NOTICES.txt",
 )

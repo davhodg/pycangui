@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Replay, as a toolbar button beside Record.
 
 Recording and replaying are the two halves of one idea, so they sit together

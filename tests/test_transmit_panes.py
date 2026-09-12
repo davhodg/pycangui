@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """More than one transmit list, and the rule that one out of sight does not send.
 
 A second list is a real thing to want: the background traffic a rig needs left

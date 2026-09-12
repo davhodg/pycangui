@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Driving a CiA 402 motor controller: state, mode, targets and what it is doing.
 
 Half of this screen could be a custom pane, and it is worth being clear about

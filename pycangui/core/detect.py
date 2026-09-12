@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Finding out what adapters are plugged in, and how to name one exactly.
 
 Three problems, all of which made connecting to real hardware guesswork:

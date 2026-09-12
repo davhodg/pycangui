@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Every pane in the window: what kinds there are, and how many of each.
 
 The docks used to be a fixed list built in the main window's constructor, and

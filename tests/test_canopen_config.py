@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """PDO configuration, DCF save/apply, store/restore and SYNC, against the demo node."""
 
 import time

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Reading a CAN id as text: one pane, one id.
 
 It used to be one pane with a tab per id and a hand-rolled pop-out button.

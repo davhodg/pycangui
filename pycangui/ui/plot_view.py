@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Plot pane: rolling time plot of signals selected in the Signals pane.
 
 pyqtgraph redraws only on a 50 ms timer, pulling the visible window out of

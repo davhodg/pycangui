@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Frames get from the bus to the trace, through the whole window.
 
 Every other test builds one piece at a time, which is how a change to the

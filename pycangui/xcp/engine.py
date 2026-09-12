@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """XCP engine interface and the built-in implementation.
 
 An engine only has to move XCP commands and responses; everything above it

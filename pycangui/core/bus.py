@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Bus layer: wraps python-can and delivers frames to the GUI thread.
 
 Design notes (Python / Qt idioms used here):

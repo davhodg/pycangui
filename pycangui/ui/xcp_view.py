@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """XCP pane: connect to a slave, load an A2L, read/write characteristics and
 measurements, and stream measurements into the Plot via the signal hub."""
 

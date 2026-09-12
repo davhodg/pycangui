@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """J1939 pane: nodes seen (with NAME from address claims), active faults
 (DM1) per node, address claim for the tester, PGN request and send."""
 

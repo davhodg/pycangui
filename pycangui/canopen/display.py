@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """How an object's value is shown, and how a typed one is read back.
 
 Three layers, deliberately kept apart.  **Structure** -- type, access,

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Reading measurement files: MDF, and the MF4 that is its current version.
 
 A CAN log holds frames.  An MDF holds *signals* -- decoded values against

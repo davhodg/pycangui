@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Transmit pane: messages to send once or cyclically.
 
 One list holds both kinds of message, so everything being transmitted is

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Decoded signals out to a spreadsheet.
 
 Recording writes raw CAN, which is the right thing for a recording and the

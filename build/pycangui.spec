@@ -122,6 +122,8 @@ DATA = [
     (str(PROJECT / "pycangui" / "hooks"), "pycangui/hooks"),
     (str(PROJECT / "pycangui" / "nodes"), "pycangui/nodes"),
     (str(PROJECT / "LICENSE"), "."),
+    # The MIT-0 text the hook and node templates name in their SPDX line.
+    (str(PROJECT / "LICENSES"), "LICENSES"),
     (str(PROJECT / "NOTICE"), "."),
     (str(PROJECT / "THIRD-PARTY-NOTICES.txt"), "."),
     (str(PROJECT / "README.md"), "."),

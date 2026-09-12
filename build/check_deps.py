@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Whether .venv has everything pyproject.toml asks for.
 
 The launchers used to set up only when .venv was missing.  That is fine until

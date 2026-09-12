@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A pane on screen: a dock of its own, built by picking objects.
 
 The two halves that matter are that a pane is a *dock* -- so two of them sit

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Send python-can's own log messages to the Event Log.
 
 The backends say a great deal through the standard :mod:`logging` module and

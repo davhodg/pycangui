@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """CANopen master side, built on the `canopen` package.
 
 Threads, and why:

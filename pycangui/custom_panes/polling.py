@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Reading the same objects over and over, no faster than they answer.
 
 An object that is not mapped to a PDO can only be read by asking for it, and

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """ISO-TP transport interface and the built-in implementation.
 
 UDS needs one thing from the link: send a whole message, receive a whole

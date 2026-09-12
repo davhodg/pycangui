@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """CANopen emergency (EMCY) decoding.
 
 An emergency object carries eight bytes: a 16-bit error code, the error

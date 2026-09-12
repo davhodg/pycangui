@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Several CAN channels at once.
 
 A *channel* is one CAN bus: a second port on a multi-channel adapter, or a

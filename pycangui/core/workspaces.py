@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Named workspaces: one per product, and one called ``default`` nobody need meet.
 
 A workspace is everything about *what you are working on*: the settings, the

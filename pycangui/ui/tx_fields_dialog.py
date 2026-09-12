@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Setting up a message's counter and checksum.
 
 Two groups, each switched on by its own checkbox, because a message may have

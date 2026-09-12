@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Putting firmware into a CANopen device, by the book that has one.
 
 CiA 302-3 defines program download over SDO and almost nothing else does, so

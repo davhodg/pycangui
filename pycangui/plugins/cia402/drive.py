@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The CiA 402 drive profile: the state machine, and the objects around it.
 
 CiA 402 is the one CANopen profile where reading and writing objects is not

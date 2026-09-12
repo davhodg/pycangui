@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Firmware download over CANopen.
 
 A plugin rather than part of the tool, deliberately.  What a device wants in

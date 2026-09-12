@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Counters and checksums as the transmit pane uses them.
 
 The arithmetic is tested in test_tx_fields; these are about the pane doing

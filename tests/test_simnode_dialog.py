@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Tools > Simulated nodes: the small dialog in front of the mechanism.
 
 Its whole job is to ask the three things a node file cannot answer for

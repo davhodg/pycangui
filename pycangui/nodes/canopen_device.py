@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: MIT-0
+#
+# A starting point, copied into your workspace for you to change.  It is
+# yours to edit, keep private or give away: pycangui claims nothing in it
+# and asks for no credit, so what you write here needs nobody's permission.
 """A CANopen device: heartbeat, SDO server, and a TPDO that means something.
 
 The one to copy if your product speaks CANopen.  Almost all of what a CANopen
