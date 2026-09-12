@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Transmit rows whose data is built from a DBC message or a CANopen RPDO."""
 
 import struct

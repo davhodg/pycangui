@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """DBC (and other cantools formats: KCD, SYM, ARXML) decoding.
 
 Holds zero or more loaded databases.  ``decode(frame)`` returns the message

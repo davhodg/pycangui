@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The backend registry, and a user-supplied engine replacing a built-in one."""
 
 import importlib

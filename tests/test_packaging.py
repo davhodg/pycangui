@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """What ships, ships.
 
 A wheel carries the .py files whatever anyone does; everything else has to be

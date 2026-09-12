@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Failures reach the Event Log rather than a console that does not exist."""
 
 import threading

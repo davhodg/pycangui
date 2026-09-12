@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Where a pane's values come from, and where a change goes.
 
 A pane is bound to a *source*, never to a node, and that is the one decision

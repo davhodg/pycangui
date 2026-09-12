@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The parts of UDS that are the same on every ECU.
 
 Everything here comes from udsoncan, which already carries the ISO 14229-1

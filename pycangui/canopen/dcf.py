@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A DCF written as what it is: the EDS, with the values filled in.
 
 CiA 306 says a device configuration file *is* an EDS with a ``ParameterValue``

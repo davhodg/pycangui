@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The once-a-session questions asked before disturbing real equipment."""
 
 import pytest

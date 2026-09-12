@@ -1,3 +1,8 @@
+# SPDX-License-Identifier: MIT-0
+#
+# A starting point, copied into your workspace for you to change.  It is
+# yours to edit, keep private or give away: pycangui claims nothing in it
+# and asks for no credit, so what you write here needs nobody's permission.
 """An XCP slave: a block of memory the XCP pane can read and calibrate.
 
 The example of a node that does *both* halves -- it answers commands in

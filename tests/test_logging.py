@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Recording to a log file and replaying it, in every format python-can offers."""
 
 import time

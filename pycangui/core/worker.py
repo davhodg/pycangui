@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A queue-fed worker thread for blocking protocol calls (SDO, UDS requests).
 
 Each job is a plain function; its result or exception is delivered back on the

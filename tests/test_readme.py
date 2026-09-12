@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The README's badges, checked against what they claim to describe.
 
 A badge is a fact stated somewhere nobody will think to update.  The two
@@ -45,8 +47,14 @@ def test_the_python_badge_is_the_floor_the_project_declares():
 
 
 def test_the_licence_badge_is_the_licence():
+    """The badge names pycangui's licence, which is the first term of the
+    expression.  The MIT-0 after it covers the templates copied into a
+    workspace -- more permissive, so leaving it off the badge understates
+    nothing anybody could rely on."""
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert badge("license").replace("--", "-") == pyproject["project"]["license"]
+    main, *rest = pyproject["project"]["license"].split(" AND ")
+    assert badge("license").replace("--", "-") == main
+    assert rest == ["MIT-0"], "a new licence term needs a decision about the badge"
 
 
 def test_the_live_badges_are_recorded_for_when_the_repo_is_public():

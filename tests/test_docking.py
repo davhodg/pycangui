@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Undocked panes: left as Qt makes them, with two buttons on the pane itself."""
 
 import pytest

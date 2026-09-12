@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """One workspace per product, and one called default nobody has to meet.
 
 The load-bearing test here is the migration.  Somebody who never asked for

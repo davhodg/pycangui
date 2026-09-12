@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """DBC decoding, the signal hub, and the Signals/Plot panes."""
 
 import struct

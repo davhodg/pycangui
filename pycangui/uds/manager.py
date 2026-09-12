@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """UDS client side.  Requests run on a worker thread (they block on the ECU's
 reply); every outcome comes back as a ``result`` signal with a readable line
 for the pane, so the pane never touches udsoncan directly."""

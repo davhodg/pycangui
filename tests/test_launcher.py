@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Starting up: noticing a dependency that was added since .venv was built.
 
 The launchers used to set up only when .venv was missing, so adding a library

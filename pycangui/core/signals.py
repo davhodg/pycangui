@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Signal hub: named numeric time series from any source, for display and plotting.
 
 Sources (DBC decoder, CANopen PDOs, SDO polling, user scripts) call

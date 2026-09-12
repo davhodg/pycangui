@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Toolbar for the channels: pick one, configure it, connect it.
 
 The selected channel is also the one the protocol panes (CANopen, UDS, J1939,

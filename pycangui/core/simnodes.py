@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Simulated nodes: the rest of the bus, written in Python.
 
 One real device is rarely testable on its own.  It expects a controller to

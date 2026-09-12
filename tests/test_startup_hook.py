@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The one hook that answers no question: the window is up.
 
 Every other hook is asked something -- which EDS, what this fault code means --

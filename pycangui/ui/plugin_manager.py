@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Getting a plugin, and getting rid of one.
 
 Installing is the only thing pycangui does that runs somebody else's code on

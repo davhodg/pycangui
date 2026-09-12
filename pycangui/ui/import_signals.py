@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Opening a measurement file and putting its signals on the plot.
 
 The awkward part is not the reading, it is the *choosing*.  A real export

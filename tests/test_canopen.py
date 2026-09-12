@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Drive the CANopen manager against the demo device on the virtual bus."""
 
 import time

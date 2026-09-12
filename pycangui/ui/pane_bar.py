@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A strip of buttons along the top of a pane that is out of the window.
 
 Two buttons, each saying what pressing it will do rather than what is

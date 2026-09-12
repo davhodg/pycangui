@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Finding one object in a dictionary of fifteen hundred, and keeping the ones you use.
 
 A real controller offers well over a thousand entries and any given job uses

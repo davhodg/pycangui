@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Driving a CiA 402 motor controller, and the state machine that is the reason
 this is a plugin at all.
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """EMCY decoding, the manufacturer-bytes hook, and the demo device's emergency."""
 
 import time

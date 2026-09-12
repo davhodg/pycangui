@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """User code that adds screens, not just answers.
 
 A hook answers a question pycangui already knows to ask -- which EDS, what to

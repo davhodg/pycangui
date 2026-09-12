@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A pane in a window of its own, with no dock behind it.
 
 Qt's floating panes are still dock widgets: the main window hit-tests dock

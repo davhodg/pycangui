@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Controls whose effect is not written on them explain themselves on hover.
 
 Not every control: Clear, Remove and Connect say what they do, and a tooltip

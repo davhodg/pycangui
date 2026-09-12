@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Where the machine's own things live.
 
 The hooks, the EDS files, the settings and the layout moved out of here and

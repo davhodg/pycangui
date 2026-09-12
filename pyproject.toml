@@ -7,8 +7,12 @@ name = "pycangui"
 version = "0.0.1"
 description = "User-friendly CAN bus tool: trace, transmit, CANopen, UDS, J1939, XCP, Python scripting"
 readme = "README.md"
-license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE"]
+# Two licences, by file.  pycangui is Apache-2.0; the hook and simulated-node
+# templates copied into a workspace are MIT-0, so the file somebody fills with
+# their own seed-key algorithm carries no conditions.  Each file says which in
+# its SPDX line, and tests/test_headers.py keeps it that way.
+license = "Apache-2.0 AND MIT-0"
+license-files = ["LICENSE", "NOTICE", "LICENSES/*.txt"]
 requires-python = ">=3.12"
 authors = [{ name = "davhodg" }]
 dependencies = [
@@ -53,7 +57,10 @@ mf4 = ["asammdf>=8"]
 # Pinned ruff: a new one must not break the build.  mf4 is pulled in so that
 # CI actually exercises the reader -- a reader nobody tests is a reader that
 # breaks -- and so that the build environment has what the bundle needs.
-dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pycangui[mf4]"]
+# pdoc builds the API pages for people writing hooks, nodes and plugins; see
+# build/api_docs.py.  In dev so that CI renders them and a broken docstring
+# fails a test rather than a release.
+dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pdoc>=16", "pycangui[mf4]"]
 
 [project.scripts]
 pycangui = "pycangui.__main__:main"

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The Help menu: how to drive it, what it is, what it is licensed under.
 
 Documentation shows the manual that ships inside the package, rendered here

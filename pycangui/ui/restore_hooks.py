@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Putting pycangui's own hook files back, without eating anybody's work.
 
 An edited hook is the usual way to break pycangui quietly: the file still

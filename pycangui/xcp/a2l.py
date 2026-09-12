@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A minimal A2L reader: enough of ASAM MCD-2 MC to list MEASUREMENTs and
 CHARACTERISTICs with their address, data type and (optional) conversion, which
 is what the XCP pane needs to read and write values.  Full A2L (RECORD_LAYOUT,

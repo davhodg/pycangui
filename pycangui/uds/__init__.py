@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """UDS (ISO 14229) diagnostics on ISO-TP, built on udsoncan + can-isotp."""
 
 from __future__ import annotations

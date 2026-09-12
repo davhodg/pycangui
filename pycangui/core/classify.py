@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Classify CAN ids into protocol message kinds.
 
 CANopen's predefined connection set (CiA 301) fixes the function code in the

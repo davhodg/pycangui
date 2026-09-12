@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Asking GitHub whether there is a newer release.
 
 This runs only when the user picks Help > Check for updates.  pycangui makes

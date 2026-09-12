@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Signals pane: every live signal in the hub, grouped by source, with its
 latest value and a checkbox that adds it to the Plot pane."""
 

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The seven ways a pane shows an object, and what each of them refuses.
 
 The interesting behaviour is not the displaying, it is the not-writing.  Two

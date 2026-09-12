@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """ReadDTCInformation: every report the service offers, and only the boxes each needs.
 
 The service is twenty-odd reports wearing one number, and an ECU answers the

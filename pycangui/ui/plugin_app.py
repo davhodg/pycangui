@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The object a plugin is handed, and the whole of what a plugin can do.
 
 One object with one caller each way: a plugin calls into it to add things, and

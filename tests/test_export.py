@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Decoded signals out to a spreadsheet.
 
 The shape is the whole design: a time column *per signal*, with a blank column

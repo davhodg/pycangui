@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """CANopen protocol layer (built on the `canopen` package).  Types that user
 hooks see live here so they are importable from user code."""
 

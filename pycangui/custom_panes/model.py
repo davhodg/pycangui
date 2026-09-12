@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """What a custom pane is, and the file it is kept in.
 
 A custom pane is a title and a list of fields; a field is one object dictionary

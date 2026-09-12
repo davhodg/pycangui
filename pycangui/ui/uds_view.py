@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """UDS pane: addressing, session / security / tester present, DIDs, DTCs,
 routines, ECU reset and raw requests.  Results go to the pane's own log."""
 

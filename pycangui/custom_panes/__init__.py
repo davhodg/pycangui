@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """User-composed custom_panes: a named group of objects laid out as a form.
 
 The object dictionary shows one object per row sorted by index, which is the

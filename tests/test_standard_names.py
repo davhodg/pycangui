@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The parts of UDS and J1939 that are the same on every ECU.
 
 What is standard is filled in, what is copyrighted or manufacturer specific is

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """One row per CAN id, showing the latest data, a count and the receive rate.
 
 Rate and cycle time are measured across a window of recent arrivals: the span

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The one object handed to user code (hooks and scripts).
 
 Keep this small and stable: everything a user hook needs should be reachable

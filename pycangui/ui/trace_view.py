@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Trace dock: chronological list, or one row per id with the latest data.
 
 Every frame gets a *kind* label (hook ``trace.frame_kind``, default CANopen

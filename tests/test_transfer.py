@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Firmware transfer: reading the files, and the services that move them.
 
 The ECU here is a recording fake rather than the demo device.  What these

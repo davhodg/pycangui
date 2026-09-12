@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """J1939 network side, built on the `can-j1939` package for transport
 protocol reassembly (TP.BAM / TP.CM) and address claiming.
 

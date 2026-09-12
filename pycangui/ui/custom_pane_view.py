@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A custom pane on screen: a named group of objects, laid out as a form.
 
 The pane is thin on purpose.  It builds a widget per field, points every one

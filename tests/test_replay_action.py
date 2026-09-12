@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """The Replay toolbar button: which channel it plays onto, and when it asks."""
 
 import time

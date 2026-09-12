@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """ReadDTCInformation (0x19): which report, and what each one needs.
 
 The service is really twenty-odd services wearing one number.  A report asks

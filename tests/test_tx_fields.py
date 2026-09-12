@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Counters and checksums for transmitted messages.
 
 The arithmetic, away from the pane.  A wrong checksum is invisible from the

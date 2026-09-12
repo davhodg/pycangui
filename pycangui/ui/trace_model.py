@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Table model for the live trace.
 
 Qt's model/view split: the *model* owns the data and answers questions

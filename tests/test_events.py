@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Nothing said to the user is lost because a pane was closed.
 
 The Event Log is a pane like any other and can be shut.  Until it carried a

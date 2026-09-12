@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """pycangui — a user-friendly CAN bus tool."""
 
 __version__ = "0.0.1"

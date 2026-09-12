@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """What a pane is, and where its values come from.
 
 Two things are being pinned down here.  The *model* -- a title and a list of

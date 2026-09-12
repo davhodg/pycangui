@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """What an EDS says about an object, including the parts a parser throws away.
 
 CiA 306 defines no key for a unit or for scaling, so a maker with that to say

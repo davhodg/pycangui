@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """A2L parsing and the XCP master against the demo slave on the virtual bus."""
 
 import struct

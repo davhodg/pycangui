@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Simulated nodes shipped with pycangui, copied into a workspace on first run.
 
 Every file here is a working example of one protocol, and is meant to be

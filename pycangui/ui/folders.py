@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Where a file dialog opens.
 
 A dialog that always opens in the same place is a dialog you navigate out of

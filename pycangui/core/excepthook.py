@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Put unhandled exceptions in the Event Log instead of nowhere.
 
 pycangui is started with ``pythonw.exe``, which has no console.  An exception

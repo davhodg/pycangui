@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """User-modifiable hooks.
 
 A *hook* is a plain function the application calls at a decision point.  The
@@ -466,8 +468,42 @@ def _with_imports_for(module: str, text: str) -> str:
         header.insert(0, future)
     if not header:
         return text
-    # Imports go at the top, where a reader expects to find them.
-    return "\n".join(header) + "\n\n" + text.lstrip("\n")
+    # Imports go at the top, where a reader expects to find them -- but under
+    # the licence header and the docstring, not above them.  Above demoted the
+    # docstring to a stray string and pushed the SPDX line down the file,
+    # where licence scanners do not look for it.
+    at = _top_of(text)
+    before = text[:at]
+    if before and not before.endswith("\n"):
+        before += "\n"
+    return before + ("\n" if before else "") + "\n".join(header) + "\n\n" + text[at:].lstrip("\n")
+
+
+def _top_of(text: str) -> int:
+    """Where imports belong: after a leading comment block and any docstring.
+
+    A file that does not parse -- somebody's half-finished edit -- still has
+    a comment block worth stepping over, so that is found line by line.
+    """
+    lines = text.splitlines(keepends=True)
+    try:
+        body = ast.parse(text).body
+    except SyntaxError:
+        body = []
+    first = body[0] if body else None
+    if (
+        isinstance(first, ast.Expr)
+        and isinstance(first.value, ast.Constant)
+        and isinstance(first.value.value, str)
+        and first.end_lineno is not None
+    ):
+        return sum(len(line) for line in lines[: first.end_lineno])
+    offset = 0
+    for line in lines:
+        if line.strip() and not line.lstrip().startswith("#"):
+            break
+        offset += len(line)
+    return offset
 
 
 def _defaults_path(module: str) -> Path:

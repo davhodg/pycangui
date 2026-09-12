@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Starting and stopping simulated nodes.
 
 Deliberately small.  A node is a Python file and everything interesting
