@@ -67,7 +67,7 @@ DEMO_CHANNEL = "vcan0"
 #: in use plus one random unused name, which is a different name every time,
 #: is never the one the demo runs on, and means nothing to anybody.
 VIRTUAL_CHANNELS = (
-    (DEMO_CHANNEL, "Demo device: CANopen, UDS, J1939, XCP"),
+    (DEMO_CHANNEL, "Demo device"),
     ("vcan1", "empty"),
     ("vcan2", "empty"),
 )
