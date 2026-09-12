@@ -24,7 +24,7 @@
 
 - [CAN adapters and channels](channels.md) --- picking an adapter, bitrates and CAN
   FD, what pycangui asks before it can disturb equipment, recording and replay
-- [Virtual buses, nodes and gateways](virtual.md) --- trying everything with no adapter
+- [Virtual buses, simulated nodes and gateways](virtual.md) --- trying everything with no adapter
   plugged in, and the demo device
 
 ## Customise

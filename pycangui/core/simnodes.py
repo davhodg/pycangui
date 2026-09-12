@@ -1,8 +1,8 @@
-"""Virtual nodes: the rest of the bus, written in Python.
+"""Simulated nodes: the rest of the bus, written in Python.
 
 One real device is rarely testable on its own.  It expects a controller to
 command it, or peers to claim addresses against, or a master to poll it, and
-without them it sits in a fault state saying nothing useful.  A virtual node
+without them it sits in a fault state saying nothing useful.  A simulated node
 is the missing half: a device pycangui pretends to be, so the real one has
 something to talk to.
 
@@ -155,7 +155,7 @@ def kinds_in(folder: Path) -> list[Kind]:
 
 
 class Node(QObject):
-    """One running virtual node: its channel, its state and its way out.
+    """One running simulated node: its channel, its state and its way out.
 
     Handed to every function in the node file as the first argument.  What a
     node file keeps between calls goes in ``state``; what it sends goes
@@ -454,7 +454,7 @@ class Node(QObject):
             fn(self, *args, ctx=self.ctx)
         except Exception:
             self.ctx.error(
-                f"Virtual node {self.name} raised in {what}() and has been stopped:\n"
+                f"Simulated node {self.name} raised in {what}() and has been stopped:\n"
                 + traceback.format_exc()
             )
             if what != "stop":
@@ -514,10 +514,10 @@ class _Forwarder(can.Listener):
         pass
 
 
-class VirtualNodes(QObject):
+class SimulatedNodes(QObject):
     """The node files there are, and the ones that are running.
 
-    Reachable from the console and from a startup hook as ``window.vnodes``,
+    Reachable from the console and from a startup hook as ``window.nodes``,
     which is the point: starting the rest of the bus is setup, and setup
     belongs in a file rather than in somebody's fingers every morning.
     """
@@ -596,7 +596,7 @@ class VirtualNodes(QObject):
         """
         kind = self.kind(kind_id)
         if kind is None:
-            raise NodeError(f"There is no virtual node called {kind_id!r} in this workspace.")
+            raise NodeError(f"There is no simulated node called {kind_id!r} in this workspace.")
         if kind.error:
             raise NodeError(f"{kind.label}: {kind.error}")
         wanted = list(dict.fromkeys([channel, *extra]))
@@ -623,7 +623,8 @@ class VirtualNodes(QObject):
             raise NodeError(f"{kind.label} would not start: {exc}") from exc
         self._running.append(node)
         self.ctx.log(
-            f"Virtual node {node.name} started on {', '.join(node.channels)} at {node.rate_hz:g} Hz"
+            f"Simulated node {node.name} started on {', '.join(node.channels)} "
+            f"at {node.rate_hz:g} Hz"
         )
         self.changed.emit()
         return node
@@ -632,11 +633,11 @@ class VirtualNodes(QObject):
         if node in self._running:
             self._running.remove(node)
         node.stop()
-        self.ctx.log(f"Virtual node {node.name} stopped")
+        self.ctx.log(f"Simulated node {node.name} stopped")
         self.changed.emit()
 
     def stop_all(self) -> None:
-        """Every node, on the way out.  A virtual node holding a bus open
+        """Every node, on the way out.  A simulated node holding a bus open
         after the window has gone is a process that will not exit."""
         for node in list(self._running):
             node.stop()

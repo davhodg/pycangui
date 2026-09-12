@@ -1,10 +1,10 @@
-"""Starting and stopping virtual nodes.
+"""Starting and stopping simulated nodes.
 
 Deliberately small.  A node is a Python file and everything interesting
 about it is in there; the only questions this dialog asks are the ones the
 file cannot answer for itself -- which channel, how fast, and a second
 channel if it is a gateway.  Anything more here would be the node editor
-that virtual nodes exist in order not to be.
+that simulated nodes exist in order not to be.
 
 Not a dock pane: this is used for a moment at the start of a session and
 then not again, and a pane that spends the day empty is a pane in the way.
@@ -30,12 +30,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pycangui.core.vnodes import NodeError, VirtualNodes
+from pycangui.core.simnodes import NodeError, SimulatedNodes
 
-TITLE = "Virtual nodes"
+TITLE = "Simulated nodes"
 
 WHAT_THEY_ARE = (
-    "A virtual node is a device pycangui pretends to be, so a real one has "
+    "A simulated node is a device pycangui pretends to be, so a real one has "
     "something to talk to.  Each is a Python file in your workspace's "
     "<b>nodes</b> folder -- edit one, or copy it, and it is yours."
 )
@@ -48,10 +48,10 @@ SUGGESTED_CHANNEL = "Simulation"
 NONE_YET = "No node files in this workspace.  Open the folder to write one."
 
 
-class VirtualNodeDialog(QDialog):
+class SimulatedNodeDialog(QDialog):
     """Which nodes there are, which are running, and the way between."""
 
-    def __init__(self, parent: QWidget, nodes: VirtualNodes, channels=None) -> None:
+    def __init__(self, parent: QWidget, nodes: SimulatedNodes, channels=None) -> None:
         super().__init__(parent)
         self.setWindowTitle(TITLE)
         self.resize(620, 480)

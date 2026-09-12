@@ -125,7 +125,7 @@ def eds_dir() -> Path:
 
 
 def nodes_dir() -> Path:
-    """Virtual nodes: the devices a user writes to stand in for real ones.
+    """Simulated nodes: the devices a user writes to stand in for real ones.
 
     Beside the hooks, and for the same reason -- a node is knowledge about a
     product, and travels with the workspace that describes that product.

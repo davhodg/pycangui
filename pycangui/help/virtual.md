@@ -1,6 +1,6 @@
 [&larr; Contents](manual.md)
 
-# Virtual buses, nodes and gateways
+# Virtual buses, simulated nodes and gateways
 
 pycangui does not need a CAN adapter to be useful.  Its `virtual` interface is
 a bus that exists only inside the application, so a log can be replayed, a
@@ -20,7 +20,7 @@ machine can join.
 
 ## The demo device
 
-Connecting that channel starts the **demo device**: four virtual nodes, one
+Connecting that channel starts the **demo device**: four simulated nodes, one
 per protocol pycangui speaks, on the one channel.
 
 - [CANopen](canopen.md) node 5 -- its EDS is matched automatically, the
@@ -43,19 +43,25 @@ pycangui.  Open one and you are reading the thing you have been talking to,
 which is also why they cannot quietly rot: everybody's first run exercises
 them.
 
-They appear in **Tools > Virtual nodes** like anything else, so you can stop
+They appear in **Tools > Simulated nodes** like anything else, so you can stop
 one -- to see how your own tool behaves when a device goes quiet, say -- and
 they are listed there by name.  Disconnecting and reconnecting the channel
 brings them back.
 
 ## Nodes of your own
 
-A virtual node is a device pycangui pretends to be, so a real one has
+A simulated node is a device pycangui pretends to be, so a real one has
 something to talk to.  A controller that will not leave its fault state until
 a peer answers, a slave with nobody polling it, an ECU waiting on an address
 claim: the missing half is the node you write.
 
-**Tools > Virtual nodes...** lists what is available, starts one on a channel
+*Simulated* rather than *virtual*, because the two words were doing different
+jobs in one tool.  A **virtual channel** is a bus with no hardware behind it.
+A **simulated node** is a device with no hardware behind it -- and it is
+perfectly happy standing on a real adapter and talking to real equipment,
+which is the case worth being clear about.
+
+**Tools > Simulated nodes...** lists what is available, starts one on a channel
 and stops it again.  That is the whole of the GUI, on purpose -- there is no
 node editor and no state-machine builder, because a node is a Python file and
 everything interesting about it belongs in the file.
@@ -107,25 +113,25 @@ and is never written over:
 
 ### Starting one from Python
 
-The dialog is a convenience, not the way in.  `window.vnodes` is the same
+The dialog is a convenience, not the way in.  `window.nodes` is the same
 object from the [Python Console](console.md) and from a
 [startup hook](hooks.md), which is the point: standing up the devices a test
 needs is setup, and setup belongs in a file rather than in your fingers every
 morning.
 
 ```python
-window.vnodes.start("canopen_device", "vcan0")
-window.vnodes.start("j1939_engine", "vcan1", rate_hz=50)
+window.nodes.start("canopen_device", "vcan0")
+window.nodes.start("j1939_engine", "vcan1", rate_hz=50)
 ```
 
 ## Gateways
 
-A gateway is a virtual node standing on more than one channel.  There is no
+A gateway is a simulated node standing on more than one channel.  There is no
 second mechanism for it: fill in the **and** box in the dialog, or pass
 `extra=` from Python, and the node opens both.
 
 ```python
-window.vnodes.start("gateway", "vcan0", extra=["vcan1"])
+window.nodes.start("gateway", "vcan0", extra=["vcan1"])
 ```
 
 Inside the file, `node.channels` lists them, `frame.channel` says which one a

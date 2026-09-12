@@ -178,13 +178,13 @@ def demo_device(tmp_path_factory):
     is no sense standing up a J1939 engine for a test about SDO -- and every
     node started is stopped afterwards.
     """
-    from pycangui.core.vnodes import VirtualNodes
+    from pycangui.core.simnodes import SimulatedNodes
     from pycangui.nodes import DEMO
 
     started = []
 
     def start(bus, kinds=DEMO, channel="CAN"):
-        nodes = VirtualNodes(
+        nodes = SimulatedNodes(
             _NodeContext(tmp_path_factory.mktemp("nodes")),
             channels=_OneChannel(channel, bus),
         )
