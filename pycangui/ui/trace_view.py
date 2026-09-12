@@ -183,10 +183,6 @@ class TraceView(QWidget):
         self.filter_button.setMenu(menu)
         self._apply_filter(save=False)
 
-        # Settled choices about how to read the trace, not what is in it.
-        remember(ctx, f"{key}.mode", self.mode)
-        remember(ctx, f"{key}.autoscroll", self.autoscroll)
-
         # Which columns, per mode: the two tables answer different questions
         # and have nothing in common but the word column.  On a button as
         # well as on the header, because right-clicking a header is a
@@ -204,6 +200,15 @@ class TraceView(QWidget):
         )
         self.columns_button.setPopupMode(QToolButton.InstantPopup)
         self.columns_button.setMenu(self._column_menus[self.mode.currentIndex()])
+
+        # Settled choices about how to read the trace, not what is in it.
+        # Last of the three, and it has to stay last: restoring a saved mode
+        # changes the combo box, which fires currentIndexChanged from inside
+        # this constructor, so everything _on_mode_changed reaches for must
+        # already exist.  It did not, and a workspace left in Latest per ID
+        # threw on startup.
+        remember(ctx, f"{key}.mode", self.mode)
+        remember(ctx, f"{key}.autoscroll", self.autoscroll)
 
         clear = QPushButton("Clear")
         clear.clicked.connect(self.clear)

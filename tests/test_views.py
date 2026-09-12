@@ -678,3 +678,29 @@ def test_each_view_has_its_own_columns(app, tmp_path, monkeypatch):
     assert [a.text() for a in view._column_menus[0].actions()][:3] == ["Time", "Channel", "Dir"]
     assert [a.text() for a in view._column_menus[1].actions()][:3] == ["ID", "Kind", "Channel"]
     assert view.columns_button.menu() is view._column_menus[view.mode.currentIndex()]
+
+
+def test_a_trace_left_in_latest_mode_opens_again(app, tmp_path, monkeypatch):
+    """Restoring the saved mode fires the mode-changed handler from inside
+    the constructor, so everything it touches has to exist by then.  It did
+    not, and opening a workspace left in Latest per ID threw."""
+    import sys
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    first = TraceView(Hooks(ctx), ctx)
+    first.mode.setCurrentIndex(1)
+    assert ctx.settings.get("trace.mode") == "Latest per ID"
+
+    # Watched through the excepthook, because PySide sends an exception
+    # raised inside a slot there rather than to whoever emitted the signal:
+    # the constructor finishes, the pane is half built, and the only sign is
+    # a traceback in the log.
+    blew_up: list = []
+    monkeypatch.setattr(sys, "excepthook", lambda *what: blew_up.append(what))
+
+    again = TraceView(Hooks(ctx), ctx)
+    assert not blew_up, blew_up
+    assert again.mode.currentIndex() == 1
+    assert again.stack.currentWidget() is again.latest_table
+    assert again.columns_button.menu() is again._column_menus[1]
