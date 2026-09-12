@@ -20,7 +20,7 @@ from pycangui.core import tx_fields as tx
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
-from pycangui.ui.tx_view import COL_CYCLIC, COL_FIELDS, TxView
+from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, COL_FIELDS, COL_NAME, TxView
 
 CHANNEL = "vtxcount"
 
@@ -320,3 +320,77 @@ def test_a_message_missing_from_the_database_sends_what_it_had(app, dbc_view, db
     row = a_dbc_row(dbc_view, message="NotInTheDatabase", counter=DBC_COUNTER)
     dbc_view.send_row(row)
     assert collect(app, dbc_listening, 1), "nothing was sent at all"
+
+
+# --- the two boxes that used to lie -----------------------------------------------
+def test_a_computed_signal_stops_taking_edits(app, dbc_view):
+    """It is overwritten as the frame is sent, so a box that accepted an
+    edit was a box that had lied about it."""
+    row = a_dbc_row(dbc_view, counter=DBC_COUNTER, checksum=DBC_CHECKSUM)
+    item = dbc_view.item(row)
+    children = {item.child(i).text(COL_NAME): item.child(i) for i in range(item.childCount())}
+
+    assert not children["PumpEnable"].flags() & Qt.ItemIsEditable
+    assert not children["PumpSpeedDemand"].flags() & Qt.ItemIsEditable
+    assert children["PumpEnable"].text(COL_FIELDS) == "counter"
+    assert children["PumpSpeedDemand"].text(COL_FIELDS) == "sum8"
+    assert "ignored" in children["PumpEnable"].toolTip(COL_DATA)
+
+
+def test_a_signal_nobody_computes_is_still_editable(app, dbc_view):
+    row = a_dbc_row(dbc_view, counter=DBC_COUNTER)
+    item = dbc_view.item(row)
+    children = {item.child(i).text(COL_NAME): item.child(i) for i in range(item.childCount())}
+    assert children["PumpSpeedDemand"].flags() & Qt.ItemIsEditable
+    assert children["PumpSpeedDemand"].text(COL_FIELDS) == ""
+
+
+def test_taking_the_counter_away_gives_the_signal_back(app, dbc_view, monkeypatch):
+    """The grey is a statement about the configuration, not a one-way door."""
+    from pycangui.ui import tx_view as tv
+
+    row = a_dbc_row(dbc_view, counter=DBC_COUNTER)
+    monkeypatch.setattr(tv.TxFieldsDialog, "exec", lambda _s: tv.QDialog.Accepted)
+    monkeypatch.setattr(tv.TxFieldsDialog, "counter", lambda _s: None)
+    monkeypatch.setattr(tv.TxFieldsDialog, "checksum", lambda _s: None)
+    dbc_view.edit_fields(row)
+
+    item = dbc_view.item(row)
+    children = {item.child(i).text(COL_NAME): item.child(i) for i in range(item.childCount())}
+    assert children["PumpEnable"].flags() & Qt.ItemIsEditable
+    assert children["PumpEnable"].text(COL_FIELDS) == ""
+
+
+def test_a_row_whose_fields_overlap_is_not_sent(app, view, listening):
+    """A settings file written before this was checked, or edited by hand."""
+    row = view.add_message(
+        {
+            "kind": "raw",
+            "id": "200",
+            "data": "00 00 00 00 00 00 00 00",
+            "period": 20,
+            "counter": {"at": {"byte": 6, "part": "all", "width": 1}, "start": 0, "step": 1},
+            "checksum": {"at": {"byte": 6, "part": "all", "width": 1}, "algorithm": "xor"},
+        }
+    )
+    view.send_row(row)
+    assert not collect(app, listening, 1, seconds=0.3), "it went out anyway"
+
+    view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
+    app.processEvents()
+    assert view.item(row).checkState(COL_CYCLIC) == Qt.Unchecked, "and it did not start"
+
+    # The same row with the checksum moved off the counter: proof that what
+    # stopped the first one was the overlap and not the rest of the setup.
+    apart = view.add_message(
+        {
+            "kind": "raw",
+            "id": "201",
+            "data": "00 00 00 00 00 00 00 00",
+            "period": 20,
+            "counter": {"at": {"byte": 6, "part": "all", "width": 1}, "start": 0, "step": 1},
+            "checksum": {"at": {"byte": 5, "part": "all", "width": 1}, "algorithm": "xor"},
+        }
+    )
+    view.send_row(apart)
+    assert collect(app, listening, 1), "a sound configuration was refused too"

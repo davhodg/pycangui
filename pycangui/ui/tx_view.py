@@ -23,7 +23,7 @@ worst kind of wrong.
 from __future__ import annotations
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -68,6 +68,11 @@ ROLE_NODE = Qt.UserRole + 2  # CANopen node id
 ROLE_PDO = Qt.UserRole + 3  # CANopen RPDO number
 ROLE_COUNTER = Qt.UserRole + 4  # the counter configuration, as a dict
 ROLE_CHECKSUM = Qt.UserRole + 5  # the checksum configuration, as a dict
+
+COMPUTED_TIP = (
+    "Worked out as each frame is sent, so whatever is here is ignored.\n"
+    "Change it in the Fields dialog, or stop computing it there."
+)
 DEFAULT_RAW = {"kind": "raw", "id": "123", "data": "00 11 22 33", "period": 100, "name": ""}
 
 
@@ -354,6 +359,7 @@ class TxView(QWidget):
             item.setFlags(flags & ~Qt.ItemIsEditable)
         self._loading = False
         if kind in ("dbc", "rpdo"):
+            self._mark_computed(self.tree.indexOfTopLevelItem(item))
             self._encode_row(self.tree.indexOfTopLevelItem(item))
         self._save()
         return self.tree.indexOfTopLevelItem(item)
@@ -583,6 +589,50 @@ class TxView(QWidget):
             self.ctx.warn(f"TX {message.name}: {exc}")
             return None
 
+    def _mark_computed(self, row: int) -> None:
+        """Grey out the signals a counter or checksum is going to overwrite.
+
+        An expanded database row lists every signal as an editable value, and
+        two of them may not be values at all: whatever is typed there is
+        replaced as the frame is sent.  A box that takes an edit and ignores
+        it is a box that has lied, so these stop taking edits and say in the
+        Counter / checksum column what they are instead.
+        """
+        item = self.item(row)
+        counter, checksum = self.fields(row)
+        computed = {}
+        if counter is not None and counter.signal:
+            computed[counter.signal] = "counter"
+        if checksum is not None and checksum.signal:
+            computed[checksum.signal] = checksum.algorithm
+        message = (
+            self.dbc.message_by_name(item.data(0, ROLE_MESSAGE) or "")
+            if item.data(0, ROLE_KIND) == "dbc"
+            else None
+        )
+        grey = self.palette().brush(QPalette.Disabled, QPalette.Text)
+        for i in range(item.childCount()):
+            child = item.child(i)
+            label = computed.get(child.text(COL_NAME))
+            child.setText(COL_FIELDS, label or "")
+            if label:
+                child.setFlags(child.flags() & ~Qt.ItemIsEditable)
+                child.setForeground(COL_DATA, grey)
+                child.setToolTip(COL_DATA, COMPUTED_TIP)
+            else:
+                child.setFlags(child.flags() | Qt.ItemIsEditable)
+                child.setData(COL_DATA, Qt.ForegroundRole, None)
+                child.setToolTip(COL_DATA, _choices_tip(message, child.text(COL_NAME)))
+
+    def _clash(self, row: int) -> str | None:
+        """Whether this row's counter and checksum would overwrite each other.
+
+        Checked before sending as well as in the dialog, because a settings
+        file written before the dialog refused this -- or edited by hand --
+        should not quietly send frames with the counter stamped out of them.
+        """
+        return tx_fields.conflict(*self.fields(row))
+
     def _describe_fields(self, row: int) -> None:
         counter, checksum = self.fields(row)
         self.item(row).setText(COL_FIELDS, tx_fields.describe(counter, checksum))
@@ -623,6 +673,7 @@ class TxView(QWidget):
         item.setData(0, ROLE_COUNTER, tx_fields.counter_to_dict(dialog.counter()))
         item.setData(0, ROLE_CHECKSUM, tx_fields.checksum_to_dict(dialog.checksum()))
         self._describe_fields(row)
+        self._mark_computed(row)
         # Restart it if it was running: which timer it belongs on has just
         # changed, and so has the payload.
         if row in self._tasks or row in self._timers:
@@ -642,6 +693,9 @@ class TxView(QWidget):
     # --- sending -----------------------------------------------------------------------
     def send_row(self, row: int) -> None:
         if not self._may_transmit():
+            return
+        if (clash := self._clash(row)) is not None:
+            self.ctx.warn(f"TX row {row + 1}: {clash} -- not sent.  See Fields.")
             return
         try:
             can_id, data, ext, fd, _ = self._message(row)
@@ -693,6 +747,10 @@ class TxView(QWidget):
 
     def _start_row(self, row: int) -> None:
         if not self._may_transmit():
+            self._set_cyclic(row, False)
+            return
+        if (clash := self._clash(row)) is not None:
+            self.ctx.warn(f"TX row {row + 1}: {clash} -- not started.  See Fields.")
             self._set_cyclic(row, False)
             return
         try:
@@ -860,6 +918,21 @@ def _signal_bits(message, name: str) -> int | None:
         if signal.name == name:
             return signal.length
     return None
+
+
+def _choices_tip(message, name: str) -> str:
+    """The "type a number or a name" tooltip, or nothing.
+
+    Rebuilt rather than remembered, because a signal that stops being a
+    computed field has to get its own tooltip back.
+    """
+    if message is None:
+        return ""
+    for signal in message.signals:
+        if signal.name == name and signal.choices:
+            names = "\n".join(f"  {v} = {n}" for v, n in sorted(signal.choices.items()))
+            return f"Type a number or a name:\n{names}"
+    return ""
 
 
 def _default_value(signal) -> float:
