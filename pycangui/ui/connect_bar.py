@@ -313,7 +313,7 @@ class ConnectBar(QToolBar):
 
         ``select`` is a channel rather than a label, because the caller knows
         what it wants to be on, not how this list happens to describe it --
-        "vcan0" and "vcan0  (CANopen demo device)" are the same channel.
+        "vcan0" and "vcan0  (Demo device: ...)" are the same channel.
         """
         was_loading = self._loading
         self._loading = True

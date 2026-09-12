@@ -10,7 +10,6 @@ from PySide6.QtCore import QCoreApplication
 from pycangui import resources
 from pycangui.canopen.manager import LSS_BIT_TIMINGS, MISSED_HEARTBEATS, CanopenManager
 from pycangui.core.bus import BusManager
-from pycangui.core.demo import DemoDevice
 
 
 def wait_until(pred, timeout=8.0):
@@ -34,14 +33,14 @@ def stack(app, tmp_path, monkeypatch):
 
 
 # --- heartbeat liveness -------------------------------------------------------
-def test_node_is_reported_lost_then_back(stack):
-    _bus, manager = stack
+def test_node_is_reported_lost_then_back(stack, demo_device):
+    bus, manager = stack
     lost: list[int] = []
     back: list[int] = []
     manager.node_lost.connect(lost.append)
     manager.node_back.connect(back.append)
 
-    demo = DemoDevice("vcan_live")  # heartbeat every 500 ms
+    demo = demo_device(bus, kinds=["canopen_device"])  # heartbeat every 500 ms
     try:
         # Four heartbeats, not two: the period is the median of several gaps,
         # so that one burst from a producer catching up cannot be mistaken for
@@ -54,7 +53,7 @@ def test_node_is_reported_lost_then_back(stack):
         assert manager.heartbeat_timeout(5) == pytest.approx(interval * MISSED_HEARTBEATS, abs=0.2)
         assert 5 not in manager.lost_nodes
     finally:
-        demo.stop()  # the node goes quiet
+        demo.stop_all()  # the node goes quiet
 
     wait_until(lambda: lost, timeout=5)
     assert lost == [5] and 5 in manager.lost_nodes

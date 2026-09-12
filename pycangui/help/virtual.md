@@ -9,10 +9,10 @@ all.
 
 ## The virtual buses
 
-Pick interface `virtual`, channel **vcan0 (CANopen demo device)**, and press
-Connect -- the channel is the switch, so there is nothing else to turn on.
-`vcan1` and `vcan2` are empty loopbacks, for [replaying a log](channels.md)
-onto or sending your own frames.
+Pick interface `virtual`, channel **vcan0 (Demo device)**, and press Connect
+-- the channel is the switch, so there is nothing else to turn on.  `vcan1`
+and `vcan2` are empty loopbacks, for [replaying a log](channels.md) onto or
+sending your own frames.
 
 python-can's `virtual` interface connects buses within one process only, so
 these are pycangui's own buses rather than anything another program on the
@@ -20,17 +20,33 @@ machine can join.
 
 ## The demo device
 
-A simulated node 5 appears in the [CANopen](canopen.md) pane: its EDS is
-matched automatically, the object dictionary can be read (double-click) and
-written (edit the value), NMT Start makes it transmit TPDO1, and writing *Speed
-demand* (0x2001) moves the motor speed in the PDO.
+Connecting that channel starts the **demo device**: four virtual nodes, one
+per protocol pycangui speaks, on the one channel.
 
-It is a real `canopen.LocalNode` rather than a recording: it answers SDO reads
-and writes, sends a heartbeat, obeys NMT and transmits TPDO1 every 100 ms with
-a motor speed that follows whatever you write to *Speed demand* -- by SDO, or
-by sending it RPDO1.  It also answers [UDS](uds.md) on 0x7E0/0x7E8 with a
-byte-invert key, [J1939](j1939.md) as an engine at source address 0, and
-[XCP](xcp.md) on 0x7A0/0x7A1 against `resources/demo.a2l`.
+- [CANopen](canopen.md) node 5 -- its EDS is matched automatically, the
+  object dictionary can be read (double-click) and written (edit the value),
+  NMT Start makes it transmit TPDO1, and writing *Speed demand* (0x2001)
+  moves the motor speed in the PDO.  Demand more than it can give and it
+  raises an emergency, which the Emergencies tab decodes.
+- [UDS](uds.md) on 0x7E0/0x7E8 -- sessions, a seed and key, identifiers,
+  stored faults, a routine.  Answers longer than one frame are segmented
+  properly, so the VIN comes back whole.
+- [J1939](j1939.md) -- an engine that claims source address 0 and defends
+  it, broadcasts engine and wheel speed, reports a fault, and answers a
+  request for its ComponentID as a multi-packet transfer.
+- [XCP](xcp.md) on 0x7A0/0x7A1 -- a calibratable memory matching
+  `resources/demo.a2l`, with writing locked until a seed and key.
+
+**The demo device is the examples.**  Those four are exactly the files in
+your workspace's `nodes` folder, described below -- nothing is hidden inside
+pycangui.  Open one and you are reading the thing you have been talking to,
+which is also why they cannot quietly rot: everybody's first run exercises
+them.
+
+They appear in **Tools > Virtual nodes** like anything else, so you can stop
+one -- to see how your own tool behaves when a device goes quiet, say -- and
+they are listed there by name.  Disconnecting and reconnecting the channel
+brings them back.
 
 ## Nodes of your own
 

@@ -57,8 +57,8 @@ SUGGESTIONS = {
     "udp_multicast": ("225.0.0.1",),
 }
 
-#: The channel the demo CANopen device runs on.  Selecting it is what starts
-#: the device: a channel that says what is on it beats a separate switch
+#: The channel the demo device runs on.  Selecting it is what starts the
+#: device: a channel that says what is on it beats a separate switch
 #: somewhere else that you have to know about.
 DEMO_CHANNEL = "vcan0"
 
@@ -67,7 +67,7 @@ DEMO_CHANNEL = "vcan0"
 #: in use plus one random unused name, which is a different name every time,
 #: is never the one the demo runs on, and means nothing to anybody.
 VIRTUAL_CHANNELS = (
-    (DEMO_CHANNEL, "CANopen demo device"),
+    (DEMO_CHANNEL, "Demo device: CANopen, UDS, J1939, XCP"),
     ("vcan1", "empty"),
     ("vcan2", "empty"),
 )

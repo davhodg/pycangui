@@ -107,3 +107,90 @@ def _drain_qt_events():
     gc.collect(1)
     if instance is not None:
         instance.processEvents()
+
+
+# --- the demo device, as the tests want it ---------------------------------------
+class _NodeContext:
+    """Enough Context for the node manager, pointed at a temporary folder.
+
+    Not the real Context: most of these tests never set PYCANGUI_HOME, and
+    one that quietly wrote example files into somebody's own workspace would
+    be a test with a side effect nobody asked for.
+    """
+
+    def __init__(self, folder):
+        self.nodes_dir = folder
+        self.eds_dir = folder
+
+    def log(self, message, level=None):
+        pass
+
+    warn = error = log
+
+
+class _OneChannel:
+    """A Channels stand-in wrapping the single bus a test already has.
+
+    A node stands on a pycangui channel, and these tests have a BusManager
+    rather than a Channels.  This is the adapter between the two, and it
+    refuses to invent a second one: a test asking for a channel it did not
+    set up has a bug in it.
+    """
+
+    def __init__(self, name, bus):
+        self._name = name
+        self._bus = bus
+
+    def get(self, name):
+        return self._bus if name == self._name else None
+
+    def add(self, name):
+        raise AssertionError(f"the test has no channel called {name!r}")
+
+
+class _Demo:
+    """The running demo, reachable by protocol.
+
+    ``demo["canopen_device"].state.device`` is the CANopen server, and the
+    others keep their own state the same way.  A test that wants to reach
+    inside the device -- to check a value landed in the object dictionary,
+    say -- goes through the node that owns it, which is also how a node file
+    would.
+    """
+
+    def __init__(self, manager, nodes):
+        self.manager = manager
+        self.nodes = nodes
+
+    def __getitem__(self, kind):
+        return self.nodes[kind]
+
+    def stop_all(self):
+        self.manager.stop_all()
+
+
+@pytest.fixture
+def demo_device(tmp_path_factory):
+    """Start the demo device on a bus: the shipped example nodes, as the
+    application starts them when the demo channel is connected.
+
+    Returns a function so a test can pick which protocols it needs -- there
+    is no sense standing up a J1939 engine for a test about SDO -- and every
+    node started is stopped afterwards.
+    """
+    from pycangui.core.vnodes import VirtualNodes
+    from pycangui.nodes import DEMO
+
+    started = []
+
+    def start(bus, kinds=DEMO, channel="CAN"):
+        nodes = VirtualNodes(
+            _NodeContext(tmp_path_factory.mktemp("nodes")),
+            channels=_OneChannel(channel, bus),
+        )
+        started.append(nodes)
+        return _Demo(nodes, {kind: nodes.start(kind, channel) for kind in kinds})
+
+    yield start
+    for nodes in started:
+        nodes.stop_all()

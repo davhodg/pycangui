@@ -9,7 +9,6 @@ from pycangui import resources
 from pycangui.canopen import NodeIdentity, find_eds
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
-from pycangui.core.demo import DemoDevice
 
 
 def wait_until(pred, timeout=3.0):
@@ -22,13 +21,12 @@ def wait_until(pred, timeout=3.0):
 
 
 @pytest.fixture
-def stack(app):
+def stack(app, demo_device):
     bus = BusManager()
     manager = CanopenManager(bus)
     bus.connect_bus("virtual", "vcan_test", 500000, False)
-    demo = DemoDevice("vcan_test")
+    demo = demo_device(bus, kinds=["canopen_device"])
     yield bus, manager, demo
-    demo.stop()
     bus.disconnect_bus()
     manager.shutdown()
 

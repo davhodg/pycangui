@@ -11,7 +11,6 @@ from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
-from pycangui.core.demo import DemoDevice
 from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, COL_ID, COL_NAME, TxView
 
 
@@ -25,7 +24,7 @@ def wait_until(app, pred, timeout=5.0):
 
 
 @pytest.fixture
-def stack(app, tmp_path, monkeypatch):
+def stack(app, tmp_path, monkeypatch, demo_device):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     bus = BusManager()
@@ -34,9 +33,8 @@ def stack(app, tmp_path, monkeypatch):
     dbc.load(resources.path("demo.dbc"))
     view = TxView(bus, ctx, dbc, canopen)
     bus.connect_bus("virtual", "vcan_txsrc", 500000, False)
-    demo = DemoDevice("vcan_txsrc")
+    demo = demo_device(bus, kinds=["canopen_device"])
     yield app, bus, view, canopen, demo, ctx
-    demo.stop()
     canopen.shutdown()
     bus.disconnect_bus()
 
@@ -90,10 +88,14 @@ def test_rpdo_row_drives_the_demo_node(stack):
 
     item.child(0).setText(COL_DATA, "-250")
     assert item.text(COL_DATA) == "06 FF"
-    demo.node.nmt.state = "OPERATIONAL"
+    demo["canopen_device"].state.device.nmt.state = "OPERATIONAL"
     view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)  # transmit it cyclically
     wait_until(
-        app, lambda: struct.unpack("<h", demo.node.get_data(0x2001, 0))[0] == -250, timeout=3
+        app,
+        lambda: (
+            struct.unpack("<h", demo["canopen_device"].state.device.get_data(0x2001, 0))[0] == -250
+        ),
+        timeout=3,
     )
     view.stop_all()
     assert view._tasks == {}

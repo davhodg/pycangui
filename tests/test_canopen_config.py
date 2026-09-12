@@ -9,7 +9,6 @@ from pycangui import resources
 from pycangui.canopen import PdoEntry
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
-from pycangui.core.demo import DemoDevice
 
 
 class _Empty:
@@ -29,16 +28,15 @@ def wait_until(pred, timeout=8.0):
 
 
 @pytest.fixture
-def stack(app, tmp_path, monkeypatch):
+def stack(app, tmp_path, monkeypatch, demo_device):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     bus = BusManager()
     manager = CanopenManager(bus)
     bus.connect_bus("virtual", "vcan_cfg", 500000, False)
-    demo = DemoDevice("vcan_cfg")
+    demo = demo_device(bus, kinds=["canopen_device"])
     manager.load_eds(5, str(resources.path("demo.eds")))
     wait_until(lambda: manager.node(5) is not None and len(manager.node(5).object_dictionary))
     yield manager, demo, tmp_path
-    demo.stop()
     manager.shutdown()
     bus.disconnect_bus()
 
@@ -89,7 +87,7 @@ def test_read_and_write_pdo_config(stack):
     wait_until(lambda: len(messages) > n)
     assert "RPDO1 written to node 5" in messages[-1]
     # the node really has the new transmission type
-    assert demo.node.get_data(0x1400, 2)[0] == 254
+    assert demo["canopen_device"].state.device.get_data(0x1400, 2)[0] == 254
 
 
 def test_dcf_save_and_apply(stack):
@@ -99,7 +97,12 @@ def test_dcf_save_and_apply(stack):
 
     # change something on the node, capture it, change it back, then restore it
     manager.sdo_write(5, 0x2001, 0, "-1234")
-    wait_until(lambda: demo.node.get_data(0x2001, 0) == (-1234).to_bytes(2, "little", signed=True))
+    wait_until(
+        lambda: (
+            demo["canopen_device"].state.device.get_data(0x2001, 0)
+            == (-1234).to_bytes(2, "little", signed=True)
+        )
+    )
 
     dcf = tmp_path / "node5.dcf"
     manager.save_dcf(5, str(dcf))
@@ -109,14 +112,16 @@ def test_dcf_save_and_apply(stack):
     assert "[DeviceComissioning]" in text and "ParameterValue" in text
 
     manager.sdo_write(5, 0x2001, 0, "0")
-    wait_until(lambda: demo.node.get_data(0x2001, 0) == b"\x00\x00")
+    wait_until(lambda: demo["canopen_device"].state.device.get_data(0x2001, 0) == b"\x00\x00")
 
     n = len(messages)
     manager.apply_dcf(5, str(dcf))
     wait_until(
         lambda: any("parameters written from the DCF" in m for m in messages[n:]), timeout=20
     )
-    assert demo.node.get_data(0x2001, 0) == (-1234).to_bytes(2, "little", signed=True)
+    assert demo["canopen_device"].state.device.get_data(0x2001, 0) == (-1234).to_bytes(
+        2, "little", signed=True
+    )
 
 
 def test_store_restore_and_sync(stack):

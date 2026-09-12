@@ -52,12 +52,17 @@ EVERY_DM1 = 10
 WHAT_IT_IS = b"PYCANGUI*DEMO ENGINE*SN0001*UNIT1*"
 
 
-def start(node, *, ctx):
+def ecu_name():
+    """Who this ECU says it is.
+
+    A J1939 NAME is sixty-four bits saying what a device is and who made
+    it, and it is what decides who wins when two claim one address.  Its
+    own function so that the number can be checked against a decoder
+    without standing the whole engine up.
+    """
     import j1939 as library
 
-    from pycangui.j1939 import _compat  # noqa: F401 - patches a typo in can-j1939
-
-    name = library.Name(
+    return library.Name(
         arbitrary_address_capable=False,
         industry_group=library.Name.IndustryGroup.OnHighway,
         vehicle_system_instance=0,
@@ -68,6 +73,14 @@ def start(node, *, ctx):
         manufacturer_code=MANUFACTURER,
         identity_number=IDENTITY,
     )
+
+
+def start(node, *, ctx):
+    import j1939 as library
+
+    from pycangui.j1939 import _compat  # noqa: F401 - patches a typo in can-j1939
+
+    name = ecu_name()
     # The library wants somewhere to put frames; the channel is that.
     ecu = library.ElectronicControlUnit(
         send_message=lambda can_id, ext, data, fd=False: _send(node, can_id, ext, data)
