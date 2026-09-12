@@ -175,7 +175,9 @@ exe = EXE(
     strip=False,
     upx=False,  # UPX compression is a reliable way to be flagged by antivirus
     console=False,  # a GUI application: no console window
-    icon=None,
+    # Explorer, the Start menu and the desktop shortcut read the icon out of
+    # the exe, not from the running window.  Regenerate with build/icon.py.
+    icon=str(PROJECT / "pycangui" / "resources" / "pycangui.ico"),
 )
 
 COLLECT(

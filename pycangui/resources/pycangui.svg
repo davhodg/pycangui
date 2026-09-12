@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- SPDX-FileCopyrightText: 2026 davhodg -->
+<!-- pycangui icon, 32 px and up: a CAN bus with four node taps and a zigzag
+     terminating resistor at each end.  Below 32 px the zigzag blurs into a
+     bar, so pycangui_small.svg draws the bar on purpose.  build/icon.py
+     renders both into pycangui.ico and pycangui.png. -->
+<rect x="0" y="0" width="256" height="256" rx="40" fill="#151b1d"/>
+<!-- CAN_H and CAN_L; each end meets the middle inner peak of a resistor -->
+<line x1="56" y1="119" x2="200" y2="119" stroke="#2FD9C4" stroke-width="10" stroke-linecap="round"/>
+<line x1="56" y1="129" x2="200" y2="129" stroke="#F2924B" stroke-width="10" stroke-linecap="round"/>
+<!-- node taps -->
+<line x1="78" y1="119" x2="78" y2="94" stroke="#EDEAE2" stroke-width="8" stroke-linecap="round"/>
+<line x1="112" y1="129" x2="112" y2="184" stroke="#EDEAE2" stroke-width="8" stroke-linecap="round"/>
+<line x1="148" y1="119" x2="148" y2="72" stroke="#EDEAE2" stroke-width="8" stroke-linecap="round"/>
+<line x1="180" y1="129" x2="180" y2="158" stroke="#EDEAE2" stroke-width="8" stroke-linecap="round"/>
+<rect x="66" y="76" width="24" height="18" rx="4" fill="#F2924B"/>
+<rect x="100" y="184" width="24" height="18" rx="4" fill="#F2924B"/>
+<rect x="136" y="54" width="24" height="18" rx="4" fill="#F2924B"/>
+<rect x="168" y="158" width="24" height="18" rx="4" fill="#F2924B"/>
+<!-- terminating resistors: leads, then the zigzag drawn over the rail ends -->
+<line x1="44" y1="78" x2="44" y2="93" stroke="#EDEAE2" stroke-width="6" stroke-linecap="round"/>
+<line x1="44" y1="155" x2="44" y2="170" stroke="#EDEAE2" stroke-width="6" stroke-linecap="round"/>
+<line x1="212" y1="78" x2="212" y2="93" stroke="#EDEAE2" stroke-width="6" stroke-linecap="round"/>
+<line x1="212" y1="155" x2="212" y2="170" stroke="#EDEAE2" stroke-width="6" stroke-linecap="round"/>
+<path d="M44,91 L53,102 L35,113 L53,124 L35,135 L53,146 L44,157" fill="none" stroke="#EDEAE2" stroke-width="6" stroke-linecap="round" stroke-linejoin="miter"/>
+<path d="M212,91 L203,102 L221,113 L203,124 L221,135 L203,146 L212,157" fill="none" stroke="#EDEAE2" stroke-width="6" stroke-linecap="round" stroke-linejoin="miter"/>
+</svg>

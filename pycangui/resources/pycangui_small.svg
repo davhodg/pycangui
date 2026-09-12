@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- SPDX-FileCopyrightText: 2026 davhodg -->
+<!-- pycangui icon, 24 px and below: pycangui.svg with each zigzag resistor
+     drawn as a plain bar, which is what the zigzag becomes at this size
+     anyway, and without the leads, which would be under a pixel. -->
+<rect x="0" y="0" width="256" height="256" rx="40" fill="#151b1d"/>
+<!-- CAN_H and CAN_L, long enough to meet the bars -->
+<line x1="52" y1="119" x2="204" y2="119" stroke="#2FD9C4" stroke-width="10" stroke-linecap="round"/>
+<line x1="52" y1="129" x2="204" y2="129" stroke="#F2924B" stroke-width="10" stroke-linecap="round"/>
+<!-- node taps -->
+<line x1="78" y1="119" x2="78" y2="94" stroke="#EDEAE2" stroke-width="8" stroke-linecap="round"/>
+<line x1="112" y1="129" x2="112" y2="184" stroke="#EDEAE2" stroke-width="8" stroke-linecap="round"/>
+<line x1="148" y1="119" x2="148" y2="72" stroke="#EDEAE2" stroke-width="8" stroke-linecap="round"/>
+<line x1="180" y1="129" x2="180" y2="158" stroke="#EDEAE2" stroke-width="8" stroke-linecap="round"/>
+<rect x="66" y="76" width="24" height="18" rx="4" fill="#F2924B"/>
+<rect x="100" y="184" width="24" height="18" rx="4" fill="#F2924B"/>
+<rect x="136" y="54" width="24" height="18" rx="4" fill="#F2924B"/>
+<rect x="168" y="158" width="24" height="18" rx="4" fill="#F2924B"/>
+<!-- terminating resistors -->
+<rect x="38" y="75" width="12" height="98" rx="3" fill="#EDEAE2"/>
+<rect x="206" y="75" width="12" height="98" rx="3" fill="#EDEAE2"/>
+</svg>
