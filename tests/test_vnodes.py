@@ -11,6 +11,7 @@ import can
 import pytest
 
 from pycangui.core import vnodes
+from pycangui.core.channels import Channels
 from pycangui.core.vnodes import NodeError, VirtualNodes
 
 
@@ -243,7 +244,7 @@ def test_a_node_is_not_started_if_the_question_is_declined(app, folder, ctx):
     write(folder, "quiet", "def poll(node, *, ctx): pass\n")
     manager = VirtualNodes(ctx, may_transmit=lambda _channels: False)
     with pytest.raises(NodeError, match="not agreed"):
-        manager.start("quiet", "CAN 1")
+        manager.start("quiet", "Sim")
     assert manager.running() == []
 
 
@@ -432,43 +433,52 @@ def test_an_sdo_write_reaches_the_device_and_is_answered(app, canopen_bus):
 
 
 # --- joining a bus the application already has open ------------------------------
-def test_a_node_joins_an_open_channel_rather_than_opening_a_second(app, folder, ctx):
+def test_a_node_joins_the_channel_the_application_already_has(app, folder, ctx):
     """What makes a node on real hardware possible at all.  A second handle
     on one physical channel is backend dependent and refused outright by
     several drivers -- and unnecessary, because a perfectly good handle is
     already there."""
-    from pycangui.core.bus import BusManager
-
     write(folder, "shouter", "def poll(node, *, ctx): node.send(0x321, b'\x01')\n")
-    manager_bus = BusManager()
-    manager_bus.connect_bus("virtual", "vjoin", 500000, False)
-    watching = can.Bus(interface="virtual", channel="vjoin")
-    nodes = VirtualNodes(ctx, bus_for=lambda name: manager_bus if name == "vjoin" else None)
+    channels = Channels()
+    existing = channels.add("Rig")
+    existing.connect_bus("virtual", "vrig", 500000, False)
+    watching = can.Bus(interface="virtual", channel="vrig")
+    nodes = VirtualNodes(ctx, channels=channels)
     try:
-        node = nodes.start("shouter", "vjoin", rate_hz=50)
-        assert node.bus() is manager_bus.bus, "it opened one of its own"
+        node = nodes.start("shouter", "Rig", rate_hz=50)
+        assert node.bus() is existing.bus, "it opened one of its own"
         assert pump(app, watching) is not None, "nothing reached the bus"
     finally:
         nodes.stop_all()
         watching.shutdown()
-        manager_bus.disconnect_bus()
+        existing.disconnect_bus()
 
 
-def test_stopping_leaves_a_borrowed_bus_open(app, folder, ctx):
+def test_stopping_leaves_the_channel_open(app, folder, ctx):
     """It is the application's channel.  A node that closed it on the way
     out would disconnect the window."""
-    from pycangui.core.bus import BusManager
-
     write(folder, "quiet", "def on_frame(node, frame, *, ctx): pass\n")
-    manager_bus = BusManager()
-    manager_bus.connect_bus("virtual", "vjoin2", 500000, False)
-    nodes = VirtualNodes(ctx, bus_for=lambda _name: manager_bus)
+    channels = Channels()
+    existing = channels.add("Rig")
+    existing.connect_bus("virtual", "vrig2", 500000, False)
+    nodes = VirtualNodes(ctx, channels=channels)
     try:
-        node = nodes.start("quiet", "vjoin2")
-        nodes.stop(node)
-        assert manager_bus.is_connected, "the node closed the application's bus"
+        nodes.stop(nodes.start("quiet", "Rig"))
+        assert existing.is_connected, "the node closed the application's channel"
     finally:
-        manager_bus.disconnect_bus()
+        existing.disconnect_bus()
+
+
+def test_a_channel_that_is_not_connected_is_refused(app, folder, ctx):
+    """It was configured for something, quite possibly a real adapter, and
+    quietly connecting it as virtual would be pycangui deciding what a named
+    channel is for."""
+    write(folder, "quiet", "def poll(node, *, ctx): pass\n")
+    channels = Channels()
+    channels.add("Rig")  # added, never connected
+    nodes = VirtualNodes(ctx, channels=channels)
+    with pytest.raises(NodeError, match="not connected"):
+        nodes.start("quiet", "Rig")
 
 
 def test_a_node_still_invents_a_channel_nobody_has_open(app, folder, manager):

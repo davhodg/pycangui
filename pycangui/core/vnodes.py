@@ -70,6 +70,10 @@ MAX_RATE_HZ = 1000.0
 #: see Node._open.
 INTERFACE = "virtual"
 
+#: Given to a virtual bus, which ignores it.  Named rather than repeated so
+#: that nobody reads 500000 here and thinks it means anything.
+VIRTUAL_BITRATE = 500000
+
 
 class NodeError(RuntimeError):
     """A node could not be started.  The message says why, for a user."""
@@ -161,7 +165,7 @@ class Node(QObject):
         rate_hz: float,
         ctx,
         functions: dict[str, Any],
-        bus_for=None,
+        buses: dict,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -173,20 +177,18 @@ class Node(QObject):
         self.channels: list[str] = [channel]
         self.rate_hz = max(MIN_RATE_HZ, min(MAX_RATE_HZ, float(rate_hz)))
         self.ctx = ctx
-        #: Asked for the application's bus on a channel, so a node can join
-        #: one that is already open rather than opening a second.
-        self._bus_for = bus_for
         #: Yours.  pycangui never reads it.
         self.state = SimpleNamespace()
 
         self._functions = functions
-        #: Buses this node opened and must therefore close.
-        self._buses: dict[str, can.BusABC] = {}
-        #: Channels the application already had open, which this node is
-        #: borrowing.  Detached on stop, never closed: they are not ours.
-        self._attached: dict[str, Any] = {}
-        self._listeners: dict[str, can.Listener] = {}
-        self._notifiers: dict[str, can.Notifier] = {}
+        #: The channels this node stands on, by name.  Never opened here and
+        #: never closed here: a node joins a channel the application has, and
+        #: one that closed it on the way out would disconnect the window.
+        self._buses: dict[str, Any] = dict(buses)
+        #: (channel, listener) for everything this node put on a channel's
+        #: notifier -- its own frame forwarder, and any CANopen server it
+        #: built.  A list of pairs because one channel can carry several.
+        self._listeners: list[tuple[str, can.Listener]] = []
         self._networks: list[Any] = []
         self._timer: QTimer | None = None
         self._running = False
@@ -196,18 +198,19 @@ class Node(QObject):
     def name(self) -> str:
         return self.kind.label
 
-    def bus(self, channel: str | None = None) -> can.BusABC:
-        """The python-can bus this node is using on a channel.
-
-        Whichever route got it there: a bus this node opened, or the one the
-        application already had open and this node joined.
-        """
+    def channel_bus(self, channel: str | None = None):
+        """The application's channel this node is standing on."""
         wanted = channel or self.channel
-        if (bus := self._buses.get(wanted)) is not None:
-            return bus
-        if (manager := self._attached.get(wanted)) is not None and manager.bus is not None:
-            return manager.bus
-        raise NodeError(f"{self.name} is not on channel {wanted!r}")
+        if (manager := self._buses.get(wanted)) is None:
+            raise NodeError(f"{self.name} is not on channel {wanted!r}")
+        return manager
+
+    def bus(self, channel: str | None = None) -> can.BusABC:
+        """The python-can bus behind that channel."""
+        manager = self.channel_bus(channel)
+        if manager.bus is None:
+            raise NodeError(f"{self.name}: channel {channel or self.channel!r} is not connected")
+        return manager.bus
 
     def send(
         self,
@@ -244,16 +247,17 @@ class Node(QObject):
         import canopen
 
         wanted = channel or self.channel
+        manager = self.channel_bus(wanted)
         network = canopen.Network(bus=self.bus(wanted))
         local = network.create_node(node_id, str(eds))
         self._networks.append(network)
-        # One notifier per bus, shared.  Two of them reading the same bus race
-        # for every frame and each gets about half, which looks like a device
-        # that answers every other request.
-        notifier = self._notifier_for(wanted)
+        # Onto the channel's own notifier.  A second notifier reading the
+        # same bus races the first for every frame and each gets about half,
+        # which looks like a device that answers every other request.
         for listener in network.listeners:
-            notifier.add_listener(listener)
-        network.notifier = notifier
+            self._listeners.append((wanted, listener))
+            manager.add_listener(listener)
+        network.notifier = manager.notifier
         return local
 
     def log(self, message: str) -> None:
@@ -289,26 +293,17 @@ class Node(QObject):
             self._timer.stop()
             self._timer = None
         self._call("stop")
-        for notifier in self._notifiers.values():
-            try:
-                notifier.stop()
-            except Exception:  # a bus already gone is not worth a traceback
-                pass
-        self._notifiers.clear()
+        # No notifiers to stop: a node never owns one.  It puts listeners on
+        # the channel's notifier and takes them off again below.
         self._networks.clear()
-        for channel, manager in self._attached.items():
-            if (listener := self._listeners.get(channel)) is not None:
-                try:
-                    manager.remove_listener(listener)
-                except Exception:
-                    pass
-        self._attached.clear()
-        self._listeners.clear()
-        for bus in self._buses.values():  # only the ones this node opened
+        for channel, listener in self._listeners:
             try:
-                bus.shutdown()
-            except Exception:
+                self._buses[channel].remove_listener(listener)
+            except Exception:  # the channel may have gone already
                 pass
+        self._listeners.clear()
+        # The buses stay open.  They are the application's channels, and a
+        # node that closed one on the way out would disconnect the window.
         self._buses.clear()
 
     @property
@@ -317,39 +312,19 @@ class Node(QObject):
 
     # --- the plumbing underneath --------------------------------------------
     def _open(self, channel: str) -> None:
-        """Get onto a channel, by whichever of the two routes applies.
+        """Listen on a channel the application already has open.
 
-        If the application already has this channel open -- any adapter, real
-        or virtual -- the node joins that one bus rather than opening a
-        second.  That is what makes a node on real hardware possible at all:
-        a second handle on one physical channel is backend dependent and
-        refused outright by several drivers, and there is no need for one
-        when a perfectly good handle is already there.
-
-        Otherwise it opens a virtual bus of its own.  python-can's virtual
-        buses rendezvous by name inside one process, so a node can invent a
-        channel and talk to itself on it with nothing configured and nothing
-        plugged in.
+        A node never opens a bus of its own.  It stands on a pycangui
+        channel like everything else does, which is what makes its traffic
+        appear in the trace, its channel appear in the connect bar, and a
+        second handle on real hardware unnecessary -- several drivers refuse
+        one outright, and there is no need when a good handle is there.
         """
-        manager = self._bus_for(channel) if self._bus_for else None
-        if manager is not None and manager.is_connected:
-            self._attached[channel] = manager
-            if "on_frame" in self._functions:
-                listener = _Forwarder(self, channel)
-                self._listeners[channel] = listener
-                manager.add_listener(listener)
+        if "on_frame" not in self._functions:
             return
-        bus = can.Bus(interface=INTERFACE, channel=channel)
-        self._buses[channel] = bus
-        if "on_frame" in self._functions:
-            self._notifier_for(channel).add_listener(_Forwarder(self, channel))
-
-    def _notifier_for(self, channel: str) -> can.Notifier:
-        """The one notifier on a bus this node opened for itself."""
-        if (notifier := self._notifiers.get(channel)) is None:
-            notifier = can.Notifier(self._buses[channel], [], timeout=0.02)
-            self._notifiers[channel] = notifier
-        return notifier
+        listener = _Forwarder(self, channel)
+        self._listeners.append((channel, listener))
+        self._buses[channel].add_listener(listener)
 
     def _deliver(self, frame: can.Message) -> None:
         """A frame, on the GUI thread, on its way to the node file."""
@@ -408,13 +383,20 @@ class VirtualNodes(QObject):
 
     changed = Signal()  # something started or stopped
 
-    def __init__(self, ctx, bus_for=None, may_transmit=None, parent: QObject | None = None) -> None:
+    def __init__(
+        self, ctx, channels=None, may_transmit=None, parent: QObject | None = None
+    ) -> None:
         super().__init__(parent)
         self.ctx = ctx
-        #: Asked for the application's bus on a channel, so a node can join
-        #: one that is already open.  Injected rather than imported: this
-        #: does not need to know what Channels is, and a test can answer.
-        self._bus_for = bus_for
+        #: The application's channels.  A node stands on one of these like
+        #: everything else does -- there is one notion of a bus in pycangui
+        #: and this is it.  A manager given none makes its own, which is what
+        #: a test wants and what nothing else should.
+        if channels is None:
+            from pycangui.core.channels import Channels
+
+            channels = Channels()
+        self.channels = channels
         #: Asked before a node goes onto real equipment.  A node transmits,
         #: and transmitting onto a real bus is the thing pycangui asks about
         #: everywhere else; a node quietly joining one would be the hole in
@@ -477,6 +459,7 @@ class VirtualNodes(QObject):
         if kind.error:
             raise NodeError(f"{kind.label}: {kind.error}")
         wanted = list(dict.fromkeys([channel, *extra]))
+        buses = {name: self._channel(name) for name in wanted}
         if not self._may_transmit(wanted):
             raise NodeError("Not started: putting a node onto that bus was not agreed.")
         functions = self._import(kind)
@@ -486,7 +469,7 @@ class VirtualNodes(QObject):
             rate_hz or kind.rate_hz,
             self.ctx,
             functions,
-            bus_for=self._bus_for,
+            buses,
             parent=self,
         )
         node.channels = wanted
@@ -518,6 +501,39 @@ class VirtualNodes(QObject):
             node.stop()
         self._running.clear()
         self.changed.emit()
+
+    def _channel(self, name: str):
+        """The channel a node is to stand on, made if it is a new name.
+
+        Three cases, and the rule is the least surprising one for each:
+
+        * a name pycangui does not know is **created and connected as a
+          virtual channel**.  Asking for a node on a channel that does not
+          exist is asking for that channel, and the alternative -- a node
+          transmitting into a bus nothing else can see -- is a node that
+          appears to do nothing for reasons nothing on screen explains.
+        * a channel that is **connected** is joined, whatever it is on.
+        * a channel that exists and is **not connected** is refused.  It was
+          configured for something, quite possibly a real adapter, and
+          quietly connecting it as virtual would be pycangui deciding what a
+          named channel is for.
+        """
+        if not name:
+            raise NodeError("A node needs a channel to stand on.")
+        bus = self.channels.get(name)
+        if bus is None:
+            bus = self.channels.add(name)
+            bus.connect_bus(INTERFACE, name, VIRTUAL_BITRATE, False)
+            if not bus.is_connected:
+                raise NodeError(f"Could not open a virtual channel called {name!r}.")
+            self.ctx.log(f"Channel {name} added as a virtual bus for a node to stand on")
+            return bus
+        if not bus.is_connected:
+            raise NodeError(
+                f"Channel {name} is not connected.  Connect it first -- a node stands "
+                "on a channel rather than opening one of its own."
+            )
+        return bus
 
     def _import(self, kind: Kind) -> dict[str, Any]:
         """Load a node file and take the four functions out of it."""

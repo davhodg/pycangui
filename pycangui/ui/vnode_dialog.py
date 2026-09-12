@@ -40,10 +40,10 @@ WHAT_THEY_ARE = (
     "<b>nodes</b> folder -- edit one, or copy it, and it is yours."
 )
 
-#: Offered when the workspace has no channel of its own.  python-can's
-#: virtual buses rendezvous by name inside one process, so a node can invent
-#: a channel and anything else on that name will hear it.
-FALLBACK_CHANNEL = "vcan0"
+#: Offered when a node wants a bus of its own.  Typing a name pycangui does
+#: not know adds it as a virtual channel and connects it, so this is a
+#: suggestion rather than anything special.
+SUGGESTED_CHANNEL = "Simulation"
 
 NONE_YET = "No node files in this workspace.  Open the folder to write one."
 
@@ -72,12 +72,13 @@ class VirtualNodeDialog(QDialog):
         self.channel = QComboBox()
         self.channel.setEditable(True)
         self.channel.setToolTip(
-            "Which channel to stand this node on.\n\n"
-            "A channel this window already has open is joined rather than\n"
-            "opened again, so the node shows up in the trace -- and a real\n"
-            "adapter asks first, because a node transmits.\n\n"
-            "A name nothing else uses works too: virtual buses find each\n"
-            "other by name, so a node can talk to itself on one."
+            "Which channel to stand this node on.  A node uses pycangui's\n"
+            "channels like everything else, so its traffic is in the trace\n"
+            "and its channel is in the connect bar.\n\n"
+            "An open channel is joined -- a real adapter asks first, because\n"
+            "a node transmits.  A name pycangui does not know is added as a\n"
+            "virtual channel and connected, which is how to give the nodes a\n"
+            "bus of their own."
         )
         self.second = QComboBox()
         self.second.setEditable(True)
@@ -181,7 +182,9 @@ class VirtualNodeDialog(QDialog):
         for box in (self.channel, self.second):
             current = box.currentText()
             box.clear()
-            box.addItems(names or [FALLBACK_CHANNEL])
+            box.addItems(names)
+            if SUGGESTED_CHANNEL not in names:
+                box.addItem(SUGGESTED_CHANNEL)
             if box is self.second:
                 box.insertItem(0, "")
             if current:

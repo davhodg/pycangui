@@ -120,19 +120,35 @@ block list, which is a starting point rather than a policy: what should cross
 between two segments is a question about your system, so pycangui does not
 answer it.
 
-## Which bus a node stands on
+## Which channel a node stands on
 
-Two routes, chosen for you:
+**A node uses pycangui's channels, like everything else does.** There is one
+notion of a bus in the tool and this is it, so a node's traffic appears in the
+[trace](trace.md), its channel appears in the connect bar, and it can be
+recorded and replayed like anything else.
 
-- **A channel this window already has open** is *joined*, not opened again.
-  The node shares the one bus the application has, so its frames appear in
-  the trace beside everything else, and no second handle on the hardware is
-  needed -- which is what makes a node on a real adapter work at all. Several
-  drivers refuse a second handle on one physical channel outright.
-- **Any other name** gets a virtual bus of the node's own. python-can's
-  virtual buses find each other by name inside one process, so a node can
-  invent a channel and talk to itself on it with nothing configured and
-  nothing plugged in.
+Three cases, and you only have to think about the third:
+
+- **A channel that is open** is joined. The node shares the one bus the
+  window already has, which is what makes a node on a real adapter work at
+  all -- several drivers refuse a second handle on one physical channel.
+- **A name pycangui does not know** is added as a virtual channel and
+  connected. Asking for a node on a channel that does not exist is asking for
+  that channel.
+- **A channel that exists but is not connected** is refused, and says so. It
+  was configured for something -- quite possibly a real adapter -- and
+  connecting it as virtual would be pycangui deciding what your channel is
+  for.
+
+### Giving the nodes a bus of their own
+
+Name a channel nothing else uses -- `Simulation`, say -- and start every node
+on it. pycangui makes it, and nothing but your nodes is on it. That is the
+whole of "a private network for the simulated devices": a channel like any
+other, with nothing else connected to it.
+
+Putting a node on the *same* channel as a real device is the other half, and
+the more common one: that is how the real device hears it.
 
 **A real adapter asks first.** A node transmits, and transmitting onto a real
 bus is what pycangui asks about everywhere else; one that joined quietly
@@ -140,6 +156,5 @@ would be the hole in that. The question is asked once for the whole node --
 a gateway standing on two channels is one action, not two -- and *Ask about
 everything again* in the Tools menu brings it back if you tick it away.
 
-Stopping a node closes only the buses it opened. A borrowed channel is the
-application's, and a node that closed it on the way out would disconnect the
-window.
+Stopping a node leaves its channels alone. They are the application's, and
+one that closed a channel on the way out would disconnect the window.
