@@ -4,8 +4,8 @@ Each function below is called by pycangui at a decision point.  Return a value
 to take over, or return None to let pycangui do the normal thing.  A function
 that raises is reported in the Event Log pane and ignored, so mistakes here never
 break the application.  Tools > Reload hooks picks up changes without a
-restart; Tools > Update hook stubs appends any new hooks added by a newer
-pycangui version.
+restart.  Hooks that a newer pycangui adds are appended to the end of this
+file when that version first runs; what you have written is left alone.
 
 ``ctx`` is the pycangui context:
     ctx.log("text")          write a line to the Event Log pane

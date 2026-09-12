@@ -307,11 +307,11 @@ class MainWindow(QMainWindow):
             "Read the hook files again, so that an edit takes effect without\n"
             "restarting.  Nothing on disk is changed."
         )
-        stubs = tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
+        stubs = tools_menu.addAction("Add missing hooks", self._update_hook_stubs)
         stubs.setToolTip(
-            "Add any hooks this version has gained to the end of your hook\n"
-            "files, ready to edit, and reload.  Hooks you have already\n"
-            "written are left exactly as they are."
+            "Hooks a new version adds arrive by themselves, so this is only\n"
+            "for getting back one you deleted: it appends every hook your\n"
+            "files do not have, leaving what you have written alone."
         )
         # Backends are the other workspace folder, and nothing to do with
         # hooks: a separate section so the two are not read as one list.
@@ -1405,6 +1405,7 @@ class MainWindow(QMainWindow):
 
     def _reload_hooks(self) -> None:
         self.hooks.reload()
+        self.hooks.report()
         bad = self.hooks.errors()
         say = self.events.warning if bad else self.events.information
         say("Hooks reloaded" + (f" ({len(bad)} file(s) failed, see above)" if bad else ""))
@@ -1415,6 +1416,7 @@ class MainWindow(QMainWindow):
             for module, names in added.items():
                 self.events.information(f"hooks/{module}.py: added {', '.join(names)}")
             self.hooks.reload()
+            self.hooks.report()
         else:
             self.events.information("Hook files already up to date")
 
