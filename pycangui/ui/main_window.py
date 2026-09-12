@@ -33,7 +33,7 @@ from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.plugins import Plugins
 from pycangui.core.signals import SignalHub
-from pycangui.core.vnodes import VirtualNodes
+from pycangui.core.simnodes import SimulatedNodes
 from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.nodes import DEMO, DEMO_NAME
@@ -53,10 +53,10 @@ from pycangui.ui.plugin_manager import INACTIVE_TIP, ManagePlugins, PluginAction
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.restore_hooks import RestoreHooks
 from pycangui.ui.scope_view import ScopeView
+from pycangui.ui.simnode_dialog import SimulatedNodeDialog
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
 from pycangui.ui.uds_view import UdsView
-from pycangui.ui.vnode_dialog import VirtualNodeDialog
 from pycangui.ui.workspace_menu import SWITCH_WHILE_CONNECTED, WorkspaceMenu
 from pycangui.ui.xcp_view import XcpView
 from pycangui.xcp.manager import XcpManager
@@ -104,7 +104,7 @@ DEFAULT_HEIGHT = 900
 
 RESET_EVERYTHING = (
     "There is no reset that undoes everything in place, and that is on "
-    "purpose: it would mean deleting hook files, virtual nodes and plugins -- "
+    "purpose: it would mean deleting hook files, simulated nodes and plugins -- "
     "code you wrote -- as a side effect of putting window sizes back.\n\n"
     "A new workspace is the clean slate. It starts with pycangui's own "
     "settings, layout and hook files, and the workspace you are in now is "
@@ -169,12 +169,16 @@ class MainWindow(QMainWindow):
         #: The rest of the bus, written in Python.  Reachable from the console
         #: and from a startup hook, because standing up the devices a test
         #: needs is setup, and setup belongs in a file.
-        self.vnodes = VirtualNodes(
+        self.nodes = SimulatedNodes(
             self.ctx,
             channels=self.channels,
             may_transmit=self._nodes_may_transmit,
             parent=self,
         )
+        #: What it was called until the rename, and what a hook file or a
+        #: console habit written before it still says.  An alias costs a
+        #: line; breaking somebody's startup hook costs them an evening.
+        self.vnodes = self.nodes
         BACKENDS.load_user_backends(
             self.ctx.backends_dir, self.events.information, self.events.warning
         )
@@ -254,7 +258,7 @@ class MainWindow(QMainWindow):
         # Queued: disconnected is emitted *before* the bus is torn down, so
         # asking straight away would still see it connected.
         self.channels.state_changed.connect(lambda *_a: self._sync_demo(), Qt.QueuedConnection)
-        self.vnodes.changed.connect(self._demo_nodes_changed)
+        self.nodes.changed.connect(self._demo_nodes_changed)
         self.channels.error.connect(self._on_error)
         self.channels.note.connect(self.events.information)
         self.channels.warning.connect(self.events.warning)
@@ -316,7 +320,7 @@ class MainWindow(QMainWindow):
         #: The demo device: the shipped example nodes, running while a
         #: channel is connected to the bus the demo is advertised on.
         self._demo: list = []
-        #: Set when somebody stops one from the Virtual nodes dialog, so
+        #: Set when somebody stops one from the Simulated nodes dialog, so
         #: that the next channel event does not helpfully start it again.
         #: Cleared when the channel goes, because reconnecting is asking.
         self._demo_stopped_by_hand = False
@@ -343,8 +347,8 @@ class MainWindow(QMainWindow):
             "about.  They are loaded at startup."
         )
         tools_menu.addSeparator()
-        virtual = tools_menu.addAction("Virtual nodes...", self._virtual_nodes)
-        virtual.setToolTip(
+        simulated = tools_menu.addAction("Simulated nodes...", self._simulated_nodes)
+        simulated.setToolTip(
             "Devices pycangui pretends to be, so a real one has something\n"
             "to talk to.  Each is a Python file in the workspace you can edit."
         )
@@ -470,18 +474,18 @@ class MainWindow(QMainWindow):
             self.connect_bar.set_connected(True)
         return bus.is_connected
 
-    def _virtual_nodes(self) -> None:
-        """Tools > Virtual nodes.  Not modal: a node started here is meant to
+    def _simulated_nodes(self) -> None:
+        """Tools > Simulated nodes.  Not modal: a node started here is meant to
         be watched in the trace, and a dialog held over the top of it would be
         an odd way to arrange that."""
-        if getattr(self, "_vnode_dialog", None) is None:
-            self._vnode_dialog = VirtualNodeDialog(self, self.vnodes, self.channels)
-        self._vnode_dialog.refresh()
-        self._vnode_dialog.show()
-        self._vnode_dialog.raise_()
+        if getattr(self, "_simnode_dialog", None) is None:
+            self._simnode_dialog = SimulatedNodeDialog(self, self.nodes, self.channels)
+        self._simnode_dialog.refresh()
+        self._simnode_dialog.show()
+        self._simnode_dialog.raise_()
 
     def _nodes_may_transmit(self, channels: list[str]) -> bool:
-        """Ask before a virtual node goes onto real equipment.
+        """Ask before a simulated node goes onto real equipment.
 
         A node transmits, and transmitting onto a real bus is the thing
         pycangui asks about everywhere else; one that joined quietly would be
@@ -501,10 +505,10 @@ class MainWindow(QMainWindow):
         where = ", ".join(real)
         return self.confirm.ask(
             self,
-            f"vnode:{where}",
-            "Run a virtual node on a real CAN bus?",
+            f"simnode:{where}",
+            "Run a simulated node on a real CAN bus?",
             f"{where} is connected to real equipment.\n\n"
-            "A virtual node transmits: it will put frames onto that bus, and "
+            "A simulated node transmits: it will put frames onto that bus, and "
             "the devices on it will act on them.\n\n"
             "Start the node here?",
         )
@@ -524,7 +528,7 @@ class MainWindow(QMainWindow):
             "j1939": self.j1939,
             "xcp": self.xcp,
             "hooks": self.hooks,
-            "vnodes": self.vnodes,
+            "nodes": self.nodes,
             "window": self,
             "recorder": self.recorder,
             "send": send,
@@ -1155,7 +1159,7 @@ class MainWindow(QMainWindow):
         self.recorder.stop()
         # Before the channels go: a node holding a bus open outlives the
         # window, and a process that will not exit is worse than a bug.
-        self.vnodes.stop_all()
+        self.nodes.stop_all()
         self._stop_demo()
         self.bus.close()  # stop the facade before its channels go away
         self.channels.shutdown()
@@ -1517,14 +1521,14 @@ class MainWindow(QMainWindow):
             return
         for kind in DEMO:
             try:
-                self._demo.append(self.vnodes.start(kind, where))
+                self._demo.append(self.nodes.start(kind, where))
             except Exception as exc:
                 self.events.warning(f"{DEMO_NAME}: {kind} did not start: {exc}")
         if self._demo:
             self.events.information(
                 f"{DEMO_NAME} running on {where}: {len(self._demo)} nodes, "
                 "answering CANopen, UDS, J1939 and XCP.  "
-                "Tools > Virtual nodes to see or stop them."
+                "Tools > Simulated nodes to see or stop them."
             )
 
     def _demo_channel(self) -> str | None:
@@ -1546,17 +1550,17 @@ class MainWindow(QMainWindow):
     def _stop_demo(self) -> None:
         going, self._demo = self._demo, []  # emptied first, so the watcher
         for node in going:  # below does not read this as somebody's doing
-            self.vnodes.stop(node)
+            self.nodes.stop(node)
 
     @Slot()
     def _demo_nodes_changed(self) -> None:
-        """Notice a demo node stopped from the Virtual nodes dialog.
+        """Notice a demo node stopped from the Simulated nodes dialog.
 
         Without this the next channel event would helpfully start it again,
         and a Stop button that undoes itself a second later is worse than
         no Stop button.  Reconnecting the channel is how to ask for it back.
         """
-        running = {id(node) for node in self.vnodes.running()}
+        running = {id(node) for node in self.nodes.running()}
         still = [node for node in self._demo if id(node) in running]
         if len(still) != len(self._demo):
             self._demo = still

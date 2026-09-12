@@ -1,6 +1,6 @@
 """A gateway: one node standing on two channels.
 
-There is nothing new here.  A gateway is a virtual node bound to more than
+There is nothing new here.  A gateway is a simulated node bound to more than
 one bus, and that is the whole of the difference -- same file, same four
 functions.  Start it with a second channel and ``node.channels`` has two
 entries; ``frame.channel`` says which one a frame came from, and

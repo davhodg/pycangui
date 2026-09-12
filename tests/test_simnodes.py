@@ -1,4 +1,4 @@
-"""Virtual nodes: the rest of the bus, written in Python.
+"""Simulated nodes: the rest of the bus, written in Python.
 
 The thing being tested is a *mechanism*, so most of these run a node file
 written in the test rather than a shipped one -- a two-line node makes it
@@ -10,9 +10,9 @@ not run is worse than no example.
 import can
 import pytest
 
-from pycangui.core import vnodes
+from pycangui.core import simnodes
 from pycangui.core.channels import Channels
-from pycangui.core.vnodes import NodeError, VirtualNodes
+from pycangui.core.simnodes import NodeError, SimulatedNodes
 
 
 class FakeContext:
@@ -44,7 +44,7 @@ def ctx(folder):
 
 @pytest.fixture
 def manager(app, ctx):
-    made = VirtualNodes(ctx)
+    made = SimulatedNodes(ctx)
     yield made
     made.stop_all()
 
@@ -110,7 +110,7 @@ def test_a_node_file_is_described_without_importing_it(folder):
         'NAME = "A thing"\nDESCRIPTION = "does things"\nRATE_HZ = 4\n'
         "def poll(node, *, ctx): pass\n",
     )
-    kind = vnodes.kinds_in(folder)[0]
+    kind = simnodes.kinds_in(folder)[0]
     assert (kind.id, kind.name, kind.description, kind.rate_hz) == (
         "thing",
         "A thing",
@@ -122,7 +122,7 @@ def test_a_node_file_is_described_without_importing_it(folder):
 
 def test_a_file_that_will_not_parse_is_listed_with_its_error(folder):
     write(folder, "broken", "def poll(node:\n")
-    kind = vnodes.kinds_in(folder)[0]
+    kind = simnodes.kinds_in(folder)[0]
     assert kind.error and "line 1" in kind.error
     assert kind.label == "broken", "under its filename, since it never said a name"
 
@@ -130,16 +130,16 @@ def test_a_file_that_will_not_parse_is_listed_with_its_error(folder):
 def test_a_file_with_none_of_the_functions_is_refused(folder):
     """A node that does nothing is a mistake rather than a very quiet node."""
     write(folder, "empty", 'NAME = "Nothing"\nVALUE = 3\n')
-    assert "none of" in vnodes.kinds_in(folder)[0].error
+    assert "none of" in simnodes.kinds_in(folder)[0].error
 
 
 def test_a_node_that_declares_nothing_still_runs(folder):
     """Every declaration has a default.  Somebody trying the smallest thing
     that could work should find that it works."""
     write(folder, "bare", "def poll(node, *, ctx): pass\n")
-    kind = vnodes.kinds_in(folder)[0]
+    kind = simnodes.kinds_in(folder)[0]
     assert kind.error is None and kind.label == "bare"
-    assert kind.rate_hz == vnodes.DEFAULT_RATE_HZ
+    assert kind.rate_hz == simnodes.DEFAULT_RATE_HZ
 
 
 # --- starting and stopping -------------------------------------------------------------
@@ -242,7 +242,7 @@ def test_a_node_is_not_started_if_the_question_is_declined(app, folder, ctx):
     asks about everywhere else.  One that joined quietly would be the hole
     in that."""
     write(folder, "quiet", "def poll(node, *, ctx): pass\n")
-    manager = VirtualNodes(ctx, may_transmit=lambda _channels: False)
+    manager = SimulatedNodes(ctx, may_transmit=lambda _channels: False)
     with pytest.raises(NodeError, match="not agreed"):
         manager.start("quiet", "Sim")
     assert manager.running() == []
@@ -253,7 +253,7 @@ def test_the_question_is_asked_once_with_every_channel(app, folder, ctx):
     dialog people learn to dismiss without reading."""
     write(folder, "quiet", "def poll(node, *, ctx): pass\n")
     asked = []
-    manager = VirtualNodes(ctx, may_transmit=lambda channels: asked.append(channels) or True)
+    manager = SimulatedNodes(ctx, may_transmit=lambda channels: asked.append(channels) or True)
     manager.start("quiet", "va", extra=["vb"])
     manager.stop_all()
     assert asked == [["va", "vb"]]
@@ -305,16 +305,16 @@ def test_which_channel_a_frame_arrived_on_is_told(app, folder, manager):
 def test_the_shipped_nodes_are_copied_into_the_workspace(app, ctx):
     """The same bargain as the hook defaults: they arrive as editable source
     where somebody will find them, not buried in the package."""
-    VirtualNodes(ctx)
+    SimulatedNodes(ctx)
     copied = {p.name for p in ctx.nodes_dir.glob("*.py")}
     assert {"canopen_device.py", "uds_server.py", "j1939_engine.py", "xcp_slave.py"} <= copied
 
 
 def test_a_users_edit_is_never_written_over(app, ctx):
-    VirtualNodes(ctx)
+    SimulatedNodes(ctx)
     mine = ctx.nodes_dir / "canopen_device.py"
     mine.write_text("# mine now\ndef poll(node, *, ctx): pass\n", encoding="utf-8")
-    VirtualNodes(ctx)
+    SimulatedNodes(ctx)
     assert mine.read_text(encoding="utf-8").startswith("# mine now")
 
 
@@ -504,7 +504,7 @@ def test_a_node_stands_on_the_channel_with_a_handle_of_its_own(app, folder, ctx)
     existing.connect_bus("virtual", "vrig", 500000, False)
     heard = []
     existing.frames.connect(heard.extend)
-    nodes = VirtualNodes(ctx, channels=channels)
+    nodes = SimulatedNodes(ctx, channels=channels)
     try:
         node = nodes.start("shouter", "Rig", rate_hz=50)
         assert node.bus() is not existing.bus, "it shared the application's handle"
@@ -524,7 +524,7 @@ def test_stopping_leaves_the_channel_open(app, folder, ctx):
     channels = Channels()
     existing = channels.add("Rig")
     existing.connect_bus("virtual", "vrig2", 500000, False)
-    nodes = VirtualNodes(ctx, channels=channels)
+    nodes = SimulatedNodes(ctx, channels=channels)
     try:
         nodes.stop(nodes.start("quiet", "Rig"))
         assert existing.is_connected, "the node closed the application's channel"
@@ -539,14 +539,14 @@ def test_a_channel_that_is_not_connected_is_refused(app, folder, ctx):
     write(folder, "quiet", "def poll(node, *, ctx): pass\n")
     channels = Channels()
     channels.add("Rig")  # added, never connected
-    nodes = VirtualNodes(ctx, channels=channels)
+    nodes = SimulatedNodes(ctx, channels=channels)
     with pytest.raises(NodeError, match="not connected"):
         nodes.start("quiet", "Rig")
 
 
 def test_a_node_still_invents_a_channel_nobody_has_open(app, folder, manager):
     """The case that needs nothing configured and nothing plugged in, which
-    is most of why a virtual node is useful in the first place."""
+    is most of why a simulated node is useful in the first place."""
     write(manager.ctx.nodes_dir, "shouter", "def poll(node, *, ctx): node.send(0x99, b'')\n")
     listening = can.Bus(interface="virtual", channel="vinvented")
     try:

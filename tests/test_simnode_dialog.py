@@ -1,4 +1,4 @@
-"""Tools > Virtual nodes: the small dialog in front of the mechanism.
+"""Tools > Simulated nodes: the small dialog in front of the mechanism.
 
 Its whole job is to ask the three things a node file cannot answer for
 itself -- which channel, how fast, and a second channel if it is a gateway
@@ -10,7 +10,7 @@ import pytest
 from PySide6.QtCore import QSettings
 
 from pycangui.ui.main_window import MainWindow
-from pycangui.ui.vnode_dialog import VirtualNodeDialog
+from pycangui.ui.simnode_dialog import SimulatedNodeDialog
 
 
 @pytest.fixture
@@ -19,7 +19,7 @@ def window(app, tmp_path, monkeypatch):
     QSettings().clear()
     win = MainWindow()
     yield win
-    win.vnodes.stop_all()
+    win.nodes.stop_all()
     # A test that closed it itself has already been through closeEvent, and
     # a second pass disconnects everything twice and warns about each one.
     if not win._closing:
@@ -28,7 +28,7 @@ def window(app, tmp_path, monkeypatch):
 
 @pytest.fixture
 def dialog(app, window):
-    made = VirtualNodeDialog(window, window.vnodes, window.channels)
+    made = SimulatedNodeDialog(window, window.nodes, window.channels)
     yield made
     made.close()
 
@@ -90,13 +90,25 @@ def test_starting_one_puts_it_in_the_running_list(app, dialog):
 
 def test_the_window_offers_it_in_the_tools_menu(app, window):
     tools = next(a.menu() for a in window.menuBar().actions() if a.text() == "&Tools")
-    assert "Virtual nodes..." in [a.text() for a in tools.actions()]
+    assert "Simulated nodes..." in [a.text() for a in tools.actions()]
 
 
 def test_a_node_left_running_is_stopped_when_the_window_closes(app, window):
     """A node holding a bus open outlives the window, and a process that
     will not exit is a bug nobody can see."""
-    window.vnodes.start("xcp_slave", "v_dialog2")
-    assert window.vnodes.running()
+    window.nodes.start("xcp_slave", "v_dialog2")
+    assert window.nodes.running()
     window.close()
-    assert window.vnodes.running() == []
+    assert window.nodes.running() == []
+
+
+def test_the_old_name_still_reaches_the_same_object(window):
+    """These were virtual nodes until the rename, and a startup hook or a
+    console habit written before it says window.vnodes.  An alias costs a
+    line; breaking somebody's hook file costs them an evening."""
+    assert window.vnodes is window.nodes
+
+
+def test_the_menu_entry_says_simulated(window):
+    tools = next(a.menu() for a in window.menuBar().actions() if a.text() == "&Tools")
+    assert "Simulated nodes..." in [a.text() for a in tools.actions()]
