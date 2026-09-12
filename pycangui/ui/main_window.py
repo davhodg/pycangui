@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
         #: needs is setup, and setup belongs in a file.
         self.vnodes = VirtualNodes(
             self.ctx,
-            bus_for=self.channels.get,
+            channels=self.channels,
             may_transmit=self._nodes_may_transmit,
             parent=self,
         )
