@@ -17,7 +17,7 @@ tests/test_readme.py, so they cannot quietly go stale.
 ![tests](https://img.shields.io/badge/tests-passing-brightgreen)
 ![version](https://img.shields.io/badge/version-v0.0.1-blue)
 ![python](https://img.shields.io/badge/python-3.12+-blue)
-![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 
 A user-friendly CAN bus tool: live trace, transmit, CANopen, UDS, J1939, XCP
@@ -52,7 +52,7 @@ application, offers a desktop shortcut, and uninstalls cleanly.  This is the
 one to give somebody who wants a CAN tool rather than a Python package.
 
 **From the source folder** -- double-click `pycangui.cmd` (Windows) or run
-`./pycangui.sh` (Linux, macOS).  Python 3.12 or newer must be on the PATH.
+`./pycangui.sh` (Linux).  Python 3.12 or newer must be on the PATH.
 
 The first run sets itself up: it creates a *virtual environment* -- a folder
 called `.venv` holding its own copy of Python and only the libraries pycangui
@@ -98,7 +98,13 @@ running a single file: starting the workers costs more than the file does.
 
 ## Supported systems
 
-Windows, Linux and macOS, on **Python 3.12 or newer**.
+**Windows and Linux**, on **Python 3.12 or newer**.  Both are tested on every
+push: the newest Python on both, and the oldest supported one on Linux.
+
+macOS is not claimed.  Nothing in pycangui is Windows- or Linux-specific and
+Qt, python-can and the rest all run there, so it very likely works -- but
+nobody has run it and no CI job covers it, and a platform in a list reads as
+a promise.  If you try it, say how it went.
 
 Any adapter [python-can](https://github.com/hardbyte/python-can) supports --
 PEAK, IXXAT, Kvaser, Vector, socketcan, the cheap USB dongles and more.  The
