@@ -21,7 +21,16 @@ started up paused would be a bug report.
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QCheckBox, QComboBox, QDoubleSpinBox, QLineEdit, QSpinBox
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QLineEdit,
+    QMenu,
+    QSpinBox,
+    QTableView,
+)
 
 from pycangui.core.context import Context
 
@@ -66,3 +75,45 @@ def remember(ctx: Context, key: str, widget, default=None) -> None:
 
     else:
         raise TypeError(f"remember() does not handle {type(widget).__name__}")
+
+
+def remember_columns(
+    ctx: Context, key: str, table: QTableView, hidden: tuple[str, ...] = ()
+) -> QMenu:
+    """A menu of a table's columns, applied now and kept between runs.
+
+    A table that answers more than one question grows more columns than fit
+    on screen at once, and which ones matter is a settled choice about how
+    somebody works -- exactly what this module is for.
+
+    Stored by column *name* rather than by position, for the same reason a
+    combo box is: a table that gains a column in the middle would otherwise
+    silently hide a different one.  The menu is returned so it can be put on
+    a button as well as on the header, because a right-click on a header is
+    a convention rather than a thing anybody can see.
+    """
+    saved = ctx.settings.get(key)
+    away = {str(name) for name in saved} if isinstance(saved, list) else set(hidden)
+    model = table.model()
+    menu = QMenu(table)
+    names = [str(model.headerData(i, Qt.Horizontal) or i) for i in range(model.columnCount())]
+
+    def show(column: int, name: str, wanted: bool) -> None:
+        table.setColumnHidden(column, not wanted)
+        if wanted:
+            away.discard(name)
+        else:
+            away.add(name)
+        ctx.settings.set(key, sorted(away))
+
+    for column, name in enumerate(names):
+        table.setColumnHidden(column, name in away)
+        action = menu.addAction(name)
+        action.setCheckable(True)
+        action.setChecked(name not in away)
+        action.toggled.connect(lambda on, c=column, n=name: show(c, n, on))
+
+    header = table.horizontalHeader()
+    header.setContextMenuPolicy(Qt.CustomContextMenu)
+    header.customContextMenuRequested.connect(lambda where: menu.exec(header.mapToGlobal(where)))
+    return menu

@@ -36,8 +36,14 @@ from pycangui.core.bus import Frame
 from pycangui.core.classify import ERROR_GROUP, GROUPS, classify, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.ui.latest_model import ROLE_CHANNEL, ROLE_GROUP, ROLE_SEARCH, LatestModel
-from pycangui.ui.persist import remember
+from pycangui.ui.latest_model import (
+    ROLE_CHANNEL,
+    ROLE_GROUP,
+    ROLE_SEARCH,
+    STATISTICS,
+    LatestModel,
+)
+from pycangui.ui.persist import remember, remember_columns
 from pycangui.ui.trace_model import TraceModel
 
 MODES = ("Chronological", "Latest per ID")
@@ -181,6 +187,24 @@ class TraceView(QWidget):
         remember(ctx, f"{key}.mode", self.mode)
         remember(ctx, f"{key}.autoscroll", self.autoscroll)
 
+        # Which columns, per mode: the two tables answer different questions
+        # and have nothing in common but the word column.  On a button as
+        # well as on the header, because right-clicking a header is a
+        # convention rather than something anybody can see.
+        self._column_menus = {
+            0: remember_columns(ctx, f"{key}.trace_columns", self.table),
+            1: remember_columns(ctx, f"{key}.latest_columns", self.latest_table, STATISTICS),
+        }
+        self.columns_button = QToolButton()
+        self.columns_button.setText("Columns")
+        self.columns_button.setToolTip(
+            "Which columns this view shows.  The timing statistics -- first\n"
+            "seen, shortest, average and longest gap, and jitter -- start\n"
+            "hidden, because fifteen columns at once is a table nobody reads."
+        )
+        self.columns_button.setPopupMode(QToolButton.InstantPopup)
+        self.columns_button.setMenu(self._column_menus[self.mode.currentIndex()])
+
         clear = QPushButton("Clear")
         clear.clicked.connect(self.clear)
 
@@ -191,6 +215,7 @@ class TraceView(QWidget):
         bar.addWidget(self.pause)
         bar.addWidget(self.search)
         bar.addWidget(self.filter_button)
+        bar.addWidget(self.columns_button)
         bar.addStretch()
         bar.addWidget(self.count_label)
         bar.addWidget(clear)
@@ -304,6 +329,7 @@ class TraceView(QWidget):
     def _on_mode_changed(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
         self.autoscroll.setEnabled(index == 0)
+        self.columns_button.setMenu(self._column_menus[index])
         self._update_count()
 
     @Slot(list)

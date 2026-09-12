@@ -576,3 +576,105 @@ def test_the_restore_dialog_greys_out_what_nobody_has_edited(app, tmp_path, monk
     dialog._boxes["canopen"].setChecked(True)
     assert dialog.chosen() == ["canopen"]
     window.close()
+
+
+# --- timing statistics in the latest-per-id view ----------------------------------
+def stats(m, row=0):
+    """The five statistics columns, by name."""
+    from pycangui.ui.latest_model import COLUMNS
+
+    return {name: m.index(row, COLUMNS.index(name)).data() for name in COLUMNS[10:]}
+
+
+def test_the_statistics_describe_the_whole_run_not_the_window(app):
+    """Rate and Period are deliberately recent, so a stall an hour ago has
+    gone from them.  These are the columns that still remember it."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.1, 20)  # 100 ms apart
+    m.append([frame(0x100, b"", 1.9 + 0.5)])  # then one that was late
+    m.append([frame(0x100, b"", 2.5)])  # and back to normal
+    m.refresh_rates()
+
+    got = stats(m)
+    assert got["First"] == "0.000"
+    assert got["Period min"] == "100.0 ms"
+    assert got["Period max"] == "500.0 ms"
+    assert got["Jitter"] == "400.0 ms"
+    assert m._rows[0].gap_avg == pytest.approx((2.5 - 0.0) / 21)
+
+
+def test_one_frame_has_no_timing_to_report(app):
+    m = LatestModel()
+    m.append([frame(0x100, b"", 1.25)])
+    got = stats(m)
+    assert got["First"] == "1.250"
+    assert [got[n] for n in ("Period min", "Period avg", "Period max", "Jitter")] == [""] * 4
+
+
+def test_a_perfectly_regular_message_says_zero_rather_than_nothing(app):
+    """Blank means "not known yet" in the other columns, so jitter cannot
+    use it for "none" -- that is the answer somebody is looking for."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.1, 5)
+    assert stats(m)["Jitter"] == "0.0 ms"
+
+
+def test_time_starting_over_starts_the_statistics_over(app):
+    """A replay looping, or a reconnect.  The old gaps describe a clock
+    that no longer runs, and one of them would be minus twenty seconds."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.1, 10)
+    cyclic(m, 0x100, 0.2, 5)  # the same timestamps again, slower
+    got = stats(m)
+    assert got["First"] == "0.000"
+    assert got["Period min"] == "200.0 ms", "nothing from before the restart"
+    assert got["Period max"] == "200.0 ms"
+
+
+def test_the_statistics_columns_sort_by_number(app):
+    """Sorted as text, 90.0 ms would come after 100.0 ms."""
+    from pycangui.ui.latest_model import COLUMNS
+
+    m = LatestModel()
+    cyclic(m, 0x100, 0.1, 5)
+    assert m.index(0, COLUMNS.index("Jitter")).data(Qt.UserRole) == pytest.approx(0.0)
+    assert m.index(0, COLUMNS.index("Period max")).data(Qt.UserRole) == pytest.approx(0.1)
+
+
+def test_the_headers_say_which_columns_mean_now_and_which_mean_since(app):
+    m = LatestModel()
+    from pycangui.ui.latest_model import COLUMNS
+
+    rate = m.headerData(COLUMNS.index("Rate"), Qt.Horizontal, Qt.ToolTipRole)
+    avg = m.headerData(COLUMNS.index("Period avg"), Qt.Horizontal, Qt.ToolTipRole)
+    assert "describes now" in rate
+    assert "not the same as Period" in avg
+
+
+def test_the_statistics_start_hidden_and_the_choice_is_kept(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    from pycangui.ui.latest_model import COLUMNS
+
+    assert view.latest_table.isColumnHidden(COLUMNS.index("Jitter"))
+    assert not view.latest_table.isColumnHidden(COLUMNS.index("Rate"))
+
+    jitter = next(a for a in view._column_menus[1].actions() if a.text() == "Jitter")
+    jitter.setChecked(True)
+    assert not view.latest_table.isColumnHidden(COLUMNS.index("Jitter"))
+    assert "Jitter" not in ctx.settings.get("trace.latest_columns")
+
+    again = TraceView(Hooks(ctx), ctx)
+    assert not again.latest_table.isColumnHidden(COLUMNS.index("Jitter")), "not remembered"
+
+
+def test_each_view_has_its_own_columns(app, tmp_path, monkeypatch):
+    """The two tables answer different questions and share no column but
+    the word column."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    assert [a.text() for a in view._column_menus[0].actions()][:3] == ["Time", "Channel", "Dir"]
+    assert [a.text() for a in view._column_menus[1].actions()][:3] == ["ID", "Kind", "Channel"]
+    assert view.columns_button.menu() is view._column_menus[view.mode.currentIndex()]
