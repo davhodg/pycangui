@@ -7,6 +7,8 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
     QInputDialog,
     QMainWindow,
     QMenu,
@@ -49,6 +51,7 @@ from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.plugin_app import PluginApp
 from pycangui.ui.plugin_manager import INACTIVE_TIP, ManagePlugins, PluginActions
 from pycangui.ui.replay_action import ReplayAction
+from pycangui.ui.restore_hooks import RestoreHooks
 from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
@@ -94,6 +97,23 @@ LAYOUT_VERSION = 4
 #: that apply whatever is on the bus.
 DEFAULT_VISIBLE = ("trace", "tx", "scope", "log")
 
+#: What the window opens at, and what Reset layout puts it back to.  Wide,
+#: because the trace and the panes beside it are read across rather than down.
+DEFAULT_WIDTH = 1400
+DEFAULT_HEIGHT = 900
+
+RESET_EVERYTHING = (
+    "There is no reset that undoes everything in place, and that is on "
+    "purpose: it would mean deleting hook files, virtual nodes and plugins -- "
+    "code you wrote -- as a side effect of putting window sizes back.\n\n"
+    "A new workspace is the clean slate. It starts with pycangui's own "
+    "settings, layout and hook files, and the workspace you are in now is "
+    "left exactly as it is, to switch back to whenever you like.\n\n"
+    "Two things are yours rather than the workspace's and carry over: the "
+    "questions you have told pycangui not to ask again, and the back ends "
+    "folder. Both have their own entries in this menu."
+)
+
 
 class MainWindow(QMainWindow):
     #: Open this workspace instead.  Emitted rather than acted on, because a
@@ -109,7 +129,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(window_title())
-        self.resize(1400, 900)
+        self.resize(DEFAULT_WIDTH, DEFAULT_HEIGHT)
         self.setDockNestingEnabled(True)  # full grid layouts, not just the four edges
 
         #: Every channel.  ``self.bus`` is whichever one is selected, wearing a
@@ -281,8 +301,9 @@ class MainWindow(QMainWindow):
         #: rebuilt and clear() deletes the actions a menu owns.
         self.reset_layout_action = QAction("Reset layout", self)
         self.reset_layout_action.setToolTip(
-            "Put every pane back where it starts, and hide the ones that\n"
-            "start hidden.  Nothing else is touched."
+            "Put every pane back where it starts, hide the ones that start\n"
+            "hidden, and put the window back to the size it opens at.\n"
+            "Nothing else is touched."
         )
         self.reset_layout_action.triggered.connect(self._reset_layout)
         self.view_menu = self.menuBar().addMenu("&View")
@@ -344,6 +365,17 @@ class MainWindow(QMainWindow):
         ask_again.setToolTip(
             "Bring back every question you told pycangui not to ask again:\n"
             "joining a bus, transmitting and replaying."
+        )
+        restore_hooks = self.reset_menu.addAction("Restore hook files...", self._restore_hooks)
+        restore_hooks.setToolTip(
+            "Put pycangui's own version of a hook file back.  Yours is renamed\n"
+            "rather than deleted, so nothing you wrote is lost."
+        )
+        self.reset_menu.addSeparator()
+        everything = self.reset_menu.addAction("Reset everything...", self._reset_everything)
+        everything.setToolTip(
+            "Which is a new workspace, rather than anything undone in place --\n"
+            "so the one you are in now is still there to go back to."
         )
         tools_menu.addSeparator()
         verbose = tools_menu.addAction("Verbose CAN logging")
@@ -1035,7 +1067,7 @@ class MainWindow(QMainWindow):
             self.panes.rename(name, title)
 
     def _reset_layout(self) -> None:
-        """Put the panes back where they start.
+        """Put the panes back where they start, in a window the size it opens at.
 
         Arranged again rather than restored from a saved blob.  The blob was
         captured during construction, before the window had ever been shown,
@@ -1043,8 +1075,55 @@ class MainWindow(QMainWindow):
         -- restoring it gave a trace filling the window and everything else
         a strip.  Arranging a window that is on screen is the only way
         resizeDocks means anything.
+
+        The window itself is part of the arrangement: a layout put back
+        inside a window somebody had dragged to a third of the screen is not
+        the layout they were promised, and the proportions this reaches for
+        assume something like the size it opens at.
         """
+        self._reset_geometry()
         self._arrange_default()
+
+    def _reset_geometry(self) -> None:
+        """The size it opens at, in the middle of the screen it is on."""
+        self.showNormal()  # maximised or full screen, resizing does nothing
+        screen = self.screen() or QApplication.primaryScreen()
+        available = screen.availableGeometry()
+        self.resize(min(DEFAULT_WIDTH, available.width()), min(DEFAULT_HEIGHT, available.height()))
+        frame = self.frameGeometry()
+        frame.moveCenter(available.center())
+        self.move(frame.topLeft())
+
+    def _restore_hooks(self) -> None:
+        """Pycangui's own hook files back, with yours renamed beside them."""
+        dialog = RestoreHooks(self, self.hooks)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        chosen = dialog.chosen()
+        for module in chosen:
+            kept = self.hooks.restore(module)
+            self.events.information(f"hooks/{module}.py restored; yours is now {kept.name}")
+        if chosen:
+            self._reload_hooks()
+
+    def _reset_everything(self) -> None:
+        """There is no reset-everything, and this says what there is instead.
+
+        Everything that accumulates lives in the workspace, so a new one is
+        already the clean slate -- and it is the non-destructive one, because
+        the workspace being escaped from is still there afterwards.  Building
+        a second route that undid it all in place would mean deleting hook
+        files as a side effect of tidying window geometry.
+        """
+        answer = QMessageBox(self)
+        answer.setWindowTitle("Reset everything")
+        answer.setIcon(QMessageBox.Information)
+        answer.setText(RESET_EVERYTHING)
+        fresh = answer.addButton("New workspace...", QMessageBox.AcceptRole)
+        answer.addButton(QMessageBox.Cancel)
+        answer.exec()
+        if answer.clickedButton() is fresh:
+            self.workspace_menu.new_empty()
 
     def closeEvent(self, event) -> None:
         # Everything is about to be hidden, and reporting each pane going away

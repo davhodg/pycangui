@@ -112,6 +112,28 @@ class WorkspaceMenu(QObject):
         workspaces.create(name, copy_from=self.ctx.workspace)
         self.switch_requested.emit(workspaces.clean(name))
 
+    def new_empty(self) -> None:
+        """A workspace with nothing in it, which is what a reset amounts to.
+
+        Not on this menu, because *New* and *Save as* side by side is a
+        question asked of everybody who only ever wanted to fork the one they
+        are in.  It is reached from Tools > Reset > Reset everything, where
+        somebody is already asking for a clean slate.
+        """
+        name, chose = QInputDialog.getText(
+            self.window,
+            "New workspace",
+            "A name for the new, empty workspace:",
+            text=self._suggestion(),
+        )
+        if not chose:
+            return
+        if (reason := workspaces.why_not(name)) != "":
+            QMessageBox.warning(self.window, "That name will not do", reason)
+            return
+        workspaces.create(name)  # not forked: starting with nothing is the point
+        self.switch_requested.emit(workspaces.clean(name))
+
     def _suggestion(self) -> str:
         """A name that is free, so the dialog opens on something acceptable."""
         base = "workspace"

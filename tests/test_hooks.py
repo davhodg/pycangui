@@ -209,3 +209,40 @@ def test_a_file_that_would_break_is_put_back_as_it_was(home, log, monkeypatch):
     assert hooks.update_stubs() == {}, "nothing was added"
     assert (workspaces.hooks_dir() / "canopen.py").read_text() == before
     assert any("left as it was" in line for line in log)
+
+
+def test_restoring_a_hook_file_keeps_the_old_one(home, log):
+    ctx = Context(log=log.append)
+    hooks = Hooks(ctx)
+    write_user(home, "def node_name(identity, *, ctx):\n    return 'mine'\n")
+    hooks.reload()
+    assert hooks.call("canopen", "node_name", IDENT) == "mine"
+
+    kept = hooks.restore("canopen")
+    assert kept.name == "canopen.py.bak"
+    assert "return 'mine'" in kept.read_text(), "code somebody wrote is not deleted"
+    hooks.reload()
+    assert hooks.call("canopen", "node_name", IDENT) is None  # the default is back
+    assert "def eds_for_node" in (workspaces.hooks_dir() / "canopen.py").read_text()
+
+
+def test_restoring_twice_does_not_eat_the_first_copy(home, log):
+    ctx = Context(log=log.append)
+    hooks = Hooks(ctx)
+    write_user(home, "def node_name(identity, *, ctx):\n    return 'first'\n")
+    assert hooks.restore("canopen").name == "canopen.py.bak"
+    write_user(home, "def node_name(identity, *, ctx):\n    return 'second'\n")
+    second = hooks.restore("canopen")
+
+    assert second.name == "canopen.py.bak2"
+    assert "first" in (workspaces.hooks_dir() / "canopen.py.bak").read_text()
+    assert "second" in second.read_text()
+
+
+def test_an_untouched_file_is_not_offered_as_edited(home, log):
+    """What the dialog greys out: a file nobody has been near."""
+    ctx = Context(log=log.append)
+    hooks = Hooks(ctx)
+    assert hooks.edited() == []
+    write_user(home, "def node_name(identity, *, ctx):\n    return 'mine'\n")
+    assert hooks.edited() == ["canopen"]

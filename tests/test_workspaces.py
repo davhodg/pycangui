@@ -575,3 +575,21 @@ def test_manage_renames_and_the_list_follows(app, home, monkeypatch):
     assert workspaces.exists("new") and not workspaces.exists("old")
     assert "new" in {dialog.list.item(i).data(Qt.UserRole) for i in range(dialog.list.count())}
     dialog.deleteLater()
+
+
+def test_reset_everything_is_a_new_empty_workspace(window, monkeypatch):
+    """Not a reset in place: what somebody is escaping from is still there
+    afterwards, which is the whole reason this is the answer."""
+    from PySide6.QtWidgets import QInputDialog
+
+    window.ctx.settings.set("dbc.paths", ["mine.dbc"])
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("clean", True))
+    asked: list[str] = []
+    window.workspace_menu.switch_requested.connect(asked.append)
+
+    window.workspace_menu.new_empty()
+
+    assert asked == ["clean"]
+    assert not (workspaces.dir_for("clean") / "settings.json").exists(), "nothing carried over"
+    old = workspaces.dir_for(workspaces.DEFAULT) / "settings.json"
+    assert json.loads(old.read_text())["dbc.paths"] == ["mine.dbc"], "and the old one is intact"

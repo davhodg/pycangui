@@ -89,15 +89,23 @@ def test_reset_layout_gives_the_same_sizes_as_a_fresh_window(app, window):
     splitter sizes in it were the ones Qt had not worked out yet.  Pressing
     it gave a trace filling the window and everything else a strip -- and
     the test here only checked which panes were visible, so it passed."""
-    before = {n: window.panes.docks[n].geometry().height() for n in DEFAULT_VISIBLE}
+
+    def shares():
+        heights = {n: window.panes.docks[n].geometry().height() for n in DEFAULT_VISIBLE}
+        total = sum(heights.values())
+        return {n: round(h / total, 2) for n, h in heights.items()}
+
+    # Proportions rather than pixels, because reset also puts the window back
+    # to the size it opens at, which need not be the size it is now.
+    before = shares()
 
     window.panes.docks["canopen"].toggleViewAction().trigger()
     app.processEvents()
     window._reset_layout()
     app.processEvents()
 
-    after = {n: window.panes.docks[n].geometry().height() for n in DEFAULT_VISIBLE}
-    assert after == before, f"reset changed the sizes: {before} -> {after}"
+    after = shares()
+    assert after == before, f"reset changed the proportions: {before} -> {after}"
 
 
 def test_reset_layout_leaves_no_pane_swallowing_the_window(app, window):
