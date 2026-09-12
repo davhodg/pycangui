@@ -300,10 +300,27 @@ class MainWindow(QMainWindow):
         #: Cleared when the channel goes, because reconnecting is asking.
         self._demo_stopped_by_hand = False
         tools_menu = self.menuBar().addMenu("&Tools")
+        tools_menu.setToolTipsVisible(True)
         tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
-        tools_menu.addAction("Open backends folder", self._open_backends_folder)
-        tools_menu.addAction("Reload hooks", self._reload_hooks)
-        tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
+        reload_hooks = tools_menu.addAction("Reload hooks", self._reload_hooks)
+        reload_hooks.setToolTip(
+            "Read the hook files again, so that an edit takes effect without\n"
+            "restarting.  Nothing on disk is changed."
+        )
+        stubs = tools_menu.addAction("Update hook stubs", self._update_hook_stubs)
+        stubs.setToolTip(
+            "Add any hooks this version has gained to the end of your hook\n"
+            "files, ready to edit, and reload.  Hooks you have already\n"
+            "written are left exactly as they are."
+        )
+        # Backends are the other workspace folder, and nothing to do with
+        # hooks: a separate section so the two are not read as one list.
+        tools_menu.addSeparator()
+        backends = tools_menu.addAction("Open backends folder", self._open_backends_folder)
+        backends.setToolTip(
+            "Python files that add a CAN interface pycangui does not know\n"
+            "about.  They are loaded at startup."
+        )
         tools_menu.addSeparator()
         virtual = tools_menu.addAction("Virtual nodes...", self._virtual_nodes)
         virtual.setToolTip(

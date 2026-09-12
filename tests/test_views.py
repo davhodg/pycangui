@@ -436,6 +436,38 @@ def _menu(window, title):
     return next(a.menu() for a in window.menuBar().actions() if a.text() == title)
 
 
+def test_backends_are_their_own_section_below_the_hook_entries(app, tmp_path, monkeypatch):
+    """Backends are the other workspace folder, not a fourth hook entry."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    entries = [
+        "---" if a.isSeparator() else a.text() for a in _menu(window, "&Tools").actions()
+    ]
+    assert entries[:6] == [
+        "Open hooks folder",
+        "Reload hooks",
+        "Update hook stubs",
+        "---",
+        "Open backends folder",
+        "---",
+    ]
+    window.close()
+
+
+def test_the_two_hook_entries_say_how_they_differ(app, tmp_path, monkeypatch):
+    """Reload and Update hook stubs are a confusing pair by name alone."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    tools = _menu(window, "&Tools")
+    assert tools.toolTipsVisible(), "tooltips in this menu are set but never shown"
+    tips = {a.text(): a.toolTip() for a in tools.actions()}
+    assert "without" in tips["Reload hooks"] and "restarting" in tips["Reload hooks"]
+    assert "already" in tips["Update hook stubs"], "says what it will not touch"
+    window.close()
+
+
 def test_the_resets_are_together_in_one_submenu(app, tmp_path, monkeypatch):
     """Putting something back the way it was is one thing to go looking
     for, not three entries scattered down a menu."""
