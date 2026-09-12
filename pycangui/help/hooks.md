@@ -22,9 +22,16 @@ it.
 
 On first run each file is copied there complete, with the default behaviour and
 commented examples already in it, so there is never an empty file to start
-from.  **Your copies are never overwritten.**  *Tools > Update hook files* adds
-anything new that a later version of pycangui introduced, leaving what you have
-written alone; *Tools > Reload hooks* applies an edit without a restart.
+from.  **Your copies are never overwritten.**
+
+Two entries in the Tools menu keep them current, and they do different jobs:
+
+* *Reload hooks* reads the files again, so an edit of your own takes effect
+  without restarting.  It changes nothing on disk.
+* *Update hook stubs* is for when pycangui itself has gained a hook your files
+  predate: it appends the new ones, with their imports and tables, to the end
+  of the file that owns them and then reloads.  Hooks you have already written
+  are not touched, so it is safe to use whenever you update pycangui.
 
 ## What happens when one runs
 
