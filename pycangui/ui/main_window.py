@@ -351,7 +351,6 @@ class MainWindow(QMainWindow):
         self._build_plugins_menu()
         self.panes.restore_instances()
         self._build_view_menu()
-        self._default_state = self.saveState(LAYOUT_VERSION)
         self._restore_layout()
         self.panes.restore_state()
         # Last, and deferred until the window is actually on screen: a startup
@@ -1002,7 +1001,16 @@ class MainWindow(QMainWindow):
             self.panes.rename(name, title)
 
     def _reset_layout(self) -> None:
-        self.restoreState(self._default_state, LAYOUT_VERSION)
+        """Put the panes back where they start.
+
+        Arranged again rather than restored from a saved blob.  The blob was
+        captured during construction, before the window had ever been shown,
+        and splitter sizes taken then are the ones Qt had not worked out yet
+        -- restoring it gave a trace filling the window and everything else
+        a strip.  Arranging a window that is on screen is the only way
+        resizeDocks means anything.
+        """
+        self._arrange_default()
 
     def closeEvent(self, event) -> None:
         # Everything is about to be hidden, and reporting each pane going away

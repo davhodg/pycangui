@@ -79,3 +79,30 @@ def test_the_log_says_where_the_hidden_panes_went(app, window):
     assert "View menu" in text
     for title in ("CANopen", "UDS", "J1939", "XCP", "ASCII Log", "Python Console"):
         assert title in text
+
+
+def test_reset_layout_gives_the_same_sizes_as_a_fresh_window(app, window):
+    """The bug this exists for: Reset layout restored a saveState captured
+    during construction, before the window had ever been shown, so the
+    splitter sizes in it were the ones Qt had not worked out yet.  Pressing
+    it gave a trace filling the window and everything else a strip -- and
+    the test here only checked which panes were visible, so it passed."""
+    before = {n: window.panes.docks[n].geometry().height() for n in DEFAULT_VISIBLE}
+
+    window.panes.docks["canopen"].toggleViewAction().trigger()
+    app.processEvents()
+    window._reset_layout()
+    app.processEvents()
+
+    after = {n: window.panes.docks[n].geometry().height() for n in DEFAULT_VISIBLE}
+    assert after == before, f"reset changed the sizes: {before} -> {after}"
+
+
+def test_reset_layout_leaves_no_pane_swallowing_the_window(app, window):
+    """Stated as a proportion rather than as equality, so it still means
+    something if the default is retuned."""
+    window._reset_layout()
+    app.processEvents()
+    total = sum(window.panes.docks[n].geometry().height() for n in ("trace", "tx", "scope"))
+    biggest = max(window.panes.docks[n].geometry().height() for n in DEFAULT_VISIBLE)
+    assert biggest < total, "one pane has most of the window"
