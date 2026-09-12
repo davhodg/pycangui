@@ -1350,15 +1350,17 @@ class MainWindow(QMainWindow):
         manage = self.plugins_menu.addAction("Manage plugins...", self._manage_plugins)
         manage.setToolTip("Switch one off, remove one, or write one out as a package to send.")
 
+        # Folder above reload, as in the Tools menu: open it, edit, reload is
+        # the order the work happens in, so it is the order to read them in.
         self.plugins_menu.addSeparator()
+        folder = self.plugins_menu.addAction("Open plugins folder", self._open_plugins_folder)
+        folder.setToolTip("Where this workspace's plugins live.")
         reload_action = self.plugins_menu.addAction("Reload plugins", self._reload_plugins)
         reload_action.setToolTip(
             "Load the plugin files again.  Whatever a plugin added last time is\n"
             "taken away first, so editing one and reloading is how it gets\n"
             "written -- there is no need to restart."
         )
-        folder = self.plugins_menu.addAction("Open plugins folder", self._open_plugins_folder)
-        folder.setToolTip("Where this workspace's plugins live.")
 
     # --- installing and switching them off ------------------------------------------------
     def _disabled_plugins(self) -> set[str]:
