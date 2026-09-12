@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPlainTextEdit,
     QSpinBox,
     QVBoxLayout,
@@ -215,7 +216,7 @@ class TxFieldsDialog(QDialog):
         timing.setWordWrap(True)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self._ok)
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
@@ -293,6 +294,23 @@ class TxFieldsDialog(QDialog):
     def _algorithm_changed(self) -> None:
         self.checksum_at.set_two_bytes(tx.width_of(self.algorithm.currentData()) == 2)
         self._refresh()
+
+    def _ok(self) -> None:
+        """Accept, unless the two fields would be written over each other.
+
+        Refused here rather than warned about later: the dialog is the only
+        place the arrangement can be seen, and a pair that overlaps sends
+        wrong frames that look right from this end.
+        """
+        if (clash := tx.conflict(self.counter(), self.checksum())) is not None:
+            QMessageBox.warning(
+                self,
+                "They cannot both go there",
+                f"{clash[0].upper()}{clash[1:]}.\n\nMove one of them and the "
+                "preview will show both.",
+            )
+            return
+        self.accept()
 
     def counter(self) -> tx.Counter | None:
         if not self.use_counter.isChecked():

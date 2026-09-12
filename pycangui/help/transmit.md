@@ -45,6 +45,13 @@ one that is easy to get wrong: including the checksum's own bytes means
 hashing a field that is about to be overwritten, so the number never matches
 at the other end.  Give it an explicit byte range where a protocol wants one.
 
+**They cannot share a place.**  The checksum is written second, so a checksum
+on the counter's byte would put the counter in and then stamp it out, on every
+frame, with nothing wrong to see from this end.  The dialog refuses the pair
+and says so, and a row configured that way before the check existed is not
+sent at all.  Half a byte each -- the counter in the low nibble, the checksum
+in the high one -- is fine, and is a real arrangement rather than a loophole.
+
 | Algorithm | Where you meet it |
 |-----------|-------------------|
 | XOR, 8-bit sum | Simple in-house protocols |
@@ -69,9 +76,12 @@ with data that has to survive, so dropping the byte would drop that too.
 The counter's width comes from the database as well, so a one-bit counter
 counts 0, 1, 0, 1 without being told to.
 
-Whatever you type into a counter or checksum signal in the expanded row is
-overwritten when the frame is sent -- the point of naming it is that pycangui
-fills it in.
+A signal named as a counter or a checksum stops being editable in the
+expanded row: it is greyed, the *Counter / checksum* column says which of the
+two it is, and the value is filled in as the frame is sent.  That is the point
+of naming it -- and a box that took an edit and then ignored it would be a box
+that had lied.  Stop computing it in the dialog and it goes back to being an
+ordinary signal you can type into.
 
 **Not in the list?**  A maker's own arithmetic is nobody's standard, so it
 goes in the `transmit.checksum` [hook](hooks.md): return a number and it is

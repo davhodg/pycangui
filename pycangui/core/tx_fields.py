@@ -270,6 +270,47 @@ class Checksum:
         return self.function()(bytes(data[i] for i in self.over(len(data))))
 
 
+def _halves(at: Placement) -> set[tuple[int, str]]:
+    """The nibbles a placement occupies, as (byte, low|high).
+
+    Nibbles rather than whole bytes, because a counter in the low half of
+    byte 6 and a checksum in the high half of byte 6 is a real arrangement
+    and not a clash.
+    """
+    if at.part != WHOLE:
+        return {(at.byte, at.part)}
+    return {(byte, half) for byte in at.covers() for half in (LOW, HIGH)}
+
+
+def conflict(counter: Counter | None, checksum: Checksum | None) -> str | None:
+    """Why these two cannot both be applied, or None if they can.
+
+    Both are written into the one payload and the checksum goes second, so
+    an overlapping pair does not half-work: the counter is written and then
+    destroyed, on every frame, and nothing at the sending end looks wrong.
+    Invisible from here and obvious at the other end, so it is refused.
+
+    Only what the configuration itself can answer is answered.  A counter in
+    a named signal against a checksum at a byte position may overlap too,
+    but where a signal's bits land is the database's answer, not one this
+    module holds.
+    """
+    if counter is None or checksum is None:
+        return None
+    if counter.signal and checksum.signal:
+        if counter.signal == checksum.signal:
+            return f"the counter and the checksum are both in the signal {counter.signal}"
+        return None
+    if counter.at is None or checksum.at is None:
+        return None
+    if not _halves(counter.at) & _halves(checksum.at):
+        return None
+    return (
+        f"the counter at {_where(counter.at)} and the checksum at "
+        f"{_where(checksum.at)} overlap, and the checksum is written second"
+    )
+
+
 def width_of(algorithm: str) -> int:
     """How many bytes an algorithm produces, for offering a sensible field."""
     if algorithm not in ALGORITHMS:
@@ -293,6 +334,8 @@ def apply(
     The counter goes in first.  See the module docstring: a checksum computed
     before the counter is stale on every frame.
     """
+    if (clash := conflict(counter, checksum)) is not None:
+        raise FieldError(clash)
     out = bytearray(data)
     if counter is not None:
         if counter.at is None:
@@ -333,6 +376,8 @@ def apply_signals(
     ``hook`` is called with the zeroed frame if given, so a bespoke checksum
     sees exactly what the named algorithms see.
     """
+    if (clash := conflict(counter, checksum)) is not None:
+        raise FieldError(clash)
     values = dict(values)
     if counter is not None:
         if not counter.signal:

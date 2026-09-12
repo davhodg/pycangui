@@ -325,3 +325,41 @@ def test_a_row_says_the_signal_names_it_is_using():
     counter = Counter(signal="AliveCounter")
     checksum = Checksum(signal="Crc", algorithm="crc8_2f")
     assert tx.describe(counter, checksum) == "count AliveCounter, crc8_2f Crc"
+
+
+# --- two fields in one place ------------------------------------------------------
+def test_a_counter_and_a_checksum_on_the_same_byte_are_refused():
+    """The checksum is written second, so the counter is put in and then
+    stamped out -- every frame, with nothing wrong to see from this end."""
+    counter = tx.Counter(at=tx.Placement(byte=6))
+    checksum = tx.Checksum(at=tx.Placement(byte=6), algorithm="xor")
+    assert "overlap" in tx.conflict(counter, checksum)
+    with pytest.raises(tx.FieldError):
+        tx.apply(b"\x00" * 8, counter, checksum)
+
+
+def test_two_nibbles_of_one_byte_are_not_a_conflict():
+    """Half a byte each is an arrangement people build on purpose."""
+    counter = tx.Counter(at=tx.Placement(byte=6, part=tx.LOW))
+    checksum = tx.Checksum(at=tx.Placement(byte=6, part=tx.HIGH), algorithm="xor")
+    assert tx.conflict(counter, checksum) is None
+    out = tx.apply(b"\x00" * 8, counter, checksum, sent=3)
+    assert out[6] & 0x0F == 3, "the counter survived"
+
+
+def test_a_two_byte_checksum_reaching_the_counter_is_refused():
+    counter = tx.Counter(at=tx.Placement(byte=7))
+    checksum = tx.Checksum(at=tx.Placement(byte=6, width=2), algorithm="crc16_ccitt")
+    assert tx.conflict(counter, checksum) is not None
+
+
+def test_one_signal_cannot_hold_both():
+    both = "Rolling"
+    assert tx.conflict(tx.Counter(signal=both), tx.Checksum(signal=both)) is not None
+    assert tx.conflict(tx.Counter(signal=both), tx.Checksum(signal="Crc")) is None
+
+
+def test_a_field_on_its_own_never_conflicts():
+    counter = tx.Counter(at=tx.Placement(byte=6))
+    assert tx.conflict(counter, None) is None
+    assert tx.conflict(None, None) is None
