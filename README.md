@@ -1,5 +1,25 @@
 # pycangui
 
+<!--
+Static badges on purpose.  Anything that reads the repository -- the Actions
+status badge, shields' release badge -- is fetched anonymously through
+GitHub's image proxy, so on a private repository it renders as "repo not
+found" rather than as a badge.  When this repo goes public, swap the first
+two for the live ones:
+
+  [![CI](https://github.com/davhodg/pycangui/actions/workflows/ci.yml/badge.svg)](https://github.com/davhodg/pycangui/actions/workflows/ci.yml)
+  [![Release](https://img.shields.io/github/v/release/davhodg/pycangui)](https://github.com/davhodg/pycangui/releases)
+
+The version and Python badges below are checked against the code by
+tests/test_readme.py, so they cannot quietly go stale.
+-->
+
+![tests](https://img.shields.io/badge/tests-passing-brightgreen)
+![version](https://img.shields.io/badge/version-v0.0.1-blue)
+![python](https://img.shields.io/badge/python-3.12+-blue)
+![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![license](https://img.shields.io/badge/license-Apache--2.0-green)
+
 A user-friendly CAN bus tool: live trace, transmit, CANopen, UDS, J1939, XCP
 and Python scripting, on any adapter supported by python-can.  Apache-2.0.
 
