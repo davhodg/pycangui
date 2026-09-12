@@ -77,3 +77,31 @@ def test_find_eds_matches_device_info(tmp_path):
     assert find_eds(NodeIdentity(5), [resources.path("")]) is None
     (tmp_path / "junk.eds").write_text("not an eds")
     assert find_eds(ident, [tmp_path]) is None
+
+
+# --- what a refused DCF write is reported as --------------------------------------
+def test_an_abort_is_reported_as_a_code_and_its_meaning():
+    """The code goes to the maker; the meaning tells the person at the
+    machine whether it is a read-only object or a value out of range."""
+    import canopen
+
+    from pycangui.canopen.manager import _reason
+
+    assert _reason(canopen.SdoAbortedError(0x06010002)) == (
+        "abort 0x06010002, Attempt to write a read only object"
+    )
+    assert _reason(canopen.SdoAbortedError(0x06090030)).startswith("abort 0x06090030, Value range")
+    assert _reason(canopen.SdoAbortedError(0x0BAD0000)) == "abort 0x0BAD0000", "no invented meaning"
+    assert _reason(TimeoutError("no response")) == "TimeoutError: no response"
+
+
+def test_failures_are_grouped_by_reason_in_the_order_they_happened():
+    """A DCF that goes wrong usually goes wrong the same way two hundred
+    times, and two hundred identical lines say it worse than one does."""
+    from pycangui.canopen.manager import _by_reason
+
+    grouped = _by_reason(
+        [(0x2001, 0, "read only"), (0x1017, 0, "out of range"), (0x2003, 1, "read only")]
+    )
+    assert list(grouped) == ["read only", "out of range"]
+    assert grouped["read only"] == [(0x2001, 0), (0x2003, 1)]
