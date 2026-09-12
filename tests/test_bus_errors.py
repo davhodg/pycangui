@@ -158,7 +158,7 @@ def test_the_advice_for_a_quiet_virtual_bus_is_not_about_wiring(app, bus):
     bus._drain()
 
     assert notes, "a silent bus must still say something"
-    assert "loopback" in notes[0] and "Demo CANopen device" in notes[0]
+    assert "loopback" in notes[0] and "Demo device" in notes[0]
     assert "termination" not in notes[0], "meaningless for a virtual channel"
 
 

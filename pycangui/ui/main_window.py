@@ -90,8 +90,9 @@ LAYOUT_VERSION = 4
 
 #: Open on a first run.  Everything else is one click away in the View menu:
 #: nine panes at once is a wall, and which of the protocol panes you want
-#: depends entirely on what you have plugged in.
-DEFAULT_VISIBLE = ("trace", "log", "scope")
+#: depends entirely on what you have plugged in.  These four are the ones
+#: that apply whatever is on the bus.
+DEFAULT_VISIBLE = ("trace", "tx", "scope", "log")
 
 
 class MainWindow(QMainWindow):
@@ -875,24 +876,54 @@ class MainWindow(QMainWindow):
         self.view_menu.addAction("Reset layout", self._reset_layout)
 
     def _arrange_default(self) -> None:
-        """The layout a first run opens with: the trace, the log, and the plot.
+        """The layout a first run opens with, and what Reset layout goes back to.
+
+        What is going on, above the plot:
+
+            +---------------+----------------+
+            |  CAN Trace    |                |
+            +---------------+   Event Log    |
+            |  CAN Transmit |                |
+            +---------------+----------------+
+            |      Signals and Plot          |
+            +--------------------------------+
+
+        Watching the bus and talking to it are the same job, so the trace and
+        the transmit list share a column, with the log beside them: it is the
+        thing you glance at rather than work in.  The plot spans the bottom
+        because a time axis wants every pixel of width there is.
 
         Everything else starts hidden rather than removed -- the View menu
         lists every pane, and showing one puts it back in the area it was
         added to, so the protocol panes still arrive on the right.
+
+        Nested splits inside one area rather than the four edges, which is
+        what setDockNestingEnabled buys.
         """
-        trace, log, scope = (self.panes.docks[n] for n in DEFAULT_VISIBLE)
-        # The trace and the log share the top row and the plot spans below
-        # them: both of those want width, and the log's lines are short.
-        # Nested splits inside one area rather than the four edges, which is
-        # what setDockNestingEnabled above buys.
+        trace, tx, scope, log = (self.panes.docks[n] for n in DEFAULT_VISIBLE)
         self.addDockWidget(Qt.LeftDockWidgetArea, trace)
-        self.splitDockWidget(trace, scope, Qt.Vertical)
-        self.splitDockWidget(trace, log, Qt.Horizontal)
+        self.splitDockWidget(trace, scope, Qt.Vertical)  # the plot, full width
+        self.splitDockWidget(trace, log, Qt.Horizontal)  # the log, to the right
+        self.splitDockWidget(trace, tx, Qt.Vertical)  # transmit, under the trace
         for name, dock in self.panes.docks.items():
             dock.setVisible(name in DEFAULT_VISIBLE)
-        self.resizeDocks([trace, log], [7, 3], Qt.Horizontal)
-        self.resizeDocks([trace, scope], [6, 4], Qt.Vertical)
+        # Evenly between the columns and between the rows.  A default that
+        # favoured one pane would be a guess at what somebody is doing, and
+        # dragging a splitter is the easiest thing in the window to undo.
+        # The transmit list is the exception: it is a short list of messages
+        # where the trace is an endless one, so it takes the smaller half of
+        # the column it shares.
+        #
+        # Order and choice of dock both matter here, and neither is obvious.
+        # resizeDocks acts on the splitter holding *both* docks named, so the
+        # outer division has to be asked for through a dock that sits
+        # directly in it -- the log, not the trace, which is one level deeper
+        # -- and it has to come last, because an outer call re-divides what
+        # an inner one settled.  Getting either wrong leaves the plot about
+        # eighty pixels tall, which is a strip rather than a plot.
+        self.resizeDocks([trace, tx], [2, 1], Qt.Vertical)
+        self.resizeDocks([trace, log], [1, 1], Qt.Horizontal)
+        self.resizeDocks([log, scope], [6, 4], Qt.Vertical)
 
     def _restore_layout(self) -> None:
         # Where the window sits stays in QSettings: that belongs to this desk
@@ -919,8 +950,8 @@ class MainWindow(QMainWindow):
             # The virtual channel is the default, and it is empty until
             # something fills it -- which is not obvious from looking at it.
             self.events.information(
-                "No hardware?  Connect on the virtual channel and switch on "
-                "Tools > Demo CANopen device to have something to look at."
+                "No hardware?  Connect on the virtual channel called "
+                "Demo device and there will be something to look at."
             )
         self.panes.restore_view_states()
 

@@ -394,7 +394,7 @@ class BusManager(QObject):
             return (
                 f"connected to {self.description}, and nothing has been received in "
                 f"{seconds}.  A virtual channel is a loopback inside pycangui: it only "
-                "carries what pycangui puts on it.  Start Tools > Demo CANopen device, "
+                "carries what pycangui puts on it.  Connect to the Demo device channel, "
                 "replay a log onto it, or send something from the Transmit pane."
             )
         return (
