@@ -27,7 +27,48 @@ from PySide6.QtGui import QColor
 
 from pycangui.core.bus import Frame
 
-COLUMNS = ("ID", "Kind", "Channel", "Dir", "DLC", "Data", "Count", "Rate", "Period", "Last")
+#: The last five are the timing statistics, hidden until somebody asks for
+#: them: they answer a different question from Rate and Period (see TIPS),
+#: and fifteen columns in a pane that opens in a quarter of the window is a
+#: table nobody can read.
+COLUMNS = (
+    "ID",
+    "Kind",
+    "Channel",
+    "Dir",
+    "DLC",
+    "Data",
+    "Count",
+    "Rate",
+    "Period",
+    "Last",
+    "First",
+    "Period min",
+    "Period avg",
+    "Period max",
+    "Jitter",
+)
+STATISTICS = COLUMNS[10:]
+
+#: On the header, because two time bases in one row is worth a sentence
+#: each where somebody will read it rather than a paragraph in the manual.
+TIPS = {
+    "Count": "Frames seen since this id first appeared, or since Clear",
+    "Rate": "Measured over the last few seconds, so it describes now",
+    "Period": "The same measurement as Rate, written as a cycle time",
+    "Last": "Bus time of the newest frame",
+    "First": "Bus time of the first frame counted",
+    "Period min": "Shortest gap since this id first appeared, or since Clear",
+    "Period avg": (
+        "Mean gap over that whole span -- not the same as Period,\nwhich describes"
+        " the last few seconds"
+    ),
+    "Period max": "Longest gap since this id first appeared, or since Clear",
+    "Jitter": (
+        "Longest gap minus shortest, over that whole span.  A message\non a timer"
+        " that has drifted, stalled or been blocked shows it here"
+    ),
+}
 ROLE_GROUP = Qt.UserRole + 1
 ROLE_CHANNEL = Qt.UserRole + 2
 ROLE_SEARCH = Qt.UserRole + 3
@@ -65,14 +106,56 @@ class _Row:
     #: The two cannot be one clock -- bus time starts again at zero on every
     #: connect, and "how long since" has to mean something across that.
     last_seen: float = field(default_factory=time.monotonic)
+    #: Every gap, not the recent ones.  ``times`` is deliberately a short
+    #: window so that Rate describes *now*; these describe the whole run, so
+    #: that a message which stalled once an hour ago still says so.  Kept as
+    #: running totals rather than a list: one message at 1 kHz for an hour is
+    #: three and a half million gaps nobody wants stored.
+    first: float = -1.0  # bus time of the first frame counted
+    gaps: int = 0
+    gap_min: float = 0.0
+    gap_max: float = 0.0
+    gap_sum: float = 0.0
 
     def saw(self, frame: Frame, now: float) -> None:
         if self.times and frame.timestamp < self.times[-1]:
             # Bus time went backwards: a reconnect, or a replay starting over.
-            # Averaging across that reports one frame per minus a second.
+            # Averaging across that reports one frame per minus a second --
+            # and the statistics so far describe a clock that no longer runs,
+            # so they start again too rather than quietly spanning both.
             self.times.clear()
+            self.forget_gaps()
+        elif self.times:
+            self.note(frame.timestamp - self.times[-1])
+        if self.first < 0:
+            self.first = frame.timestamp
         self.times.append(frame.timestamp)
         self.last_seen = now
+
+    def note(self, gap: float) -> None:
+        self.gap_min = gap if not self.gaps else min(self.gap_min, gap)
+        self.gap_max = max(self.gap_max, gap)
+        self.gap_sum += gap
+        self.gaps += 1
+
+    def forget_gaps(self) -> None:
+        self.first = -1.0
+        self.gaps = 0
+        self.gap_min = self.gap_max = self.gap_sum = 0.0
+
+    @property
+    def gap_avg(self) -> float:
+        return self.gap_sum / self.gaps if self.gaps else 0.0
+
+    @property
+    def jitter(self) -> float:
+        """Peak to peak, which is what a cycle time is quoted with.
+
+        Two gaps is enough to have one: a message that arrived twice on time
+        and once late has a jitter, and waiting for a sample count before
+        admitting it would hide exactly the case worth seeing.
+        """
+        return self.gap_max - self.gap_min if self.gaps > 1 else 0.0
 
 
 class LatestModel(QAbstractTableModel):
@@ -89,8 +172,11 @@ class LatestModel(QAbstractTableModel):
         return len(COLUMNS)
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
-        if role == Qt.DisplayRole and orientation == Qt.Horizontal:
-            return COLUMNS[section]
+        if orientation == Qt.Horizontal:
+            if role == Qt.DisplayRole:
+                return COLUMNS[section]
+            if role == Qt.ToolTipRole:
+                return TIPS.get(COLUMNS[section])
         return None
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
@@ -119,6 +205,19 @@ class LatestModel(QAbstractTableModel):
                     return _period_text(row.period_s)
                 case 9:
                     return f"{f.timestamp:.3f}"
+                case 10:
+                    return f"{row.first:.3f}" if row.first >= 0 else ""
+                case 11:
+                    return _period_text(row.gap_min)
+                case 12:
+                    return _period_text(row.gap_avg)
+                case 13:
+                    return _period_text(row.gap_max)
+                case 14:
+                    # Zero jitter is an answer -- a perfectly regular message
+                    # -- where zero of the others only means "not yet known",
+                    # so this one says the number rather than going blank.
+                    return "" if row.gaps < 2 else _period_text(row.jitter) or "0.0 ms"
         elif role == Qt.ForegroundRole and col == 5 and row.prev_data != f.data and row.count > 1:
             return CHANGED_COLOUR
         elif role == ROLE_GROUP:
@@ -141,6 +240,16 @@ class LatestModel(QAbstractTableModel):
                     return row.period_s
                 case 9:
                     return f.timestamp
+                case 10:
+                    return row.first
+                case 11:
+                    return row.gap_min
+                case 12:
+                    return row.gap_avg
+                case 13:
+                    return row.gap_max
+                case 14:
+                    return row.jitter
                 case _:
                     return self.data(index, Qt.DisplayRole)
         return None
