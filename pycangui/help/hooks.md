@@ -27,6 +27,12 @@ from.  **Your copies are never overwritten.**
 *Tools > Reload hooks* reads the files again, so an edit of your own takes
 effect without restarting.  It changes nothing on disk.
 
+*Tools > Reset > Restore hook files...* is the way back from an edit that has
+gone wrong: it puts pycangui's own version of the files you tick back, and
+renames yours to `canopen.py.bak` rather than deleting it, so an afternoon's
+work is still there to copy out of.  Files you have not touched are shown
+greyed, since there is nothing to restore and nothing to lose.
+
 ## Keeping up with a new pycangui
 
 Your files were written against the pycangui you had.  A later version can ask

@@ -473,11 +473,14 @@ def test_the_resets_are_together_in_one_submenu(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
-    entries = [a.text() for a in window.reset_menu.actions()]
+    entries = ["---" if a.isSeparator() else a.text() for a in window.reset_menu.actions()]
     assert entries == [
         "Reset layout",
         "Forget remembered folders",
         "Ask about everything again",
+        "Restore hook files...",
+        "---",
+        "Reset everything...",
     ]
     tools = [a.text() for a in _menu(window, "&Tools").actions()]
     assert "Reset" in tools
@@ -507,4 +510,69 @@ def test_reset_layout_is_in_both_menus_and_works_from_either(app, tmp_path, monk
     # unshown window's children are all invisible whatever the layout says.
     showing = {name for name, dock in window.panes.docks.items() if not dock.isHidden()}
     assert showing == set(DEFAULT_VISIBLE)
+    window.close()
+
+
+def test_reset_layout_puts_the_window_back_to_the_size_it_opens_at(app, tmp_path, monkeypatch):
+    """A layout reset inside a window somebody shrank to a third of the
+    screen is not the arrangement it promises: the proportions assume
+    something like the size it opens at."""
+    from PySide6.QtWidgets import QApplication
+
+    from pycangui.ui.main_window import DEFAULT_HEIGHT, DEFAULT_WIDTH
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    window.show()
+    app.processEvents()
+    window.resize(500, 400)
+    app.processEvents()
+
+    window._reset_layout()
+    app.processEvents()
+
+    available = (window.screen() or QApplication.primaryScreen()).availableGeometry()
+    assert window.width() == min(DEFAULT_WIDTH, available.width())
+    assert window.height() == min(DEFAULT_HEIGHT, available.height())
+    window.close()
+
+
+def test_restoring_a_hook_file_from_the_menu_keeps_a_copy(app, tmp_path, monkeypatch):
+    from pycangui.core import workspaces
+    from pycangui.ui import main_window as mw
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    hooks_file = workspaces.hooks_dir() / "canopen.py"
+    hooks_file.write_text("def node_name(identity, *, ctx):\n    return 'mine'\n")
+
+    monkeypatch.setattr(mw.RestoreHooks, "exec", lambda _self: mw.QDialog.Accepted)
+    monkeypatch.setattr(mw.RestoreHooks, "chosen", lambda _self: ["canopen"])
+    window._restore_hooks()
+
+    assert "def eds_for_node" in hooks_file.read_text(), "the shipped one is back"
+    assert "return 'mine'" in (hooks_file.parent / "canopen.py.bak").read_text()
+    assert any("canopen.py.bak" in line for line in window.log.toPlainText().splitlines())
+    window.close()
+
+
+def test_the_restore_dialog_greys_out_what_nobody_has_edited(app, tmp_path, monkeypatch):
+    from pycangui.core import workspaces
+    from pycangui.ui.restore_hooks import RestoreHooks
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    edited = workspaces.hooks_dir() / "canopen.py"
+    edited.write_text("def node_name(identity, *, ctx):\n    x = 1\n")
+    window.hooks.reload()
+
+    dialog = RestoreHooks(window, window.hooks)
+    assert dialog._boxes["canopen"].isEnabled()
+    assert not dialog._boxes["uds"].isEnabled(), "nothing to restore and nothing to lose"
+    assert dialog.chosen() == [], "nothing is ticked to start with"
+    dialog._boxes["canopen"].setChecked(True)
+    assert dialog.chosen() == ["canopen"]
     window.close()

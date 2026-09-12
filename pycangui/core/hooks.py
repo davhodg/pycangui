@@ -116,6 +116,41 @@ class Hooks:
                 created.append(dest)
         return created
 
+    def edited(self) -> list[str]:
+        """Which hook files differ from the ones pycangui ships.
+
+        Read as "which of these has somebody worked on", so a file that has
+        only grown the stubs a later version appended counts as edited too --
+        it is not the file that was shipped, and saying otherwise to somebody
+        deciding what to restore would be the wrong sort of tidy.
+        """
+        return [
+            module
+            for module in sorted(registry())
+            if (path := self.ctx.hooks_dir / f"{module}.py").exists()
+            and path.read_text(encoding="utf-8")
+            != _defaults_path(module).read_text(encoding="utf-8")
+        ]
+
+    def restore(self, module: str) -> Path:
+        """Put pycangui's version of a hook file back, keeping the old one.
+
+        An edited hook is the usual way to break things, so there has to be a
+        way back -- but the file is code somebody wrote and may be the only
+        copy of it, so this renames rather than deletes.  Returns where the
+        old one went.
+        """
+        path = self.ctx.hooks_dir / f"{module}.py"
+        kept = path.with_suffix(".py.bak")
+        number = 2
+        while kept.exists():  # restoring twice must not eat the first one
+            kept = path.with_suffix(f".py.bak{number}")
+            number += 1
+        if path.exists():
+            path.rename(kept)
+        shutil.copy(_defaults_path(module), path)
+        return kept
+
     def sync(self) -> dict[str, list[str]]:
         """Bring the hook files up to date with this build, at startup.
 

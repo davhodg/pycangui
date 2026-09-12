@@ -39,3 +39,25 @@ A remembered folder that no longer exists -- a memory stick unplugged, a folder
 deleted -- is ignored, and the dialog opens at its default instead.  *Tools >
 Forget remembered folders* puts every one of them back to pycangui's own
 folders at once.
+
+## Starting again
+
+*Tools > Reset* holds every way back, so that putting something right is one
+place to look rather than four:
+
+| Entry | What it puts back |
+| --- | --- |
+| Reset layout | Panes where they start, and the window at the size it opens at |
+| Forget remembered folders | Every file dialog, to pycangui's own folders |
+| Ask about everything again | Every question you told pycangui to stop asking |
+| Restore hook files... | Pycangui's own [hook files](hooks.md), renaming yours to `.py.bak` |
+| Reset everything... | Nothing -- it explains that a new workspace is the clean slate |
+
+That last one is not evasion.  Everything that accumulates is in the workspace,
+so a new one already *is* a reset of all of it, and it is the version that
+deletes nothing: the workspace you were in is still there to switch back to.
+A reset that undid it all in place would have to delete hook files, virtual
+nodes and plugins -- code you wrote -- as a side effect of putting window sizes
+back.  Two things are yours rather than the workspace's and carry across to a
+new one: the questions you have stopped being asked, and `backends/`.  Both
+have their own entry above.
