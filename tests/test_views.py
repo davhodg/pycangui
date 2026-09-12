@@ -14,7 +14,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.hooks import Hooks
 from pycangui.ui.latest_model import LatestModel
-from pycangui.ui.main_window import MainWindow
+from pycangui.ui.main_window import DEFAULT_VISIBLE, MainWindow
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, TxView
 
@@ -430,3 +430,50 @@ def test_space_with_nothing_selected_is_left_to_qt(tx):
 def test_the_tooltip_says_how_to_tick_them_all(tx):
     assert "press space" in tx.tree.toolTip()
     assert "Ctrl+A" in tx.tree.toolTip(), "and how to select them in the first place"
+
+
+def _menu(window, title):
+    return next(a.menu() for a in window.menuBar().actions() if a.text() == title)
+
+
+def test_the_resets_are_together_in_one_submenu(app, tmp_path, monkeypatch):
+    """Putting something back the way it was is one thing to go looking
+    for, not three entries scattered down a menu."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    entries = [a.text() for a in window.reset_menu.actions()]
+    assert entries == [
+        "Reset layout",
+        "Forget remembered folders",
+        "Ask about everything again",
+    ]
+    tools = [a.text() for a in _menu(window, "&Tools").actions()]
+    assert "Reset" in tools
+    assert "Forget remembered folders" not in tools, "moved, not copied"
+    window.close()
+
+
+def test_reset_layout_is_in_both_menus_and_works_from_either(app, tmp_path, monkeypatch):
+    """The same action in two places.  The View menu is rebuilt whenever a
+    pane comes or goes, and clear() deletes the actions a menu owns -- so an
+    action belonging to that menu would be destroyed out from under the
+    Tools entry still pointing at it."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    assert window.reset_layout_action in window.view_menu.actions()
+    assert window.reset_layout_action in window.reset_menu.actions()
+
+    window.panes.add("trace")  # rebuilds the View menu
+    app.processEvents()
+    window._build_view_menu()
+    assert window.reset_layout_action in window.reset_menu.actions(), "the Tools copy went"
+
+    window.reset_layout_action.trigger()  # and it still does something
+    app.processEvents()
+    # isHidden rather than isVisible: this window was never shown, and an
+    # unshown window's children are all invisible whatever the layout says.
+    showing = {name for name, dock in window.panes.docks.items() if not dock.isHidden()}
+    assert showing == set(DEFAULT_VISIBLE)
+    window.close()
