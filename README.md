@@ -203,7 +203,7 @@ change between tags.
 
 ## Development
 
-pycangui is copyright 2026 davhodg and licensed under the Apache License
-2.0; see `LICENSE` and `NOTICE`.
+pycangui is free software, licensed under the Apache License 2.0; see
+`LICENSE` and `NOTICE`.
 
 Development has made use of Anthropic's Claude.
