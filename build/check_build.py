@@ -32,7 +32,10 @@ GPL_QT_BINARIES = (
     "Qt6WaylandCompositor",
 )
 
+ICON = PROJECT / "pycangui" / "resources" / "pycangui.ico"
+
 REQUIRED_FILES = (
+    "pycangui/resources/pycangui.ico",
     "pycangui/resources/demo.eds",
     "pycangui/resources/demo.dbc",
     "pycangui/resources/demo.a2l",
@@ -50,6 +53,36 @@ REQUIRED_FILES = (
 )
 
 SELFTEST_TIMEOUT_S = 120
+
+
+def largest_image(ico: bytes) -> bytes:
+    """The biggest image in an .ico, exactly as stored.
+
+    ICONDIR is six bytes with the image count at offset 4; each ICONDIRENTRY
+    after it is sixteen, with the width in its first byte (0 meaning 256) and
+    the image's size and offset in its last eight.
+    """
+    count = int.from_bytes(ico[4:6], "little")
+    best, best_side = b"", -1
+    for i in range(count):
+        entry = ico[6 + 16 * i : 22 + 16 * i]
+        side = entry[0] or 256
+        size = int.from_bytes(entry[8:12], "little")
+        offset = int.from_bytes(entry[12:16], "little")
+        if side > best_side:
+            best, best_side = ico[offset : offset + size], side
+    return best
+
+
+def carries_icon(exe: bytes, ico: bytes) -> bool:
+    """Whether *exe* was built with this icon, rather than merely with one.
+
+    PyInstaller copies each image of the .ico into the executable's resources
+    unchanged, and embeds its own icon when given none -- so an icon being
+    present proves nothing, while our largest image's exact bytes do.
+    """
+    image = largest_image(ico)
+    return bool(image) and image in exe
 
 
 def main() -> int:
@@ -80,6 +113,11 @@ def main() -> int:
     if not executable.is_file():
         problems.append("pycangui.exe is missing")
     else:
+        if not carries_icon(executable.read_bytes(), ICON.read_bytes()):
+            problems.append(
+                "pycangui.exe does not carry pycangui.ico -- check icon= in "
+                "pycangui.spec, and run build/icon.py if the SVGs changed"
+            )
         result = subprocess.run(
             [str(executable), "--selftest"],
             capture_output=True,

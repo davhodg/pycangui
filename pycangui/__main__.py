@@ -96,12 +96,40 @@ def selftest() -> int:
     return 0
 
 
+#: Who Windows thinks the windows belong to.  Without one, a pycangui started
+#: from source is grouped under pythonw.exe and the taskbar shows Python's
+#: icon whatever the window says -- the window icon only reaches the title bar.
+APP_USER_MODEL_ID = "davhodg.pycangui"
+
+
+def set_icon(app) -> None:
+    """The application icon, before any window exists.
+
+    Set on the application rather than on the main window so that the notice
+    shown during start-up carries it too.  The .ico rather than the PNG:
+    it holds each size drawn for that size, and Qt picks the nearest one.
+    """
+    from PySide6.QtGui import QIcon
+
+    from pycangui import resources
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+        except (AttributeError, OSError):  # an unusual shell: the title bar still has it
+            pass
+    app.setWindowIcon(QIcon(str(resources.path("pycangui.ico"))))
+
+
 def main() -> int:
     if "--selftest" in sys.argv:
         return selftest()
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_NAME)  # QSettings uses these two for the registry/ini path
+    set_icon(app)
 
     # confirm.py is cheap -- Qt widgets and nothing else -- and has to come
     # before the expensive imports, because it is what covers them.

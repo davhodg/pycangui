@@ -31,6 +31,10 @@ OutputBaseFilename=pycangui-{#AppVersion}-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; The installer's own icon, and the one Settings > Apps shows for it.  The
+; shortcuts need nothing: they take theirs from pycangui.exe.
+SetupIconFile=..\pycangui\resources\pycangui.ico
+UninstallDisplayIcon={app}\{#AppExe}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Per-user by default so no administrator rights are needed
