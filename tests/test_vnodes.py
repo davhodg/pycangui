@@ -338,24 +338,80 @@ def test_a_shipped_node_starts_and_stops(app, manager, kind_id):
     manager.stop(node)
 
 
+def ask_uds(app, tester, payload: bytes):
+    """One ISO-TP single-frame request, and the first frame of the answer."""
+    body = bytes([len(payload)]) + payload
+    tester.send(
+        can.Message(
+            arbitration_id=0x7E0,
+            data=body + b"\xaa" * (8 - len(body)),
+            is_extended_id=False,
+        )
+    )
+    return pump(app, tester, seconds=2.0)
+
+
 def test_the_uds_server_answers_a_request(app, manager):
     """The one shipped example whose whole job is to reply, so silence is a
     failure rather than a quiet moment."""
     tester = can.Bus(interface="virtual", channel="v_uds_talk")
     try:
         manager.start("uds_server", "v_uds_talk")
-        # Read data by identifier, VIN.  Wrapped as an ISO-TP single frame.
-        tester.send(
-            can.Message(
-                arbitration_id=0x7E0,
-                data=b"\x03\x22\xf1\x90\xaa\xaa\xaa\xaa",
-                is_extended_id=False,
-            )
-        )
-        got = pump(app, tester, seconds=2.0)
+        got = ask_uds(app, tester, b"\x22\x01\x01")  # battery, a short answer
         assert got is not None, "the server said nothing"
         assert got.arbitration_id == 0x7E8
-        assert bytes(got.data)[1] == 0x62, "a positive response to service 0x22"
+        assert bytes(got.data)[:2] == b"\x05\x62", "a positive response to service 0x22"
+    finally:
+        tester.shutdown()
+
+
+def test_an_answer_too_long_for_one_frame_is_segmented(app, manager):
+    """Which is the reason this example uses a real ISO-TP stack rather than
+    packing single frames by hand: the VIN alone does not fit in one, and an
+    ECU that could only answer in seven bytes would be a poor stand-in."""
+    tester = can.Bus(interface="virtual", channel="v_uds_long")
+    try:
+        manager.start("uds_server", "v_uds_long")
+        got = ask_uds(app, tester, b"\x22\xf1\x90")  # the VIN: 20 bytes back
+        assert got is not None, "the server said nothing"
+        first = bytes(got.data)
+        assert first[0] >> 4 == 1, f"not a first frame: {first.hex(' ')}"
+        assert ((first[0] & 0x0F) << 8) | first[1] == 20, "the length it promises"
+    finally:
+        tester.shutdown()
+
+
+def test_the_uds_server_refuses_what_it_does_not_know(app, manager):
+    """A tester tells "I will not" from "I cannot" by the code.  Silence is
+    indistinguishable from a broken bus."""
+    tester = can.Bus(interface="virtual", channel="v_uds_no")
+    try:
+        manager.start("uds_server", "v_uds_no")
+        got = ask_uds(app, tester, b"\x85\x01")  # control DTC setting: not offered
+        assert got is not None
+        assert bytes(got.data)[1:4] == b"\x7f\x85\x11", "service not supported"
+    finally:
+        tester.shutdown()
+
+
+def test_writing_is_refused_until_the_ecu_is_unlocked(app, manager):
+    """The security exchange is most of why a demo ECU is worth having: a
+    pane that can drive seed and key against something is a pane you can
+    trust before you point it at a real one."""
+    tester = can.Bus(interface="virtual", channel="v_uds_lock")
+    try:
+        manager.start("uds_server", "v_uds_lock")
+        ask_uds(app, tester, b"\x10\x03")  # extended session
+        got = ask_uds(app, tester, b"\x2e\x01\x02\x00\x2a")
+        assert bytes(got.data)[1:4] == b"\x7f\x2e\x33", "security access denied"
+
+        seed = ask_uds(app, tester, b"\x27\x01")
+        assert bytes(seed.data)[1:3] == b"\x67\x01"
+        key = bytes(b ^ 0xFF for b in bytes(seed.data)[3:7])
+        assert bytes(ask_uds(app, tester, b"\x27\x02" + key).data)[1:3] == b"\x67\x02"
+
+        got = ask_uds(app, tester, b"\x2e\x01\x02\x00\x2a")
+        assert bytes(got.data)[1:2] == b"\x6e", "unlocked, and the write took"
     finally:
         tester.shutdown()
 
@@ -491,3 +547,174 @@ def test_a_node_still_invents_a_channel_nobody_has_open(app, folder, manager):
         assert pump(app, listening) is not None
     finally:
         listening.shutdown()
+
+
+#: PDU format bytes.  An address claim is 0xEE and EEC1 is 0xF0.
+CLAIM_PF = 0xEE
+EEC1_PF = 0xF0
+
+
+def pdu_format(message) -> int:
+    """The PF byte of a 29-bit identifier.
+
+    Not the whole PGN: below 240 the next byte is a destination address
+    rather than part of the group, so comparing the pair would make an
+    address claim to the global address look like a different message.
+    """
+    return (message.arbitration_id >> 16) & 0xFF
+
+
+def collect_until(app, bus, wanted, seconds=6.0):
+    """Frames until ``wanted`` says enough, or time runs out."""
+    from time import monotonic
+
+    seen = []
+    deadline = monotonic() + seconds
+    while monotonic() < deadline and not wanted(seen):
+        app.processEvents()
+        if (msg := bus.recv(timeout=0.01)) is not None:
+            seen.append(msg)
+    return seen
+
+
+def test_the_j1939_engine_claims_an_address_then_broadcasts(app, manager):
+    """A J1939 device that broadcast before its claim settled would be
+    sending as somebody else, so the claim comes first -- and the claim
+    taking a moment is why this waits for the broadcast rather than looking
+    once."""
+    watching = can.Bus(interface="virtual", channel="v_j1939")
+    try:
+        manager.start("j1939_engine", "v_j1939")
+        seen = collect_until(app, watching, lambda got: any(pdu_format(m) == EEC1_PF for m in got))
+        formats = [pdu_format(m) for m in seen if m.is_extended_id]
+        assert CLAIM_PF in formats, f"no address claim: {[hex(f) for f in formats]}"
+        assert EEC1_PF in formats, f"claimed but never broadcast: {[hex(f) for f in formats]}"
+        assert formats.index(CLAIM_PF) < formats.index(EEC1_PF), "it broadcast before claiming"
+    finally:
+        watching.shutdown()
+
+
+def test_a_node_does_not_hear_its_own_transmissions(app, folder, manager):
+    """pycangui echoes what it sends so the trace can show it.  A node fed
+    its own frames is a node arguing with itself -- and for a gateway it is
+    an endless loop, which is the version of this that hurts."""
+    write(
+        folder,
+        "watcher",
+        "def start(node, *, ctx): node.state.heard = []\n"
+        "def poll(node, *, ctx): node.send(0x7AA, b'')\n"
+        "def on_frame(node, frame, *, ctx): node.state.heard.append(frame.arbitration_id)\n",
+    )
+    other = can.Bus(interface="virtual", channel="v_echo")
+    try:
+        node = manager.start("watcher", "v_echo", rate_hz=50)
+        other.send(can.Message(arbitration_id=0x7BB, data=b"", is_extended_id=False))
+        spin(app, 1.0, until=lambda: 0x7BB in node.state.heard)
+        assert 0x7BB in node.state.heard, "it did not hear the other bus at all"
+        assert 0x7AA not in node.state.heard, "it heard itself"
+    finally:
+        other.shutdown()
+
+
+def test_the_gateway_does_not_forward_its_own_forwarding(app, manager):
+    """The loop this would otherwise be: a frame crosses to the far side,
+    comes back as an echo there, and is forwarded home again, for ever."""
+    left = can.Bus(interface="virtual", channel="v_gwl")
+    right = can.Bus(interface="virtual", channel="v_gwr")
+    try:
+        manager.start("gateway", "v_gwl", extra=["v_gwr"])
+        left.send(can.Message(arbitration_id=0x2A, data=b"\x01", is_extended_id=False))
+        seen = collect_until(app, right, lambda got: len(got) > 4, seconds=1.5)
+        assert len(seen) == 1, f"one frame across became {len(seen)}"
+        assert seen[0].arbitration_id == 0x2A
+    finally:
+        left.shutdown()
+        right.shutdown()
+
+
+def ask_xcp(app, bus, payload: bytes):
+    """One XCP command, and the slave's answer."""
+    bus.send(can.Message(arbitration_id=0x7A0, data=payload, is_extended_id=False))
+    return pump(app, bus, seconds=2.0)
+
+
+def test_the_xcp_slave_connects_and_uploads_a_moving_measurement(app, manager):
+    """Reading the right address is the whole of XCP, and a value that never
+    moves cannot tell you whether the tool read it or read zero."""
+    master = can.Bus(interface="virtual", channel="v_xcp_go")
+    try:
+        manager.start("xcp_slave", "v_xcp_go")
+        assert bytes(ask_xcp(app, master, b"\xff").data)[0] == 0xFF, "no answer to CONNECT"
+
+        # SHORT_UPLOAD of the engine speed, whose address is little endian.
+        read = b"\xf4\x02\x00\x00" + (0x1000).to_bytes(4, "little")
+        first = bytes(ask_xcp(app, master, read).data)
+        assert first[0] == 0xFF
+        spin(app, 0.5)
+        second = bytes(ask_xcp(app, master, read).data)
+        assert first[1:3] != second[1:3], "the measurement never moved"
+    finally:
+        master.shutdown()
+
+
+def test_the_xcp_slave_refuses_to_be_calibrated_until_unlocked(app, manager):
+    """Reading a controller and writing new constants into a running one are
+    different things, and the seed is where that line is drawn."""
+    master = can.Bus(interface="virtual", channel="v_xcp_lock")
+    try:
+        manager.start("xcp_slave", "v_xcp_lock")
+        ask_xcp(app, master, b"\xff")
+        ask_xcp(app, master, b"\xf6\x00\x00\x00" + (0x2000).to_bytes(4, "little"))
+
+        locked = bytes(ask_xcp(app, master, b"\xf0\x02\x11\x22").data)
+        assert locked[0] == 0xFE, "it let a locked master write"
+
+        seed = bytes(ask_xcp(app, master, b"\xf8\x00\x00").data)
+        key = bytes(b ^ 0xFF for b in seed[2 : 2 + seed[1]])
+        assert bytes(ask_xcp(app, master, bytes([0xF7, len(key)]) + key).data)[0] == 0xFF
+
+        ask_xcp(app, master, b"\xf6\x00\x00\x00" + (0x2000).to_bytes(4, "little"))
+        assert bytes(ask_xcp(app, master, b"\xf0\x02\x11\x22").data)[0] == 0xFF
+    finally:
+        master.shutdown()
+
+
+def test_the_canopen_node_raises_and_clears_an_emergency(app, canopen_bus):
+    """An EMCY is the one CANopen message a tool cannot provoke by asking
+    for it.  A demo device that never raised one would leave the Emergencies
+    tab with nothing to show and no way to get anything."""
+    import struct
+
+    _node, bus = canopen_bus
+    emcy = 0x80 + 5
+
+    def demand(value):
+        bus.send(
+            can.Message(
+                arbitration_id=SDO_REQUEST,
+                data=b"\x2b\x01\x20\x00" + struct.pack("<h", value) + b"\x00\x00",
+                is_extended_id=False,
+            )
+        )
+
+    demand(3000)  # past what the device will put up with
+    seen = collect_until(app, bus, lambda got: any(m.arbitration_id == emcy for m in got), 3.0)
+    raised = [m for m in seen if m.arbitration_id == emcy]
+    assert raised, "no emergency at all"
+    code = int.from_bytes(bytes(raised[0].data)[:2], "little")
+    assert code == 0x2310, f"raised {code:#06x}, not over-current"
+    assert bytes(raised[0].data)[2] == 0x02, "the error register says which kind"
+    assert len(bytes(raised[0].data)) == 8, "an EMCY with an empty tail is not a real one"
+
+    demand(0)  # back down, and it should say so
+    seen = collect_until(
+        app,
+        bus,
+        lambda got: any(
+            m.arbitration_id == emcy and int.from_bytes(bytes(m.data)[:2], "little") == 0
+            for m in got
+        ),
+        3.0,
+    )
+    resets = [m for m in seen if m.arbitration_id == emcy]
+    assert resets and int.from_bytes(bytes(resets[-1].data)[:2], "little") == 0, "never cleared"

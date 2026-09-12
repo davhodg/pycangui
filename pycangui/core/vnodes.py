@@ -212,6 +212,31 @@ class Node(QObject):
             raise NodeError(f"{self.name}: channel {channel or self.channel!r} is not connected")
         return manager.bus
 
+    def listen(self, listener: can.Listener, channel: str | None = None) -> None:
+        """Put a listener on a channel, and take it off again at stop.
+
+        Use this rather than ``notifier().add_listener``: what arrives here
+        is only what came from somewhere else.  The bus echoes what this
+        node sends so that the trace can show it, and a protocol stack fed
+        its own transmissions argues with itself -- see :class:`_Received`.
+        """
+        wanted = channel or self.channel
+        wrapped = _Received(listener)
+        self._listeners.append((wanted, wrapped))
+        self.channel_bus(wanted).add_listener(wrapped)
+
+    def notifier(self, channel: str | None = None) -> can.Notifier:
+        """The channel's frame reader, for a protocol stack that wants one.
+
+        ISO-TP is the case: ``isotp.NotifierBasedCanStack`` takes a bus and a
+        notifier and does the segmenting, which is a great deal better than a
+        node file reassembling multi-frame messages by hand.
+        """
+        manager = self.channel_bus(channel)
+        if manager.notifier is None:
+            raise NodeError(f"{self.name}: channel {channel or self.channel!r} has no reader")
+        return manager.notifier
+
     def send(
         self,
         message: can.Message | int,
@@ -255,8 +280,7 @@ class Node(QObject):
         # same bus races the first for every frame and each gets about half,
         # which looks like a device that answers every other request.
         for listener in network.listeners:
-            self._listeners.append((wanted, listener))
-            manager.add_listener(listener)
+            self.listen(listener, wanted)
         network.notifier = manager.notifier
         return local
 
@@ -322,9 +346,7 @@ class Node(QObject):
         """
         if "on_frame" not in self._functions:
             return
-        listener = _Forwarder(self, channel)
-        self._listeners.append((channel, listener))
-        self._buses[channel].add_listener(listener)
+        self.listen(_Forwarder(self, channel), channel)
 
     def _deliver(self, frame: can.Message) -> None:
         """A frame, on the GUI thread, on its way to the node file."""
@@ -351,6 +373,28 @@ class Node(QObject):
             )
             if what != "stop":
                 self.stop()
+
+
+class _Received(can.Listener):
+    """Passes on only what arrived from somewhere else.
+
+    pycangui opens every bus with ``receive_own_messages``, so that the
+    trace can show what the tool itself transmitted.  A node must not hear
+    itself through that: a J1939 stack takes its own address claim for a
+    contender and fights itself for ever, and a gateway forwards its own
+    forwarded frame straight back, also for ever.  ``is_rx`` is how
+    python-can tells the two apart.
+    """
+
+    def __init__(self, inner: can.Listener) -> None:
+        self._inner = inner
+
+    def on_message_received(self, msg: can.Message) -> None:
+        if msg.is_rx:
+            self._inner.on_message_received(msg)
+
+    def on_error(self, exc: Exception) -> None:
+        pass
 
 
 class _Forwarder(can.Listener):

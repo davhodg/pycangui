@@ -51,7 +51,11 @@ def test_choosing_one_offers_its_own_rate(app, dialog):
         if item.text(0) == "J1939 engine":
             dialog.kinds.setCurrentItem(item)
             break
-    assert dialog.rate.value() == pytest.approx(20.0)
+    from pycangui.nodes import j1939_engine
+
+    assert dialog.rate.value() == pytest.approx(j1939_engine.RATE_HZ), (
+        "the dialog should offer the rate the file asks for, whatever it is"
+    )
 
 
 def test_a_broken_file_is_listed_with_its_error_rather_than_hidden(app, window, dialog):
