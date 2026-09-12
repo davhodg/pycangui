@@ -906,12 +906,12 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(trace, tx, Qt.Vertical)  # transmit, under the trace
         for name, dock in self.panes.docks.items():
             dock.setVisible(name in DEFAULT_VISIBLE)
-        # Evenly between the columns and between the rows.  A default that
-        # favoured one pane would be a guess at what somebody is doing, and
-        # dragging a splitter is the easiest thing in the window to undo.
-        # The transmit list is the exception: it is a short list of messages
-        # where the trace is an endless one, so it takes the smaller half of
-        # the column it shares.
+        # Two panes get less than an even share, and for the same reason:
+        # the log's lines are short and the transmit list is a short list of
+        # messages, where a trace is an endless one and a plot wants every
+        # pixel of width there is.  Dragging a splitter is the easiest thing
+        # in the window to undo, so these are a starting point rather than
+        # an opinion about what anybody is doing.
         #
         # Order and choice of dock both matter here, and neither is obvious.
         # resizeDocks acts on the splitter holding *both* docks named, so the
@@ -921,7 +921,7 @@ class MainWindow(QMainWindow):
         # an inner one settled.  Getting either wrong leaves the plot about
         # eighty pixels tall, which is a strip rather than a plot.
         self.resizeDocks([trace, tx], [2, 1], Qt.Vertical)
-        self.resizeDocks([trace, log], [1, 1], Qt.Horizontal)
+        self.resizeDocks([trace, log], [7, 3], Qt.Horizontal)
         self.resizeDocks([log, scope], [6, 4], Qt.Vertical)
 
     def _restore_layout(self) -> None:

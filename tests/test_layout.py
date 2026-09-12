@@ -48,11 +48,13 @@ def test_the_transmit_list_gets_less_room_than_the_trace(app, window):
     assert trace.height() > tx.height()
 
 
-def test_neither_column_swallows_the_window(app, window):
-    """The complaint this layout answers: the trace used to take most of
-    it, so everything else was a strip."""
+def test_the_log_takes_about_a_third_of_the_width(app, window):
+    """Its lines are short, and it is glanced at rather than worked in --
+    but the complaint this layout answers is the trace taking nearly all of
+    the window, so the share is stated at both ends."""
     trace, log = (window.panes.docks[n].geometry() for n in ("trace", "log"))
-    assert 0.7 < trace.width() / log.width() < 1.4, "the two columns are about even"
+    share = log.width() / (trace.width() + log.width())
+    assert 0.25 < share < 0.35, f"the log has {share:.0%} of the width"
 
 
 def test_a_hidden_pane_comes_back_where_it_belongs(app, window):
