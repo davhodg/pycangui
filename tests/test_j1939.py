@@ -10,7 +10,6 @@ from pycangui import resources
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
-from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
 from pycangui.j1939 import Dtc, Name, build_id, encode_dm1, parse_dm1, parse_id
 from pycangui.j1939.manager import J1939Manager
@@ -36,11 +35,12 @@ def test_dm1_round_trip():
 
 
 def test_name_fields():
-    from pycangui.core.demo_j1939 import ENGINE_NAME
+    from pycangui.nodes.j1939_engine import ecu_name
 
-    n = Name.from_bytes(bytes(ENGINE_NAME.bytes))
+    engine = ecu_name()
+    n = Name.from_bytes(bytes(engine.bytes))
     assert n.identity_number == 0x1234 and n.manufacturer_code == 66 and n.function == 0
-    assert n.industry_group == int(ENGINE_NAME.industry_group)
+    assert n.industry_group == int(engine.industry_group)
     assert not n.arbitrary_address_capable
 
 
@@ -77,15 +77,14 @@ def wait_until(pred, timeout=5.0):
 
 
 @pytest.fixture
-def stack(app, tmp_path, monkeypatch):
+def stack(app, tmp_path, monkeypatch, demo_device):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     bus = BusManager()
     manager = J1939Manager(bus, Hooks(ctx))
     bus.connect_bus("virtual", "vcan_j1939", 500000, False)
-    demo = DemoDevice("vcan_j1939")
+    demo = demo_device(bus, kinds=["j1939_engine"])
     yield bus, manager, demo
-    demo.stop()
     manager.shutdown()
     bus.disconnect_bus()
 

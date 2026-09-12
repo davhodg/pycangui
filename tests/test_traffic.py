@@ -51,7 +51,7 @@ def test_connecting_to_the_demo_channel_starts_the_demo(app, window):
     """
     connect_to(app, window, DEMO_CHANNEL)
     assert window.channels.active_bus().is_connected, window.log.toPlainText()
-    assert window._demo is not None, f"the demo did not start: {window.log.toPlainText()}"
+    assert window._demo, f"the demo did not start: {window.log.toPlainText()}"
 
     bus = window.channels.active_bus()
     run_for(app, 4.0, until=lambda: window.trace.model.rowCount() > 10 and bus.load_percent > 0)
@@ -66,17 +66,17 @@ def test_an_empty_virtual_channel_stays_empty(app, window):
     """vcan1 says "empty" in the list, and means it."""
     connect_to(app, window, "vcan1")
     assert window.channels.active_bus().is_connected
-    assert window._demo is None, "only the demo channel runs the demo"
+    assert not window._demo, "only the demo channel runs the demo"
     run_for(app, 1.0)
     assert window.trace.model.rowCount() == 0
 
 
 def test_disconnecting_stops_the_demo(app, window):
     connect_to(app, window, DEMO_CHANNEL)
-    assert window._demo is not None
+    assert window._demo
     window.connect_bar.button.setChecked(False)
     app.processEvents()
-    assert window._demo is None, "nothing should be left running on a bus nobody is on"
+    assert not window._demo, "nothing should be left running on a bus nobody is on"
 
 
 def test_the_channel_list_says_what_each_one_carries(app, window):

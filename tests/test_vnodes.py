@@ -488,25 +488,32 @@ def test_an_sdo_write_reaches_the_device_and_is_answered(app, canopen_bus):
     )
 
 
-# --- joining a bus the application already has open ------------------------------
-def test_a_node_joins_the_channel_the_application_already_has(app, folder, ctx):
-    """What makes a node on real hardware possible at all.  A second handle
-    on one physical channel is backend dependent and refused outright by
-    several drivers -- and unnecessary, because a perfectly good handle is
-    already there."""
+# --- standing on a channel the application already has ---------------------------
+def test_a_node_stands_on_the_channel_with_a_handle_of_its_own(app, folder, ctx):
+    """A device has to be a separate participant.
+
+    Sharing the application's handle looks tidier and cannot work: python-can
+    marks everything this process sent as not-received, so pycangui's own
+    protocol stacks -- which rightly ignore what the local handle sent --
+    would never hear the node, and the node could not tell the application's
+    frames from its own.  Neither side could hear the other.
+    """
     write(folder, "shouter", "def poll(node, *, ctx): node.send(0x321, b'\x01')\n")
     channels = Channels()
     existing = channels.add("Rig")
     existing.connect_bus("virtual", "vrig", 500000, False)
-    watching = can.Bus(interface="virtual", channel="vrig")
+    heard = []
+    existing.frames.connect(heard.extend)
     nodes = VirtualNodes(ctx, channels=channels)
     try:
         node = nodes.start("shouter", "Rig", rate_hz=50)
-        assert node.bus() is existing.bus, "it opened one of its own"
-        assert pump(app, watching) is not None, "nothing reached the bus"
+        assert node.bus() is not existing.bus, "it shared the application's handle"
+        spin(app, 2.0, until=lambda: any(f.can_id == 0x321 for f in heard))
+        mine = [f for f in heard if f.can_id == 0x321]
+        assert mine, "the application never heard the node"
+        assert mine[0].rx, "and it must look received, or every stack will drop it"
     finally:
         nodes.stop_all()
-        watching.shutdown()
         existing.disconnect_bus()
 
 

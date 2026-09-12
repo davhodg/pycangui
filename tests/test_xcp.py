@@ -10,7 +10,6 @@ from pycangui import resources
 from pycangui.core import workspaces
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
-from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
 from pycangui.core.signals import SignalHub
 from pycangui.xcp import decode_value, encode_value
@@ -51,7 +50,7 @@ def wait_until(pred, timeout=5.0):
 
 
 @pytest.fixture
-def stack(app, tmp_path, monkeypatch):
+def stack(app, tmp_path, monkeypatch, demo_device):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     hooks = Hooks(ctx)
@@ -59,9 +58,8 @@ def stack(app, tmp_path, monkeypatch):
     bus = BusManager()
     manager = XcpManager(bus, hooks, hub, ctx)
     bus.connect_bus("virtual", "vcan_xcp", 500000, False)
-    demo = DemoDevice("vcan_xcp")
+    demo = demo_device(bus, kinds=["xcp_slave"])
     yield bus, manager, demo, hub, tmp_path
-    demo.stop()
     manager.shutdown()
     bus.disconnect_bus()
 
@@ -107,7 +105,7 @@ def test_xcp_against_demo_slave(stack):
     n += 1
     manager.write("SpeedLimit", "7000")
     assert last_after(n) == "SpeedLimit <- 7000"
-    assert struct.unpack_from("<H", demo.xcp.memory, 0x2000)[0] == 7000
+    assert struct.unpack_from("<H", demo["xcp_slave"].state.memory, 0x2000)[0] == 7000
 
     manager.set_polled("EngineSpeed", True)
     wait_until(lambda: len(hub.keys()) and len(hub.get("XCP/EngineSpeed").values) >= 3, timeout=4)

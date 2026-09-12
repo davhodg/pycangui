@@ -34,6 +34,7 @@ from pycangui.core.signals import SignalHub
 from pycangui.core.vnodes import VirtualNodes
 from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
+from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
 from pycangui.ui import folders
 from pycangui.ui.ascii_view import AsciiView, Stream
@@ -232,6 +233,7 @@ class MainWindow(QMainWindow):
         # Queued: disconnected is emitted *before* the bus is torn down, so
         # asking straight away would still see it connected.
         self.channels.state_changed.connect(lambda *_a: self._sync_demo(), Qt.QueuedConnection)
+        self.vnodes.changed.connect(self._demo_nodes_changed)
         self.channels.error.connect(self._on_error)
         self.channels.note.connect(self.events.information)
         self.channels.warning.connect(self.events.warning)
@@ -278,7 +280,13 @@ class MainWindow(QMainWindow):
         # delivering a click is not somewhere to be.
         self.panes.changed.connect(lambda: QTimer.singleShot(0, self._build_view_menu))
 
-        self._demo = None  # a DemoDevice, once vcan0 is connected to
+        #: The demo device: the shipped example nodes, running while a
+        #: channel is connected to the bus the demo is advertised on.
+        self._demo: list = []
+        #: Set when somebody stops one from the Virtual nodes dialog, so
+        #: that the next channel event does not helpfully start it again.
+        #: Cleared when the channel goes, because reconnecting is asking.
+        self._demo_stopped_by_hand = False
         tools_menu = self.menuBar().addMenu("&Tools")
         tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
         tools_menu.addAction("Open backends folder", self._open_backends_folder)
@@ -1323,32 +1331,59 @@ class MainWindow(QMainWindow):
         menu meant connecting to the virtual bus and finding it empty, with
         nothing on screen to say why or what to do about it.
         """
-        wanted = any(
-            bus.is_connected and bus.interface == "virtual" and bus.channel == DEMO_CHANNEL
-            for name in self.channels.names()
-            if (bus := self.channels.get(name)) is not None
-        )
-        if wanted and self._demo is None:
-            try:
-                # Imported here: the demo device brings the j1939 library
-                # with it, and it exists only while vcan0 is connected.
-                from pycangui.core.demo import DemoDevice
-
-                self._demo = DemoDevice(DEMO_CHANNEL, self)
-            except Exception as exc:
-                self.events.warning(f"Demo device failed to start: {exc}")
-                return
-            self.events.information(
-                f"Demo CANopen device running on {DEMO_CHANNEL}: "
-                "node 5, heartbeat 500 ms, TPDO1 100 ms"
-            )
-        elif not wanted:
+        where = self._demo_channel()
+        if where is None:
             self._stop_demo()
+            self._demo_stopped_by_hand = False  # off the channel, so offer it again
+            return
+        if self._demo or self._demo_stopped_by_hand:
+            return
+        for kind in DEMO:
+            try:
+                self._demo.append(self.vnodes.start(kind, where))
+            except Exception as exc:
+                self.events.warning(f"{DEMO_NAME}: {kind} did not start: {exc}")
+        if self._demo:
+            self.events.information(
+                f"{DEMO_NAME} running on {where}: {len(self._demo)} nodes, "
+                "answering CANopen, UDS, J1939 and XCP.  "
+                "Tools > Virtual nodes to see or stop them."
+            )
+
+    def _demo_channel(self) -> str | None:
+        """The channel the demo belongs on, if one is connected to it.
+
+        Matched on the adapter channel the demo is advertised under in the
+        connect bar, so picking that entry is what opts in.  Named channels
+        are the application's namespace and the demo does not get to own a
+        name in it.
+        """
+        for name in self.channels.names():
+            bus = self.channels.get(name)
+            if bus is not None and bus.is_connected and bus.channel == DEMO_CHANNEL:
+                if is_real(bus.interface):
+                    continue  # somebody's adapter that happens to share a name
+                return name
+        return None
 
     def _stop_demo(self) -> None:
-        if self._demo is not None:
-            self._demo.stop()
-            self._demo = None
+        going, self._demo = self._demo, []  # emptied first, so the watcher
+        for node in going:  # below does not read this as somebody's doing
+            self.vnodes.stop(node)
+
+    @Slot()
+    def _demo_nodes_changed(self) -> None:
+        """Notice a demo node stopped from the Virtual nodes dialog.
+
+        Without this the next channel event would helpfully start it again,
+        and a Stop button that undoes itself a second later is worse than
+        no Stop button.  Reconnecting the channel is how to ask for it back.
+        """
+        running = {id(node) for node in self.vnodes.running()}
+        still = [node for node in self._demo if id(node) in running]
+        if len(still) != len(self._demo):
+            self._demo = still
+            self._demo_stopped_by_hand = True
 
     # --- channels ------------------------------------------------------------
     def _connect_active(

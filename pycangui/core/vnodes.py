@@ -40,8 +40,10 @@ import ast
 import importlib.util
 import sys
 import traceback
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from types import SimpleNamespace
 from typing import Any
 
@@ -73,6 +75,13 @@ INTERFACE = "virtual"
 #: Given to a virtual bus, which ignores it.  Named rather than repeated so
 #: that nobody reads 500000 here and thinks it means anything.
 VIRTUAL_BITRATE = 500000
+
+#: How many of a node's own sends to remember, and for how long, so that
+#: the echo of one can be told from the application transmitting the same
+#: bytes.  Both are generous: the echo of a frame arrives within
+#: milliseconds, and anything older is not an echo.
+ECHO_MEMORY = 256
+ECHO_SECONDS = 2.0
 
 
 class NodeError(RuntimeError):
@@ -181,10 +190,27 @@ class Node(QObject):
         self.state = SimpleNamespace()
 
         self._functions = functions
-        #: The channels this node stands on, by name.  Never opened here and
-        #: never closed here: a node joins a channel the application has, and
-        #: one that closed it on the way out would disconnect the window.
-        self._buses: dict[str, Any] = dict(buses)
+        #: The application's channels this node stands on, by name.  Used
+        #: to learn what to open and never closed here: they belong to the
+        #: window, and a node that closed one would disconnect it.
+        self._channels: dict[str, Any] = dict(buses)
+        #: This node's own handle on each of those channels, and its reader.
+        #: A device needs a handle of its own to be a separate participant:
+        #: sharing the application's means neither can tell the other's
+        #: frames from its own, and pycangui's protocol stacks correctly
+        #: ignore what the local handle sent -- so a master and a simulated
+        #: device on one handle cannot talk at all.
+        self._buses: dict[str, can.BusABC] = {}
+        self._notifiers: dict[str, can.Notifier] = {}
+        #: Channels where a second handle was refused and the application's
+        #: is being shared.  Those are not ours to close.
+        self._shared: set[str] = set()
+        #: What this node has sent and not yet heard back, so its own
+        #: echoes can be told from the application's traffic on the same
+        #: handle.  A deque because the match is by content and the oldest
+        #: one is the right one to claim; short-lived, because a bus that
+        #: does not echo at all must not fill it.
+        self._sent_echoes: deque[tuple[tuple, float]] = deque(maxlen=ECHO_MEMORY)
         #: (channel, listener) for everything this node put on a channel's
         #: notifier -- its own frame forwarder, and any CANopen server it
         #: built.  A list of pairs because one channel can carry several.
@@ -201,41 +227,41 @@ class Node(QObject):
     def channel_bus(self, channel: str | None = None):
         """The application's channel this node is standing on."""
         wanted = channel or self.channel
-        if (manager := self._buses.get(wanted)) is None:
+        if (manager := self._channels.get(wanted)) is None:
             raise NodeError(f"{self.name} is not on channel {wanted!r}")
         return manager
 
     def bus(self, channel: str | None = None) -> can.BusABC:
-        """The python-can bus behind that channel."""
-        manager = self.channel_bus(channel)
-        if manager.bus is None:
-            raise NodeError(f"{self.name}: channel {channel or self.channel!r} is not connected")
-        return manager.bus
+        """This node's own handle on that channel."""
+        wanted = channel or self.channel
+        if (bus := self._buses.get(wanted)) is None:
+            raise NodeError(f"{self.name} is not on channel {wanted!r}")
+        return bus
 
     def listen(self, listener: can.Listener, channel: str | None = None) -> None:
-        """Put a listener on a channel, and take it off again at stop.
+        """Put a listener on this node's reader, and take it off at stop.
 
-        Use this rather than ``notifier().add_listener``: what arrives here
-        is only what came from somewhere else.  The bus echoes what this
-        node sends so that the trace can show it, and a protocol stack fed
-        its own transmissions argues with itself -- see :class:`_Received`.
+        Use this rather than reaching for the notifier: what arrives here is
+        only what came from somewhere else -- see :class:`_Received` -- and
+        it is removed again when the node stops without anybody remembering
+        to.
         """
         wanted = channel or self.channel
-        wrapped = _Received(listener)
+        wrapped = _Received(self, listener)
         self._listeners.append((wanted, wrapped))
-        self.channel_bus(wanted).add_listener(wrapped)
+        self.notifier(wanted).add_listener(wrapped)
 
     def notifier(self, channel: str | None = None) -> can.Notifier:
-        """The channel's frame reader, for a protocol stack that wants one.
+        """This node's frame reader, for a protocol stack that wants one.
 
         ISO-TP is the case: ``isotp.NotifierBasedCanStack`` takes a bus and a
         notifier and does the segmenting, which is a great deal better than a
         node file reassembling multi-frame messages by hand.
         """
-        manager = self.channel_bus(channel)
-        if manager.notifier is None:
-            raise NodeError(f"{self.name}: channel {channel or self.channel!r} has no reader")
-        return manager.notifier
+        wanted = channel or self.channel
+        if (notifier := self._notifiers.get(wanted)) is None:
+            raise NodeError(f"{self.name} is not on channel {wanted!r}")
+        return notifier
 
     def send(
         self,
@@ -256,7 +282,29 @@ class Node(QObject):
             frame = message
         else:
             frame = can.Message(arbitration_id=message, data=data or b"", is_extended_id=extended)
+        self._sent_echoes.append((_signature(frame), monotonic()))
         self.bus(channel).send(frame)
+
+    def claim_echo(self, msg: can.Message) -> bool:
+        """Whether this frame is one this node sent, coming back.
+
+        Matched by content rather than by ``is_rx``, because on a shared
+        handle that flag cannot tell this node's frames from the
+        application's -- see :class:`_Received`.  Stale entries are dropped
+        as we go, so a bus that never echoes does not fill the record and a
+        frame that looks like a very old send is not mistaken for one.
+        """
+        if msg.is_rx:
+            return False  # plainly somebody else's
+        now = monotonic()
+        while self._sent_echoes and now - self._sent_echoes[0][1] > ECHO_SECONDS:
+            self._sent_echoes.popleft()
+        signature = _signature(msg)
+        for index, (candidate, _when) in enumerate(self._sent_echoes):
+            if candidate == signature:
+                del self._sent_echoes[index]
+                return True
+        return False
 
     def canopen(self, eds: str | Path, node_id: int, channel: str | None = None):
         """A CANopen server on this node's bus: SDO, heartbeat, NMT, PDO.
@@ -272,16 +320,15 @@ class Node(QObject):
         import canopen
 
         wanted = channel or self.channel
-        manager = self.channel_bus(wanted)
         network = canopen.Network(bus=self.bus(wanted))
         local = network.create_node(node_id, str(eds))
         self._networks.append(network)
-        # Onto the channel's own notifier.  A second notifier reading the
-        # same bus races the first for every frame and each gets about half,
-        # which looks like a device that answers every other request.
+        # Onto this node's own reader.  A second notifier on one bus races
+        # the first for every frame and each gets about half, which looks
+        # like a device that answers every other request.
         for listener in network.listeners:
             self.listen(listener, wanted)
-        network.notifier = manager.notifier
+        network.notifier = self.notifier(wanted)
         return local
 
     def log(self, message: str) -> None:
@@ -322,13 +369,28 @@ class Node(QObject):
         self._networks.clear()
         for channel, listener in self._listeners:
             try:
-                self._buses[channel].remove_listener(listener)
+                self._notifiers[channel].remove_listener(listener)
             except Exception:  # the channel may have gone already
                 pass
         self._listeners.clear()
-        # The buses stay open.  They are the application's channels, and a
-        # node that closed one on the way out would disconnect the window.
+        for channel, notifier in self._notifiers.items():
+            if channel in self._shared:
+                continue  # the application's reader, not ours to stop
+            try:
+                notifier.stop()
+            except Exception:
+                pass
+        for channel, bus in self._buses.items():
+            if channel in self._shared:
+                continue  # ditto: closing it would disconnect the window
+            try:
+                bus.shutdown()
+            except Exception:
+                pass
+        self._notifiers.clear()
         self._buses.clear()
+        self._channels.clear()
+        self._shared.clear()
 
     @property
     def running(self) -> bool:
@@ -336,17 +398,41 @@ class Node(QObject):
 
     # --- the plumbing underneath --------------------------------------------
     def _open(self, channel: str) -> None:
-        """Listen on a channel the application already has open.
+        """Take this node's own handle on a pycangui channel.
 
-        A node never opens a bus of its own.  It stands on a pycangui
-        channel like everything else does, which is what makes its traffic
-        appear in the trace, its channel appear in the connect bar, and a
-        second handle on real hardware unnecessary -- several drivers refuse
-        one outright, and there is no need when a good handle is there.
+        The channel says which interface and which adapter channel; the
+        node opens a second handle on the same one.  That is what makes it
+        a separate participant rather than part of the application: on a
+        shared handle python-can marks everything this process sent as not
+        received, so the application's stacks ignore the node's frames and
+        the node cannot tell the application's from its own.  Neither side
+        can hear the other, which is the opposite of the point.
+
+        A real adapter may refuse a second handle -- several drivers do --
+        and then the node shares the application's.  It still works against
+        equipment out on the bus; what it cannot do is talk to pycangui's
+        own protocol panes, and it says so rather than being quietly deaf.
         """
-        if "on_frame" not in self._functions:
-            return
-        self.listen(_Forwarder(self, channel), channel)
+        manager = self._channels[channel]
+        interface = manager.interface or INTERFACE
+        where = manager.channel or channel
+        try:
+            bus = can.Bus(interface=interface, channel=where)
+            self._buses[channel] = bus
+            self._notifiers[channel] = can.Notifier(bus, [], timeout=0.02)
+        except Exception as exc:
+            if manager.bus is None or manager.notifier is None:
+                raise NodeError(f"{self.name}: cannot get onto {channel}: {exc}") from exc
+            self.ctx.warn(
+                f"{self.name}: {interface} would not give a second handle on {channel} "
+                f"({exc}).  Sharing the application's, so pycangui's own protocol panes "
+                "will not see this node -- equipment on the bus still will."
+            )
+            self._buses[channel] = manager.bus
+            self._notifiers[channel] = manager.notifier
+            self._shared.add(channel)
+        if "on_frame" in self._functions:
+            self.listen(_Forwarder(self, channel), channel)
 
     def _deliver(self, frame: can.Message) -> None:
         """A frame, on the GUI thread, on its way to the node file."""
@@ -375,22 +461,33 @@ class Node(QObject):
                 self.stop()
 
 
-class _Received(can.Listener):
-    """Passes on only what arrived from somewhere else.
+def _signature(msg: can.Message) -> tuple:
+    """What makes two frames the same frame, for spotting an echo."""
+    return (msg.arbitration_id, bool(msg.is_extended_id), bytes(msg.data))
 
-    pycangui opens every bus with ``receive_own_messages``, so that the
-    trace can show what the tool itself transmitted.  A node must not hear
-    itself through that: a J1939 stack takes its own address claim for a
-    contender and fights itself for ever, and a gateway forwards its own
-    forwarded frame straight back, also for ever.  ``is_rx`` is how
-    python-can tells the two apart.
+
+class _Received(can.Listener):
+    """Passes on everything except what this node itself sent.
+
+    pycangui opens every bus with ``receive_own_messages`` so the trace can
+    show what the tool transmitted, and a node shares that bus.  It must not
+    hear *itself*: a J1939 stack takes its own address claim for a contender
+    and fights itself for ever, and a gateway forwards its own forwarded
+    frame straight back, also for ever.
+
+    ``is_rx`` is not the test, though it looks like it.  On a shared handle
+    it is false for everything this process sent -- the application's own
+    transmissions included -- and a node deaf to the application is a node
+    that cannot answer an SDO.  So the node keeps note of what it sent and
+    claims those echoes back, and anything else is somebody else's.
     """
 
-    def __init__(self, inner: can.Listener) -> None:
+    def __init__(self, node: Node, inner: can.Listener) -> None:
+        self._node = node
         self._inner = inner
 
     def on_message_received(self, msg: can.Message) -> None:
-        if msg.is_rx:
+        if not self._node.claim_echo(msg):
             self._inner.on_message_received(msg)
 
     def on_error(self, exc: Exception) -> None:

@@ -11,7 +11,6 @@ from pycangui.canopen.manager import CanopenManager
 from pycangui.core import workspaces
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
-from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
 
 
@@ -59,18 +58,17 @@ def wait_until(pred, timeout=8.0):
 
 
 @pytest.fixture
-def stack(app, tmp_path, monkeypatch):
+def stack(app, tmp_path, monkeypatch, demo_device):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     hooks = Hooks(ctx)
     bus = BusManager()
     manager = CanopenManager(bus, hooks)
     bus.connect_bus("virtual", "vcan_emcy", 500000, False)
-    demo = DemoDevice("vcan_emcy")
+    demo = demo_device(bus, kinds=["canopen_device"])
     manager.load_eds(5, str(resources.path("demo.eds")))
     wait_until(lambda: manager.node(5) is not None and len(manager.node(5).object_dictionary))
     yield manager, demo, hooks, tmp_path
-    demo.stop()
     manager.shutdown()
     bus.disconnect_bus()
 

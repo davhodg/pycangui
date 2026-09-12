@@ -8,7 +8,6 @@ from PySide6.QtCore import QCoreApplication
 from pycangui.core import workspaces
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
-from pycangui.core.demo import DemoDevice
 from pycangui.core.hooks import Hooks
 from pycangui.uds import UdsConfig
 from pycangui.uds.manager import UdsManager, dtc_code
@@ -24,16 +23,15 @@ def wait_until(pred, timeout=5.0):
 
 
 @pytest.fixture
-def stack(app, tmp_path, monkeypatch):
+def stack(app, tmp_path, monkeypatch, demo_device):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     hooks = Hooks(ctx)
     bus = BusManager()
     manager = UdsManager(bus, hooks, ctx)
     bus.connect_bus("virtual", "vcan_uds", 500000, False)
-    demo = DemoDevice("vcan_uds")
+    demo = demo_device(bus, kinds=["uds_server"])
     yield bus, manager, demo, tmp_path
-    demo.stop()
     manager.shutdown()
     bus.disconnect_bus()
 
@@ -85,7 +83,7 @@ def test_uds_services_against_demo_ecu(stack):
     n += 1
     manager.write_did(0x0102, "00 10")
     assert last_after(n) == "DID 0102 written (2 bytes)"
-    assert demo.uds.dids[0x0102] == b"\x00\x10"
+    assert demo["uds_server"].state.identifiers[0x0102] == b"\x00\x10"
     n += 1
 
     manager.read_dtcs(0xFF)
@@ -111,6 +109,6 @@ def test_uds_services_against_demo_ecu(stack):
     n += 1
     manager.ecu_reset(1)
     assert last_after(n) == "ECUReset (hard reset) OK"
-    assert demo.uds.session == 1
+    assert demo["uds_server"].state.session == 1
     manager.close()
     assert lines[-1] == "UDS closed"
