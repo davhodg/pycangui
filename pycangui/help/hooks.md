@@ -24,14 +24,47 @@ On first run each file is copied there complete, with the default behaviour and
 commented examples already in it, so there is never an empty file to start
 from.  **Your copies are never overwritten.**
 
-Two entries in the Tools menu keep them current, and they do different jobs:
+*Tools > Reload hooks* reads the files again, so an edit of your own takes
+effect without restarting.  It changes nothing on disk.
 
-* *Reload hooks* reads the files again, so an edit of your own takes effect
-  without restarting.  It changes nothing on disk.
-* *Update hook stubs* is for when pycangui itself has gained a hook your files
-  predate: it appends the new ones, with their imports and tables, to the end
-  of the file that owns them and then reloads.  Hooks you have already written
-  are not touched, so it is safe to use whenever you update pycangui.
+## Keeping up with a new pycangui
+
+Your files were written against the pycangui you had.  A later version can ask
+questions yours have no answer for, and can change what it passes to a question
+it already asked.  Both are handled when that version first runs, because
+keeping up with pycangui is pycangui's job rather than something to remember
+after every update.
+
+**A hook that is new** is appended to the end of the file that owns it, with
+whatever it needs to work -- its imports, and the tables it reads -- under a
+`# --- hooks pycangui added; yours to edit ---` line.  It arrives as the
+built-in default, so it behaves exactly as it did before it was there.  Nothing
+you wrote is touched, and a hook you deleted on purpose stays deleted: what
+arrives is decided by what is *new*, not by what is missing.  If appending
+would somehow stop the file loading, the file is put back as it was and the
+[Event Log](event-log.md) says so.
+
+**A hook whose signature changed** is the awkward one, because your version is
+still there and still has the right name.  Every hook you have written is
+checked against the one pycangui calls as the file loads, and one that cannot
+be called is reported before anything has happened:
+
+```
+hooks/uds.py: security_key is not being used, because this version of
+pycangui changed it -- it does not take ctx.
+    yours:    security_key(level, seed)
+    pycangui: security_key(level, seed, *, ctx)
+    The built-in default is running instead.  See Help > Hooks.
+```
+
+That is deliberately a line in the log at startup rather than a traceback
+later: the alternative is finding out during a flash session that the default
+seed-to-key has been running all along.  Fix the signature, *Reload hooks*, and
+it is used again.
+
+*Tools > Add missing hooks* does the appending on demand, for every hook your
+files lack rather than only the new ones.  It is how to get back one you
+deleted; you should not otherwise need it.
 
 ## What happens when one runs
 

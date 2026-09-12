@@ -124,3 +124,88 @@ def test_update_stubs_adds_the_imports_the_new_code_needs(home, hooks):
     assert hooks.errors() == {}  # the file really does load
     assert hooks.call("canopen", "node_name", IDENT) == "mine"
     assert hooks.update_stubs() == {}  # and running it again changes nothing
+
+
+def test_a_hook_written_for_an_older_signature_is_not_called(home, log):
+    """The file loads, the name is there, and the call would fail.
+
+    Left to the call, that is a traceback in the middle of a flash session
+    with the default used instead.  Found at load, it is a line in the log
+    before anything has happened.
+    """
+    ctx = Context(log=log.append)
+    Hooks(ctx)
+    write_user(home, "def node_name(identity):\n    return 'mine'\n")  # no ctx
+    hooks = Hooks(ctx)
+
+    assert not hooks.is_user_defined("canopen", "node_name")
+    assert hooks.call("canopen", "node_name", IDENT) is None  # the default ran
+    assert hooks.mismatches() == {("canopen", "node_name"): "it does not take ctx"}
+    said = "\n".join(log)
+    assert "node_name(identity)" in said, "what they wrote"
+    assert "node_name(identity, *, ctx)" in said, "what pycangui calls"
+
+
+def test_a_hook_that_takes_anything_is_left_alone(home, log):
+    ctx = Context(log=log.append)
+    write_user(home, "def node_name(*args, **kwargs):\n    return 'mine'\n")
+    hooks = Hooks(ctx)
+    assert hooks.mismatches() == {}
+    assert hooks.call("canopen", "node_name", IDENT) == "mine"
+
+
+def test_a_signature_this_version_changed_says_so(home, log):
+    """Whose fault it is decides what the reader does next."""
+    ctx = Context(log=log.append)
+    Hooks(ctx)
+    write_user(home, "def node_name(identity):\n    return 'mine'\n")
+    known = ctx.settings.get("hooks.known")
+    known["canopen"]["node_name"] = "node_name(identity)"  # what they wrote it against
+    ctx.settings.set("hooks.known", known)
+
+    Hooks(Context(log=log.append))
+    assert any("this version of pycangui changed it" in line for line in log)
+
+
+def test_hooks_a_new_version_adds_arrive_by_themselves(home, log):
+    """Keeping up with pycangui is pycangui's job, not a menu entry."""
+    ctx = Context(log=log.append)
+    Hooks(ctx)
+    write_user(home, "def node_name(identity, *, ctx):\n    return 'mine'\n")
+    known = ctx.settings.get("hooks.known")
+    known["canopen"] = {"node_name": known["canopen"]["node_name"]}  # the rest are new
+    ctx.settings.set("hooks.known", known)
+
+    hooks = Hooks(Context(log=log.append))
+    text = (workspaces.hooks_dir() / "canopen.py").read_text()
+    assert "def eds_for_node" in text
+    assert "return 'mine'" in text, "and the hand-written one is untouched"
+    assert hooks.call("canopen", "node_name", IDENT) == "mine"
+
+
+def test_a_hook_deleted_on_purpose_stays_deleted(home, log):
+    """Which is why what arrives is decided by what is new, not by what
+    is missing -- otherwise every startup would put it back."""
+    ctx = Context(log=log.append)
+    Hooks(ctx)
+    write_user(home, "def node_name(identity, *, ctx):\n    return 'mine'\n")
+
+    Hooks(Context(log=log.append))
+    text = (workspaces.hooks_dir() / "canopen.py").read_text()
+    assert "def eds_for_node" not in text
+
+
+def test_a_file_that_would_break_is_put_back_as_it_was(home, log, monkeypatch):
+    """This runs unattended at startup, so it has to be able to undo itself."""
+    from pycangui.core import hooks as hooks_module
+
+    ctx = Context(log=log.append)
+    Hooks(ctx)
+    write_user(home, "def node_name(identity, *, ctx):\n    return 'mine'\n")
+    before = (workspaces.hooks_dir() / "canopen.py").read_text()
+    monkeypatch.setattr(hooks_module, "_fails_to_load", lambda module, path: "NameError: nope")
+
+    hooks = Hooks(Context(log=log.append))
+    assert hooks.update_stubs() == {}, "nothing was added"
+    assert (workspaces.hooks_dir() / "canopen.py").read_text() == before
+    assert any("left as it was" in line for line in log)
