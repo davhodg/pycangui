@@ -780,10 +780,31 @@ class MainWindow(QMainWindow):
         """
         self.channels.frames.disconnect(view.on_frames)
 
+    def _view_order(self) -> list[str]:
+        """The panes, in the order the View menu should list them.
+
+        The order they were *registered* in, which is the deliberate one --
+        see _register_panes -- rather than the order they happened to be
+        opened in.  A workspace restores its panes in whatever order they
+        were saved, so listing by that made the menu reshuffle itself from
+        one machine to the next, and a menu you cannot learn the shape of
+        is one you read every time.
+
+        Extra instances follow the first of their kind, so "CAN Trace 2"
+        sits under "CAN Trace" rather than at the end.
+        """
+        order = []
+        for kind in self.panes.kinds:
+            order.extend(name for name in self.panes.instances(kind) if name in self.panes.docks)
+        # Anything whose kind has gone -- a plugin unloaded while its pane
+        # was open -- is still a pane, and still belongs in the menu.
+        order.extend(name for name in self.panes.names() if name not in order)
+        return order
+
     def _build_view_menu(self) -> None:
         """Every pane, and the two things you can do to the set of them."""
         self.view_menu.clear()
-        for name in self.panes.names():
+        for name in self._view_order():
             self.view_menu.addAction(self.panes.docks[name].toggleViewAction())
         self.view_menu.addSeparator()
 

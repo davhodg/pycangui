@@ -424,3 +424,34 @@ def test_there_is_nothing_to_remove_until_there_is(app, window):
     remove = _submenu(window, "Remove pane")
     assert remove.isEnabled()
     assert [a.text() for a in remove.actions()] == ["CAN Trace 2"]
+
+
+def test_the_view_menu_is_in_the_order_the_panes_were_registered(app, window):
+    """Not the order they were opened in.
+
+    A workspace restores its panes in whatever order they were saved, so
+    listing the menu by that made it reshuffle from one machine to the next
+    -- and a menu whose shape you cannot learn is one you read every time.
+    """
+    listed = [a.text() for a in window.view_menu.actions() if a.text()]
+    wanted = ["CAN Trace", "CAN Transmit", "Signals and Plot", "Event Log", "ASCII Log"]
+    found = [t for t in listed if t in wanted]
+    assert found == wanted, f"the menu reads {found}"
+
+
+def test_opening_a_pane_late_does_not_move_it_up_the_menu(app, window):
+    """The case that hid this: a pane opened after the others went to the
+    end of the list, wherever it belongs."""
+    window.panes.show("canopen")  # opened last, but registered sixth
+    settle(app)
+    listed = [a.text() for a in window.view_menu.actions() if a.text()]
+    assert listed.index("CANopen") < listed.index("Python Console")
+    assert listed.index("CAN Trace") < listed.index("CANopen")
+
+
+def test_a_second_instance_sits_under_the_first(app, window):
+    """Rather than at the end: two traces belong together."""
+    window.panes.add("trace")
+    settle(app)
+    listed = [a.text() for a in window.view_menu.actions() if a.text()]
+    assert listed.index("CAN Trace 2") == listed.index("CAN Trace") + 1
