@@ -1,17 +1,23 @@
-"""A J1939 engine, broadcasting at the frame level.
+"""A J1939 engine: claims an address, broadcasts, and answers requests.
 
-The counterpart to ``canopen_device.py``, and deliberately the opposite
-approach: that one takes a whole protocol server from ``node.canopen()``,
-this one builds its frames by hand.  Most protocols are this one -- pycangui
-has no server to hand you for J1939 or for a maker's own scheme, so what a
-node does is compose an id, pack some bytes and send them.
+Where ``canopen_device.py`` takes a whole protocol server from
+``node.canopen()``, this one builds its own from the ``j1939`` library --
+which is the more usual shape.  pycangui has a server to hand you for
+CANopen and not for anything else, so most node files look like this: bring
+the stack you need, wire it to the channel, and get on with what your device
+does.
 
-This engine broadcasts EEC1 (engine speed) and CCVS1 (wheel speed) at their
-usual rates, with the speed wandering so a plot has something to show.  Load
-a J1939 DBC and the trace will name them.
+A J1939 device cannot simply start shouting.  It claims a source address
+first and defends it, and until that succeeds nothing it sends means
+anything -- which is why ``poll`` checks before it broadcasts.
 
-To make it yours: change ``SOURCE_ADDRESS``, and change ``poll`` to broadcast
-the PGNs your ECU broadcasts.
+It sends EEC1 (engine speed), CCVS1 (wheel speed) and a DM1 fault, and
+answers a request for ComponentID with a multi-packet BAM transfer -- the
+one message here that does not fit in eight bytes, and the reason the
+library is worth having.
+
+To make it yours: change ``ADDRESS``, ``MANUFACTURER`` and ``IDENTITY`` to
+your ECU's, and broadcast the parameter groups it broadcasts.
 """
 
 from __future__ import annotations
@@ -20,65 +26,133 @@ import math
 import struct
 
 NAME = "J1939 engine"
-DESCRIPTION = "Broadcasts engine and wheel speed, composed frame by frame."
-RATE_HZ = 20  # 50 ms, which is the fastest of the PGNs below
+DESCRIPTION = "Claims an address, broadcasts engine and wheel speed, reports a fault."
+RATE_HZ = 10
 
-#: Who this ECU claims to be.  0x00 is the engine's conventional address.
-#: A real ECU claims it first and defends it; this one simply uses it, which
-#: is enough to be talked to and not enough to be a good citizen.
-SOURCE_ADDRESS = 0x00
+#: The address this ECU claims.  0x00 is the engine's by convention.
+ADDRESS = 0x00
 
-#: Parameter group numbers, from J1939-71.  A broadcast id is the priority,
-#: the PGN and the sender, packed into 29 bits.
-EEC1 = 0xF004  # electronic engine controller 1: engine speed
-CCVS1 = 0xFEF1  # cruise control / vehicle speed: wheel-based speed
-PRIORITY = 3
+#: Who it says it is, which is what decides who wins an address contest.
+#: A real one is allocated; these are a demonstration.
+MANUFACTURER = 66
+IDENTITY = 0x1234
 
-#: Every N polls.  EEC1 is a 50 ms message and CCVS1 a 100 ms one, and a node
-#: sending both at the faster rate is a node that fills somebody's trace.
+#: Parameter groups, from J1939-71.
+EEC1 = (0xF0, 0x04)  # electronic engine controller 1: engine speed
+CCVS1 = (0xFE, 0xF1)  # cruise control / vehicle speed
+DM1 = (0xFE, 0xCA)  # active diagnostic trouble codes
+COMPONENT_ID = 65259
+COMPONENT_ID_PGN = (0xFE, 0xEB)
+
+#: Every N polls.  EEC1 is a fast message and the others are not, and a node
+#: that sent all three at the fastest rate is one that fills somebody's trace.
 EVERY_CCVS1 = 2
+EVERY_DM1 = 10
 
-
-def can_id(pgn: int, source: int, priority: int = PRIORITY) -> int:
-    """A 29-bit J1939 identifier for a broadcast PGN."""
-    return (priority << 26) | (pgn << 8) | source
+WHAT_IT_IS = b"PYCANGUI*DEMO ENGINE*SN0001*UNIT1*"
 
 
 def start(node, *, ctx):
-    node.state.rpm = 800.0
-    node.state.kph = 0.0
+    import j1939 as library
+
+    from pycangui.j1939 import _compat  # noqa: F401 - patches a typo in can-j1939
+
+    name = library.Name(
+        arbitrary_address_capable=False,
+        industry_group=library.Name.IndustryGroup.OnHighway,
+        vehicle_system_instance=0,
+        vehicle_system=0,
+        function=0,  # engine
+        function_instance=0,
+        ecu_instance=0,
+        manufacturer_code=MANUFACTURER,
+        identity_number=IDENTITY,
+    )
+    # The library wants somewhere to put frames; the channel is that.
+    ecu = library.ElectronicControlUnit(
+        send_message=lambda can_id, ext, data, fd=False: _send(node, can_id, ext, data)
+    )
+    # node.listen rather than the notifier directly: the channel echoes what
+    # this node sends, and a claim the stack hears back from itself is a
+    # contender it will fight for ever.
+    for listener in list(ecu._listeners):
+        node.listen(listener)
+
+    application = ecu.add_ca(name=name, device_address=ADDRESS)
+    application.subscribe_request(lambda src, dest, pgn: _requested(node, pgn))
+    application.start()  # begins the address claim
+
+    node.state.library = library
+    node.state.ecu = ecu
+    node.state.ca = application
     node.state.polls = 0
+    node.state.rpm = 800.0
 
 
 def poll(node, *, ctx):
-    """Wander the engine speed, and broadcast what a real one would.
+    """Broadcast, but only once the address is ours.
 
-    A value that only sits still tells you nothing about whether the tool is
-    decoding it: this one breathes between idle and about 2000 rpm so a plot
-    and a signal list both have something to be right or wrong about.
+    Everything a J1939 device says is stamped with its source address, so
+    sending before the claim has settled is sending as somebody else.
     """
-    node.state.polls += 1
-    phase = node.state.polls / RATE_HZ
-    node.state.rpm = 1400.0 + 600.0 * math.sin(phase / 3.0)
-    node.state.kph = max(0.0, (node.state.rpm - 800.0) / 30.0)
+    application = node.state.ca
+    if application.state != node.state.library.ControllerApplication.State.NORMAL:
+        return
 
-    node.send(can_id(EEC1, SOURCE_ADDRESS), _eec1(node.state.rpm), extended=True)
+    node.state.polls += 1
+    node.state.rpm = 800 + 600 * (1 + math.sin(node.state.polls / 20))
+    speed = max(0.0, (node.state.rpm - 800) / 12)
+
+    application.send_pgn(0, *EEC1, 3, list(_eec1(node.state.rpm)))
     if node.state.polls % EVERY_CCVS1 == 0:
-        node.send(can_id(CCVS1, SOURCE_ADDRESS), _ccvs1(node.state.kph), extended=True)
+        application.send_pgn(0, *CCVS1, 6, list(_ccvs1(speed)))
+    if node.state.polls % EVERY_DM1 == 0:
+        application.send_pgn(0, *DM1, 6, list(_dm1(node.state.polls // EVERY_DM1)))
+
+
+def stop(node, *, ctx):
+    try:
+        node.state.ca.stop()
+    except Exception:  # an address never claimed has nothing to give back
+        pass
+    node.state.ecu.stop()  # the listeners come off with the node
+
+
+# --- the messages ------------------------------------------------------------------
+def _send(node, can_id: int, extended: bool, data) -> None:
+    node.send(can_id, bytes(data), extended=extended)
+
+
+def _requested(node, pgn: int) -> None:
+    """Answer a request for what this ECU is.
+
+    Thirty-four bytes, so the library breaks it into a broadcast
+    announcement and a run of data frames.  Nothing here has to know that,
+    which is the point of using a stack rather than composing frames.
+    """
+    if pgn == COMPONENT_ID:
+        node.state.ca.send_pgn(0, *COMPONENT_ID_PGN, 6, list(WHAT_IT_IS))
 
 
 def _eec1(rpm: float) -> bytes:
-    """EEC1, with engine speed in bytes 4-5 at 0.125 rpm per bit.
+    """Engine speed at bytes 4-5, 0.125 rpm per bit.
 
     Everything this ECU does not model is 0xFF, which in J1939 means "not
     available" rather than zero -- a tool showing 0% torque is being told
     something quite different from a tool showing nothing.
     """
-    raw = min(0xFAFF, int(rpm / 0.125))
-    return b"\xff\xff\xff" + struct.pack("<H", raw) + b"\xff\xff\xff"
+    return b"\xff\xff\xff" + struct.pack("<H", int(rpm / 0.125)) + b"\xff\xff\xff"
 
 
 def _ccvs1(kph: float) -> bytes:
-    """CCVS1, with wheel-based speed in bytes 2-3 at 1/256 km/h per bit."""
-    raw = min(0xFAFF, int(kph * 256))
-    return b"\xff" + struct.pack("<H", raw) + b"\xff\xff\xff\xff\xff"
+    """Wheel-based speed at bytes 2-3, 1/256 km/h per bit."""
+    return b"\xff" + struct.pack("<H", int(kph * 256)) + b"\xff\xff\xff\xff\xff"
+
+
+def _dm1(occurrences: int) -> bytes:
+    """One active fault, so the J1939 pane has something to decode."""
+    from pycangui.j1939 import Dtc, encode_dm1
+
+    return encode_dm1(
+        [Dtc(spn=110, fmi=3, occurrence=occurrences % 127, conversion_method=0)], awl=1
+    )

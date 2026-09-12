@@ -35,6 +35,13 @@ SLEW = 50
 
 SPEED_DEMAND = 0x2001  # written by whoever is commanding this device
 MEASUREMENTS = 0x2000  # what it reports back: speed at sub 1, odometer at 2
+ERROR_REGISTER = 0x1001  # CiA 301: which kinds of fault are active
+
+#: Past this demand the device complains.  A device that never faults is a
+#: device you cannot test the fault handling of.
+TOO_FAST = 2000
+OVER_CURRENT = 0x2310  # the emergency code for it, from CiA 301
+ERROR_CURRENT = 0x02  # the bit in the error register that goes with it
 
 
 def start(node, *, ctx):
@@ -66,6 +73,7 @@ def start(node, *, ctx):
     node.state.tpdo = tpdo
     node.state.speed = 0
     node.state.odometer = 0
+    node.state.over_current = False
     node.log(f"CANopen node {NODE_ID} is up")
 
 
@@ -98,6 +106,35 @@ def poll(node, *, ctx):
     # would look for it.
     if device.nmt.state == "OPERATIONAL":
         tpdo.transmit()
+
+    _emergencies(node, device, demand)
+
+
+def _emergencies(node, device, demand: int) -> None:
+    """Complain past a speed demand this device cannot meet, and stop when
+    it comes back down.
+
+    An emergency is the one CANopen message a tool cannot provoke by asking
+    for it, so a demo device that never raised one would leave the
+    Emergencies tab with nothing to show and no way to get anything.  The
+    manufacturer bytes are filled in too: an EMCY with an empty tail is not
+    what a real device sends.
+    """
+    from pycangui.canopen.emcy import encode as encode_emcy
+
+    too_fast = abs(demand) > TOO_FAST
+    if too_fast and not node.state.over_current:
+        node.state.over_current = True
+        current = min(abs(demand) // 10, 0xFFFF)  # 0.1 A per bit
+        device.set_data(ERROR_REGISTER, 0, bytes([ERROR_CURRENT]))
+        node.send(
+            0x80 + NODE_ID,
+            encode_emcy(OVER_CURRENT, ERROR_CURRENT, current.to_bytes(2, "little") + b"\x01"),
+        )
+    elif not too_fast and node.state.over_current:
+        node.state.over_current = False
+        device.set_data(ERROR_REGISTER, 0, b"\x00")
+        node.send(0x80 + NODE_ID, encode_emcy(0x0000, 0x00, b""))  # error reset
 
 
 def stop(node, *, ctx):
