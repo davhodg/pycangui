@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="pycangui/resources/pycangui.png" alt="pycangui icon: a CAN bus with four node taps and a terminating resistor at each end" width="128">
+</p>
+
 # pycangui
 
 <!--
