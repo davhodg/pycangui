@@ -274,6 +274,17 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.events.warning(f"A2L load failed: {exc}")
 
+        #: One action in two menus.  The View menu is where you reach for it
+        #: while arranging panes; Tools > Reset is where you reach for it
+        #: when putting things back, beside the other two.  Parented to the
+        #: window rather than to either menu, because the View menu is
+        #: rebuilt and clear() deletes the actions a menu owns.
+        self.reset_layout_action = QAction("Reset layout", self)
+        self.reset_layout_action.setToolTip(
+            "Put every pane back where it starts, and hide the ones that\n"
+            "start hidden.  Nothing else is touched."
+        )
+        self.reset_layout_action.triggered.connect(self._reset_layout)
         self.view_menu = self.menuBar().addMenu("&View")
         self._build_view_menu()
         # Deferred by a turn of the loop: adding or removing a pane is usually
@@ -300,13 +311,19 @@ class MainWindow(QMainWindow):
             "to talk to.  Each is a Python file in the workspace you can edit."
         )
         tools_menu.addSeparator()
-        forget = tools_menu.addAction("Forget remembered folders", self._forget_folders)
+        # Together, because "put something back the way it was" is one thing
+        # to go looking for, and three entries scattered down a menu is
+        # three names to remember instead of one.
+        self.reset_menu = tools_menu.addMenu("Reset")
+        self.reset_menu.setToolTipsVisible(True)
+        self.reset_menu.addAction(self.reset_layout_action)
+        forget = self.reset_menu.addAction("Forget remembered folders", self._forget_folders)
         forget.setToolTip(
             "A file dialog opens where that sort of file was last used -- an EDS\n"
             "where the last EDS was, a firmware image where the last image was.\n"
             "This puts them all back to pycangui's own folders."
         )
-        ask_again = tools_menu.addAction("Ask about everything again", self._ask_again)
+        ask_again = self.reset_menu.addAction("Ask about everything again", self._ask_again)
         ask_again.setToolTip(
             "Bring back every question you told pycangui not to ask again:\n"
             "joining a bus, transmitting and replaying."
@@ -872,7 +889,7 @@ class MainWindow(QMainWindow):
 
         self.view_menu.addSeparator()
         self.view_menu.addAction("Dock all panes", self.panes.dock_all)
-        self.view_menu.addAction("Reset layout", self._reset_layout)
+        self.view_menu.addAction(self.reset_layout_action)
 
     def _arrange_default(self) -> None:
         """The layout a first run opens with, and what Reset layout goes back to.
