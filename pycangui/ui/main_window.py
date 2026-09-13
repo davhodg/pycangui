@@ -42,6 +42,7 @@ from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
 from pycangui.ui import folders
 from pycangui.ui.ascii_view import AsciiView, Stream
+from pycangui.ui.bus_status import BusStatus
 from pycangui.ui.canopen_view import CanopenView
 from pycangui.ui.confirm import Confirmations, Remembered, is_real
 from pycangui.ui.connect_bar import ConnectBar
@@ -244,6 +245,8 @@ class MainWindow(QMainWindow):
         self._arrange_default()
 
         self.setStatusBar(QStatusBar())
+        self.bus_status = BusStatus(self.channels)
+        self.statusBar().addWidget(self.bus_status, 1)
         self._frame_count = 0
         self._status_timer = QTimer(self, interval=500, timeout=self._update_status)
         self._status_timer.start()
@@ -1762,15 +1765,9 @@ class MainWindow(QMainWindow):
         self._frame_count += len(frames)
 
     def _update_status(self) -> None:
+        self.bus_status.refresh()
         parts = []
-        for name in self.channels.names():
-            bus = self.channels.get(name)
-            mark = "*" if name == self.channels.active else ""  # the protocol panes' channel
-            if bus and bus.is_connected:
-                parts.append(f"{mark}{name}: up, {bus.load_percent:.1f}% load")
-            else:
-                parts.append(f"{mark}{name}: down")
         if self.recorder.is_recording:
             parts.append(f"recording {self.recorder.path.name} ({self.recorder.elapsed:.0f} s)")
         parts.append(f"frames: {self._frame_count}")
-        self.statusBar().showMessage("  |  ".join(parts))
+        self.bus_status.summary.setText("  |  ".join(parts))

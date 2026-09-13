@@ -29,9 +29,11 @@ says `CAN1`), and for the serial adapters the serial ports actually present.
 The box stays editable, so anything typed in is kept.  An interface with no
 channel at all shows it empty and greyed.
 
-The status bar shows each channel's state and its **bus load** -- an estimate
-from the frames seen and the configured bitrate, including nominal bit
-stuffing.  The trace's *Channel* column says which bus a frame came from.
+The status bar shows each channel's **bus load** -- an estimate from the
+frames seen and the configured bitrate, including nominal bit stuffing --
+beside a coloured dot for how its controller is doing (see *Controller state
+and bus off* below).  The trace's *Channel* column says which bus a frame
+came from.
 
 The trace, the recorder and the decoders always see **every** connected
 channel, on one shared clock, so an ECU forwarding messages between two buses
@@ -62,6 +64,42 @@ the faster rate; without it an FD frame runs end to end at the arbitration
 bitrate and the data rate never gets used.  Both follow the channel rather
 than the box that was ticked: a channel that opened classic offers 8 and
 nothing else.
+
+## Controller state and bus off
+
+A CAN controller counts the errors it is involved in, and the count decides
+how far it is still allowed to take part.  Each channel in the status bar has
+a dot for where it stands:
+
+| Dot | State | What it means |
+|-----|-------|---------------|
+| Grey | down | Not connected. |
+| Green | error active | Taking part in the bus normally. |
+| Amber | warning, error passive | Errors are being counted.  The controller still works, but something is wrong -- usually the bitrate, the wiring or the termination.  Error passive is the last step before bus off. |
+| Red | bus off | The controller has stopped taking part altogether, and hears nothing until it is restarted. |
+
+The text beside the dot names the state whenever it is not green, and
+hovering over a channel says how the state is known -- because python-can has
+no common way to ask, and only some adapters tell.  **socketcan** reports it
+in its error frames, **PCAN** answers a status query, and **IXXAT** reports
+bus off.  Everything else is judged on error frames alone: amber while they
+arrive, but a controller that has gone bus off quietly looks exactly like an
+idle bus.  On those adapters, a channel that falls silent after a burst of
+errors is worth suspecting.
+
+**Recover from bus off** is on the menu that opens when you click a channel.
+It restarts the controller: PCAN, Vector and NI adapters through their own
+reset; socketcan with `ip link set <channel> type can restart`, which needs
+the right to configure the interface (if pycangui does not have it, the Event
+Log gives the command, and a `restart-ms` set when the interface is brought
+up makes the kernel restart it by itself); and anything else by closing the
+channel and opening it again, which the protocol panes see as a disconnect and
+a reconnect.
+
+pycangui never restarts a controller by itself.  One that goes bus off again
+straight away is saying the cause is still there, and restarting it onto the
+wrong bitrate only puts more error frames on a bus that has working nodes on
+it.  Fix the cause, then recover.
 
 ## Before it disturbs equipment
 
