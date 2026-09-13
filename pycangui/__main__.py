@@ -70,10 +70,12 @@ def selftest() -> int:
     # Every page, by name: one missing page is a topic that vanished, and a
     # manual that still opens is the worst way for that to be found.
     try:
-        from pycangui.help import missing_pages
+        from pycangui.help import missing_images, missing_pages
 
         for page in missing_pages():
             failures.append(f"pycangui/help/{page}: not shipped with this build")
+        for image in missing_images():
+            failures.append(f"pycangui/help/{image}: shown in the manual but not shipped")
     except Exception as exc:
         failures.append(f"pycangui.help: {exc}")
 
