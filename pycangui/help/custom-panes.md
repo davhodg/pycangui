@@ -22,7 +22,8 @@ is not the way in: building one at a desk against a DCF or EDS with no bus
 present, or adding an object whose index you already have in front of you. It
 searches whatever the pane is bound to, and takes a typed index either way -- a
 typed one that turns out to be in the file arrives named, the same as a picked
-one.
+one. *Move up* and *Move down* set the order the fields appear in, and
+*Remove* takes the selected one off the pane.
 
 It opens in a window of its own, in front of the main one. Drag it in to dock
 it, drop it onto another to tab them, or leave two out side by side comparing

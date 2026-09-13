@@ -62,7 +62,8 @@ perfectly happy standing on a real adapter and talking to real equipment,
 which is the case worth being clear about.
 
 **Tools > Simulated nodes...** lists what is available, starts one on a channel
-and stops it again. That is the whole of the GUI, on purpose -- there is no
+at the **Rate** beside it -- the node's own rate, to start with -- and stops it
+again from the *Running* list. *Open nodes folder* opens the files themselves. That is the whole of the GUI, on purpose -- there is no
 node editor and no state-machine builder, because a node is a Python file and
 everything interesting about it belongs in the file.
 

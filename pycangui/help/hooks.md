@@ -34,8 +34,8 @@ each file say so -- so a seed-key algorithm or a table of your own identifiers
 written into one carries no conditions from pycangui. Keep it private, share
 it, or ship it with your product.
 
-*Tools > Reload hooks* reads the files again, so an edit of your own takes
-effect without restarting. It changes nothing on disk.
+*Tools > Open hooks folder* opens them, and *Tools > Reload hooks* reads the
+files again, so an edit of your own takes effect without restarting. It changes nothing on disk.
 
 *Tools > Reset > Restore supplied files...* is the way back from an edit that
 has gone wrong, and the way to take a newer version over one you have changed:

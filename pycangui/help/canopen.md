@@ -2,10 +2,41 @@
 
 # CANopen
 
+## Nodes
+
+Nodes appear in the list as they are heard on the bus, with their name, NMT
+state and the EDS matched to them. The EDS is found from the node's identity,
+by [`hooks/canopen.py::eds_for_node`](hooks.md), or by **Load EDS...**, which
+chooses one by hand for the selected node.
+
+**NMT command** sends Start, Pre-operational, Stop, Reset node or Reset
+communication to the selected node, or to every node when none is selected.
+**SYNC producer** transmits SYNC (0x080) at the period beside it, so
+synchronous PDOs are exchanged. **Read RPDO config** reads the selected node's
+RPDO mapping from the node itself, so [CAN Transmit](transmit.md) offers the
+RPDOs a remapped node actually receives rather than the ones its EDS started
+with.
+
+## The object dictionary
+
+The selected node's dictionary fills from its EDS. Double-click an entry to
+read it from the node, and edit a value to write it back. The filter box
+matches the index or the name, and several words must all match.
+
+Tick **Watch** against the objects a job uses and **Watched** shows only those.
+The list is kept per device, so the next controller of the same kind opens with
+the objects you were using on the last one. **Read all** reads every readable
+entry, one SDO at a time, which takes a while on a large node. Select some
+entries and right-click to add them to a [custom pane](custom-panes.md).
+
+## PDOs, emergencies and DCFs
+
 The **CANopen** pane configures a node: the *PDO configuration* tab shows
 every TPDO and RPDO with its COB-ID, transmission type, inhibit time, event
-timer and mapped objects; edit a cell or map/unmap objects and *Write to node*
-writes the communication and mapping records back over SDO. The *Live PDOs* tab shows each
+timer and mapped objects. **Read from node** reads what the node is actually
+configured to send and receive, rather than what its EDS says it was built
+with; edit a cell, or use **Map object...** and **Unmap**, and **Write to node**
+writes the selected PDO's communication and mapping records back over SDO. The *Live PDOs* tab shows each
 PDO with its receive count and rate, and the *Emergencies* tab decodes EMCY
 objects: the CiA 301 error code, the error register bit by bit, and the five
 manufacturer-specific bytes as decoded by
@@ -35,6 +66,18 @@ power-cycle the node, and compare it against the DCF in the
 A node that stops sending heartbeats is marked **lost** in the node list and
 reported in the Event Log; the timeout follows the producer time from object
 0x1017, or the interval actually observed on the bus. The *LSS* tab
-commissions a device that has no node-ID yet (CiA 305): *Fastscan* discovers an
-unconfigured node's identity, *Select by address* addresses a known one, then
-set its node-ID and bit rate, store, and return to the waiting state.
+commissions a device that has no node-ID yet (CiA 305), in the three steps it
+is laid out in.
+
+1. **Select the node.** *Fastscan* discovers an unconfigured node's identity
+   and leaves it in configuration state, *Select by address* picks a node whose
+   identity you already know, and *All nodes* takes every node at once, which
+   is only safe with a single device on the bus. *Inquire* reads back the
+   selected node's identity and node-ID.
+2. **Configure.** *Set node-ID* takes effect once the node is reset. *Set bit
+   rate* changes nothing until *Activate*, which switches every node over
+   together -- the ones left behind could no longer talk to it -- so reconnect
+   pycangui at the new rate afterwards.
+3. **Store and finish.** *Store configuration* makes the node-ID and bit rate
+   survive a power cycle, and *Back to waiting state* leaves configuration
+   state.

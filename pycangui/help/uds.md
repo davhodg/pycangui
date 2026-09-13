@@ -19,6 +19,29 @@ bytes of a request -- service id first, then whatever that service expects --
 and they go out as they are, for the services with no button of their own and
 for reproducing a sequence out of a trace or a specification.
 
+## Connecting and the everyday services
+
+**Open** makes the ISO-TP connection on the tester and ECU ids, and nothing
+else on the pane works until it is open. **29-bit** addresses the ECU with
+extended identifiers, **Pad** fills every frame out to 8 bytes for the ECUs
+that ignore anything shorter, and **Transport** picks the ISO-TP
+implementation -- your own can be added as a [back end](backends.md). On a CAN
+FD channel **CAN-DL** and **BRS** sit beside them, as
+[CAN adapters and channels](channels.md) describes.
+
+**Change** moves the ECU into the session chosen beside it. **Unlock** runs
+SecurityAccess at the **Level** beside it: the ECU hands over a seed, and
+pycangui answers with the key from `hooks/uds.py::security_key`. **Tester
+present** sends TesterPresent every couple of seconds. Without it an ECU drops
+back to the default session after a few seconds of quiet, and loses any unlock
+with it.
+
+**Reset** restarts the ECU with the chosen **Type**, and the session and any
+unlock go with it. **Read DID** and **Write DID** work on the identifier beside
+them. A routine has **Start**, **Stop** and **Result** -- RoutineControl
+sub-functions 1, 2 and 3 -- and the option bytes beside them are sent with
+whichever you press.
+
 ## DTCs
 
 **DTCs** have a box to themselves, because ReadDTCInformation (0x19) is
@@ -68,3 +91,16 @@ standard, so it is editable. What either routine is *sent* comes from
 `hooks/uds.py::erase_options` and `::check_options`, which default to an
 address and length in the ISO format; a bootloader wanting a CRC of what it
 was given is a couple of lines there.
+
+The rest of the box, left to right. **Operation** chooses the transfer.
+**Block** is how many data bytes go in each TransferData; left at *from ECU*,
+the ECU's own maximum is used. **Width** is how many bits the address and size
+are written in, where *auto* uses the narrowest that fits. **DFI** is the
+dataFormatIdentifier, and 00 -- plain bytes -- is what nearly every bootloader
+wants. **Size** is how much an upload reads, and **On ECU** is the file's name
+for the RequestFileTransfer operations.
+
+Anything that writes to the ECU asks first, once a session. **Cancel** stops
+after the block being sent at the time, because the ECU is waiting for the
+TransferData it has already been promised and stopping part way through one
+would leave the two of you out of step.

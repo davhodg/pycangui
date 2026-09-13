@@ -27,6 +27,8 @@ it:
 * **the tick beside each one** switches it on and off. Off means *not loaded
   at all* -- no pane, no menu entries, and none of its code runs -- while the
   folder stays exactly as you left it, edits and all.
+* **Install from file...** installs a package, the same as *Plugins > Install
+  plugin...*.
 * **Export...** writes an installed plugin back out as a package, which is how
   one of yours gets to somebody else.
 * **Remove...** deletes it from the workspace, and says so first: whatever you
@@ -73,17 +75,21 @@ pycangui ships rather than the one you are editing.
 
 | | |
 |---|---|
-| `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu opens it |
+| `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu opens it; `area` is `left`, `right`, `top` or `bottom` |
+| `open_pane(name)` | show one of your panes, for a plugin with a reason to |
+| `show_panes()` | bring all of your panes out, as installing one does |
 | `on_pane_shown(fn)` | `fn(name, on)` when one of *your* panes appears or is put away |
 | `add_pane(..., shutdown=fn)` | `fn(pane)` when that pane goes for good, or your plugin is unloaded |
 | `on_closing(fn)` | `fn()` as the window goes, while the buses are still open |
 | `add_menu_action(text, callback, tooltip)` | an entry under *Plugins > your plugin* |
-| `add_toolbar_button(text, callback, tooltip)` | a button on the toolbar |
+| `add_toolbar_button(text, callback, tooltip, checkable)` | a button on the toolbar, which stays pressed if `checkable` |
 | `add_trace_labeller(fn)` | name frames in every trace: `fn(frame) -> str \| None` |
 | `add_field_widget(kind, class)` | an eighth way for a [custom pane](custom-panes.md) to show an object |
 | `run_in_background(job, done)` | work off the GUI thread, so the window does not freeze |
 | `log` / `warn` / `error` | say something in the Event Log, prefixed with your name |
-| `ctx` `hooks` `panes` `channels` `bus` `signals` `canopen` `uds` `j1939` `xcp` `dbc` | the live objects |
+| `window` `ctx` `hooks` `panes` `channels` `bus` `signals` `canopen` `uds` `j1939` `xcp` `dbc` | the live objects |
+| `confirm` | the confirmations pycangui asks before disturbing equipment, for a plugin that does too |
+| `api_version` | the API version this pycangui provides |
 
 Two things it does for you. **A plugin that fails takes only itself down** --
 the traceback goes to the Event Log where somebody will see it, rather than to
