@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from PySide6.QtCore import QObject, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication, QTextDocument
+from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication, QImage, QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -118,6 +118,36 @@ def missing_licence_files(frozen: bool) -> list[str]:
     ]
 
 
+class _ManualView(QTextBrowser):
+    """A text browser that finds a page's pictures inside the manual.
+
+    ``setMarkdown`` gives the document no location, so a picture arrives here
+    as a bare name with nothing to be relative to -- the problem the links have,
+    solved the same way: it is looked up among the files the manual ships, and
+    nowhere else.  A picture wider than the page is scaled to fit, because a
+    screenshot of the main window is wider than a help window.
+    """
+
+    #: Room left beside a picture for the scroll bar and the page margins.
+    MARGIN = 80
+    #: However narrow the window, a picture is not shrunk past legibility.
+    SMALLEST = 320
+
+    def loadResource(self, kind, url: QUrl):
+        if QTextDocument.ResourceType(kind) == QTextDocument.ImageResource and not url.scheme():
+            data = help_pages.image_bytes(url.toString())
+            if data:
+                image = QImage.fromData(data)
+                # The dialog's width rather than the viewport's: the first page
+                # is laid out before the window is shown, when the viewport has
+                # not been given its size yet.
+                width = max(self.window().width() - self.MARGIN, self.SMALLEST)
+                if image.width() > width:
+                    image = image.scaledToWidth(width, Qt.SmoothTransformation)
+                return image
+        return super().loadResource(kind, url)
+
+
 class ManualDialog(QDialog):
     """The shipped manual, rendered, a page at a time.
 
@@ -147,7 +177,7 @@ class ManualDialog(QDialog):
         self._history: list[str] = []
         self._page = page
 
-        self.view = QTextBrowser()
+        self.view = _ManualView(self)
         self.view.setOpenLinks(False)  # every link is ours to resolve first
         self.view.anchorClicked.connect(self._follow)
 

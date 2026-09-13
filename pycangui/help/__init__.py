@@ -21,7 +21,9 @@ places.
 
 The files are flat in this folder rather than in a ``pages/`` subdirectory,
 because the package data is declared as one glob and a subdirectory is exactly
-the kind of thing that ships in a wheel one release and not the next.
+the kind of thing that ships in a wheel one release and not the next.  The
+pictures the pages show sit beside them for the same reason, and the README
+uses the same files, so there is one copy of each.
 """
 
 from __future__ import annotations
@@ -78,6 +80,45 @@ def page_text(name: str) -> str:
         return resources.files(__name__).joinpath(name).read_text(encoding="utf-8")
     except (OSError, ModuleNotFoundError):
         return ""
+
+
+#: What a picture in the manual may be.
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif")
+
+
+def image_bytes(name: str) -> bytes:
+    """A picture a page shows, or b"" if it is not one this build shipped.
+
+    The same rule as ``page_text``, for the same reason: the name comes from a
+    document.  Only a plain file name with an image suffix is read, from this
+    package and nowhere else -- no folders, and nothing that is not a picture.
+    """
+    if (
+        not name
+        or "/" in name
+        or "\\" in name
+        or name.startswith(".")
+        or not name.lower().endswith(IMAGE_SUFFIXES)
+    ):
+        return b""
+    try:
+        return resources.files(__name__).joinpath(name).read_bytes()
+    except (OSError, ModuleNotFoundError):
+        return b""
+
+
+def images_in(text: str) -> list[str]:
+    """Every picture a page shows, by the name it asks for."""
+    import re
+
+    return re.findall(r"!\[[^\]]*\]\(([^)\s]+)", text)
+
+
+def missing_images() -> list[str]:
+    """The pictures some page shows that this build cannot find."""
+    return sorted(
+        {name for page in PAGES for name in images_in(page_text(page)) if not image_bytes(name)}
+    )
 
 
 def manual_text() -> str:

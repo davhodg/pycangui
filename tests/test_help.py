@@ -296,10 +296,11 @@ def test_the_selftest_notices_a_missing_page(monkeypatch):
 
 # --- a page per topic, and getting between them ---------------------------------------------
 def links_in(text: str) -> list[str]:
-    """Every markdown link target on a page."""
+    """Every markdown link target on a page.  Not pictures: ``![...](x.png)``
+    is shown, not followed, and its own test is below."""
     import re
 
-    return re.findall(r"\]\(([^)]+)\)", text)
+    return re.findall(r"(?<!!)\[[^\]]*\]\(([^)]+)\)", text)
 
 
 def test_every_link_between_pages_goes_somewhere():
@@ -349,6 +350,51 @@ def test_a_page_that_is_not_a_page_is_not_read(tmp_path):
 
     assert page_text("../../../etc/passwd") == ""
     assert page_text("__init__.py") == ""
+
+
+# --- pictures ------------------------------------------------------------------------------------
+def test_every_picture_a_page_shows_ships():
+    """A missing screenshot renders as nothing at all, which is easy to miss."""
+    from pycangui.help import images_in, manual_text, missing_images
+
+    assert "main-window.png" in images_in(manual_text()), "the contents shows the main window"
+    assert missing_images() == []
+
+
+def test_a_picture_that_is_not_one_is_not_read():
+    """The same rule as pages: the name comes from a document."""
+    from pycangui.help import image_bytes
+
+    assert image_bytes("main-window.png").startswith(b"\x89PNG")
+    assert image_bytes("../../README.md") == b""
+    assert image_bytes("manual.md") == b"", "a page is not a picture"
+    assert image_bytes("sub/main-window.png") == b"", "no folders"
+    assert image_bytes("nothing-here.png") == b""
+
+
+def test_the_viewer_shows_a_picture_and_fits_it_to_the_window(app, window):
+    """setMarkdown gives the document no location, so Qt cannot find a picture
+    beside the page by itself; the viewer looks it up in the package."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QImage, QTextDocument
+
+    from pycangui.ui.help_menu import ManualDialog
+
+    dialog = ManualDialog(window)
+    image = dialog.view.loadResource(QTextDocument.ImageResource, QUrl("main-window.png"))
+    assert isinstance(image, QImage) and not image.isNull()
+    assert image.width() < dialog.width(), "a screenshot is scaled to the window"
+
+    outside = dialog.view.loadResource(QTextDocument.ImageResource, QUrl("../../README.md"))
+    assert not isinstance(outside, QImage) or outside.isNull()
+
+
+def test_the_selftest_notices_a_missing_picture(monkeypatch):
+    import pycangui.__main__ as entry
+    import pycangui.help as help_package
+
+    monkeypatch.setattr(help_package, "missing_images", lambda: ["main-window.png"])
+    assert entry.selftest() == 1
 
 
 def test_the_manual_opens_at_the_contents(app, window):

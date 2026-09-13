@@ -16,7 +16,7 @@ The CI and release badges are live. The release badge includes pre-releases, so 
 
 A user-friendly graphical CAN bus tool: live trace, transmit, CANopen, UDS, J1939, XCP and Python scripting, on any adapter supported by python-can. Apache-2.0.
 
-![pycangui on its demo device: the CAN Trace, CAN Transmit and Event Log above, and engine and vehicle speed plotted in Signals and Plot below](screenshots/main-window.png)
+![pycangui on its demo device: the CAN Trace, CAN Transmit and Event Log above, and engine and vehicle speed plotted in Signals and Plot below](pycangui/help/main-window.png)
 
 ## What it does
 
@@ -97,7 +97,7 @@ python -m venv .venv
 
 The `[dev]` extra adds pytest, pytest-xdist, ruff, pdoc and the MDF reader. The launcher does not install it -- running the application does not need the test tools.
 
-`python build/screenshots.py` regenerates `screenshots/main-window.png`. It opens pycangui on the demo device for about a minute, with temporary settings of its own, so leave the window alone while it runs.
+`python build/screenshots.py` regenerates `pycangui/help/main-window.png`, the screenshot this README and the manual share. It opens pycangui on the demo device for about a minute, with temporary settings of its own, so leave the window alone while it runs.
 
 `python build/api_docs.py` writes API pages for people writing hooks, simulated nodes and plugins to `dist/api-docs/`. Only that surface, not the whole package: the manual says how to extend pycangui, and these pages are where to look up exactly what an object offers.
 

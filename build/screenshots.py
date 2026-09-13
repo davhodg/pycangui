@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""Regenerate the README screenshot: the main window on the demo device.
+"""Regenerate the screenshot the README and the manual share: the main window
+on the demo device.
 
     python build/screenshots.py [out.png]
 
@@ -23,7 +24,9 @@ import time
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parent.parent
-DEFAULT_OUT = PROJECT / "screenshots" / "main-window.png"
+#: Beside the manual's pages, because the manual shows it too and a picture has
+#: to be package data to be in a wheel or an installer.
+DEFAULT_OUT = PROJECT / "pycangui" / "help" / "main-window.png"
 #: What gets plotted.  The demo engine sweeps between 800 and 2000 rpm about
 #: every 12.6 s, so a 30 s window shows two and a half sweeps.
 PLOTTED = ("DBC EEC1/EngineSpeed", "DBC CCVS1/WheelBasedVehicleSpeed")
