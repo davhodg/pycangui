@@ -11,6 +11,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only unless a job says otherwise.  The repository is public, so pull
+# requests from forks run this workflow too, and no test needs to write.
+permissions:
+  contents: read
+
 jobs:
   # Both ends of the supported range, but only where it earns its keep.  The
   # latest Python runs on both platforms, because platform differences (Qt,
@@ -30,9 +35,9 @@ jobs:
           - { os: ubuntu-latest, python: "3.14" }
           - { os: ubuntu-latest, python: "3.12" }  # the floor: requires-python
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -76,10 +81,15 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
+    # Publishing the release is the one write in the workflow.  The repository
+    # gives the token read access by default, so without this a tag would
+    # build the installer and then fail to publish it.
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
@@ -95,7 +105,7 @@ jobs:
       - name: Check the licence guard actually ran
         run: python build\check_build.py
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pycangui-windows
           path: |
@@ -106,7 +116,7 @@ jobs:
       # A tagged commit publishes the installer as a release asset.
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*-setup.exe
