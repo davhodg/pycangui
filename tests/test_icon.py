@@ -12,7 +12,7 @@ pycangui's icon rather than some icon.
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 ROOT = Path(__file__).resolve().parent.parent
 SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
@@ -50,9 +50,15 @@ def test_the_exe_is_built_with_it():
 
 
 def test_the_installer_is_built_with_it():
+    """The path is Inno Setup's, so a Windows one: split it as such, or on
+    Linux the whole of it is one file name full of backslashes."""
     script = (ROOT / "build" / "installer.iss").read_text(encoding="utf-8")
-    assert r"SetupIconFile=..\pycangui\resources\pycangui.ico" in script
-    assert (ROOT / "build" / r"..\pycangui\resources\pycangui.ico").is_file()
+    setting = r"SetupIconFile=..\pycangui\resources\pycangui.ico"
+    assert setting in script
+    parts = PureWindowsPath(setting.split("=", 1)[1]).parts
+    icon = (ROOT / "build").joinpath(*parts).resolve()
+    assert icon == ROOT / "pycangui" / "resources" / "pycangui.ico"
+    assert icon.is_file()
 
 
 def test_the_build_check_tells_our_icon_from_pyinstallers():
