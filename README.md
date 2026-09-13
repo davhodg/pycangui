@@ -5,18 +5,11 @@
 # pycangui
 
 <!--
-The CI badge is live.  The release badge reads the repository's releases, and
-until the first one is tagged it says "no releases" -- so the version badge
-stays static until then, and this is the one to swap in for it:
-
-  [![Release](https://img.shields.io/github/v/release/davhodg/pycangui)](https://github.com/davhodg/pycangui/releases)
-
-The version and Python badges below are checked against the code by
-tests/test_readme.py, so they cannot quietly go stale.
+The CI and release badges are live. The release badge includes pre-releases, so before the first one it reads "no releases found". The Python and licence badges are checked against pyproject.toml by tests/test_readme.py.
 -->
 
 [![CI](https://github.com/davhodg/pycangui/actions/workflows/ci.yml/badge.svg)](https://github.com/davhodg/pycangui/actions/workflows/ci.yml)
-![version](https://img.shields.io/badge/version-v0.0.1-blue)
+[![release](https://img.shields.io/github/v/release/davhodg/pycangui?include_prereleases)](https://github.com/davhodg/pycangui/releases)
 ![python](https://img.shields.io/badge/python-3.12+-blue)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
@@ -43,7 +36,7 @@ There are three options, and which one you want depends on whether you have Pyth
 
 2. **From the source folder** -- either clone with Git or download as zip, double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux). Python 3.12 or newer must be on the PATH.
 
-The first run sets itself up: it creates a *virtual environment* -- a folder called `.venv` holding its own copy of Python and only the libraries pycangui needs, so nothing else on the machine is touched -- and downloads about 90 MB into it. That takes a few minutes once; every later start is immediate, and deleting `.venv` undoes the whole thing.  If `uv` is installed it is used instead of pip, which makes rebuilding that folder a matter of seconds.
+The first run sets itself up: it creates a *virtual environment* -- a folder called `.venv` holding its own copy of Python and only the libraries pycangui needs, so nothing else on the machine is touched -- and downloads about 90 MB into it. That takes a few minutes once; every later start is immediate, and deleting `.venv` undoes the whole thing. If `uv` is installed it is used instead of pip, which makes rebuilding that folder a matter of seconds.
 
 The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does.
 
@@ -121,7 +114,7 @@ It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed pack
 
 **LGPL components are bundled.**  Qt (PySide6), python-can and asammdf are all LGPL-3.0 and all ship inside the installer. The LGPL asks that they stay *replaceable*, not that they stay out: hence the **one-directory** build, where each is a separate DLL or package a user can substitute their own build of, rather than a single-file bundle with everything fused together. Their licences are reproduced in `THIRD-PARTY-NOTICES.txt`, generated from installed package metadata so it cannot drift from what was actually shipped.
 
-**GPL-only components are not**, and this is the distinction that matters. PySide6 ships Qt Charts, Qt Data Visualization, Qt Graphs and the Virtual Keyboard in the same wheel as the LGPL modules, and those are GPL-3.0 or commercial with no LGPL option; one of them in the build would make the whole application GPL and contradict the Apache licence on the tin.  They are excluded in `pycangui.spec` and `build/check_build.py` fails the build if one appears anyway.
+**GPL-only components are not**, and this is the distinction that matters. PySide6 ships Qt Charts, Qt Data Visualization, Qt Graphs and the Virtual Keyboard in the same wheel as the LGPL modules, and those are GPL-3.0 or commercial with no LGPL option; one of them in the build would make the whole application GPL and contradict the Apache licence on the tin. They are excluded in `pycangui.spec` and `build/check_build.py` fails the build if one appears anyway.
 
 `build/check_build.py` also fails the build if a sample or hook template is missing, or if the built executable cannot import its protocol stacks, the MDF reader and every python-can adapter backend -- it runs `pycangui.exe --selftest` to find out rather than guessing from file names.
 
