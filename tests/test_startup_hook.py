@@ -154,7 +154,10 @@ def test_a_real_bus_still_raises_the_question(app, home, monkeypatch):
     monkeypatch.setattr(
         confirm.QMessageBox,
         "exec",
-        lambda box: (asked.append(box.text()), confirm.QMessageBox.Cancel)[1],
+        lambda box: (
+            asked.append(box.text() + " " + box.informativeText()),
+            confirm.QMessageBox.Cancel,
+        )[1],
     )
     write_startup(
         "def on_startup(window, *, ctx):\n"

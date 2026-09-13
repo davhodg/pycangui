@@ -87,7 +87,7 @@ def test_replaying_onto_a_real_bus_asks_first(app, setup, monkeypatch):
     asked = []
 
     monkeypatch.setattr(
-        QMessageBox, "exec", lambda box: (asked.append(box.windowTitle()), QMessageBox.Cancel)[1]
+        QMessageBox, "exec", lambda box: (asked.append(box.text()), QMessageBox.Cancel)[1]
     )
     action.action.setChecked(True)
     assert action.player is None, "cancelling must not transmit onto a real bus"
