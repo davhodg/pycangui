@@ -19,13 +19,15 @@ def answers(monkeypatch):
     """Drive the confirmation dialog from a script of answers, recording them.
 
     The dialog is built rather than raised through ``QMessageBox.warning``,
-    because a static call cannot carry the "do not ask again" tick box.
+    because a static call cannot carry the "do not ask again" tick box.  What
+    is recorded is the question as the dialog shows it, not its title, which
+    macOS does not show.
     """
     asked: list[str] = []
     replies: list = []
 
     def fake_exec(box):
-        asked.append(box.windowTitle())
+        asked.append(box.text())
         return replies.pop(0) if replies else QMessageBox.Cancel
 
     monkeypatch.setattr(QMessageBox, "exec", fake_exec)
@@ -57,6 +59,24 @@ def test_a_different_key_asks_again(app, answers):
     confirm.ask(None, "connect:CAN 1:500000", "T", "b")
     confirm.ask(None, "connect:CAN 1:125000", "T", "b")
     assert len(asked) == 2, "changing the bitrate is a different question"
+
+
+def test_the_question_is_in_the_dialog_not_only_in_its_title(app, monkeypatch):
+    """macOS shows no title on a message box, so a question kept only there
+    would leave Yes and Cancel answering nothing anybody could read."""
+    seen = {}
+
+    def fake_exec(box):
+        seen.update(text=box.text(), detail=box.informativeText())
+        return QMessageBox.Cancel
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    Confirmations().ask(None, "k", "Transmit onto a real bus?", "It will reach the nodes.")
+    assert seen == {"text": "Transmit onto a real bus?", "detail": "It will reach the nodes."}
+
+    accept_notice()
+    assert seen["text"] == "Before you start"
+    assert "real equipment" in seen["detail"]
 
 
 def test_is_real():
@@ -162,7 +182,7 @@ def test_the_connect_warning_names_the_bitrate(app, window, monkeypatch):
     seen = {}
 
     def fake_exec(box):
-        seen["text"] = box.text()
+        seen["text"] = box.informativeText()
         return QMessageBox.Cancel
 
     monkeypatch.setattr(QMessageBox, "exec", fake_exec)
@@ -261,7 +281,7 @@ def test_asking_about_everything_again_takes_it_all_back(app, monkeypatch, store
 def test_the_notice_says_what_the_tool_can_do(app, monkeypatch):
     seen = {}
     monkeypatch.setattr(
-        QMessageBox, "exec", lambda box: seen.update(text=box.text()) or QMessageBox.Ok
+        QMessageBox, "exec", lambda box: seen.update(text=box.informativeText()) or QMessageBox.Ok
     )
     assert accept_notice()
     assert "real equipment" in seen["text"]

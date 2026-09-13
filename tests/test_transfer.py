@@ -391,7 +391,9 @@ def test_choosing_a_binary_asks_for_an_address(view, images_dir):
 def test_writing_to_the_ecu_is_asked_about_first(view, images_dir, monkeypatch):
     asked = []
     monkeypatch.setattr(
-        QMessageBox, "exec", lambda box: (asked.append(box.text()), QMessageBox.Cancel)[1]
+        QMessageBox,
+        "exec",
+        lambda box: (asked.append(box.text() + " " + box.informativeText()), QMessageBox.Cancel)[1],
     )
     view.manager.client = ecu = FakeEcu()
     view.local.setText(images_dir("a.hex", (0x8000, bytes(16))))
@@ -511,7 +513,9 @@ def test_the_pane_passes_them_on(view, images_dir, monkeypatch):
 def test_the_question_says_the_memory_will_be_erased(view, images_dir, monkeypatch):
     asked = []
     monkeypatch.setattr(
-        QMessageBox, "exec", lambda box: (asked.append(box.text()), QMessageBox.Cancel)[1]
+        QMessageBox,
+        "exec",
+        lambda box: (asked.append(box.text() + " " + box.informativeText()), QMessageBox.Cancel)[1],
     )
     view.manager.client = FakeEcu()
     view.local.setText(images_dir("a.hex", (0x8000, bytes(8))))

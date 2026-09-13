@@ -422,7 +422,7 @@ def test_switching_off_a_live_bus_asks_first(window, app, monkeypatch):
     monkeypatch.setattr(
         QMessageBox,
         "exec",
-        lambda box: (seen.append(box.text()), QMessageBox.Cancel)[1],
+        lambda box: (seen.append(box.text() + " " + box.informativeText()), QMessageBox.Cancel)[1],
     )
     asked: list[str] = []
     window.reopen_requested.connect(asked.append)

@@ -139,10 +139,11 @@ def accept_notice(
     box = QMessageBox(
         QMessageBox.Warning,
         NOTICE_TITLE,
-        NOTICE,
+        NOTICE_TITLE,
         QMessageBox.Ok | QMessageBox.Cancel,
         parent,
     )
+    box.setInformativeText(NOTICE)  # see Confirmations.ask for why not the title alone
     box.button(QMessageBox.Ok).setText("Continue")
     box.button(QMessageBox.Cancel).setText("Quit")
     box.setDefaultButton(QMessageBox.Ok)
@@ -182,12 +183,17 @@ class Confirmations:
         The tick box is offered only where there is somewhere to keep the
         answer.  Offering it and then forgetting at the end of the session
         would be a promise the dialog could not keep.
+
+        The question is the dialog's text, not only its title.  macOS does not
+        show a message box's title at all, so a question kept there would leave
+        Yes and Cancel under an explanation of something nobody had asked.
         """
         if key in self._agreed:
             return True
         box = QMessageBox(
-            QMessageBox.Warning, title, text, QMessageBox.Yes | QMessageBox.Cancel, parent
+            QMessageBox.Warning, title, title, QMessageBox.Yes | QMessageBox.Cancel, parent
         )
+        box.setInformativeText(text)
         box.setDefaultButton(QMessageBox.Cancel)
         again = None
         if self._store is not None:
