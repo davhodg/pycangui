@@ -7,6 +7,7 @@ question nobody on a Mac is asked.  The first macOS run found exactly that.
 """
 
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,7 +40,8 @@ def shown(monkeypatch):
 
 def test_the_headline_is_in_the_box_as_well_as_the_title_bar(app, shown):
     messages.warning(None, "Delete this workspace?", "It cannot be undone.")
-    assert shown["title"] == "Delete this workspace?"
+    if sys.platform != "darwin":  # macOS clears a message box's title: the reason for all this
+        assert shown["title"] == "Delete this workspace?"
     assert shown["text"] == "Delete this workspace?", "what macOS shows, in bold"
     assert shown["detail"] == "It cannot be undone."
 
