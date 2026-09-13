@@ -2,13 +2,23 @@
 
 # Your files
 
-Everything in `%APPDATA%\pycangui` is yours. Most of it lives in a
-*workspace* -- `workspaces\default\` unless you make others -- which holds
-[`hooks/*.py`](hooks.md), small Python functions pycangui calls at decision
-points (which EDS to use for a node, how to name it, ...) with the defaults and
-commented examples in place; `eds/`, scanned for EDS files matching a node's
-vendor/product; `settings.json`; and `layout.json`. Tools > Reload hooks
-applies edits without a restart.
+Everything in pycangui's folder is yours. That is `%APPDATA%\pycangui` on
+Windows, `~/.config/pycangui` on Linux (or under `$XDG_CONFIG_HOME` if you set
+it), and `~/Library/Application Support/pycangui` on macOS; setting
+`PYCANGUI_HOME` puts it somewhere else.
+
+Most of it lives in a *workspace* -- `workspaces/default/` unless you make
+others -- which holds:
+
+- [`hooks/*.py`](hooks.md), small Python functions pycangui calls at decision
+  points (which EDS to use for a node, how to name it, ...) with the defaults
+  and commented examples in place -- *Tools > Reload hooks* applies edits
+  without a restart;
+- `eds/`, scanned for EDS files matching a node's vendor/product;
+- `nodes/`, the [simulated nodes](virtual.md);
+- `plugins/`, the [plugins](plugins.md) installed in this workspace;
+- `custom_panes/`, the [panes you have built](custom-panes.md);
+- `settings.json` and `layout.json`.
 
 `settings.json` is sorted, indented JSON with dotted keys, meant to be read and
 hand-edited: the channels and their adapters, the databases loaded, the
@@ -37,8 +47,8 @@ next one.
 
 A remembered folder that no longer exists -- a memory stick unplugged, a folder
 deleted -- is ignored, and the dialog opens at its default instead. *Tools >
-Forget remembered folders* puts every one of them back to pycangui's own
-folders at once.
+Reset > Forget remembered folders* puts every one of them back to pycangui's
+own folders at once.
 
 ## Starting again
 
@@ -56,8 +66,9 @@ place to look rather than four:
 That last one is not evasion. Everything that accumulates is in the workspace,
 so a new one already *is* a reset of all of it, and it is the version that
 deletes nothing: the workspace you were in is still there to switch back to.
-A reset that undid it all in place would have to delete hook files, virtual
+A reset that undid it all in place would have to delete hook files, simulated
 nodes and plugins -- code you wrote -- as a side effect of putting window sizes
 back. Two things are yours rather than the workspace's and carry across to a
-new one: the questions you have stopped being asked, and `backends/`. Both
-have their own entry above.
+new one: the questions you have stopped being asked, which *Ask about
+everything again* brings back, and `backends/`, which only ever holds what you
+put there.

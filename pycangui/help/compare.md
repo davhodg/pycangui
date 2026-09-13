@@ -2,8 +2,9 @@
 
 # CANopen DCF compare
 
-A [plugin](plugins.md) that ships with pycangui. *Plugins > Manage plugins...*
-installs it; until then it is not there.
+A [plugin](plugins.md) that ships with pycangui. *Plugins > Supplied with
+pycangui* installs it, as does *Plugins > Manage plugins...*; until then it is
+not there.
 
 *What is different about the unit that fails* is the question it exists for, and
 it is the one pycangui could not answer at all: it could save a DCF and it could

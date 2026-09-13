@@ -197,7 +197,8 @@ class Hooks:
                     f"{because} -- {bad.why}.\n"
                     f"    yours:    {bad.signature}\n"
                     f"    pycangui: {_signature(registry()[module][name].default)}\n"
-                    "    The built-in default is running instead.  See Help > Hooks."
+                    "    The built-in default is running instead.  See Hooks in the manual "
+                    "(Help > Documentation)."
                 )
 
     def update_stubs(self, only: dict[str, list[str]] | None = None) -> dict[str, list[str]]:

@@ -13,7 +13,7 @@ own, are not putting it away: it is still on screen and still sending.
 *Stop all cyclic* means all of them, in every transmit pane, however many are
 open.
 
-The **Transmit** pane holds one list of everything being sent, with three kinds
+Each **CAN Transmit** pane holds one list of everything it sends, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded
 database and edit its signals in physical units), and **CANopen RPDO** (pick a
 node's RPDO -- press *Read RPDO config* in the CANopen pane first -- and edit

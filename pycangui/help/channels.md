@@ -9,11 +9,11 @@ adapter, or a second adapter entirely. Use **+** on the toolbar to add a
 channel, then give it its own interface, bitrate and connection; each channel's
 settings are remembered by name.
 
-Pick the interface and press **Detect**: pycangui asks it which adapters are
-attached and lists them, so the channel is chosen rather than guessed (it is
-`can0` on socketcan, `PCAN_USBBUS1` on a PEAK, and plain `0` on an IXXAT).
-Detection also runs by itself when you change interface. It only enumerates
-adapters -- nothing is transmitted and no bitrate is applied.
+Pick the interface and open the channel list: pycangui asks it which adapters
+are attached and lists them, so the channel is chosen rather than guessed (it
+is `can0` on socketcan, `PCAN_USBBUS1` on a PEAK, and plain `0` on an IXXAT).
+Detection also runs in the background when you change interface. It only
+enumerates adapters -- nothing is transmitted and no bitrate is applied.
 
 Channel numbers belong to an adapter, so **two identical dongles both offer
 channels 0 and 1**. The list shows each one's hardware id or serial number to
@@ -119,9 +119,16 @@ After that, pycangui asks before it can disturb equipment that is not its own,
 once a session for each: joining a **real bus** (naming the bitrate, because a
 controller at the wrong one cannot read a frame and signals an error on every
 one it sees, which can drive the working nodes off the bus), **transmitting**
-onto one, and **replaying** a log onto one. A `virtual` channel never asks --
-nothing leaves pycangui. Change the bitrate and the connect question comes
-back, since getting it wrong is what the question is for.
+onto one, **replaying** a log onto one, and starting a
+[**simulated node**](virtual.md) on one. A `virtual` channel never asks about
+any of those -- nothing leaves pycangui. Change the bitrate, FD or the adapter
+and the connect question comes back, since getting those wrong is what the
+question is for.
+
+A few actions ask for themselves wherever they happen: switching
+[workspace](workspaces.md) while a channel is connected, because it closes the
+bus; writing to an ECU in a [UDS](uds.md) transfer; and enabling a drive from
+the [CiA 402 plugin](plugins.md), which is the moment a motor can move.
 
 Each of those questions carries a **Do not ask me this again on this machine**
 tick box. What "remembered" means is worth knowing: an answer is kept for
@@ -131,7 +138,7 @@ travelled inside one would mean somebody else's window, on somebody else's
 bench, quietly not asking. Another account on the same machine is asked for
 itself, and so is the same account on another machine.
 
-*Tools > Ask about everything again* brings the whole lot back. A setting that can be turned on and not off is one you would
+*Tools > Reset > Ask about everything again* brings the whole lot back. A setting that can be turned on and not off is one you would
 be right to distrust, and this one turns off the questions asked before
 pycangui can disturb equipment.
 

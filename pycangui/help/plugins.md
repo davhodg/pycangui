@@ -32,8 +32,9 @@ it:
 * **Remove...** deletes it from the workspace, and says so first: whatever you
   edited into it goes too.
 * **Supplied with pycangui** lists the ones that ship with it and are not
-  installed here. *Nothing pycangui ships is loaded until you install it*, so
-  a window you have not asked anything of has no plugin panes in it at all.
+  installed here -- the same list is a submenu of the **Plugins** menu, one
+  click each. *Nothing pycangui ships is loaded until you install it*, so a
+  window you have not asked anything of has no plugin panes in it at all.
 
 Installing a supplied plugin puts a copy in your workspace, and that copy is
 the one that runs -- so editing it is editing yours rather than the
@@ -76,7 +77,7 @@ pycangui ships rather than the one you are editing.
 | `on_pane_shown(fn)` | `fn(name, on)` when one of *your* panes appears or is put away |
 | `add_pane(..., shutdown=fn)` | `fn(pane)` when that pane goes for good, or your plugin is unloaded |
 | `on_closing(fn)` | `fn()` as the window goes, while the buses are still open |
-| `add_menu_action(text, callback, tooltip)` | an entry under *Tools > Plugins > your plugin* |
+| `add_menu_action(text, callback, tooltip)` | an entry under *Plugins > your plugin* |
 | `add_toolbar_button(text, callback, tooltip)` | a button on the toolbar |
 | `add_trace_labeller(fn)` | name frames in every trace: `fn(frame) -> str \| None` |
 | `add_field_widget(kind, class)` | an eighth way for a [custom pane](custom-panes.md) to show an object |
@@ -97,10 +98,11 @@ copy of its pane appears beside the first.
 
 ## The plugins that ship with it
 
-Supplied rather than installed: *Plugins > Manage plugins...* is where they
-are, and until one is installed none of it runs.
+Supplied rather than installed: *Plugins > Supplied with pycangui* and
+*Plugins > Manage plugins...* are where they are, and until one is installed
+none of it runs.
 
-**CANopen firmware** downloads a program to a CANopen node by CiA 302-3: stop the
+**CANopen firmware (CiA 302-3)** downloads a program to a CANopen node: stop the
 program (0x1F51), clear it, write the image as a domain (0x1F50), start it
 again. Intel HEX, S-record and raw binary are all read; the image has to be
 one contiguous block, because a program download *is* one block of bytes and
