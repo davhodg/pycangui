@@ -100,11 +100,11 @@ def test_a_state_change_is_reported(app, bus, monkeypatch):
     notes = []
     bus.note.connect(notes.append)
     monkeypatch.setattr(type(bus), "_read_state", lambda _self: "ERROR")
-    bus._report_state()
-    assert notes and "ERROR" in notes[0]
+    bus._report_health()
+    assert notes and "bus off" in notes[0]
     assert "bitrate" in notes[0], "say what to check, not just what happened"
 
-    bus._report_state()
+    bus._report_health()
     assert len(notes) == 1, "the state is reported on change, not on every tick"
 
 
@@ -112,9 +112,9 @@ def test_returning_to_active_is_reported_too(app, bus, monkeypatch):
     notes = []
     bus.note.connect(notes.append)
     monkeypatch.setattr(type(bus), "_read_state", lambda _self: "ERROR")
-    bus._report_state()
+    bus._report_health()
     monkeypatch.setattr(type(bus), "_read_state", lambda _self: "ACTIVE")
-    bus._report_state()
+    bus._report_health()
     assert len(notes) == 2 and "active" in notes[1]
 
 
@@ -123,7 +123,7 @@ def test_a_backend_with_no_state_never_appears_to_change(app, bus, monkeypatch):
     bus.note.connect(notes.append)
     monkeypatch.setattr(type(bus), "_read_state", lambda _self: "")
     for _ in range(5):
-        bus._report_state()
+        bus._report_health()
     assert notes == []
 
 

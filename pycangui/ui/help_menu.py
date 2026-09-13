@@ -282,7 +282,8 @@ def diagnostics(window) -> str:
         lines.append(
             f"  {name}{active}: {bus.description}\n"
             f"      interface={bus.interface!r} state={bus._read_state() or 'unreported'} "
-            f"load={bus.load_percent:.1f}% error frames={bus._error_frames}"
+            f"health={bus.health!r} load={bus.load_percent:.1f}% "
+            f"error frames={bus._error_frames}"
         )
 
     floating = [(n, d) for n, d in window.panes.docks.items() if d.isFloating()]

@@ -17,6 +17,7 @@ Design notes (Python / Qt idioms used here):
 
 from __future__ import annotations
 
+import subprocess
 import threading
 import time
 from dataclasses import dataclass
@@ -24,6 +25,7 @@ from dataclasses import dataclass
 import can
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
+from pycangui.core import bus_health
 from pycangui.core.detect import coerce_channel, summarise, takes_data_bitrate, takes_fd
 
 
@@ -157,6 +159,13 @@ class BusManager(QObject):
         self._connected_at = 0.0
         self._seen_a_frame = False
         self._state = ""
+        #: How the controller is doing: one of the states in core.bus_health.
+        self.health = bus_health.DOWN
+        #: The last state socketcan's error frames announced.  They are sent
+        #: when it changes, not while it lasts, so it is kept between them.
+        self._frame_health: str | None = None
+        #: What connect_bus was given, so recover() can open the same bus again.
+        self._opened_with: dict = {}
         self._error_frames = 0
         self._erroring = False
         self._errors_at = 0.0
@@ -248,7 +257,18 @@ class BusManager(QObject):
         self._connected_at = time.monotonic()
         self._seen_a_frame = False
         self._error_frames = 0
+        self._erroring = False
         self._state = self._read_state()
+        self._frame_health = None
+        self.health = bus_health.OK
+        self._opened_with = {
+            "interface": interface,
+            "channel": channel,
+            "bitrate": bitrate,
+            "fd": fd,
+            "extra": extra,
+            "data_bitrate": data_bitrate,
+        }
         self.data_bitrate = data_bitrate if fd else 0
         fd_text = ""
         if fd:
@@ -281,6 +301,7 @@ class BusManager(QObject):
         self.interface = ""
         self.channel = ""
         self.load_percent = 0.0
+        self.health = bus_health.DOWN
 
     def add_listener(self, listener: can.Listener) -> None:
         """Let a protocol stack see every frame (canopen.Network etc.)."""
@@ -333,28 +354,123 @@ class BusManager(QObject):
         except Exception:  # reading it talks to the driver, which can fail
             return ""
 
-    def _report_state(self) -> None:
-        """Say when the controller changes state.
+    def _adapter_health(self) -> str | None:
+        """What the adapter itself says about its controller, or None."""
+        if self.bus is None:
+            return None
+        if self.interface == "pcan":
+            try:
+                code = self.bus.status()
+            except Exception:  # a driver call, which can fail like any other
+                return None
+            return bus_health.from_pcan_status(int(getattr(code, "value", code)))
+        return bus_health.from_state(self.interface, self._read_state())
+
+    def _judge_health(self) -> str:
+        """The worst of what the adapter reports, what socketcan's error
+        frames last announced, and whether error frames are arriving at all."""
+        if not self.is_connected:
+            return bus_health.DOWN
+        seen = bus_health.WARNING if self._erroring else None
+        return bus_health.worst(self._adapter_health(), self._frame_health, seen)
+
+    @property
+    def health_detail(self) -> str:
+        """The state in words, and how far it can be trusted on this adapter."""
+        return bus_health.explain(self.health, self.interface)
+
+    def _report_health(self) -> None:
+        """Say when the controller goes error passive or bus off, and back.
 
         This is the difference between a quiet bus and a broken one.  An
         adapter that has gone bus off -- the wrong bitrate, a shorted line, no
         termination -- stays connected and simply hears nothing, which is
         exactly what an idle bus looks like from the outside.
+
+        Warning on its own is not logged: on most adapters it only ever comes
+        from error frames arriving, and those already say so.
         """
-        if not self.is_connected:
+        health = self._judge_health()
+        was, self.health = self.health, health
+        if health == was or not self.is_connected:
             return
-        state = self._read_state()
-        if not state or state == self._state:
-            return
-        was, self._state = self._state, state
-        if state.upper() == "ACTIVE":
-            self.note.emit(f"{self.channel_name}: bus active")
-        else:
+        serious = bus_health.SEVERITY[bus_health.PASSIVE]
+        name = self.channel_name
+        if health == bus_health.BUS_OFF:
             self.note.emit(
-                f"{self.channel_name}: bus state {was or 'unknown'} -> {state}.  "
-                "The controller is not taking part in traffic; check the bitrate, "
-                "the wiring and the termination."
+                f"{name}: bus off.  The controller has stopped taking part in the bus "
+                "and hears nothing until it is restarted.  Fix the cause first -- "
+                "usually the bitrate, the wiring or the termination -- then click "
+                f"{name} in the status bar and choose Recover from bus off."
             )
+        elif health == bus_health.PASSIVE:
+            self.note.emit(
+                f"{name}: error passive.  The controller has counted enough errors to "
+                "stop flagging the ones it sees, and is close to going bus off; check "
+                "the bitrate, the wiring and the termination."
+            )
+        elif bus_health.SEVERITY[was] >= serious:
+            now = "error active" if health == bus_health.OK else "errors still being seen"
+            self.note.emit(f"{name}: no longer {was}, {now}")
+
+    def recover(self) -> bool:
+        """Restart a controller that has gone bus off.  Returns whether it was.
+
+        The adapter's own reset where python-can has one (PCAN, Vector, NI);
+        the kernel's restart on socketcan, which needs the right to configure
+        the interface; otherwise the channel is closed and opened again, which
+        restarts any controller but looks to the protocol panes like a
+        disconnect and a reconnect.
+
+        None of these fixes the cause, and nothing here calls it by itself: a
+        controller restarted onto the wrong bitrate goes straight back to
+        putting error frames on a bus with working nodes on it.
+        """
+        name = self.channel_name
+        if self.bus is None:
+            self.warning.emit(f"{name}: not connected, so there is no controller to restart")
+            return False
+        was = self.health
+        if self.interface == "socketcan":
+            done = self._restart_socketcan()
+        else:
+            done = False
+            reset = getattr(self.bus, "reset", None)
+            if callable(reset):
+                try:
+                    done = reset() is not False
+                except Exception as exc:  # the driver's own failure, whatever it is
+                    self.note.emit(f"{name}: the adapter's reset failed ({exc}); reopening")
+            if not done:
+                self.connect_bus(**self._opened_with)
+                done = self.is_connected
+        if done:
+            self._frame_health = None
+            self._erroring = False
+            self.health = bus_health.OK
+            self.note.emit(
+                f"{name}: controller restarted (it was {was}).  If it goes bus off "
+                "again, whatever put it there is still there."
+            )
+        return done
+
+    def _restart_socketcan(self) -> bool:
+        command = ["ip", "link", "set", self.channel, "type", "can", "restart"]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            failure = str(exc)
+        else:
+            if result.returncode == 0:
+                return True
+            failure = (result.stderr or result.stdout or "").strip()
+        self.warning.emit(
+            f"{self.channel_name}: could not restart {self.channel} ({failure}).  "
+            "Restarting a socketcan interface needs the right to configure it: run "
+            f"'sudo ip link set {self.channel} type can restart', or give the "
+            "interface a restart-ms when bringing it up and the kernel does it itself."
+        )
+        return False
 
     def _report_error_frames(self, now: float) -> None:
         """Say when error frames start and stop, not that each one happened.
@@ -414,8 +530,9 @@ class BusManager(QObject):
         else:
             self.load_percent = 0.0
         self._bits = 0
-        self._report_state()
+        # Error frames first: whether they are still arriving is part of health.
         self._report_error_frames(now)
+        self._report_health()
         self._bits_at = now
 
     def _drain(self) -> None:
@@ -423,6 +540,13 @@ class BusManager(QObject):
             return
         batch = self._collector.drain()
         if batch:
+            if self.interface == "socketcan":
+                # Only socketcan's error identifiers are flags with a meaning;
+                # another adapter's are its own business.
+                for f in batch:
+                    if f.error:
+                        said = bus_health.from_socketcan_error(f.can_id, f.data)
+                        self._frame_health = said or self._frame_health
             self._bits += sum(frame_bits(f.dlc, f.extended, f.fd) for f in batch)
             self._seen_a_frame = True
             self.frames.emit(batch)
