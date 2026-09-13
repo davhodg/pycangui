@@ -2,14 +2,6 @@ name: Bug report
 description: Something in pycangui does not work the way the manual says it should.
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thank you for taking the time.  Two things first:
-
-        - **A security problem?**  Please do not report it here: the security policy links a private form.
-        - **Attach nothing you are not free to share.**  An issue is public, and a customer's DBC, EDS or log file is theirs.  A few frames typed out, or the same fault on the demo device, usually shows it just as well.
-
   - type: textarea
     id: what-happened
     attributes:
