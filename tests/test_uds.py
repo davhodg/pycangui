@@ -70,7 +70,7 @@ def test_uds_services_against_demo_ecu(stack):
     assert "NRC 0x7F" in last_after(n)  # not in default session
     n += 1
     manager.change_session(3)
-    assert "Session -> extended (P2 50 ms, P2* 5000 ms)" == last_after(n)
+    assert "Session -> extended (P2 250 ms, P2* 5000 ms)" == last_after(n)
     n += 1
     manager.unlock(1)
     assert "no security algorithm" in last_after(n)  # default hook returns None

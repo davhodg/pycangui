@@ -49,6 +49,11 @@ NRC_SECURITY_ACCESS_DENIED = 0x33
 NRC_INVALID_KEY = 0x35
 NRC_NOT_SUPPORTED_IN_SESSION = 0x7F
 
+#: How long a tester should wait for an answer (P2) and for one this ECU has
+#: said is coming (P2*), announced with every session change.
+P2_MS = 250
+P2_STAR_MS = 5000
+
 #: What this ECU says it is.  0x0102 is writable, and only once unlocked,
 #: which is what makes the security services worth having.
 IDENTIFIERS: dict[int, bytes] = {
@@ -123,7 +128,12 @@ def _session(node, request: bytes) -> bytes:
         # unlocked across a session change would be a security hole with a
         # very short life.
         node.state.unlocked = False
-    return bytes([0x50, sub]) + (50).to_bytes(2, "big") + (500).to_bytes(2, "big")
+    # P2, in milliseconds, then P2* in tens of them.  A real ECU promises
+    # 50 ms because its reply comes from an interrupt; this one's comes from a
+    # timer in pycangui's own window, which waits behind a plot redrawing or a
+    # busy trace, so it promises what it can keep.  The tester believes
+    # whatever is sent here and gives up on the ECU the moment it passes.
+    return bytes([0x50, sub]) + (P2_MS).to_bytes(2, "big") + (P2_STAR_MS // 10).to_bytes(2, "big")
 
 
 def _tester_present(node, request: bytes) -> bytes:
