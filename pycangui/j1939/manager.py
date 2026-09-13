@@ -83,6 +83,14 @@ class J1939Manager(QObject):
     claimed = Signal(int)  # our address after a successful claim (0xFE = lost)
     log = Signal(str)
 
+    #: How long a claim may stay undecided before it is reported as failed.
+    #: can-j1939 sends the claim half a second after it starts and then waits a
+    #: quarter of a second for anybody to contest it, so no answer exists before
+    #: about 0.75 s -- and on a busy machine its thread gets there later still.
+    CLAIM_DEADLINE_S = 3.0
+    #: How often to look while it is undecided.
+    CLAIM_POLL_MS = 100
+
     def __init__(self, bus: BusManager, hooks: Hooks) -> None:
         super().__init__()
         self._bus = bus
@@ -90,6 +98,11 @@ class J1939Manager(QObject):
         self.ecu: j1939lib.ElectronicControlUnit | None = None
         self._rx_only: list[_RxOnlyListener] = []
         self.ca: j1939lib.ControllerApplication | None = None
+        #: One timer for the claim in progress, so a claim released and made
+        #: again cannot leave two of them reporting.  A child of the manager,
+        #: so it goes when the manager does.
+        self._claim_timer = QTimer(self, interval=self.CLAIM_POLL_MS, timeout=self._check_claim)
+        self._claim_deadline = 0.0
         self.nodes: dict[int, Name | None] = {}
         self.last_seen: dict[int, float] = {}
         bus.connected.connect(self._on_bus_connected)
@@ -185,22 +198,38 @@ class J1939Manager(QObject):
         self.ca = self.ecu.add_ca(name=tester_name(), device_address=address)
         self.ca.start()
         self.log.emit(f"J1939: claiming address {address:02X}")
-        # The claim resolves on the ECU thread (250 ms contention window); check after that.
-        QTimer.singleShot(600, self._check_claim)
+        # The claim resolves on the ECU thread; look until it has.
+        self._claim_deadline = time.monotonic() + self.CLAIM_DEADLINE_S
+        self._claim_timer.start()
 
     def _check_claim(self) -> None:
+        """Report the claim once it has resolved, however long its thread takes.
+
+        This used to be one look after 600 ms, which is sooner than can-j1939
+        can ever answer.  It usually got away with it; a loaded machine did
+        not, and reported "address in use" -- releasing the address -- for a
+        claim that would have succeeded a moment later.
+        """
         if self.ca is None:
+            self._claim_timer.stop()
             return
         import j1939 as j1939lib
 
-        if self.ca.state == j1939lib.ControllerApplication.State.NORMAL:
+        state = self.ca.state
+        if state == j1939lib.ControllerApplication.State.NORMAL:
+            self._claim_timer.stop()
             self.log.emit(f"J1939: address {self.ca.device_address:02X} claimed")
             self.claimed.emit(self.ca.device_address)
-        else:
+        elif (
+            state == j1939lib.ControllerApplication.State.CANNOT_CLAIM
+            or time.monotonic() >= self._claim_deadline
+        ):
+            self._claim_timer.stop()
             self.log.emit("J1939: address claim failed (address in use?)")
             self.release_address()
 
     def release_address(self) -> None:
+        self._claim_timer.stop()
         if self.ca is not None and self.ecu is not None:
             try:
                 self.ca.stop()

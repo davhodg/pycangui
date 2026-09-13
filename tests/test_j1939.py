@@ -69,6 +69,76 @@ def test_dbc_matches_j1939_by_pgn():
     assert dbc.message_name(Frame(0.0, "v", build_id(65226, 0), True, False, True, b"")) is None
 
 
+# --- an address claim takes as long as it takes ------------------------------------
+class FakeClaim:
+    """A controller application whose state the test moves by hand."""
+
+    def __init__(self, state, address=0xF9):
+        self.state = state
+        self.device_address = address
+
+    def stop(self):
+        pass
+
+
+class FakeEcu:
+    def remove_ca(self, _address):
+        pass
+
+
+@pytest.fixture
+def claiming(app, tmp_path, monkeypatch):
+    """A manager mid-claim, with no bus: only the checking is under test."""
+    import j1939 as j1939lib
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    manager = J1939Manager(BusManager(), Hooks(Context(log=print)))
+    claimed = []
+    manager.claimed.connect(claimed.append)
+    manager.ecu = FakeEcu()
+    manager.ca = FakeClaim(j1939lib.ControllerApplication.State.WAIT_VETO)
+    manager._claim_deadline = time.monotonic() + manager.CLAIM_DEADLINE_S
+    manager._claim_timer.start()
+    yield manager, claimed, j1939lib.ControllerApplication.State
+    manager._claim_timer.stop()
+
+
+def test_a_slow_claim_is_waited_for_not_given_up_on(claiming):
+    """The Intel Mac runner answered a single look at 600 ms before can-j1939
+    had, and the claim was released as failed.  Still undecided means look again."""
+    manager, claimed, states = claiming
+    for _ in range(5):
+        manager._check_claim()
+    assert claimed == [] and manager.ca is not None, "undecided is not failed"
+    assert manager._claim_timer.isActive()
+
+    manager.ca.state = states.NORMAL
+    manager._check_claim()
+    assert claimed == [0xF9]
+    assert not manager._claim_timer.isActive(), "reported once, then quiet"
+
+
+def test_an_address_in_use_fails_at_once(claiming):
+    manager, claimed, states = claiming
+    manager.ca.state = states.CANNOT_CLAIM
+    manager._check_claim()
+    assert claimed == [0xFE] and manager.ca is None
+    assert not manager._claim_timer.isActive()
+
+
+def test_a_claim_that_never_resolves_gives_up_at_the_deadline(claiming):
+    manager, claimed, _states = claiming
+    manager._claim_deadline = time.monotonic() - 1
+    manager._check_claim()
+    assert claimed == [0xFE] and manager.ca is None
+
+
+def test_releasing_stops_the_checking(claiming):
+    manager, claimed, _states = claiming
+    manager.release_address()
+    assert claimed == [0xFE] and not manager._claim_timer.isActive()
+
+
 def wait_until(pred, timeout=5.0):
     deadline = time.monotonic() + timeout
     while not pred():
@@ -107,7 +177,7 @@ def test_manager_against_demo_engine(stack):
     assert dm1s[0][1].dtcs[0].spn == 110 and dm1s[0][1].lamps() == "AWL"
 
     manager.claim_address(0xF9)
-    wait_until(lambda: claimed, timeout=3)
+    wait_until(lambda: claimed, timeout=manager.CLAIM_DEADLINE_S + 2)
     assert claimed[-1] == 0xF9 and manager.own_address == 0xF9
 
     manager.request_pgn(65259, 0x00)  # ComponentID -> BAM multi-packet
