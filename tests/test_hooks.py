@@ -263,6 +263,29 @@ def test_restoring_twice_does_not_eat_the_first_copy(home, log):
     assert "second" in second.read_text()
 
 
+def test_an_untouched_hook_file_keeps_up_and_an_edited_one_is_left(home, log):
+    """What was copied, and nobody has touched, is still pycangui's."""
+    from pycangui.core.supplied import fingerprint
+
+    ctx = Context(log=log.append)
+    Hooks(ctx)
+    folder = workspaces.hooks_dir()
+    shipped_canopen = (folder / "canopen.py").read_bytes()
+    older = b"from pycangui.core.hooks import hook\n# an older canopen.py\n"
+    (folder / "canopen.py").write_bytes(older)
+    (folder / "uds.py").write_text("# mine\n", encoding="utf-8")
+    record = ctx.settings.get("supplied.hooks")
+    record["copied"]["canopen.py"] = fingerprint(older)
+    ctx.settings.set("supplied.hooks", record)
+    log.clear()
+
+    Hooks(ctx)
+    assert (folder / "canopen.py").read_bytes() == shipped_canopen
+    assert (folder / "uds.py").read_text(encoding="utf-8").startswith("# mine")
+    assert any("hooks/canopen.py updated" in line for line in log)
+    assert any("hooks/uds.py" in line and "left as it is" in line for line in log)
+
+
 def test_an_untouched_file_is_not_offered_as_edited(home, log):
     """What the dialog greys out: a file nobody has been near."""
     ctx = Context(log=log.append)

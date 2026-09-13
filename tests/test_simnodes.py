@@ -14,7 +14,9 @@ import pytest
 
 from pycangui.core import simnodes
 from pycangui.core.channels import Channels
+from pycangui.core.settings import Settings
 from pycangui.core.simnodes import NodeError, SimulatedNodes
+from pycangui.core.supplied import fingerprint
 
 
 class FakeContext:
@@ -23,6 +25,7 @@ class FakeContext:
     def __init__(self, folder):
         self.nodes_dir = folder
         self.eds_dir = folder
+        self.settings = Settings(folder.parent / "settings.json")
         self.messages: list[str] = []
 
     def log(self, message, level=None):
@@ -318,6 +321,23 @@ def test_a_users_edit_is_never_written_over(app, ctx):
     mine.write_text("# mine now\ndef poll(node, *, ctx): pass\n", encoding="utf-8")
     SimulatedNodes(ctx)
     assert mine.read_text(encoding="utf-8").startswith("# mine now")
+
+
+def test_an_untouched_node_from_an_older_pycangui_is_brought_up_to_date(app, ctx):
+    """The file as an older version supplied it, and nobody has been near it
+    since: still pycangui's, so the new one simply replaces it."""
+    SimulatedNodes(ctx)
+    node = ctx.nodes_dir / "uds_server.py"
+    shipped = node.read_bytes()
+    older = b"# the uds_server an older pycangui supplied\n"
+    node.write_bytes(older)
+    record = ctx.settings.get("supplied.nodes")
+    record["copied"]["uds_server.py"] = fingerprint(older)
+    ctx.settings.set("supplied.nodes", record)
+
+    SimulatedNodes(ctx)
+    assert node.read_bytes() == shipped
+    assert any("nodes/uds_server.py updated" in m for m in ctx.messages)
 
 
 def test_every_shipped_node_describes_itself(app, manager):

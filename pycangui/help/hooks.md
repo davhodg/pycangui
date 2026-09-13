@@ -22,7 +22,11 @@ it.
 
 On first run each file is copied there complete, with the default behaviour and
 commented examples already in it, so there is never an empty file to start
-from.  **Your copies are never overwritten.**
+from.  **A file you have changed is never overwritten.**  One you have not
+changed is still pycangui's, so when a later version ships a better one it is
+simply replaced, and the Event Log says so.  A changed one is left as it is,
+and the log says once that a newer version exists.  The same goes for the
+[simulated nodes](virtual.md) in `nodes/`.
 
 They are also yours in the other sense.  The templates are released under
 MIT-0, which claims no copyright and asks for no credit -- the first lines of
@@ -33,11 +37,12 @@ it, or ship it with your product.
 *Tools > Reload hooks* reads the files again, so an edit of your own takes
 effect without restarting.  It changes nothing on disk.
 
-*Tools > Reset > Restore hook files...* is the way back from an edit that has
-gone wrong: it puts pycangui's own version of the files you tick back, and
+*Tools > Reset > Restore supplied files...* is the way back from an edit that
+has gone wrong, and the way to take a newer version over one you have changed:
+it puts pycangui's own version of the hook and node files you tick back, and
 renames yours to `canopen.py.bak` rather than deleting it, so an afternoon's
-work is still there to copy out of.  Files you have not touched are shown
-greyed, since there is nothing to restore and nothing to lose.
+work is still there to copy out of.  Files that already match what pycangui
+ships are shown greyed, since there is nothing to restore and nothing to lose.
 
 ## Keeping up with a new pycangui
 

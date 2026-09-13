@@ -54,7 +54,7 @@ from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.plugin_app import PluginApp
 from pycangui.ui.plugin_manager import INACTIVE_TIP, ManagePlugins, PluginActions
 from pycangui.ui.replay_action import ReplayAction
-from pycangui.ui.restore_hooks import RestoreHooks
+from pycangui.ui.restore_supplied import RestoreSupplied
 from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.simnode_dialog import SimulatedNodeDialog
 from pycangui.ui.trace_view import TraceView
@@ -375,10 +375,11 @@ class MainWindow(QMainWindow):
             "Bring back every question you told pycangui not to ask again:\n"
             "joining a bus, transmitting and replaying."
         )
-        restore_hooks = self.reset_menu.addAction("Restore hook files...", self._restore_hooks)
-        restore_hooks.setToolTip(
-            "Put pycangui's own version of a hook file back.  Yours is renamed\n"
-            "rather than deleted, so nothing you wrote is lost."
+        restore = self.reset_menu.addAction("Restore supplied files...", self._restore_supplied)
+        restore.setToolTip(
+            "Put pycangui's own version of a hook or simulated node file back --\n"
+            "to undo an edit, or to take a newer one over your changes.  Yours is\n"
+            "renamed rather than deleted, so nothing you wrote is lost."
         )
         self.reset_menu.addSeparator()
         everything = self.reset_menu.addAction("Reset everything...", self._reset_everything)
@@ -1103,17 +1104,24 @@ class MainWindow(QMainWindow):
         frame.moveCenter(available.center())
         self.move(frame.topLeft())
 
-    def _restore_hooks(self) -> None:
-        """Pycangui's own hook files back, with yours renamed beside them."""
-        dialog = RestoreHooks(self, self.hooks)
+    def _restore_supplied(self) -> None:
+        """Pycangui's own hook and node files back, with yours renamed beside them."""
+        groups = {"hooks": self.hooks.supplied, "nodes": self.nodes.supplied}
+        dialog = RestoreSupplied(self, groups)
         if dialog.exec() != QDialog.Accepted:
             return
         chosen = dialog.chosen()
-        for module in chosen:
-            kept = self.hooks.restore(module)
-            self.events.information(f"hooks/{module}.py restored; yours is now {kept.name}")
-        if chosen:
+        for label, name in chosen:
+            kept = groups[label].restore(name)
+            self.events.information(f"{label}/{name} restored; yours is now {kept.name}")
+        labels = {label for label, _name in chosen}
+        if "hooks" in labels:
             self._reload_hooks()
+        if "nodes" in labels and self.nodes.running():
+            self.events.information(
+                "A simulated node that is already running keeps the code it started "
+                "with; stop it and start it again to run the restored file."
+            )
 
     def _reset_everything(self) -> None:
         """There is no reset-everything, and this says what there is instead.

@@ -550,29 +550,32 @@ class SimulatedNodes(QObject):
 
     # --- the files ----------------------------------------------------------
     def ensure_user_files(self) -> list[Path]:
-        """Copy any shipped node the user does not have yet.
+        """Copy the shipped nodes the user lacks, and bring untouched ones up
+        to this version.
 
         The same bargain as the hook defaults: they arrive as editable,
         commented source in the workspace rather than staying buried in the
         package, because the first thing anybody does with an example is
-        change it.
+        change it -- and one that has been changed is never overwritten.
+        Returns the paths newly copied.
         """
-        import shutil
         from importlib import resources
 
-        created = []
+        from pycangui.core.supplied import Supplied
+
         try:
             shipped = resources.files(DEFAULTS_PACKAGE)
         except ModuleNotFoundError:  # pragma: no cover - only if the package is dropped
-            return created
-        for entry in shipped.iterdir():
-            if not entry.name.endswith(".py") or entry.name.startswith("_"):
-                continue
-            dest = self.ctx.nodes_dir / entry.name
-            if not dest.exists():
-                shutil.copy(str(entry), dest)
-                created.append(dest)
-        return created
+            shipped = None
+        sources = {
+            entry.name: entry
+            for entry in (shipped.iterdir() if shipped is not None else ())
+            if entry.name.endswith(".py") and not entry.name.startswith("_")
+        }
+        #: The node files as supplied: what was copied, and what ships now.
+        self.supplied = Supplied("nodes", self.ctx.nodes_dir, sources, self.ctx.settings)
+        outcome = self.supplied.update(self.ctx.log)
+        return [self.ctx.nodes_dir / name for name in outcome.copied]
 
     def kinds(self) -> list[Kind]:
         return kinds_in(self.ctx.nodes_dir)

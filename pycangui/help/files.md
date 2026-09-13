@@ -50,7 +50,7 @@ place to look rather than four:
 | Reset layout | Panes where they start, and the window at the size it opens at |
 | Forget remembered folders | Every file dialog, to pycangui's own folders |
 | Ask about everything again | Every question you told pycangui to stop asking |
-| Restore hook files... | Pycangui's own [hook files](hooks.md), renaming yours to `.py.bak` |
+| Restore supplied files... | Pycangui's own [hook files](hooks.md) and simulated nodes, renaming yours to `.py.bak` |
 | Reset everything... | Nothing -- it explains that a new workspace is the clean slate |
 
 That last one is not evasion.  Everything that accumulates is in the workspace,

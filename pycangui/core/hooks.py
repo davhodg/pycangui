@@ -14,7 +14,8 @@ Call order for ``hooks.call("canopen", "eds_for_node", identity)``:
 3. if it returns ``None`` -> "do the normal thing", fall through;
 4. the built-in default.
 
-User files never crash the application and are never overwritten.
+User files never crash the application, and a file the user has changed is
+never overwritten (see core.supplied for how the untouched ones keep up).
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from pycangui.core.context import Context
+from pycangui.core.supplied import Supplied
 
 DEFAULTS_PACKAGE = "pycangui.hooks"
 
@@ -102,6 +104,13 @@ class Hooks:
         self._failed: set[tuple[str, str]] = set()  # (module, name) already reported
         #: (module, name) whose signature this build changed, from sync().
         self._changed: list[tuple[str, str]] = []
+        #: The hook files as supplied: what was copied, and what ships now.
+        self.supplied = Supplied(
+            "hooks",
+            ctx.hooks_dir,
+            {f"{module}.py": _defaults_path(module) for module in registry()},
+            ctx.settings,
+        )
         self.ensure_user_files()
         self.sync()
         self.reload()
@@ -109,30 +118,15 @@ class Hooks:
 
     # --- files -------------------------------------------------------------
     def ensure_user_files(self) -> list[Path]:
-        """Copy any defaults file the user doesn't have yet.  Returns new paths."""
-        created = []
-        for module in registry():
-            dest = self.ctx.hooks_dir / f"{module}.py"
-            if not dest.exists():
-                shutil.copy(_defaults_path(module), dest)
-                created.append(dest)
-        return created
+        """Copy the hook files the user lacks, and bring the untouched ones up
+        to this version.  An edited one is left alone and, once per newer
+        version, mentioned.  Returns the paths newly copied."""
+        outcome = self.supplied.update(self.ctx.log)
+        return [self.ctx.hooks_dir / name for name in outcome.copied]
 
     def edited(self) -> list[str]:
-        """Which hook files differ from the ones pycangui ships.
-
-        Read as "which of these has somebody worked on", so a file that has
-        only grown the stubs a later version appended counts as edited too --
-        it is not the file that was shipped, and saying otherwise to somebody
-        deciding what to restore would be the wrong sort of tidy.
-        """
-        return [
-            module
-            for module in sorted(registry())
-            if (path := self.ctx.hooks_dir / f"{module}.py").exists()
-            and path.read_text(encoding="utf-8")
-            != _defaults_path(module).read_text(encoding="utf-8")
-        ]
+        """Which hook modules differ from the ones pycangui ships."""
+        return [name.removesuffix(".py") for name in self.supplied.edited()]
 
     def restore(self, module: str) -> Path:
         """Put pycangui's version of a hook file back, keeping the old one.
@@ -142,16 +136,7 @@ class Hooks:
         copy of it, so this renames rather than deletes.  Returns where the
         old one went.
         """
-        path = self.ctx.hooks_dir / f"{module}.py"
-        kept = path.with_suffix(".py.bak")
-        number = 2
-        while kept.exists():  # restoring twice must not eat the first one
-            kept = path.with_suffix(f".py.bak{number}")
-            number += 1
-        if path.exists():
-            path.rename(kept)
-        shutil.copy(_defaults_path(module), path)
-        return kept
+        return self.supplied.restore(f"{module}.py")
 
     def sync(self) -> dict[str, list[str]]:
         """Bring the hook files up to date with this build, at startup.

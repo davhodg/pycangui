@@ -121,8 +121,12 @@ class _NodeContext:
     """
 
     def __init__(self, folder):
+        from pycangui.core.settings import Settings
+
         self.nodes_dir = folder
         self.eds_dir = folder
+        # Beside the folder rather than in it, like a workspace's own.
+        self.settings = Settings(folder.parent / f"{folder.name}-settings.json")
 
     def log(self, message, level=None):
         pass

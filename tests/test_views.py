@@ -480,7 +480,7 @@ def test_the_resets_are_together_in_one_submenu(app, tmp_path, monkeypatch):
         "Reset layout",
         "Forget remembered folders",
         "Ask about everything again",
-        "Restore hook files...",
+        "Restore supplied files...",
         "---",
         "Reset everything...",
     ]
@@ -540,7 +540,7 @@ def test_reset_layout_puts_the_window_back_to_the_size_it_opens_at(app, tmp_path
     window.close()
 
 
-def test_restoring_a_hook_file_from_the_menu_keeps_a_copy(app, tmp_path, monkeypatch):
+def test_restoring_supplied_files_from_the_menu_keeps_copies(app, tmp_path, monkeypatch):
     from pycangui.core import workspaces
     from pycangui.ui import main_window as mw
 
@@ -549,20 +549,26 @@ def test_restoring_a_hook_file_from_the_menu_keeps_a_copy(app, tmp_path, monkeyp
     window = MainWindow()
     hooks_file = workspaces.hooks_dir() / "canopen.py"
     hooks_file.write_text("def node_name(identity, *, ctx):\n    return 'mine'\n")
+    node_file = workspaces.nodes_dir() / "uds_server.py"
+    node_file.write_text("# my ECU\n")
 
-    monkeypatch.setattr(mw.RestoreHooks, "exec", lambda _self: mw.QDialog.Accepted)
-    monkeypatch.setattr(mw.RestoreHooks, "chosen", lambda _self: ["canopen"])
-    window._restore_hooks()
+    chosen = [("hooks", "canopen.py"), ("nodes", "uds_server.py")]
+    monkeypatch.setattr(mw.RestoreSupplied, "exec", lambda _self: mw.QDialog.Accepted)
+    monkeypatch.setattr(mw.RestoreSupplied, "chosen", lambda _self: chosen)
+    window._restore_supplied()
 
-    assert "def eds_for_node" in hooks_file.read_text(), "the shipped one is back"
+    assert "def eds_for_node" in hooks_file.read_text(), "the shipped hook is back"
     assert "return 'mine'" in (hooks_file.parent / "canopen.py.bak").read_text()
-    assert any("canopen.py.bak" in line for line in window.log.toPlainText().splitlines())
+    assert "def _routine" in node_file.read_text(), "and the shipped node"
+    assert (node_file.parent / "uds_server.py.bak").read_text() == "# my ECU\n"
+    log = window.log.toPlainText()
+    assert "canopen.py.bak" in log and "uds_server.py.bak" in log
     window.close()
 
 
 def test_the_restore_dialog_greys_out_what_nobody_has_edited(app, tmp_path, monkeypatch):
     from pycangui.core import workspaces
-    from pycangui.ui.restore_hooks import RestoreHooks
+    from pycangui.ui.restore_supplied import RestoreSupplied
 
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
@@ -571,12 +577,14 @@ def test_the_restore_dialog_greys_out_what_nobody_has_edited(app, tmp_path, monk
     edited.write_text("def node_name(identity, *, ctx):\n    x = 1\n")
     window.hooks.reload()
 
-    dialog = RestoreHooks(window, window.hooks)
-    assert dialog._boxes["canopen"].isEnabled()
-    assert not dialog._boxes["uds"].isEnabled(), "nothing to restore and nothing to lose"
+    groups = {"hooks": window.hooks.supplied, "nodes": window.nodes.supplied}
+    dialog = RestoreSupplied(window, groups)
+    assert dialog._boxes[("hooks", "canopen.py")].isEnabled()
+    assert not dialog._boxes[("hooks", "uds.py")].isEnabled(), "nothing to restore or lose"
+    assert not dialog._boxes[("nodes", "uds_server.py")].isEnabled()
     assert dialog.chosen() == [], "nothing is ticked to start with"
-    dialog._boxes["canopen"].setChecked(True)
-    assert dialog.chosen() == ["canopen"]
+    dialog._boxes[("hooks", "canopen.py")].setChecked(True)
+    assert dialog.chosen() == [("hooks", "canopen.py")]
     window.close()
 
 
