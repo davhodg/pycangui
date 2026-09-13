@@ -14,6 +14,7 @@ from PySide6.QtCore import QSettings
 from pycangui.canopen.display import Display
 from pycangui.custom_panes import model
 from pycangui.custom_panes.model import CustomPane, Field
+from pycangui.ui import messages
 from pycangui.ui.main_window import MainWindow, custom_instance
 
 
@@ -451,12 +452,11 @@ def test_an_index_nobody_has_a_name_for_is_still_added(app, window):
 
 
 def test_an_index_that_is_not_one_is_refused(app, window, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox
 
     from pycangui.ui.custom_pane_view import AddObjects
 
     said = []
-    monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, text: said.append(text))
+    monkeypatch.setattr(messages, "warning", lambda _p, _t, text: said.append(text))
     picker = AddObjects(None, None)
     picker.index.setText("not an index")
     assert picker._typed() is None

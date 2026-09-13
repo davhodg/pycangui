@@ -51,7 +51,7 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
-from pycangui.ui import folders
+from pycangui.ui import folders, messages
 from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
 
@@ -369,7 +369,7 @@ class CanopenView(QWidget):
         if not path:
             return None
         if identity.vendor_id is not None:
-            answer = QMessageBox.question(
+            answer = messages.question(
                 self,
                 "Remember EDS",
                 "Use this EDS automatically for every device with this "

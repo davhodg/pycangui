@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core import workspaces
 from pycangui.core.context import Context
+from pycangui.ui import messages
 
 SAVE_AS_TIP = (
     "Keep everything as it is now -- the panes, the channels, the databases,\n"
@@ -106,7 +107,7 @@ class WorkspaceMenu(QObject):
         if not chose:
             return
         if (reason := workspaces.why_not(name)) != "":
-            QMessageBox.warning(self.window, "That name will not do", reason)
+            messages.warning(self.window, "That name will not do", reason)
             return
         # Forked from the one in use, because "save as" means keep this and
         # call it something else.  An empty new workspace would throw away the
@@ -131,7 +132,7 @@ class WorkspaceMenu(QObject):
         if not chose:
             return
         if (reason := workspaces.why_not(name)) != "":
-            QMessageBox.warning(self.window, "That name will not do", reason)
+            messages.warning(self.window, "That name will not do", reason)
             return
         workspaces.create(name)  # not forked: starting with nothing is the point
         self.switch_requested.emit(workspaces.clean(name))
@@ -230,13 +231,13 @@ class ManageWorkspaces(QDialog):
         try:
             workspaces.rename(old, new)
         except ValueError as exc:
-            QMessageBox.warning(self, "That name will not do", str(exc))
+            messages.warning(self, "That name will not do", str(exc))
             return
         self._fill()
 
     def _delete(self) -> None:
         name = self.selected()
-        answer = QMessageBox.warning(
+        answer = messages.warning(
             self,
             "Delete this workspace?",
             f"{name} and everything in it -- its settings, its hooks and its "
@@ -249,6 +250,6 @@ class ManageWorkspaces(QDialog):
         try:
             workspaces.delete(name)
         except ValueError as exc:
-            QMessageBox.warning(self, "Cannot delete that one", str(exc))
+            messages.warning(self, "Cannot delete that one", str(exc))
             return
         self._fill()

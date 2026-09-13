@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 from pycangui.core import plugin_package
 from pycangui.core.context import Context
 from pycangui.core.plugins import NO_VERSION, Plugins, supplied
-from pycangui.ui import folders
+from pycangui.ui import folders, messages
 
 #: Said before every install, and not remembered.  Each one is a different
 #: file from a different person, so "you agreed last time" is not an answer.
@@ -165,7 +165,7 @@ class PluginActions(QObject):
         question.append("")
         question.append(WHAT_IT_STAYS)
 
-        answer = QMessageBox.warning(
+        answer = messages.warning(
             parent or self.window,
             "Install plugin",
             "\n".join(question),
@@ -194,13 +194,13 @@ class PluginActions(QObject):
 
     def _refuse(self, parent, why: str) -> None:
         self.ctx.events.warning(why)
-        QMessageBox.warning(parent or self.window, "Install plugin", why)
+        messages.warning(parent or self.window, "Install plugin", why)
 
     # --- and losing one ----------------------------------------------------------------
     def uninstall(self, name: str, parent: QWidget | None = None) -> None:
         record = self.plugins.loaded.get(name)
         label = record.label if record else name
-        answer = QMessageBox.warning(
+        answer = messages.warning(
             parent or self.window,
             "Remove plugin",
             UNINSTALL.format(label=label),

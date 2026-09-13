@@ -24,7 +24,7 @@ from pycangui.core.bus import BusManager
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.logging import READ_FILTER, Player
-from pycangui.ui import folders
+from pycangui.ui import folders, messages
 from pycangui.ui.confirm import Confirmations, is_real
 
 SPEEDS = (0.1, 0.5, 1.0, 2.0, 5.0, 20.0)
@@ -210,7 +210,7 @@ class ReplayAction(QObject):
         reason to replay at all, and it should not require knowing that a
         virtual channel is how you do it.
         """
-        answer = QMessageBox.question(
+        answer = messages.question(
             self.button,
             "No channel connected",
             "A replay needs a channel to play onto.\n\n"

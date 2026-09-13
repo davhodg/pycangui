@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QMessageBox
 
+from pycangui.ui import messages
+
 # build/ is not a package -- it holds the scripts the launchers and the
 # packaging step call -- so it is put on the path rather than imported from.
 PROJECT = Path(__file__).resolve().parent.parent
@@ -60,7 +62,7 @@ def test_a_missing_library_is_a_dialog_rather_than_a_silent_death(app, monkeypat
     import pycangui.__main__ as entry
 
     shown = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: shown.append(a[2]))
+    monkeypatch.setattr(messages, "critical", lambda *a, **k: shown.append(a[2]))
     monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Ok)  # the notice
     # None in sys.modules is what Python turns into an ImportError on import.
     monkeypatch.setitem(sys.modules, "pycangui.ui.main_window", None)
@@ -83,7 +85,7 @@ def test_the_notice_is_shown_before_anything_is_loaded(app, monkeypatch):
     )
     monkeypatch.setattr(sys, "argv", ["pycangui"])
     monkeypatch.setitem(sys.modules, "pycangui.ui.main_window", None)
-    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: order.append("gave up"))
+    monkeypatch.setattr(messages, "critical", lambda *a, **k: order.append("gave up"))
 
     assert entry.main() == 0, "quitting at the notice starts nothing"
     assert order == ["notice answered"], "and nothing was built to be given up on"

@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core import mdf
+from pycangui.ui import messages
 
 #: Past this, reading everything at once is a wait with no warning attached.
 #: The number is not a limit -- it is when the question gets asked.
@@ -177,10 +178,10 @@ def ensure_available(parent: QWidget, ctx, frozen: bool = False) -> bool:
     if mdf.available():
         return True
     if frozen:
-        QMessageBox.information(parent, INSTALL_TITLE, FROZEN)
+        messages.information(parent, INSTALL_TITLE, FROZEN)
         ctx.warn(f"{mdf.PACKAGE} is missing from this build; MDF files cannot be read")
         return False
-    answer = QMessageBox.question(
+    answer = messages.question(
         parent,
         INSTALL_TITLE,
         NOT_FROZEN.format(why=mdf.WHY),
