@@ -153,7 +153,14 @@ class CanopenView(QWidget):
             "hooks/canopen.py::eds_for_node."
         )
         load_btn.clicked.connect(self._load_eds_clicked)
-        for b in (store_btn, restore_btn, save_dcf, apply_dcf, load_btn):
+        self.read_rpdos_btn = QPushButton("Read RPDO config")
+        self.read_rpdos_btn.setToolTip(
+            "Read the selected node's RPDO mapping from the node itself.\n"
+            "The EDS says how a node ships; this is how it is set up now, so\n"
+            "CAN Transmit offers the RPDOs a remapped node actually receives."
+        )
+        self.read_rpdos_btn.clicked.connect(self._read_rpdos)
+        for b in (store_btn, restore_btn, save_dcf, apply_dcf, load_btn, self.read_rpdos_btn):
             file_bar.addWidget(b)
         file_bar.addStretch()
 

@@ -193,7 +193,7 @@ class MainWindow(QMainWindow):
         self.connect_bar.disconnect_requested.connect(self._disconnect_active)
         self.record_action = self.connect_bar.addAction("Record")
         self.record_action.setCheckable(True)
-        self.record_action.setToolTip("Record the selected channel to a log file")
+        self.record_action.setToolTip("Record every connected channel to a log file")
         self.record_action.toggled.connect(self._toggle_record)
         self.replay = ReplayAction(self.connect_bar, self.channels, self.ctx, self.confirm)
 
@@ -544,12 +544,11 @@ class MainWindow(QMainWindow):
     def _register_panes(self) -> None:
         """What sorts of pane there are, and which of them there can be several of.
 
-        A trace and a plot earn a second instance and the rest do not, and the
-        test is what a second one would show: a trace filtered differently, or
-        a plot of other signals, is a different view of the same capture.  A
-        second Event Log is the same log twice, a second UDS pane is two faces
-        on one session, and a second transmit list is a question about which
-        of them is sending.
+        The test for a second instance is what it would show.  A trace filtered
+        differently, a plot of other signals, another identifier read as text
+        and a transmit list of other messages are each a different view or a
+        different job; a second Event Log is the same log twice, and a second
+        UDS pane is two faces on one session.
 
         The order here is the order of the View menu, and it is deliberate:
         the panes that work on any bus first (trace, transmit, signals, then

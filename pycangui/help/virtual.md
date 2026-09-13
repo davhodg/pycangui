@@ -43,7 +43,7 @@ pycangui. Open one and you are reading the thing you have been talking to,
 which is also why they cannot quietly rot: everybody's first run exercises
 them.
 
-They appear in **Tools > Simulated nodes** like anything else, so you can stop
+They appear in **Tools > Simulated nodes...** like anything else, so you can stop
 one -- to see how your own tool behaves when a device goes quiet, say -- and
 they are listed there by name. Disconnecting and reconnecting the channel
 brings them back.
@@ -100,9 +100,9 @@ rest of the day.
 
 ### The ones supplied
 
-Four examples arrive in the folder on first run, one per protocol pycangui
-speaks, and they are meant to be edited -- what is in your workspace is yours
-and is never written over:
+Five examples arrive in the folder on first run, one per protocol pycangui
+speaks and a gateway, and they are meant to be edited -- one you have changed
+is never written over ([Hooks](hooks.md) says how the untouched ones keep up):
 
 | File | What it shows |
 |------|---------------|
@@ -110,6 +110,7 @@ and is never written over:
 | `j1939_engine.py` | The thin end: identifiers composed and bytes packed by hand, which is what most protocols need |
 | `uds_server.py` | Reacting only -- no `poll` at all, because a diagnostic server speaks when spoken to |
 | `xcp_slave.py` | Both halves: a memory that answers commands, and measurements that move |
+| `gateway.py` | Two channels at once: frames relayed both ways, with an id map and a block list -- see *Gateways* below |
 
 ### Starting one from Python
 
@@ -175,8 +176,8 @@ the more common one: that is how the real device hears it.
 **A real adapter asks first.** A node transmits, and transmitting onto a real
 bus is what pycangui asks about everywhere else; one that joined quietly
 would be the hole in that. The question is asked once for the whole node --
-a gateway standing on two channels is one action, not two -- and *Ask about
-everything again* in the Tools menu brings it back if you tick it away.
+a gateway standing on two channels is one action, not two -- and *Tools >
+Reset > Ask about everything again* brings it back if you tick it away.
 
 Stopping a node leaves its channels alone. They are the application's, and
 one that closed a channel on the way out would disconnect the window.

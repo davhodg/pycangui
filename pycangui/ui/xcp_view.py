@@ -108,7 +108,7 @@ class XcpView(QWidget):
 
         read_btn = QPushButton("Read selected")
         read_btn.setToolTip(
-            "Read the selected measurements once.  Tick Poll to keep reading\n"
+            "Read the selected measurements once.  Tick Plot to keep reading\n"
             "them into the signal hub, where they can be plotted."
         )
         read_btn.clicked.connect(self._read_selected)

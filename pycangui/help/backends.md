@@ -13,7 +13,9 @@ different Python package -- without touching pycangui:
 | `xcp` | `pycangui.xcp.engine.XcpEngine` (connect, seed/unlock, read, write) | `native` -- XCP on CAN in pycangui |
 | `isotp` | `pycangui.uds.transport.IsoTpTransport` (open, send, recv) -- everything UDS needs from the link | `can-isotp` |
 
-Put a module in `%APPDATA%\pycangui\backends\` (Tools > Open backends folder):
+Put a module in the `backends` folder -- `%APPDATA%\pycangui\backends\` on
+Windows; [Your files](files.md) says where it is on Linux and macOS, and
+*Tools > Open backends folder* opens it:
 
 ```python
 from pycangui.core.backends import register_backend

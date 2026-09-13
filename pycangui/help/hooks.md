@@ -71,7 +71,7 @@ hooks/uds.py: security_key is not being used, because this version of
 pycangui changed it -- it does not take ctx.
     yours:    security_key(level, seed)
     pycangui: security_key(level, seed, *, ctx)
-    The built-in default is running instead.  See Help > Hooks.
+    The built-in default is running instead.  See Hooks in the manual (Help > Documentation).
 ```
 
 That is deliberately a line in the log at startup rather than a traceback
@@ -109,6 +109,7 @@ anything a hook wants to say arrives where everything else does.
 | `uds.py` | the seed-to-key algorithm, the names and descriptions of data identifiers, routines and sessions, how a DID decodes and encodes, DTC descriptions, and what the erase and check routines are sent |
 | `j1939.py` | PGN names, SPN names and failure-mode descriptions |
 | `xcp.py` | the seed-to-key algorithm for CAL and the other resources |
+| `transmit.py` | a checksum your device computes its own way, for a message sent from [CAN Transmit](transmit.md) |
 | `trace.py` | what to call a frame the trace does not recognise |
 | `startup.py` | what to do once the window is up -- see below |
 

@@ -161,7 +161,7 @@ class PluginApp:
     def add_menu_action(
         self, text: str, callback: Callable[[], None], tooltip: str = ""
     ) -> QAction:
-        """An entry under Tools > Plugins, grouped by which plugin added it."""
+        """An entry under Plugins > <the plugin's name>, so each plugin's own are together."""
         action = self.window.plugin_menu(self.plugin).addAction(text, callback)
         action.setToolTip(tooltip)
         self._actions.append(action)
