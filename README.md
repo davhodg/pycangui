@@ -16,6 +16,8 @@ The CI and release badges are live. The release badge includes pre-releases, so 
 
 A user-friendly graphical CAN bus tool: live trace, transmit, CANopen, UDS, J1939, XCP and Python scripting, on any adapter supported by python-can. Apache-2.0.
 
+![pycangui on its demo device: the CAN Trace, CAN Transmit and Event Log above, and engine and vehicle speed plotted in Signals and Plot below](screenshots/main-window.png)
+
 ## What it does
 
 - **Live trace** of every connected channel on one clock, with filtering that hides rather than discards, and recording to six log formats.
