@@ -1,14 +1,17 @@
 name: macOS
 
-# On demand only: Actions tab > macOS > Run workflow, or
+# Runs for every release tag, beside the Windows installer, and on demand:
+# Actions tab > macOS > Run workflow, or
 #
 #   gh workflow run macos.yml
 #
-# pycangui does not claim macOS.  This is how to find out whether it could,
-# without turning the badge on master red while the answer is still "not yet".
-# The steps mirror the test job in ci.yml, less the lint (the same on every
-# platform) and the Linux packages Qt needs there.
+# Separate from ci.yml, so a failure here reports rather than blocks a release,
+# and ordinary pushes do not wait for two Macs.  The steps mirror the test job
+# in ci.yml, less the lint (the same on every platform) and the Linux packages
+# Qt needs there.
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       python:
@@ -20,7 +23,7 @@ permissions:
 
 jobs:
   test:
-    name: Test on ${{ matrix.os }}, Python ${{ inputs.python }}
+    name: Test on ${{ matrix.os }}, Python ${{ inputs.python || '3.14' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -33,7 +36,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: ${{ inputs.python }}
+          python-version: ${{ inputs.python || '3.14' }}
           cache: pip
 
       - name: Install

@@ -11,7 +11,7 @@ The CI and release badges are live. The release badge includes pre-releases, so 
 [![CI](https://github.com/davhodg/pycangui/actions/workflows/ci.yml/badge.svg)](https://github.com/davhodg/pycangui/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/release/davhodg/pycangui?include_prereleases)](https://github.com/davhodg/pycangui/releases)
 ![python](https://img.shields.io/badge/python-3.12+-blue)
-![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey)
+![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 
 A user-friendly graphical CAN bus tool: live trace, transmit, CANopen, UDS, J1939, XCP and Python scripting, on any adapter supported by python-can. Apache-2.0.
@@ -68,7 +68,7 @@ The suite is a thousand Qt tests and splits cleanly across processes, so `-n aut
 
 **Windows and Linux**, on **Python 3.12 or newer**. Both are tested on every push: the newest Python on both, and the oldest supported one on Linux.
 
-macOS is not tested. Nothing in pycangui is Windows or Linux specific and Qt, python-can and the rest all run there, so it very likely works.
+**macOS** passes the same tests on Apple silicon and Intel Macs, run for each release, but has not yet been tested on real CAN hardware.
 
 Any adapter [python-can](https://github.com/hardbyte/python-can) supports -- PEAK, IXXAT, Kvaser, Vector, socketcan, the cheap USB dongles and more. The vendor's driver is not bundled: install it and python-can finds it at run time. A `virtual` channel needs no hardware at all.
 
