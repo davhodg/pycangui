@@ -17,13 +17,12 @@ permissions:
   contents: read
 
 jobs:
-  # Both ends of the supported range, but only where it earns its keep.  The
-  # latest Python runs on both platforms, because platform differences (Qt,
-  # threads, drivers) are what actually bite.  The oldest supported Python runs
-  # on Linux only, which is the cheap runner: bugs that appear only on the
-  # floor are real -- 3.12 and 3.13 evaluate annotations eagerly, which broke
-  # the hook stubs while 3.14 hid it -- but they are rarely platform specific.
-  # Windows minutes cost double, so there is no Windows job for the floor.
+  # Both ends of the supported range.  The latest Python runs on both
+  # platforms, because platform differences (Qt, threads, drivers) are what
+  # actually bite.  The oldest supported Python runs on Linux: bugs that appear
+  # only on the floor are real -- 3.12 and 3.13 evaluate annotations eagerly,
+  # which broke the hook stubs while 3.14 hid it -- but they are rarely
+  # platform specific.  macOS has its own workflow, run on demand: macos.yml.
   test:
     name: Test on ${{ matrix.os }}, Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -72,8 +71,8 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -m pycangui --selftest
 
-  # The installer is only built for a release: a Windows runner costs double
-  # the minutes, and nothing about the packaging changes between tags.  Push a
+  # The installer is only built for a release: nothing about the packaging
+  # changes between tags, and nobody installs from an ordinary push.  Push a
   # tag (git tag v0.1.0 && git push --tags) to produce and publish one, or run
   # the workflow by hand from the Actions tab.
   package:
