@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QMessageBox, QToolBar
 
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
+from pycangui.ui import messages
 from pycangui.ui import replay_action as ra
 
 
@@ -108,7 +109,7 @@ def test_replaying_onto_a_real_bus_asks_first(app, setup, monkeypatch):
 def test_offers_a_virtual_channel_when_nothing_is_connected(app, setup, monkeypatch):
     action, channels, _ = setup
     channels.active_bus().disconnect_bus()
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Yes)
 
     action.action.setChecked(True)
     drain(app, lambda: action.player is None)

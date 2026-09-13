@@ -7,6 +7,7 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QMessageBox
 
 from pycangui.core.dbc import DbcDecoder
+from pycangui.ui import messages
 from pycangui.ui.main_window import MainWindow
 from pycangui.ui.tx_view import COL_DATA, COL_NAME
 
@@ -113,7 +114,7 @@ def test_a_strict_failure_is_offered_as_a_question(app, tmp_path, dbc_file, monk
     window = MainWindow()
     asked = []
     monkeypatch.setattr(
-        QMessageBox, "question", lambda *a, **k: (asked.append(a[2]), QMessageBox.Yes)[1]
+        messages, "question", lambda *a, **k: (asked.append(a[2]), QMessageBox.Yes)[1]
     )
     assert window._load_dbc(dbc_file(OVERLAPPING), offer_relaxing=True)
     assert asked and "overlapping" in asked[0], "say what was actually wrong"
@@ -125,7 +126,7 @@ def test_declining_leaves_the_database_unloaded(app, tmp_path, dbc_file, monkeyp
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Cancel)
+    monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Cancel)
     assert not window._load_dbc(dbc_file(OVERLAPPING), offer_relaxing=True)
     assert not window.dbc.loaded
     window.close()
@@ -137,9 +138,7 @@ def test_startup_never_asks(app, tmp_path, dbc_file, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
-    monkeypatch.setattr(
-        QMessageBox, "question", lambda *a, **k: pytest.fail("startup must not ask")
-    )
+    monkeypatch.setattr(messages, "question", lambda *a, **k: pytest.fail("startup must not ask"))
     assert not window._load_dbc(dbc_file(OVERLAPPING))
     assert "DBC load failed" in window.log.toPlainText()
     window.close()
@@ -159,7 +158,7 @@ def test_turning_the_check_off_stops_the_asking(app, tmp_path, dbc_file, monkeyp
     QSettings().clear()
     window = MainWindow()
     monkeypatch.setattr(
-        QMessageBox, "question", lambda *a, **k: pytest.fail("it should not need to ask")
+        messages, "question", lambda *a, **k: pytest.fail("it should not need to ask")
     )
     window.strict_dbc.setChecked(False)
     assert window._load_dbc(dbc_file(OVERLAPPING), offer_relaxing=True)

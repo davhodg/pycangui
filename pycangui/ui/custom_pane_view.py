@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -48,7 +47,7 @@ from pycangui.custom_panes import model
 from pycangui.custom_panes.model import CustomPane, Field
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
 from pycangui.custom_panes.source import FileSource, NodeSource, Source
-from pycangui.ui import field_widgets, folders
+from pycangui.ui import field_widgets, folders, messages
 from pycangui.ui.persist import remember
 
 #: How many unanswered reads of one object to keep track of.  Past this,
@@ -512,7 +511,7 @@ class CustomPaneEditor(QDialog):
     def _accept(self) -> None:
         self._collect()
         if not self.title.text().strip():
-            QMessageBox.warning(self, "The pane needs a title", "It is what names its window.")
+            messages.warning(self, "The pane needs a title", "It is what names its window.")
             return
         self.accept()
 
@@ -611,9 +610,7 @@ class AddObjects(QDialog):
             sub_text = self.sub.text().strip() or "0"
             sub_index = int(sub_text, 16 if not sub_text.lower().startswith("0x") else 0)
         except ValueError:
-            QMessageBox.warning(
-                self.parent(), "Not an index", f"{text!r} is not a hex object index."
-            )
+            messages.warning(self.parent(), "Not an index", f"{text!r} is not a hex object index.")
             return None
         # Whatever the source says about it, where it knows: a typed index that
         # happens to be in the dictionary should arrive named, like a picked one.

@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -33,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.simnodes import NodeError, SimulatedNodes
+from pycangui.ui import messages
 
 TITLE = "Simulated nodes"
 
@@ -230,7 +230,7 @@ class SimulatedNodeDialog(QDialog):
                 extra=[second] if second else [],
             )
         except NodeError as exc:
-            QMessageBox.warning(self, TITLE, str(exc))
+            messages.warning(self, TITLE, str(exc))
         self._fill_running()
 
     def _stop(self) -> None:

@@ -19,6 +19,7 @@ from pycangui import APP_NAME, __version__
 from pycangui.core import paths, workspaces
 from pycangui.core.context import Context
 from pycangui.core.layout import Layout
+from pycangui.ui import messages
 
 
 @pytest.fixture
@@ -364,11 +365,11 @@ def test_save_as_forks_what_is_on_screen_and_asks_to_open_it(window, monkeypatch
 
 
 def test_save_as_with_a_name_that_will_not_do_makes_nothing(window, monkeypatch):
-    from PySide6.QtWidgets import QInputDialog, QMessageBox
+    from PySide6.QtWidgets import QInputDialog
 
     monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("../escape", True))
     said: list[str] = []
-    monkeypatch.setattr(QMessageBox, "warning", lambda _p, _t, text, *a, **k: said.append(text))
+    monkeypatch.setattr(messages, "warning", lambda _p, _t, text, *a, **k: said.append(text))
     asked: list[str] = []
     window.workspace_menu.switch_requested.connect(asked.append)
 
@@ -395,10 +396,9 @@ def test_switching_to_the_one_you_are_in_does_nothing(window):
 
 
 def test_switching_with_nothing_connected_does_not_ask(window, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox
 
     monkeypatch.setattr(
-        QMessageBox, "warning", lambda *a, **k: pytest.fail("nothing to lose, nothing to ask")
+        messages, "warning", lambda *a, **k: pytest.fail("nothing to lose, nothing to ask")
     )
     workspaces.create("drive")
     asked: list[str] = []
@@ -557,7 +557,7 @@ def test_manage_deletes_one_that_is_not_in_use(app, home, monkeypatch):
     dialog = ManageWorkspaces(None, current=workspaces.DEFAULT)
     rows = {dialog.list.item(i).data(Qt.UserRole): i for i in range(dialog.list.count())}
     dialog.list.setCurrentRow(rows["scrap"])
-    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
     dialog._delete()
     assert not workspaces.exists("scrap")
     dialog.deleteLater()

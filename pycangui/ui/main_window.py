@@ -40,7 +40,7 @@ from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
-from pycangui.ui import folders
+from pycangui.ui import folders, messages
 from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.bus_status import BusStatus
 from pycangui.ui.canopen_view import CanopenView
@@ -1732,7 +1732,7 @@ class MainWindow(QMainWindow):
     def _offer_relaxed_load(self, path: str, exc: Exception) -> bool:
         """Ask whether to load a database that failed cantools' strict check."""
         return (
-            QMessageBox.question(
+            messages.question(
                 self,
                 "Load this database anyway?",
                 f"{Path(path).name} did not pass the strict check:\n\n{exc}\n\n"

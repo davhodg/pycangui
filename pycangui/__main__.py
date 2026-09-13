@@ -6,7 +6,7 @@ import importlib
 import importlib.util
 import sys
 
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from pycangui import APP_NAME
 
@@ -168,7 +168,9 @@ def main() -> int:
     if not loaded:  # nothing ran it, so do it here rather than not at all
         load()
     if (missing := loaded.get("error")) is not None:
-        QMessageBox.critical(
+        from pycangui.ui import messages
+
+        messages.critical(
             None,
             f"{APP_NAME} cannot start",
             f"A library {APP_NAME} needs is missing:\n\n    {missing}\n\n"

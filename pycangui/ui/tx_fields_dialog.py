@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPlainTextEdit,
     QSpinBox,
     QVBoxLayout,
@@ -31,6 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core import tx_fields as tx
+from pycangui.ui import messages
 
 TITLE = "Counter and checksum"
 
@@ -305,7 +305,7 @@ class TxFieldsDialog(QDialog):
         wrong frames that look right from this end.
         """
         if (clash := tx.conflict(self.counter(), self.checksum())) is not None:
-            QMessageBox.warning(
+            messages.warning(
                 self,
                 "They cannot both go there",
                 f"{clash[0].upper()}{clash[1:]}.\n\nMove one of them and the "

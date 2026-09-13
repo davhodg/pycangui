@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QMessageBox, QPlainTextEdit, QTabWidget
 
 from pycangui import __version__
 from pycangui.core import updates
+from pycangui.ui import messages
 from pycangui.ui.help_menu import (
     LICENCE_FILES,
     AboutDialog,
@@ -177,9 +178,7 @@ def test_only_a_build_is_expected_to_have_the_generated_notices(app):
 
 def test_an_up_to_date_check_says_so(app, window, monkeypatch):
     shown = []
-    monkeypatch.setattr(
-        QMessageBox, "information", lambda _p, _t, text, *a, **k: shown.append(text)
-    )
+    monkeypatch.setattr(messages, "information", lambda _p, _t, text, *a, **k: shown.append(text))
     window.help_menu._report(updates.Release(version=__version__, url=""), "")
     assert "up to date" in shown[0]
 
@@ -187,7 +186,7 @@ def test_an_up_to_date_check_says_so(app, window, monkeypatch):
 def test_a_newer_release_offers_the_download_page(app, window, monkeypatch):
     asked = []
     monkeypatch.setattr(
-        QMessageBox,
+        messages,
         "question",
         lambda _p, _t, text, *a, **k: (asked.append(text), QMessageBox.No)[1],
     )

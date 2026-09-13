@@ -396,13 +396,13 @@ def agrees(monkeypatch):
         asked.append((title, text))
         return QMessageBox.Yes
 
-    monkeypatch.setattr(plugin_manager.QMessageBox, "warning", answer)
+    monkeypatch.setattr(plugin_manager.messages, "warning", answer)
     return asked
 
 
 @pytest.fixture
 def refuses(monkeypatch):
-    monkeypatch.setattr(plugin_manager.QMessageBox, "warning", lambda *_a, **_k: QMessageBox.Cancel)
+    monkeypatch.setattr(plugin_manager.messages, "warning", lambda *_a, **_k: QMessageBox.Cancel)
 
 
 def chooses(monkeypatch, path):

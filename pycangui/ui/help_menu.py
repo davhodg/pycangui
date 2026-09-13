@@ -36,6 +36,7 @@ from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Rele
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
 from pycangui.help import manual_text
+from pycangui.ui import messages
 
 
 class LicenceFile(NamedTuple):
@@ -384,20 +385,20 @@ class HelpMenu(QObject):
         self.check_action.setText("Check for updates...")
         self.check_action.setEnabled(True)
         if error is not None:
-            QMessageBox.information(self.window, "Check for updates", error)
+            messages.information(self.window, "Check for updates", error)
             return
         release, problem = result
         self._report(release, problem)
 
     def _report(self, release: Release | None, problem: str) -> None:
         if release is None:
-            QMessageBox.information(
+            messages.information(
                 self.window,
                 "Check for updates",
                 f"{problem}\n\nYou are running {APP_NAME} {__version__}.",
             )
         elif version_is_newer(release.version, __version__):
-            answer = QMessageBox.question(
+            answer = messages.question(
                 self.window,
                 "Update available",
                 f"{APP_NAME} {release.version} is available.  "
@@ -409,7 +410,7 @@ class HelpMenu(QObject):
             if answer == QMessageBox.Yes:
                 QDesktopServices.openUrl(QUrl(release.url or RELEASES_PAGE))
         else:
-            QMessageBox.information(
+            messages.information(
                 self.window,
                 "Check for updates",
                 f"{APP_NAME} {__version__} is up to date.",

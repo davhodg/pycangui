@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QFileDialog
 
 from pycangui.core import workspaces
 from pycangui.core.context import Context
-from pycangui.ui import folders
+from pycangui.ui import folders, messages
 
 
 @pytest.fixture
@@ -177,7 +177,7 @@ def test_a_dialog_in_the_window_goes_through_the_same_memory(
     window = MainWindow()
     # The file does not exist, so cantools refuses it and the window offers to
     # load it unchecked.  Say no: this test is about the folder, not the file.
-    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Cancel)
+    monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Cancel)
     _opened, answer = picked
     where = tmp_path / "somewhere else"
     where.mkdir()
