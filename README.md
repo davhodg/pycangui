@@ -116,9 +116,9 @@ It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed pack
 
 ### What the installer includes
 
-**LGPL components are bundled.** Qt (PySide6), python-can and asammdf are all LGPL-3.0 and all ship inside the installer. The LGPL asks that they stay *replaceable*, not that they stay out: hence the **one-directory** build, where each is a separate DLL or package a user can substitute their own build of, rather than a single-file bundle with everything fused together. Their licences are reproduced in `THIRD-PARTY-NOTICES.txt`, generated from installed package metadata so it cannot drift from what was actually shipped.
+**LGPL components are bundled.** Qt (PySide6), python-can and asammdf are all LGPL-3.0 and all ship inside the installer. The LGPL asks that they stay *replaceable*: hence the **one-directory** build, where each is a separate DLL or package a user can substitute their own build of, rather than a single file. Their licences are reproduced in `THIRD-PARTY-NOTICES.txt`, generated from installed package metadata so it cannot drift from what was actually shipped.
 
-**GPL-only components are not**, and this is the distinction that matters. PySide6 ships Qt Charts, Qt Data Visualization, Qt Graphs and the Virtual Keyboard in the same wheel as the LGPL modules, and those are GPL-3.0 or commercial with no LGPL option; one of them in the build would make the whole application GPL and contradict the Apache licence on the tin. They are excluded in `pycangui.spec` and `build/check_build.py` fails the build if one appears anyway.
+**GPL-only components are intentionally excluded.** PySide6 ships Qt Charts, Qt Data Visualization, Qt Graphs and the Virtual Keyboard in the same wheel as the LGPL modules. They are excluded in `pycangui.spec` and `build/check_build.py` fails the build if one appears anyway.
 
 `build/check_build.py` also fails the build if a sample or hook template is missing, or if the built executable cannot import its protocol stacks, the MDF reader and every python-can adapter backend -- it runs `pycangui.exe --selftest` to find out rather than guessing from file names.
 
