@@ -38,6 +38,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.classify import ERROR_GROUP, GROUPS, classify, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
+from pycangui.ui.latest_model import COLUMNS as LATEST_COLUMNS
 from pycangui.ui.latest_model import (
     ROLE_CHANNEL,
     ROLE_GROUP,
@@ -46,6 +47,7 @@ from pycangui.ui.latest_model import (
     LatestModel,
 )
 from pycangui.ui.persist import remember, remember_columns
+from pycangui.ui.trace_model import COLUMNS as TRACE_COLUMNS
 from pycangui.ui.trace_model import TraceModel
 
 MODES = ("Chronological", "Latest per ID")
@@ -92,7 +94,11 @@ class _TraceFilter(QSortFilterProxyModel):
         self.invalidate()
 
 
-def _table(model, font: QFont) -> QTableView:
+#: The widest identifier there is: 29 bits, eight hex digits.
+WIDEST_ID = "1FFFFFFF"
+
+
+def _table(model, font: QFont, id_column: int) -> QTableView:
     table = QTableView()
     table.setModel(model)
     table.setFont(font)
@@ -101,6 +107,12 @@ def _table(model, font: QFont) -> QTableView:
     header = table.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.ResizeToContents)
     header.setStretchLastSection(True)
+    # Fixed at eight digits rather than fitted.  Fitting measures a sample of
+    # rows, and on a bus that starts with 11-bit ids -- CANopen before J1939
+    # has claimed an address -- it settled three digits wide and elided every
+    # 29-bit id after it to "18...".
+    header.setSectionResizeMode(id_column, QHeaderView.Fixed)
+    header.resizeSection(id_column, table.fontMetrics().horizontalAdvance(WIDEST_ID) + 16)
     return table
 
 
@@ -125,8 +137,8 @@ class TraceView(QWidget):
         self._latest_proxy = _TraceFilter()
         self._latest_proxy.setSourceModel(self.latest)
 
-        self.table = _table(self._trace_proxy, mono)
-        self.latest_table = _table(self._latest_proxy, mono)
+        self.table = _table(self._trace_proxy, mono, TRACE_COLUMNS.index("ID"))
+        self.latest_table = _table(self._latest_proxy, mono, LATEST_COLUMNS.index("ID"))
         self.latest_table.setSortingEnabled(True)
         self.latest_table.sortByColumn(0, Qt.AscendingOrder)
 
