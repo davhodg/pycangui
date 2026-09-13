@@ -22,3 +22,12 @@ application.
 
 **Help > About pycangui** shows the version alongside the Python, PySide6,
 python-can and canopen versions and the platform, in a form you can copy.
+
+## If pycangui will not start
+
+Started from the source folder, `pycangui.cmd` and `pycangui.sh` install
+anything missing before they start pycangui, and a library that is still
+missing is reported in a window rather than as nothing happening.
+`python -m pycangui --selftest` imports everything a build is most likely to
+be missing and exits with 0 if it is all there, which is how the build checks
+itself.

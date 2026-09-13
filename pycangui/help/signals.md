@@ -2,7 +2,8 @@
 
 # Databases, signals and the plot
 
-**File > Load DBC...** decodes matching frames. Databases are checked
+**File > Load DBC...** decodes matching frames, from a DBC, KCD, SYM or ARXML
+database, and *File > Unload all DBCs* takes them all away again. Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
 the end of its message, both common in files real tools produce -- is offered
 for loading anyway rather than simply refused; turning off *Tools > Strict DBC
@@ -15,6 +16,14 @@ CANopen TPDO values appear there too. Tick *Plot* on any signal to draw it
 alongside the list (rolling window, pause, follow); drag the splitter to give
 the plot the whole pane, or the list. `resources/demo.dbc` matches the demo
 device.
+
+The filter box above the list narrows it to the signals whose names match, and
+*Unplot all* takes everything off the plot at once.
+
+**Window** is how many seconds of signal the plot shows, from half a second to
+an hour. **Pause** holds the plot still while samples carry on being
+collected, **Fit** zooms to everything plotted, wherever in time it is, and
+**Clear history** throws away the samples collected so far, for every signal.
 
 *Follow* keeps the newest samples in view as they arrive. It follows the
 **data**, not the clock, so it stops when the data does: a quiet bus, or a
@@ -47,11 +56,9 @@ or last Tuesday -- and *Follow* keeps the last few seconds of the live trace
 in view, which is a different part of the number line entirely. *Fit* zooms
 to whatever is plotted, wherever it is.
 
-Reading MDF needs the `asammdf` library. The Windows installer includes it.
-A `pip` installation leaves it out by default -- it brings pandas with it,
-some 100 MB on disc, for a format many people never open -- and offers to fetch it the
-first time you open a file that needs it, or you can ask for it up front with
-`pip install pycangui[mf4]`.
+Reading MDF needs the `asammdf` library. The Windows installer includes it,
+and a `pip` installation offers to fetch it the first time you open a file that
+needs it, or you can ask for it up front with `pip install pycangui[mf4]`.
 
 **File > Export signals...** writes what has been decoded to a CSV: DBC
 signals, CANopen PDO values and XCP measurements alike. [Recording](channels.md) writes raw

@@ -62,6 +62,8 @@ python -m venv .venv
 
 The `[dev]` extra adds pytest, pytest-xdist, ruff, pdoc and the MDF reader. The launcher does not install it -- running the application does not need the test tools.
 
+`python build/screenshots.py` regenerates `screenshots/main-window.png`. It opens pycangui on the demo device for about a minute, with temporary settings of its own, so leave the window alone while it runs.
+
 `python build/api_docs.py` writes API pages for people writing hooks, simulated nodes and plugins to `dist/api-docs/`. Only that surface, not the whole package: the manual says how to extend pycangui, and these pages are where to look up exactly what an object offers.
 
 The suite is a thousand Qt tests and splits cleanly across processes, so `-n auto` runs it in well under a minute rather than six. Leave it off when running a single file: starting the workers costs more than the file does.

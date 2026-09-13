@@ -7,7 +7,7 @@
 pycangui talks to several CAN buses at once -- a second port on a multi-channel
 adapter, or a second adapter entirely. Use **+** on the toolbar to add a
 channel, then give it its own interface, bitrate and connection; each channel's
-settings are remembered by name.
+settings are remembered by name. **-** removes the selected channel.
 
 Pick the interface and open the channel list: pycangui asks it which adapters
 are attached and lists them, so the channel is chosen rather than guessed (it
@@ -32,8 +32,10 @@ channel at all shows it empty and greyed.
 The status bar shows each channel's **bus load** -- an estimate from the
 frames seen and the configured bitrate, including nominal bit stuffing --
 beside a coloured dot for how its controller is doing (see *Controller state
-and bus off* below). The trace's *Channel* column says which bus a frame
-came from.
+and bus off* below). An asterisk marks the channel selected in the toolbar,
+and after the channels come the recording in progress, if there is one, and
+the number of frames seen. The trace's *Channel* column says which bus a
+frame came from.
 
 The trace, the recorder and the decoders always see **every** connected
 channel, on one shared clock, so an ECU forwarding messages between two buses
@@ -45,8 +47,9 @@ in the toolbar is the one the protocol panes ([CANopen](canopen.md),
 
 Bitrates run from 50 kbit/s to 1 Mbit/s -- 50 and 100 are ordinary on
 machinery and marine buses, where a long backbone costs more than speed.
-Ticking **FD** adds a **Data** rate beside it, since the arbitration phase
-still runs at the bitrate on the left. python-can has no way to ask an
+Ticking **FD** adds a **Data** rate beside it -- 500 kbit/s to 10 Mbit/s, and
+2 Mbit/s unless you change it -- since the arbitration phase still runs at the
+bitrate on the left. python-can has no way to ask an
 adapter which rates it supports, and no common way to set an FD data rate
 either: only the IXXAT and Vector backends take a `data_bitrate`, socketcan
 takes `fd=True` and gets its data rate from `ip link`, and PCAN, Kvaser and
@@ -104,7 +107,7 @@ it. Fix the cause, then recover.
 ## Before it disturbs equipment
 
 Every time pycangui starts it shows a notice saying what it is capable of,
-which you click through. It is not a question about anything in particular --
+which you click through with **Continue**, or leave with **Quit**. It is not a question about anything in particular --
 it is the sentence worth having read before your first connection rather than
 after your first mistake.
 
@@ -130,8 +133,9 @@ A few actions ask for themselves wherever they happen: switching
 bus; writing to an ECU in a [UDS](uds.md) transfer; and enabling a drive from
 the [CiA 402 plugin](plugins.md), which is the moment a motor can move.
 
-Each of those questions carries a **Do not ask me this again on this machine**
-tick box. What "remembered" means is worth knowing: an answer is kept for
+Every one of those questions starts on **Cancel**, so pressing Enter without
+reading is the answer that disturbs nothing. Each carries a **Do not ask me
+this again on this machine** tick box. What "remembered" means is worth knowing: an answer is kept for
 *you*, on *this computer*, and never inside a workspace. A workspace is a
 folder made to be copied and handed to a colleague, and an agreement that
 travelled inside one would mean somebody else's window, on somebody else's

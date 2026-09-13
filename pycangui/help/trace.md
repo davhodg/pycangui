@@ -7,8 +7,17 @@ The trace narrows down in three ways, none of which discard anything: the
 the data (`185`, `txpdo`, `drive bus`, `de ad`; several words must all match),
 the **Filter** menu hides whole protocol groups or channels, and **Pause**
 holds the display still while capture and recording carry on. The row count
-next to the buttons reads *shown of captured*. Select rows and press Ctrl+C
-to copy them as text.
+next to the buttons reads *shown of captured*.
+
+The **Filter** menu lists the protocol groups -- NMT, SYNC/TIME, EMCY, PDO,
+SDO, Heartbeat, LSS, UDS, J1939, XCP, Bus errors and Other -- and every
+channel that has been seen, with *Show all* to bring everything back.
+**Columns** chooses which columns show, in either view, and a right-click on
+the header does the same. **Autoscroll** keeps the newest frame in view, and
+**Clear** empties the pane.
+
+Select rows and press Ctrl+C, or right-click and choose *Copy*, to copy them as
+text with the column headings, ready to paste into a report or a spreadsheet.
 
 ## Latest per ID, and what its numbers mean
 

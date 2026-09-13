@@ -7,6 +7,10 @@ console and print into the data bytes a few characters at a time. No protocol
 settles which identifier that happens on -- CANopen has objects for a console,
 but an object is not an identifier -- so you give it the id.
 
+Type the id in hex and tick **29-bit** for an extended one. **Skip** ignores up
+to 63 bytes at the start of each frame, and **Clear** throws away the text so
+far while the id goes on being read.
+
 **One pane, one id.** *View > Standard panes > Additional ASCII Log* opens
 another, so two devices can be watched side by side; drop one onto another and
 Qt tabs them if that is what you would rather have. Each pane remembers its
