@@ -2,7 +2,7 @@
 
 # Virtual buses, simulated nodes and gateways
 
-pycangui does not need a CAN adapter to be useful.  Its `virtual` interface is
+pycangui does not need a CAN adapter to be useful. Its `virtual` interface is
 a bus that exists only inside the application, so a log can be replayed, a
 message composed, a database checked or a pane built with nothing plugged in at
 all.
@@ -10,7 +10,7 @@ all.
 ## The virtual buses
 
 Pick interface `virtual`, channel **vcan0 (Demo device)**, and press Connect
--- the channel is the switch, so there is nothing else to turn on.  `vcan1`
+-- the channel is the switch, so there is nothing else to turn on. `vcan1`
 and `vcan2` are empty loopbacks, for [replaying a log](channels.md) onto or
 sending your own frames.
 
@@ -26,10 +26,10 @@ per protocol pycangui speaks, on the one channel.
 - [CANopen](canopen.md) node 5 -- its EDS is matched automatically, the
   object dictionary can be read (double-click) and written (edit the value),
   NMT Start makes it transmit TPDO1, and writing *Speed demand* (0x2001)
-  moves the motor speed in the PDO.  Demand more than it can give and it
+  moves the motor speed in the PDO. Demand more than it can give and it
   raises an emergency, which the Emergencies tab decodes.
 - [UDS](uds.md) on 0x7E0/0x7E8 -- sessions, a seed and key, identifiers,
-  stored faults, a routine.  Answers longer than one frame are segmented
+  stored faults, a routine. Answers longer than one frame are segmented
   properly, so the VIN comes back whole.
 - [J1939](j1939.md) -- an engine that claims source address 0 and defends
   it, broadcasts engine and wheel speed, reports a fault, and answers a
@@ -37,36 +37,36 @@ per protocol pycangui speaks, on the one channel.
 - [XCP](xcp.md) on 0x7A0/0x7A1 -- a calibratable memory matching
   `resources/demo.a2l`, with writing locked until a seed and key.
 
-**The demo device is the examples.**  Those four are exactly the files in
+**The demo device is the examples.** Those four are exactly the files in
 your workspace's `nodes` folder, described below -- nothing is hidden inside
-pycangui.  Open one and you are reading the thing you have been talking to,
+pycangui. Open one and you are reading the thing you have been talking to,
 which is also why they cannot quietly rot: everybody's first run exercises
 them.
 
 They appear in **Tools > Simulated nodes** like anything else, so you can stop
 one -- to see how your own tool behaves when a device goes quiet, say -- and
-they are listed there by name.  Disconnecting and reconnecting the channel
+they are listed there by name. Disconnecting and reconnecting the channel
 brings them back.
 
 ## Nodes of your own
 
 A simulated node is a device pycangui pretends to be, so a real one has
-something to talk to.  A controller that will not leave its fault state until
+something to talk to. A controller that will not leave its fault state until
 a peer answers, a slave with nobody polling it, an ECU waiting on an address
 claim: the missing half is the node you write.
 
 *Simulated* rather than *virtual*, because the two words were doing different
-jobs in one tool.  A **virtual channel** is a bus with no hardware behind it.
+jobs in one tool. A **virtual channel** is a bus with no hardware behind it.
 A **simulated node** is a device with no hardware behind it -- and it is
 perfectly happy standing on a real adapter and talking to real equipment,
 which is the case worth being clear about.
 
 **Tools > Simulated nodes...** lists what is available, starts one on a channel
-and stops it again.  That is the whole of the GUI, on purpose -- there is no
+and stops it again. That is the whole of the GUI, on purpose -- there is no
 node editor and no state-machine builder, because a node is a Python file and
 everything interesting about it belongs in the file.
 
-Each file in your workspace's `nodes` folder is one node.  It says what it is
+Each file in your workspace's `nodes` folder is one node. It says what it is
 and implements whichever of four functions it needs:
 
 ```python
@@ -81,20 +81,20 @@ def on_frame(node, frame, *, ctx): ...  # a frame arrived
 def stop(node, *, ctx): ...  # once, on the way out
 ```
 
-All four are optional.  A device that only announces itself has a `poll`; a
+All four are optional. A device that only announces itself has a `poll`; a
 diagnostic server that says nothing until asked has only an `on_frame`.
 
 `node` is the running instance, and is where anything you keep between calls
 goes: `node.state` is yours and pycangui never reads it, so two copies of one
-node on two channels do not tread on each other.  `node.send(id, data)` puts a
+node on two channels do not tread on each other. `node.send(id, data)` puts a
 frame out, and `node.canopen(eds, node_id)` hands back a whole CANopen server
 -- SDO, heartbeat, NMT, PDOs -- built from your EDS, because every CANopen
 node wants the same several hundred lines of it.
 
 Everything runs on the same thread as the window, so nothing in a node file
-has to think about locks.  The other side of that is that a node which blocks
+has to think about locks. The other side of that is that a node which blocks
 holds the window up, so a `poll` with a second's work to do should take it in
-pieces across several polls.  A node that raises says so in the [Event
+pieces across several polls. A node that raises says so in the [Event
 Log](event-log.md) and stops, rather than raising ten times a second for the
 rest of the day.
 
@@ -113,7 +113,7 @@ and is never written over:
 
 ### Starting one from Python
 
-The dialog is a convenience, not the way in.  `window.nodes` is the same
+The dialog is a convenience, not the way in. `window.nodes` is the same
 object from the [Python Console](console.md) and from a
 [startup hook](hooks.md), which is the point: standing up the devices a test
 needs is setup, and setup belongs in a file rather than in your fingers every
@@ -126,7 +126,7 @@ window.nodes.start("j1939_engine", "vcan1", rate_hz=50)
 
 ## Gateways
 
-A gateway is a simulated node standing on more than one channel.  There is no
+A gateway is a simulated node standing on more than one channel. There is no
 second mechanism for it: fill in the **and** box in the dialog, or pass
 `extra=` from Python, and the node opens both.
 

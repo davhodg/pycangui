@@ -4,7 +4,7 @@
 
 Each protocol is split into a *manager* (Qt signals, threading, A2L / EDS /
 DBC handling, plotting -- the part that never changes) and a small *engine*
-that actually talks the protocol.  Engines are picked at run time, so you can
+that actually talks the protocol. Engines are picked at run time, so you can
 drop in your own implementation -- a C or Rust library through `ctypes`, or a
 different Python package -- without touching pycangui:
 
@@ -29,6 +29,6 @@ class MyIsoTp(IsoTpTransport):
 ```
 
 It then appears in the pane's engine/transport selector and the choice is
-remembered.  A backend module that fails to import is reported in the Event Log and
-skipped; the built-in keeps working.  CANopen and J1939 still call their
+remembered. A backend module that fails to import is reported in the Event Log and
+skipped; the built-in keeps working. CANopen and J1939 still call their
 libraries directly and will get the same treatment.

@@ -3,66 +3,66 @@
 # Hooks
 
 A **hook** is a small Python function pycangui calls at a decision point where
-the answer depends on your product rather than on any standard.  Which EDS
-belongs to this node.  What those five manufacturer bytes in an emergency mean.
-What the seed-to-key algorithm is.  Nobody outside the company that built the
+the answer depends on your product rather than on any standard. Which EDS
+belongs to this node. What those five manufacturer bytes in an emergency mean.
+What the seed-to-key algorithm is. Nobody outside the company that built the
 device can answer any of those, so pycangui asks rather than guesses.
 
-Hooks are the smaller half of a pair.  A hook answers a question pycangui
+Hooks are the smaller half of a pair. A hook answers a question pycangui
 already knows to ask, from a fixed list of them; a [plugin](plugins.md) is the
-other half -- code that adds something that was not there at all.  If you find
+other half -- code that adds something that was not there at all. If you find
 yourself wanting a hook that does not exist, what you want is probably a plugin.
 
 ## Where they are
 
-`workspaces\<name>\hooks\*.py`, beside the EDS files.  They belong to the
+`workspaces\<name>\hooks\*.py`, beside the EDS files. They belong to the
 [workspace](workspaces.md) because what a maker's objects mean is knowledge
 about that product, and switching workspace should bring the right answers with
 it.
 
 On first run each file is copied there complete, with the default behaviour and
 commented examples already in it, so there is never an empty file to start
-from.  **A file you have changed is never overwritten.**  One you have not
+from. **A file you have changed is never overwritten.** One you have not
 changed is still pycangui's, so when a later version ships a better one it is
-simply replaced, and the Event Log says so.  A changed one is left as it is,
-and the log says once that a newer version exists.  The same goes for the
+simply replaced, and the Event Log says so. A changed one is left as it is,
+and the log says once that a newer version exists. The same goes for the
 [simulated nodes](virtual.md) in `nodes/`.
 
-They are also yours in the other sense.  The templates are released under
+They are also yours in the other sense. The templates are released under
 MIT-0, which claims no copyright and asks for no credit -- the first lines of
 each file say so -- so a seed-key algorithm or a table of your own identifiers
-written into one carries no conditions from pycangui.  Keep it private, share
+written into one carries no conditions from pycangui. Keep it private, share
 it, or ship it with your product.
 
 *Tools > Reload hooks* reads the files again, so an edit of your own takes
-effect without restarting.  It changes nothing on disk.
+effect without restarting. It changes nothing on disk.
 
 *Tools > Reset > Restore supplied files...* is the way back from an edit that
 has gone wrong, and the way to take a newer version over one you have changed:
 it puts pycangui's own version of the hook and node files you tick back, and
 renames yours to `canopen.py.bak` rather than deleting it, so an afternoon's
-work is still there to copy out of.  Files that already match what pycangui
+work is still there to copy out of. Files that already match what pycangui
 ships are shown greyed, since there is nothing to restore and nothing to lose.
 
 ## Keeping up with a new pycangui
 
-Your files were written against the pycangui you had.  A later version can ask
+Your files were written against the pycangui you had. A later version can ask
 questions yours have no answer for, and can change what it passes to a question
-it already asked.  Both are handled when that version first runs, because
+it already asked. Both are handled when that version first runs, because
 keeping up with pycangui is pycangui's job rather than something to remember
 after every update.
 
 **A hook that is new** is appended to the end of the file that owns it, with
 whatever it needs to work -- its imports, and the tables it reads -- under a
-`# --- hooks pycangui added; yours to edit ---` line.  It arrives as the
-built-in default, so it behaves exactly as it did before it was there.  Nothing
+`# --- hooks pycangui added; yours to edit ---` line. It arrives as the
+built-in default, so it behaves exactly as it did before it was there. Nothing
 you wrote is touched, and a hook you deleted on purpose stays deleted: what
-arrives is decided by what is *new*, not by what is missing.  If appending
+arrives is decided by what is *new*, not by what is missing. If appending
 would somehow stop the file loading, the file is put back as it was and the
 [Event Log](event-log.md) says so.
 
 **A hook whose signature changed** is the awkward one, because your version is
-still there and still has the right name.  Every hook you have written is
+still there and still has the right name. Every hook you have written is
 checked against the one pycangui calls as the file loads, and one that cannot
 be called is reported before anything has happened:
 
@@ -76,11 +76,11 @@ pycangui changed it -- it does not take ctx.
 
 That is deliberately a line in the log at startup rather than a traceback
 later: the alternative is finding out during a flash session that the default
-seed-to-key has been running all along.  Fix the signature, *Reload hooks*, and
+seed-to-key has been running all along. Fix the signature, *Reload hooks*, and
 it is used again.
 
 *Tools > Add missing hooks* does the appending on demand, for every hook your
-files lack rather than only the new ones.  It is how to get back one you
+files lack rather than only the new ones. It is how to get back one you
 deleted; you should not otherwise need it.
 
 ## What happens when one runs
@@ -114,7 +114,7 @@ anything a hook wants to say arrives where everything else does.
 
 The tables in `j1939.py` are filled in rather than hidden inside pycangui:
 the PGN names and the failure modes are there to read, and adding a proprietary
-PGN is a line in a dictionary.  What is deliberately *not* shipped is anything
+PGN is a line in a dictionary. What is deliberately *not* shipped is anything
 copyrighted -- the several thousand SPN names from SAE J1939-71, and UDS DTC
 descriptions, which no standard defines at all.
 
@@ -123,28 +123,28 @@ The per-protocol pages say which hook does what in context:
 
 ## The startup hook
 
-`startup.py` is the odd one out.  Every other hook is *asked* something and
+`startup.py` is the odd one out. Every other hook is *asked* something and
 returns an answer; this one is simply told that the window is open, and does
 whatever your setup needs doing -- connect the channel this product lives on,
-load its database, open the panes the job wants.  It is the thing somebody
+load its database, open the panes the job wants. It is the thing somebody
 would otherwise do by hand every morning, written down once.
 
 It runs last: the channels, the protocol managers, the plugins and the saved
 layout all exist by the time it is called, so a pane it opens is not put away
-again by the layout arriving over the top of it.  It is handed the main window,
+again by the layout arriving over the top of it. It is handed the main window,
 and through it everything the [Python Console](console.md) has, under the same
 names -- what works in the console works here.
 
-**Connecting.**  Use `window.connect_channel(name, interface, channel, bitrate)`
-rather than reaching for the bus underneath it.  That joins a bus exactly as the
+**Connecting.** Use `window.connect_channel(name, interface, channel, bitrate)`
+rather than reaching for the bus underneath it. That joins a bus exactly as the
 Connect button does, which means a real interface still raises the question
 about the bitrate, once a session, as it would if you had pressed the button
-yourself.  A [workspace](workspaces.md) is a folder that gets copied and handed
+yourself. A [workspace](workspaces.md) is a folder that gets copied and handed
 to a colleague, and one that silently joined a live bus on somebody else's bench
-because they opened it would be a bad thing to have built.  A `virtual` channel
+because they opened it would be a bad thing to have built. A `virtual` channel
 never asks, because nothing leaves pycangui.
 
-**Nothing it does can stop pycangui starting.**  If it raises, the traceback
+**Nothing it does can stop pycangui starting.** If it raises, the traceback
 goes to the Event Log and the window opens anyway -- the tool you would need in
 order to fix a broken startup hook is the one that would not have started.
 
