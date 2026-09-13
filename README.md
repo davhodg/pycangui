@@ -38,35 +38,18 @@ There are three options, and which one you want depends on whether you have Pyth
 
 2. **From the source folder** -- either clone with Git or download as zip, double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux). Python 3.12 or newer must be on the PATH.
 
-The first run sets itself up: it creates a *virtual environment* -- a folder called `.venv` holding its own copy of Python and only the libraries pycangui needs, so nothing else on the machine is touched -- and downloads about 90 MB into it. That takes a few minutes once; every later start is immediate, and deleting `.venv` undoes the whole thing. If `uv` is installed it is used instead of pip, which makes rebuilding that folder a matter of seconds.
+   The first run sets itself up: it creates a *virtual environment* -- a folder called `.venv` holding its own copy of Python and only the libraries pycangui needs, so nothing else on the machine is touched -- and downloads about 90 MB into it. That takes a few minutes once; every later start is immediate, and deleting `.venv` undoes the whole thing. If `uv` is installed it is used instead of pip, which makes rebuilding that folder a matter of seconds.
 
-The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does.
+   The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does.
 
 3. **With pip** -- if you already have a Python environment and would rather pycangui went in it, install the wheel and ignore the launcher entirely:
 
-```
-pip install pycangui-0.0.1-py3-none-any.whl    # from the releases page
-pycangui                                        # installs a command of that name
-```
+   ```
+   pip install pycangui-0.0.1-py3-none-any.whl    # from the releases page
+   pycangui                                        # installs a command of that name
+   ```
 
-or from a checkout, `pip install -e .` for the same thing reading the source. Nothing about pycangui needs the launcher: it is an ordinary Python package with an ordinary entry point, and this path leaves the choice of environment to you.
-
-### For development
-
-```
-python -m venv .venv
-.venv\Scripts\pip install -e .[dev]
-.venv\Scripts\python -m pycangui
-.venv\Scripts\python -m pytest
-```
-
-The `[dev]` extra adds pytest, pytest-xdist, ruff, pdoc and the MDF reader. The launcher does not install it -- running the application does not need the test tools.
-
-`python build/screenshots.py` regenerates `screenshots/main-window.png`. It opens pycangui on the demo device for about a minute, with temporary settings of its own, so leave the window alone while it runs.
-
-`python build/api_docs.py` writes API pages for people writing hooks, simulated nodes and plugins to `dist/api-docs/`. Only that surface, not the whole package: the manual says how to extend pycangui, and these pages are where to look up exactly what an object offers.
-
-The suite is a thousand Qt tests and splits cleanly across processes, so `-n auto` runs it in well under a minute rather than six. Leave it off when running a single file: starting the workers costs more than the file does.
+   or from a checkout, `pip install -e .` for the same thing reading the source. Nothing about pycangui needs the launcher: it is an ordinary Python package with an ordinary entry point, and this path leaves the choice of environment to you.
 
 ## Supported systems
 
@@ -103,6 +86,23 @@ asammdf is the one **optional** entry: the Windows installer bundles it, and a `
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **PySide6-Essentials** rather than the full PySide6, so the GPL-only add-on modules (Qt Charts, Qt Data Visualization and the rest) are never installed -- which also saves about 160 MB. Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the vendor's driver and python-can loads it at run time.
 
+## For development
+
+```
+python -m venv .venv
+.venv\Scripts\pip install -e .[dev]
+.venv\Scripts\python -m pycangui
+.venv\Scripts\python -m pytest
+```
+
+The `[dev]` extra adds pytest, pytest-xdist, ruff, pdoc and the MDF reader. The launcher does not install it -- running the application does not need the test tools.
+
+`python build/screenshots.py` regenerates `screenshots/main-window.png`. It opens pycangui on the demo device for about a minute, with temporary settings of its own, so leave the window alone while it runs.
+
+`python build/api_docs.py` writes API pages for people writing hooks, simulated nodes and plugins to `dist/api-docs/`. Only that surface, not the whole package: the manual says how to extend pycangui, and these pages are where to look up exactly what an object offers.
+
+The suite is a thousand Qt tests and splits cleanly across processes, so `-n auto` runs it in well under a minute rather than six. Leave it off when running a single file: starting the workers costs more than the file does.
+
 ## Building a distributable
 
 `build.cmd` produces a self-contained Windows application, and an installer if a compiler for one is present:
@@ -116,7 +116,7 @@ It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed pack
 
 ### What the installer includes
 
-**LGPL components are bundled.**  Qt (PySide6), python-can and asammdf are all LGPL-3.0 and all ship inside the installer. The LGPL asks that they stay *replaceable*, not that they stay out: hence the **one-directory** build, where each is a separate DLL or package a user can substitute their own build of, rather than a single-file bundle with everything fused together. Their licences are reproduced in `THIRD-PARTY-NOTICES.txt`, generated from installed package metadata so it cannot drift from what was actually shipped.
+**LGPL components are bundled.** Qt (PySide6), python-can and asammdf are all LGPL-3.0 and all ship inside the installer. The LGPL asks that they stay *replaceable*, not that they stay out: hence the **one-directory** build, where each is a separate DLL or package a user can substitute their own build of, rather than a single-file bundle with everything fused together. Their licences are reproduced in `THIRD-PARTY-NOTICES.txt`, generated from installed package metadata so it cannot drift from what was actually shipped.
 
 **GPL-only components are not**, and this is the distinction that matters. PySide6 ships Qt Charts, Qt Data Visualization, Qt Graphs and the Virtual Keyboard in the same wheel as the LGPL modules, and those are GPL-3.0 or commercial with no LGPL option; one of them in the build would make the whole application GPL and contradict the Apache licence on the tin. They are excluded in `pycangui.spec` and `build/check_build.py` fails the build if one appears anyway.
 
@@ -124,9 +124,9 @@ It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed pack
 
 Adapter drivers are not bundled: install the vendor's driver and python-can finds it. Hooks, back ends, EDS files and settings stay in `%APPDATA%\pycangui` and survive upgrades and uninstallation.
 
-`.github/workflows/ci.yml` runs the tests and lint on every push: the latest Python on Windows and Linux, and the oldest supported Python on Linux as well (bugs that only appear on the floor are real, but rarely platform specific, and the Linux runner is the cheap one). The installer is built only for a release -- push a `v*` tag, or start the workflow by hand from the Actions tab.
+`.github/workflows/ci.yml` runs the tests and lint on every push: the latest Python on Windows and Linux, and the oldest supported Python on Linux as well, since bugs that only appear on the floor are real but rarely platform specific. The installer is built only for a release -- push a `v*` tag, or start the workflow by hand from the Actions tab -- and `.github/workflows/macos.yml` runs the tests on macOS for each release too.
 
-## Development
+## Licence
 
 pycangui is free software, licensed under the Apache License 2.0; see `LICENSE` and `NOTICE`.
 
