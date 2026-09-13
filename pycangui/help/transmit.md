@@ -2,10 +2,10 @@
 
 # CAN Transmit
 
-A transmit pane only sends while it is on screen.  Closing one stops whatever
+A transmit pane only sends while it is on screen. Closing one stops whatever
 it was repeating -- frames arriving on a live bus from a pane nobody can see is
 the hardest sort of fault to find, since nothing on screen accounts for them --
-and it says so in the Event Log.  Bringing it back does not start them again,
+and it says so in the Event Log. Bringing it back does not start them again,
 because beginning to transmit onto a bus is not something to do unasked.
 Tabbing a transmit pane behind another, or detaching it into a window of its
 own, are not putting it away: it is still on screen and still sending.
@@ -17,8 +17,8 @@ The **Transmit** pane holds one list of everything being sent, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded
 database and edit its signals in physical units), and **CANopen RPDO** (pick a
 node's RPDO -- press *Read RPDO config* in the CANopen pane first -- and edit
-its mapped variables).  All three are behind one *Add* button, since the
-choice is which source rather than which button.  Expand a row to see its
+its mapped variables). All three are behind one *Add* button, since the
+choice is which source rather than which button. Expand a row to see its
 signals; the encoded bytes update as you type, and a message that is already
 cycling is updated live.
 
@@ -31,25 +31,25 @@ stopping a set of cyclic messages is one keypress rather than one tick per row.
 A message that carries a rolling counter and a checksum over its own bytes is
 completely ordinary -- most safety-relevant messages have both -- and a
 receiver that checks either one rejects every frame of a message that never
-changes.  Select the row and press *Counter / checksum...*.
+changes. Select the row and press *Counter / checksum...*.
 
 A **counter** goes in a whole byte or in either nibble of one, since a
-four-bit counter sharing a byte is at least as common as a whole one.  It
+four-bit counter sharing a byte is at least as common as a whole one. It
 starts where you say, steps by what you say, and wraps at whatever the field
 holds unless you give it a smaller number -- plenty of protocols count 0 to 5
 in a nibble that could hold sixteen.
 
 A **checksum** is computed *after* the counter has been written, over the
-whole message except its own bytes.  That default is the usual rule and the
+whole message except its own bytes. That default is the usual rule and the
 one that is easy to get wrong: including the checksum's own bytes means
 hashing a field that is about to be overwritten, so the number never matches
-at the other end.  Give it an explicit byte range where a protocol wants one.
+at the other end. Give it an explicit byte range where a protocol wants one.
 
-**They cannot share a place.**  The checksum is written second, so a checksum
+**They cannot share a place.** The checksum is written second, so a checksum
 on the counter's byte would put the counter in and then stamp it out, on every
-frame, with nothing wrong to see from this end.  The dialog refuses the pair
+frame, with nothing wrong to see from this end. The dialog refuses the pair
 and says so, and a row configured that way before the check existed is not
-sent at all.  Half a byte each -- the counter in the low nibble, the checksum
+sent at all. Half a byte each -- the counter in the low nibble, the checksum
 in the high one -- is fine, and is a real arrangement rather than a loophole.
 
 | Algorithm | Where you meet it |
@@ -63,14 +63,14 @@ in the high one -- is fine, and is a real arrangement rather than a loophole.
 ### By signal, on a DBC row
 
 On a message from a database, *Put it in* offers the message's **signals** by
-name as well as a byte position.  Name one and the database decides where the
+name as well as a byte position. Name one and the database decides where the
 bits go -- which is both harder to get wrong than counting bytes and less work
 underneath: a signal that is three bits straddling a byte boundary, in either
 of CAN's two bit-numbering conventions, is the database's problem and not
 yours.
 
 A checksum named this way is computed over the frame **with its own signal set
-to zero**, rather than by leaving whole bytes out.  A signal can share a byte
+to zero**, rather than by leaving whole bytes out. A signal can share a byte
 with data that has to survive, so dropping the byte would drop that too.
 
 The counter's width comes from the database as well, so a one-bit counter
@@ -78,27 +78,27 @@ counts 0, 1, 0, 1 without being told to.
 
 A signal named as a counter or a checksum stops being editable in the
 expanded row: it is greyed, the *Counter / checksum* column says which of the
-two it is, and the value is filled in as the frame is sent.  That is the point
+two it is, and the value is filled in as the frame is sent. That is the point
 of naming it -- and a box that took an edit and then ignored it would be a box
-that had lied.  Stop computing it in the dialog and it goes back to being an
+that had lied. Stop computing it in the dialog and it goes back to being an
 ordinary signal you can type into.
 
-**Not in the list?**  A maker's own arithmetic is nobody's standard, so it
+**Not in the list?** A maker's own arithmetic is nobody's standard, so it
 goes in the `transmit.checksum` [hook](hooks.md): return a number and it is
 written wherever the dialog says, return `None` and the chosen algorithm
-stands.  The hook is handed the payload with the counter already in it, which
+stands. The hook is handed the payload with the counter already in it, which
 is the same view the built-in algorithms get.
 
-The dialog shows the next few frames as bytes before you send anything.  A
+The dialog shows the next few frames as bytes before you send anything. A
 wrong checksum is invisible from the sending end -- the frames go out looking
 perfectly healthy -- so seeing them written out is the only check available
 without a device to reject them.
 
-**One thing changes when you use either.**  A message with a counter or a
+**One thing changes when you use either.** A message with a counter or a
 checksum is sent by pycangui's own timer rather than handed to the adapter as
 a repeating message, because every frame has to differ and an adapter repeats
-fixed bytes.  Expect slightly less even timing than a hardware-timed cyclic
-message would give you.  Messages without either are unaffected.
+fixed bytes. Expect slightly less even timing than a hardware-timed cyclic
+message would give you. Messages without either are unaffected.
 
 A one-shot *Send* of a counted message advances the counter too: a receiver
 has no idea which button sent a frame, and one that repeated the last count

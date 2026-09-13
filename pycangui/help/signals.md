@@ -2,21 +2,21 @@
 
 # Databases, signals and the plot
 
-**File > Load DBC...** decodes matching frames.  Databases are checked
+**File > Load DBC...** decodes matching frames. Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
 the end of its message, both common in files real tools produce -- is offered
 for loading anyway rather than simply refused; turning off *Tools > Strict DBC
-checks* stops the asking.  Signals with a `VAL_` table can
+checks* stops the asking. Signals with a `VAL_` table can
 be transmitted by name or by number, and the names are listed in the tooltip.
 
 Once loaded: the trace shows the message
 name and the **Signals and Plot** pane lists every signal with its live value.
-CANopen TPDO values appear there too.  Tick *Plot* on any signal to draw it
+CANopen TPDO values appear there too. Tick *Plot* on any signal to draw it
 alongside the list (rolling window, pause, follow); drag the splitter to give
-the plot the whole pane, or the list.  `resources/demo.dbc` matches the demo
+the plot the whole pane, or the list. `resources/demo.dbc` matches the demo
 device.
 
-*Follow* keeps the newest samples in view as they arrive.  It follows the
+*Follow* keeps the newest samples in view as they arrive. It follows the
 **data**, not the clock, so it stops when the data does: a quiet bus, or a
 disconnected one, holds the trace still rather than scrolling it off the left
 edge.
@@ -28,33 +28,33 @@ measurement tool or a data logger records -- and puts its signals on the plot
 beside the live ones.
 
 A CAN log and a measurement file are different things with similar names, and
-picking the wrong door is the usual confusion.  A log holds **frames** and is
+picking the wrong door is the usual confusion. A log holds **frames** and is
 [replayed](channels.md) onto a channel; a measurement holds **signals somebody
-already decoded**, and there are no frames in it to replay.  A file can hold
+already decoded**, and there are no frames in it to replay. A file can hold
 both, and then the pane says so.
 
 A real export holds thousands of channels, so nothing is read until you have
 said what you want: the file is described from its header, and you filter and
-tick.  Frame fields -- the id, the length, the flags a bus log carries -- are
+tick. Frame fields -- the id, the length, the flags a bus log carries -- are
 kept out of the list unless you ask for them, since there are hundreds and
 they are plumbing rather than measurements.
 
 Imported signals appear under the file's name, beside the live ones.
 
-**They will not be on screen until you untick *Follow* and press *Fit*.**  A
+**They will not be on screen until you untick *Follow* and press *Fit*.** A
 file sits at the times it was recorded at -- 235 seconds into somebody's test,
 or last Tuesday -- and *Follow* keeps the last few seconds of the live trace
-in view, which is a different part of the number line entirely.  *Fit* zooms
+in view, which is a different part of the number line entirely. *Fit* zooms
 to whatever is plotted, wherever it is.
 
-Reading MDF needs the `asammdf` library.  The Windows installer includes it.
+Reading MDF needs the `asammdf` library. The Windows installer includes it.
 A `pip` installation leaves it out by default -- it brings pandas with it,
 some 100 MB on disc, for a format many people never open -- and offers to fetch it the
 first time you open a file that needs it, or you can ask for it up front with
 `pip install pycangui[mf4]`.
 
 **File > Export signals...** writes what has been decoded to a CSV: DBC
-signals, CANopen PDO values and XCP measurements alike.  [Recording](channels.md) writes raw
+signals, CANopen PDO values and XCP measurements alike. [Recording](channels.md) writes raw
 CAN, which is right for a recording -- and what comes back the other way is
 *Import signals*, above.
 
@@ -71,7 +71,7 @@ Time (s),DBC Engine/Speed (rpm),,Time (s),XCP/current (A)
 One shared time column would be tidier and would be a lie -- signals do not
 arrive together, so a single timeline can only be built by interpolating, by
 holding the last value, or by inventing a grid, and all three put numbers in
-the file that were never on the bus.  A signal that finishes early leaves its
-cells empty for the same reason.  The blank column between pairs is also what
+the file that were never on the bus. A signal that finishes early leaves its
+cells empty for the same reason. The blank column between pairs is also what
 stops a spreadsheet reading two signals as one series when you select a block
 and ask it for a chart.
