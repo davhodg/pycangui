@@ -7,10 +7,9 @@ that can be wrong rather than merely out of fashion -- the version and the
 Python floor -- are read back here, so a release that moves one and not the
 other fails the build instead of shipping a README that lies.
 
-The tests badge is static because the repository is private: GitHub fetches
-a README's images anonymously through its own proxy, so the Actions status
-badge would render as "repo not found".  The live one is in a comment at the
-top of the README, ready for the day that changes.
+The CI badge is GitHub's own, live now the repository is public.  The release
+badge waits in a comment for the first release: before one exists it says
+"no releases", which is true and looks like a fault.
 """
 
 from __future__ import annotations
@@ -57,8 +56,15 @@ def test_the_licence_badge_is_the_licence():
     assert rest == ["MIT-0"], "a new licence term needs a decision about the badge"
 
 
-def test_the_live_badges_are_recorded_for_when_the_repo_is_public():
-    """Kept in a comment rather than dropped: finding the URLs again is the
+def test_the_ci_badge_is_the_live_one():
+    """A public repository's Actions badge can be fetched by GitHub's image
+    proxy, so a static "passing" is now the badge that could lie."""
+    live = "[![CI](https://github.com/davhodg/pycangui/actions/workflows/ci.yml/badge.svg)]"
+    assert live in README
+    assert "img.shields.io/badge/tests-" not in README
+
+
+def test_the_release_badge_is_kept_for_the_first_release():
+    """Kept in a comment rather than dropped: finding the URL again is the
     sort of small research nobody wants to repeat."""
-    assert "actions/workflows/ci.yml/badge.svg" in README
     assert "img.shields.io/github/v/release" in README
