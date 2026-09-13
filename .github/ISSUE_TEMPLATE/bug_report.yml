@@ -1,0 +1,75 @@
+name: Bug report
+description: Something in pycangui does not work the way the manual says it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time.  Two things first:
+
+        - **A security problem?**  Please do not report it here: the security policy links a private form.
+        - **Attach nothing you are not free to share.**  An issue is public, and a customer's DBC, EDS or log file is theirs.  A few frames typed out, or the same fault on the demo device, usually shows it just as well.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        Connected an IXXAT at 500 kbit/s and loaded a DBC.  Expected decoded
+        signals in Signals and Plot; the trace shows frames but nothing decodes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1.
+        2.
+        3.
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        *Help > Diagnostics...* copies a report to the clipboard: the versions of pycangui, Python, PySide6, python-can and canopen, the platform, and each channel's adapter, state and load.  Paste it here.  An adapter's description can include its serial number; remove that if you would rather.
+        If pycangui will not start at all, say so, and paste whatever it printed instead.
+      render: text
+
+  - type: dropdown
+    id: adapter
+    attributes:
+      label: Adapter
+      options:
+        - None -- a virtual channel or the demo device
+        - IXXAT
+        - Kvaser
+        - PCAN
+        - Vector
+        - socketcan (Linux)
+        - slcan or serial (CANable, Lawicel, USB2CAN)
+        - Another -- say which above
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installed
+    attributes:
+      label: Installed with
+      options:
+        - The Windows installer
+        - The launcher (pycangui.cmd or pycangui.sh)
+        - pip
+        - A source checkout, for development
+    validations:
+      required: true
+
+  - type: textarea
+    id: event-log
+    attributes:
+      label: Event Log
+      description: What the Event Log said around the time -- warnings and errors especially.  A traceback is worth more than any description of one.
+      render: text

@@ -1,0 +1,45 @@
+name: Feature request
+description: Something pycangui does not do yet, and you would like it to.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: job
+    attributes:
+      label: What you are trying to do
+      description: The job rather than the feature -- "check every node on the bus has the same PDO mapping", not "add a button".
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: How you do it now
+      description: Another tool, a script, by hand, or not at all.
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: |
+        If you have an idea of how it could work.  A hook, a simulated node or a plugin may already get you there -- say if you tried one and where it fell short.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - CAN Trace
+        - CAN Transmit
+        - Signals and Plot
+        - CANopen
+        - UDS
+        - J1939
+        - XCP
+        - ASCII Log
+        - Python Console
+        - Simulated nodes
+        - Hooks and plugins
+        - Recording and replay
+        - Installing
+        - Something else
