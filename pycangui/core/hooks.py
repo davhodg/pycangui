@@ -466,7 +466,13 @@ def _with_imports_for(module: str, text: str) -> str:
 
 
 def _top_of(text: str) -> int:
-    """Where imports belong: after a leading comment block and any docstring.
+    """Where imports belong: after a leading comment block, any docstring, and
+    any ``from __future__`` import.
+
+    The last of those is not a matter of taste.  Python accepts a future import
+    only as a file's first statement, so a line put above one breaks the whole
+    file -- which is what happened to an older uds.py, docstring then its own
+    future import, the first time it was given hooks that needed new imports.
 
     A file that does not parse -- somebody's half-finished edit -- still has
     a comment block worth stepping over, so that is found line by line.
@@ -476,17 +482,26 @@ def _top_of(text: str) -> int:
         body = ast.parse(text).body
     except SyntaxError:
         body = []
-    first = body[0] if body else None
+    end = 0
+    rest = iter(body)
+    node = next(rest, None)
     if (
-        isinstance(first, ast.Expr)
-        and isinstance(first.value, ast.Constant)
-        and isinstance(first.value.value, str)
-        and first.end_lineno is not None
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+        and node.end_lineno is not None
     ):
-        return sum(len(line) for line in lines[: first.end_lineno])
+        end = node.end_lineno
+        node = next(rest, None)
+    while isinstance(node, ast.ImportFrom) and node.module == "__future__":
+        end = node.end_lineno or end
+        node = next(rest, None)
+    if end:
+        return sum(len(line) for line in lines[:end])
     offset = 0
     for line in lines:
-        if line.strip() and not line.lstrip().startswith("#"):
+        stripped = line.strip()
+        if stripped and not stripped.startswith(("#", "from __future__ import")):
             break
         offset += len(line)
     return offset
