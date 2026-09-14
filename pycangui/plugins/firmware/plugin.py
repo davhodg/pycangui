@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.uds import images
 from pycangui.ui import folders
+from pycangui.ui.persist import remember
 
 # Relative, so that the copy of program.py sitting beside *this* file is
 # the one that runs.  Named absolutely, an installed plugin would reach
@@ -43,7 +44,7 @@ from .program import Device
 
 API_VERSION = 1
 NAME = "CANopen firmware (CiA 302-3)"
-VERSION = "1.0"
+VERSION = "1.1"
 DESCRIPTION = "Download firmware to a CANopen node (CiA 302-3)."
 
 WARNING = (
@@ -52,28 +53,69 @@ WARNING = (
     "power part way through is how a controller is turned into a brick."
 )
 
+#: Asked before anything that stops the program: the bootloader and a download.
+STOP_TITLE = "Stop the program?"
+STOP_TEXT = (
+    "Node {node} is about to stop its application, which is how it goes into "
+    "its bootloader.\n\n"
+    "Whatever that application is controlling stops being controlled, and "
+    "while it is in its loader the device answers very little and slowly.\n\n"
+    "Stop the program on node {node}?"
+)
+
+#: How the image goes over SDO.  Segmented first: every device takes it.
+SEGMENTED = "Segmented"
+BLOCK = "Block"
+TRANSFERS = (SEGMENTED, BLOCK)
+TRANSFER_TIP = (
+    "Segmented: 7 bytes a frame, each one answered.  Every device takes it.\n"
+    "Block: many frames to each answer, and much faster on a device that\n"
+    "supports it.  One that does not refuses at the start, before anything\n"
+    "is written."
+)
+
 
 class NodeDevice(Device):
-    """A live node, wearing the two methods the sequence needs.
+    """A live node, wearing the methods the sequence needs.
 
     Everything here runs on a worker thread: an SDO download of a firmware
     image takes minutes, and doing it on the GUI thread would freeze the window
     for all of them.
     """
 
-    def __init__(self, node) -> None:
+    def __init__(self, node, block: bool = False) -> None:
         self.node = node
+        self.block = block
 
     def write(self, index: int, sub: int, value) -> None:
         self.node.sdo[index][sub].raw = value
 
     def read(self, index: int, sub: int):
-        return self.node.sdo[index][sub].raw
+        """Through the EDS where it describes the object, as bytes where not.
+
+        A device in its loader is the usual case of a node nobody loaded an
+        EDS for, and what it is running is exactly what is wanted then.
+        """
+        try:
+            entry = self.node.sdo[index]
+        except KeyError:
+            return self.node.sdo.upload(index, sub)
+        if sub == 0 and hasattr(entry, "raw"):
+            return entry.raw  # a plain variable, which has no sub-indices
+        return entry[sub].raw
 
     def write_domain(self, index: int, sub: int, data: bytes, progress) -> None:
         # Opened as a file and written in blocks rather than assigned in one
         # go, which is the only way to have anything to report while it runs.
-        with self.node.sdo.open(index, sub, "wb", size=len(data)) as sink:
+        try:
+            sink = self.node.sdo.open(index, sub, "wb", size=len(data), block_transfer=self.block)
+        except Exception as exc:
+            if self.block:
+                raise RuntimeError(
+                    f"{exc} -- the device may not support block transfer; try Segmented"
+                ) from exc
+            raise
+        with sink:
             for at in range(0, len(data), program.BLOCK):
                 sink.write(data[at : at + program.BLOCK])
                 progress(min(at + program.BLOCK, len(data)), len(data))
@@ -107,32 +149,50 @@ class FirmwareView(QWidget):
         picked.addWidget(self.path, 1)
         picked.addWidget(browse)
 
+        self.transfer = QComboBox()
+        self.transfer.addItems(TRANSFERS)
+        self.transfer.setToolTip(TRANSFER_TIP)
+        remember(app.ctx, "plugins.firmware.transfer", self.transfer)
+
         where = QGridLayout()
         where.addWidget(QLabel("Node:"), 0, 0)
         where.addWidget(self.node, 0, 1)
         where.addWidget(QLabel("Program:"), 0, 2)
         where.addWidget(self.program, 0, 3)
-        where.setColumnStretch(4, 1)
+        where.addWidget(QLabel("Transfer:"), 0, 4)
+        where.addWidget(self.transfer, 0, 5)
+        where.setColumnStretch(6, 1)
 
         self.download = QPushButton("Download")
         self.download.setToolTip(
             "Stop the program, clear it, write the image and start it again.\n\n" + WARNING
         )
         self.download.clicked.connect(self._download)
-        stop = QPushButton("Stop program")
-        stop.setToolTip("Stop the application, which is what puts most devices in their loader.")
-        stop.clicked.connect(lambda: self._one("Stopping the program", program.enter_bootloader))
-        start = QPushButton("Start program")
-        start.setToolTip("Start the application again.")
-        start.clicked.connect(lambda: self._one("Starting the program", program.start_application))
-        ask = QPushButton("What is on it?")
-        ask.setToolTip(
-            "Read the software identification and the flash status, where the device keeps them."
+        self.enter = QPushButton("Enter bootloader")
+        self.enter.setToolTip(
+            "Stop the program (0x1F51), which is how a CiA 302-3 device goes into its\n"
+            "loader.  A device with a way of its own is enter_bootloader in program.py."
         )
-        ask.clicked.connect(self._identify)
+        self.enter.clicked.connect(
+            lambda: self._one("Requesting the bootloader", program.enter_bootloader, ask=True)
+        )
+        self.leave = QPushButton("Exit bootloader")
+        self.leave.setToolTip(
+            "Start the program again (0x1F51), which is how the loader is left.\n"
+            "A device with a way of its own is exit_bootloader in program.py."
+        )
+        self.leave.clicked.connect(
+            lambda: self._one("Leaving the bootloader", program.exit_bootloader)
+        )
+        self.version = QPushButton("Read version")
+        self.version.setToolTip(
+            "Read the manufacturer software version (0x100A), and the software\n"
+            "identification (0x1F56) and flash status (0x1F57) where the device keeps them."
+        )
+        self.version.clicked.connect(self._identify)
 
         buttons = QHBoxLayout()
-        for button in (self.download, stop, start, ask):
+        for button in (self.download, self.enter, self.leave, self.version):
             buttons.addWidget(button)
         buttons.addStretch()
 
@@ -209,12 +269,26 @@ class FirmwareView(QWidget):
         if node is None:
             self.app.warn("No node selected, or it is not on the bus.")
             return None
-        return NodeDevice(node)
+        return NodeDevice(node, block=self.transfer.currentText() == BLOCK)
 
-    def _one(self, what: str, action) -> None:
-        """Stop or start, which is one write and worth no ceremony."""
+    def _agreed_to_stop(self) -> bool:
+        """Asked once a session for each node, as enabling a drive is.
+
+        Stopping the program is the same class of thing: whatever it was
+        controlling stops being controlled.  Keyed on the node, so agreeing for
+        a bench unit is not agreeing for the machine beside it.
+        """
+        node_id = self.node.currentData()
+        return self.app.confirm.ask(
+            self, f"firmware.stop.{node_id}", STOP_TITLE, STOP_TEXT.format(node=node_id)
+        )
+
+    def _one(self, what: str, action, ask: bool = False) -> None:
+        """One write: into the loader, which asks first, or out of it."""
         device = self._device()
         if device is None or self._busy:
+            return
+        if ask and not self._agreed_to_stop():
             return
         number = self.program.value()
         self._start(what)
@@ -229,18 +303,25 @@ class FirmwareView(QWidget):
         number = self.program.value()
 
         def job():
-            return program.identification(device, number), program.flash_status(device, number)
+            return (
+                program.software_version(device),
+                program.identification(device, number),
+                program.flash_status(device, number),
+            )
 
         def done(result, error):
             self._busy = False
             if error:
-                self.app.warn(f"Reading the identification failed: {error}")
+                self.app.warn(f"Reading the version failed: {error}")
                 return
-            software, status = result
+            version, software, status = result
+            missing = "not kept by this device"
             self.state.setText(
-                f"Software identification: {software or 'not kept by this device'}    "
-                f"Flash status: {status or 'not kept by this device'}"
+                f"Software version: {version or missing}\n"
+                f"Software identification: {software or missing}    "
+                f"Flash status: {status or missing}"
             )
+            self.app.log(f"Node {self.node.currentData()} software version: {version or missing}")
 
         self._busy = True
         self.app.run_in_background(job, done)
@@ -256,6 +337,8 @@ class FirmwareView(QWidget):
             data = program.image_bytes(self.image)
         except ValueError as exc:
             self.app.warn(str(exc))
+            return
+        if not self._agreed_to_stop():  # the first step stops the program
             return
         number = self.program.value()
 

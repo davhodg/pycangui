@@ -97,10 +97,18 @@ def test_stopping_the_program_is_what_puts_it_in_its_loader():
     assert device.written == [(PROGRAM_CONTROL, 1, STOP)]
 
 
-def test_starting_it_again_is_one_write():
+def test_leaving_the_loader_is_starting_the_program_again():
     device = FakeDevice()
-    program.start_application(device, 1)
+    program.exit_bootloader(device, 1)
     assert device.written == [(PROGRAM_CONTROL, 1, START)]
+
+
+def test_the_software_version_is_read_as_the_string_it_is():
+    device = FakeDevice({(program.SOFTWARE_VERSION, 0): b"V2.1.0\x00\x00"})
+    assert program.software_version(device) == "V2.1.0", "the padding taken off"
+    device = FakeDevice({(program.SOFTWARE_VERSION, 0): "V2.1.0"})
+    assert program.software_version(device) == "V2.1.0"
+    assert program.software_version(FakeDevice()) == ""
 
 
 def test_progress_is_reported_while_the_bytes_go():
@@ -137,6 +145,103 @@ def test_what_a_device_does_not_keep_is_reported_as_not_kept():
 def test_what_it_does_keep_is_shown_as_the_number_it_is():
     device = FakeDevice({(program.PROGRAM_IDENTIFICATION, 1): 0xDEADBEEF})
     assert program.identification(device, 1) == "0xDEADBEEF"
+
+
+# --- a live node: segmented or block ------------------------------------------------------------
+class Variable:
+    def __init__(self, raw):
+        self.raw = raw
+
+
+class Sink:
+    """Where an opened domain goes, kept after it is closed."""
+
+    def __init__(self):
+        self.data = b""
+        self.closed = False
+
+    def write(self, chunk):
+        self.data += chunk
+        return len(chunk)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        self.closed = True
+
+
+class FakeSdo:
+    def __init__(self, objects=None, uploads=None, refuse_block=False):
+        self.objects = objects or {}
+        self.uploads = uploads or {}
+        self.refuse_block = refuse_block
+        self.opened: list[tuple] = []
+        self.sink = Sink()
+
+    def __getitem__(self, index):
+        return self.objects[index]  # KeyError where the EDS does not have it
+
+    def upload(self, index, sub):
+        return self.uploads[(index, sub)]
+
+    def open(self, index, sub, mode, size=None, block_transfer=False):
+        if block_transfer and self.refuse_block:
+            raise RuntimeError("Code 0x05040001, Client/server command specifier not valid")
+        self.opened.append((index, sub, mode, size, block_transfer))
+        return self.sink
+
+
+class FakeNode:
+    def __init__(self, sdo):
+        self.sdo = sdo
+
+
+def test_segmented_unless_block_is_chosen():
+    from pycangui.plugins.firmware.plugin import NodeDevice
+
+    sdo = FakeSdo()
+    NodeDevice(FakeNode(sdo)).write_domain(PROGRAM_DATA, 1, b"x" * 10, lambda _d, _t: None)
+    assert sdo.opened == [(PROGRAM_DATA, 1, "wb", 10, False)]
+
+
+def test_block_transfer_is_asked_for_when_chosen():
+    from pycangui.plugins.firmware.plugin import NodeDevice
+
+    sdo = FakeSdo()
+    seen = []
+    data = bytes(range(256)) * 12  # 3072 bytes: three writes
+    NodeDevice(FakeNode(sdo), block=True).write_domain(
+        PROGRAM_DATA, 1, data, lambda d, t: seen.append((d, t))
+    )
+    assert sdo.opened == [(PROGRAM_DATA, 1, "wb", len(data), True)]
+    assert sdo.sink.data == data and sdo.sink.closed
+    assert seen[-1] == (len(data), len(data))
+
+
+def test_a_device_that_refuses_block_transfer_says_what_to_do():
+    from pycangui.plugins.firmware.plugin import NodeDevice
+
+    device = NodeDevice(FakeNode(FakeSdo(refuse_block=True)), block=True)
+    with pytest.raises(RuntimeError, match="try Segmented"):
+        device.write_domain(PROGRAM_DATA, 1, b"firmware", lambda _d, _t: None)
+
+
+def test_reading_goes_through_the_eds_where_it_describes_the_object():
+    from pycangui.plugins.firmware.plugin import NodeDevice
+
+    sdo = FakeSdo({0x100A: Variable("V3.0"), 0x1F56: {1: Variable(0x1234)}})
+    device = NodeDevice(FakeNode(sdo))
+    assert device.read(0x100A, 0) == "V3.0", "a plain variable has no sub-indices"
+    assert device.read(0x1F56, 1) == 0x1234
+
+
+def test_a_node_with_no_eds_is_still_asked_what_it_runs():
+    """A device in its loader is the usual node nobody loaded an EDS for."""
+    from pycangui.plugins.firmware.plugin import NodeDevice
+
+    device = NodeDevice(FakeNode(FakeSdo(uploads={(0x100A, 0): b"BOOT 1.4\x00"})))
+    assert program.software_version(device) == "BOOT 1.4"
 
 
 # --- and as a plugin ----------------------------------------------------------------------------
@@ -182,7 +287,7 @@ def test_it_installs_and_loads(app, window):
 def test_it_says_which_version_it_is(app, window):
     """A plugin travels, and the copy in a workspace is the user's own: the
     only way to know which of ours it started as is for it to say."""
-    assert window.plugins.loaded["firmware"].version == "1.0"
+    assert window.plugins.loaded["firmware"].version == "1.1"
 
 
 def test_it_brings_a_pane(app, window):
@@ -210,6 +315,90 @@ def test_programming_with_no_node_says_so_rather_than_failing(app, window):
     view = window.panes.view("firmware:main")
     view._download()
     assert "No node selected" in window.log.toPlainText()
+
+
+def test_the_pane_offers_the_loader_the_version_and_the_transfer(app, window):
+    view = window.panes.view("firmware:main")
+    assert view.enter.text() == "Enter bootloader"
+    assert view.leave.text() == "Exit bootloader"
+    assert view.version.text() == "Read version"
+    offered = [view.transfer.itemText(i) for i in range(view.transfer.count())]
+    assert offered == ["Segmented", "Block"], "segmented first: every device takes it"
+
+
+def test_the_transfer_chosen_is_the_one_used_and_kept(app, window, monkeypatch):
+    view = window.panes.view("firmware:main")
+    view.node.addItem("Node 5", 5)
+    view.node.setCurrentIndex(view.node.count() - 1)
+    monkeypatch.setattr(window.canopen, "node", lambda _node_id: FakeNode(FakeSdo()))
+
+    assert view._device().block is False
+    view.transfer.setCurrentText("Block")
+    assert view._device().block is True
+    assert window.ctx.settings.get("plugins.firmware.transfer") == "Block"
+
+
+def refusing(window, monkeypatch):
+    """Answer No to every question, and note what was asked."""
+    asked = []
+    monkeypatch.setattr(
+        window.confirm, "ask", lambda _p, key, title, text: asked.append((key, text)) or False
+    )
+    return asked
+
+
+def on_node_5(window, view, monkeypatch):
+    sdo = FakeSdo()
+    view.node.addItem("Node 5", 5)
+    view.node.setCurrentIndex(view.node.count() - 1)
+    monkeypatch.setattr(window.canopen, "node", lambda _node_id: FakeNode(sdo))
+    return sdo
+
+
+def test_entering_the_bootloader_asks_first(app, window, monkeypatch):
+    """Stopping the program stops whatever it was controlling, which is the
+    same class of thing as enabling a drive."""
+    view = window.panes.view("firmware:main")
+    on_node_5(window, view, monkeypatch)
+    asked = refusing(window, monkeypatch)
+
+    view.enter.click()
+    assert asked and asked[0][0] == "firmware.stop.5", "and once per node, not once ever"
+    assert "stops being controlled" in asked[0][1]
+    assert not view._busy and view.state.text() == "", "No means nothing was started"
+
+
+def test_a_download_asks_first_too(app, window, monkeypatch):
+    """Its first step stops the program."""
+    view = window.panes.view("firmware:main")
+    on_node_5(window, view, monkeypatch)
+    asked = refusing(window, monkeypatch)
+    view.image = Image([Segment(0, b"firmware")])
+
+    view._download()
+    assert [key for key, _text in asked] == ["firmware.stop.5"]
+    assert not view._busy and not view.progress.isVisible()
+
+
+def test_leaving_the_loader_and_reading_the_version_do_not_ask(app, window, monkeypatch):
+    view = window.panes.view("firmware:main")
+    on_node_5(window, view, monkeypatch)
+    asked = refusing(window, monkeypatch)
+    ran = []
+    monkeypatch.setattr(view.app, "run_in_background", lambda job, done: ran.append(job))
+
+    view.leave.click()
+    view._busy = False
+    view.version.click()
+    assert asked == []
+    assert len(ran) == 2, "both went ahead"
+
+
+def test_the_bootloader_with_no_node_says_so_rather_than_failing(app, window):
+    view = window.panes.view("firmware:main")
+    view.enter.click()
+    view.version.click()
+    assert window.log.toPlainText().count("No node selected") == 2
 
 
 def test_an_image_that_will_not_read_is_reported(app, window, tmp_path):

@@ -114,6 +114,18 @@ again. Intel HEX, S-record and raw binary are all read; the image has to be
 one contiguous block, because a program download *is* one block of bytes and
 filling the gaps would put invented bytes into somebody's flash.
 
+**Enter bootloader** and **Exit bootloader** stop and start the program
+(0x1F51), which is how a CiA 302-3 device goes into its loader and out again.
+**Transfer** chooses how the image is written: *Segmented*, which every device
+takes, or *Block*, which sends many frames to each acknowledgement and is much
+faster on a device that supports it. A device that does not refuses block
+transfer at the start, before anything is written. **Read version** reads the
+manufacturer software version (0x100A), and the software identification
+(0x1F56) and flash status (0x1F57) where the device keeps them. It works
+without an EDS, which is the usual case for a device sitting in its loader.
+Enter bootloader and Download ask first, once a session for each node, because
+stopping the program stops whatever it was controlling.
+
 **Most devices do not do it that way.** Firmware download over CANopen is
 usually a sequence of the maker's own writes to objects of their own choosing,
 and no amount of standards reading will produce it. That is exactly why it is
