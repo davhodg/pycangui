@@ -286,6 +286,62 @@ def test_an_untouched_hook_file_keeps_up_and_an_edited_one_is_left(home, log):
     assert any("hooks/uds.py" in line and "left as it is" in line for line in log)
 
 
+@pytest.mark.parametrize(
+    "opening",
+    [
+        '"""My UDS hooks."""\n\nfrom __future__ import annotations\n\n',
+        "# SPDX-License-Identifier: MIT-0\n#\n# yours\n\nfrom __future__ import annotations\n\n",
+        '"""My UDS hooks."""\n\n',
+        "",
+    ],
+    ids=["docstring then future", "comments then future", "docstring only", "nothing"],
+)
+def test_added_imports_never_go_above_a_future_import(opening):
+    """Python takes ``from __future__`` only as a file's first statement, so an
+    import put above one breaks the file -- whatever else the file opens with."""
+    import ast
+
+    from pycangui.core import hooks as hooks_module
+
+    hook_source = (
+        "from pycangui.core.hooks import hook\n\n\n@hook\ndef x(*, ctx):\n    return None\n"
+    )
+    text = opening + hook_source
+    grown = hooks_module._with_imports_for("uds", text)
+    compile(grown, "uds.py", "exec")  # raises if the future import is not first
+
+    body = ast.parse(grown).body
+    statements = body[1:] if isinstance(body[0], ast.Expr) else body
+    assert isinstance(statements[0], ast.ImportFrom) and statements[0].module == "__future__"
+    assert grown.count("from __future__ import annotations") == 1
+
+
+def test_an_older_uds_file_with_its_own_future_import_gains_the_new_hooks(home, log):
+    """The file an older pycangui supplied: a docstring, then its own future
+    import.  Adding the newer hooks used to be refused as breaking it."""
+    Hooks(Context(log=log.append))
+    path = workspaces.hooks_dir() / "uds.py"
+    path.write_text(
+        '"""pycangui UDS hooks -- edit freely, this file is yours."""\n\n'
+        "from __future__ import annotations\n\n"
+        "from pycangui.core.hooks import hook\n\n\n"
+        "@hook\n"
+        "def security_key(level: int, seed: bytes, *, ctx) -> bytes | None:\n"
+        "    return bytes(b ^ 0xFF for b in seed)\n",
+        encoding="utf-8",
+    )
+    log.clear()
+
+    hooks = Hooks(Context(log=log.append))
+    added = hooks.update_stubs()
+    text = path.read_text(encoding="utf-8")
+
+    assert "did_label" in added.get("uds", []), "the newer hooks arrived"
+    assert not any("would have broken it" in line for line in log), log
+    compile(text, "uds.py", "exec")
+    assert "return bytes(b ^ 0xFF for b in seed)" in text, "and what was there is untouched"
+
+
 def test_an_untouched_file_is_not_offered_as_edited(home, log):
     """What the dialog greys out: a file nobody has been near."""
     ctx = Context(log=log.append)
