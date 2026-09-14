@@ -172,11 +172,15 @@ class Sink:
 
 
 class FakeSdo:
+    RESPONSE_TIMEOUT = 0.3  # the canopen package's own
+
     def __init__(self, objects=None, uploads=None, refuse_block=False):
         self.objects = objects or {}
         self.uploads = uploads or {}
         self.refuse_block = refuse_block
         self.opened: list[tuple] = []
+        #: The timeout in force each time a domain was opened.
+        self.timeouts: list[float] = []
         self.sink = Sink()
 
     def __getitem__(self, index):
@@ -189,6 +193,7 @@ class FakeSdo:
         if block_transfer and self.refuse_block:
             raise RuntimeError("Code 0x05040001, Client/server command specifier not valid")
         self.opened.append((index, sub, mode, size, block_transfer))
+        self.timeouts.append(self.RESPONSE_TIMEOUT)
         return self.sink
 
 
@@ -399,6 +404,60 @@ def test_the_bootloader_with_no_node_says_so_rather_than_failing(app, window):
     view.enter.click()
     view.version.click()
     assert window.log.toPlainText().count("No node selected") == 2
+
+
+# --- a longer timeout while it erases and programs ---------------------------------------------
+def test_a_node_is_given_longer_while_it_programs_and_then_put_back():
+    from pycangui.plugins.firmware.plugin import NodeDevice
+
+    sdo = FakeSdo()
+    device = NodeDevice(FakeNode(sdo))
+    with device.patient(10):
+        assert sdo.RESPONSE_TIMEOUT == 10
+    assert sdo.RESPONSE_TIMEOUT == 0.3
+
+
+def test_it_is_put_back_when_programming_fails_too():
+    from pycangui.plugins.firmware.plugin import NodeDevice
+
+    sdo = FakeSdo()
+    with pytest.raises(RuntimeError), NodeDevice(FakeNode(sdo)).patient(10):
+        raise RuntimeError("No SDO response received")
+    assert sdo.RESPONSE_TIMEOUT == 0.3
+
+
+def test_a_timeout_already_longer_is_not_shortened():
+    from pycangui.plugins.firmware.plugin import NodeDevice
+
+    sdo = FakeSdo()
+    sdo.RESPONSE_TIMEOUT = 30
+    with NodeDevice(FakeNode(sdo)).patient(10):
+        assert sdo.RESPONSE_TIMEOUT == 30
+
+
+def test_the_whole_download_runs_with_the_programming_timeout(app, window, monkeypatch):
+    """The erase is the slow one, but the last block and the start that checks
+    the image can be as slow, so the whole sequence gets it."""
+    view = window.panes.view("firmware:main")
+    sdo = on_node_5(window, view, monkeypatch)
+    seen = []
+
+    class Control:
+        raw = property(
+            lambda self: 0, lambda self, value: seen.append((value, sdo.RESPONSE_TIMEOUT))
+        )
+
+    sdo.objects[PROGRAM_CONTROL] = {1: Control()}
+    monkeypatch.setattr(window.confirm, "ask", lambda *_a: True)
+    monkeypatch.setattr(view.app, "run_in_background", lambda job, done: done(job(), None))
+    view.patience.setValue(20)
+    view.image = Image([Segment(0, b"firmware")])
+
+    view._download()
+    assert seen == [(STOP, 20), (CLEAR, 20), (START, 20)]
+    assert sdo.timeouts == [20]
+    assert sdo.RESPONSE_TIMEOUT == 0.3, "and the usual one afterwards"
+    assert window.ctx.settings.get("plugins.firmware.programming_timeout_s") == 20
 
 
 def test_an_image_that_will_not_read_is_reported(app, window, tmp_path):

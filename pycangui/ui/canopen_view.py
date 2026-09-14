@@ -20,6 +20,7 @@ from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
@@ -51,7 +52,7 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
-from pycangui.ui import folders, messages
+from pycangui.ui import canopen_settings, folders, messages
 from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
 
@@ -132,6 +133,17 @@ class CanopenView(QWidget):
         nmt_bar.addWidget(self.sync_period)
         nmt_bar.addWidget(self.sync_btn)
         nmt_bar.addStretch()
+        # What is set once rather than done lives on a dialog of its own: the
+        # bar is for commands, and every setting beside them hid them further.
+        settings_btn = QPushButton("Settings...")
+        settings_btn.setToolTip(
+            "SDO timeout and retries for every node, and the SDO channel of any\n"
+            "node whose server is not on the predefined one."
+        )
+        settings_btn.clicked.connect(self._open_settings)
+        nmt_bar.addWidget(settings_btn)
+        # Whatever the workspace holds, before anything is asked of a node.
+        canopen_settings.apply(manager, canopen_settings.load(ctx))
 
         file_bar = QHBoxLayout()
         store_btn = QPushButton("Store")
@@ -309,6 +321,24 @@ class CanopenView(QWidget):
     def selected_node(self) -> int | None:
         item = self.nodes.currentItem()
         return None if item is None else item.data(0, ROLE_INDEX)
+
+    def _open_settings(self) -> None:
+        dialog = canopen_settings.CanopenSettingsDialog(
+            self, canopen_settings.load(self.ctx), self.selected_node()
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return
+        chosen = dialog.settings()
+        canopen_settings.save(self.ctx, chosen)
+        canopen_settings.apply(self.manager, chosen)
+        channels = ", ".join(
+            f"node {node_id} on 0x{request:03X}/0x{response:03X}"
+            for node_id, (request, response) in sorted(chosen.channels.items())
+        )
+        self.ctx.log(
+            f"CANopen settings: SDO timeout {chosen.timeout_ms:.0f} ms, "
+            f"{chosen.retries} retries" + (f"; SDO channel {channels}" if channels else "")
+        )
 
     @Slot(int, str)
     def on_node_seen(self, node_id: int, state: str) -> None:

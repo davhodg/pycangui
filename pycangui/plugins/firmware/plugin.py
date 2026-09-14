@@ -16,6 +16,7 @@ building it that way: an API with no real screen behind it is a guess.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -63,6 +64,17 @@ STOP_TEXT = (
     "Stop the program on node {node}?"
 )
 
+#: How long each SDO answer may take while a download runs.  Clearing a
+#: program erases flash, and a device doing that answers when it has finished
+#: rather than when asked; so does one writing the last block of an image.
+PROGRAMMING_TIMEOUT_S = 10
+PATIENCE_TIP = (
+    "How long the device may take to answer each request while a download\n"
+    "runs.  Clearing a program erases its flash and the device answers only\n"
+    "when that has finished, which can be many seconds.  Everything else\n"
+    "uses the SDO timeout set in the CANopen pane."
+)
+
 #: How the image goes over SDO.  Segmented first: every device takes it.
 SEGMENTED = "Segmented"
 BLOCK = "Block"
@@ -86,6 +98,21 @@ class NodeDevice(Device):
     def __init__(self, node, block: bool = False) -> None:
         self.node = node
         self.block = block
+
+    @contextmanager
+    def patient(self, seconds: float):
+        """A longer SDO timeout for as long as this lasts, then the old one back.
+
+        Longer only: a timeout somebody has already set higher than this in the
+        CANopen pane is left as it is.
+        """
+        sdo = self.node.sdo
+        before = sdo.RESPONSE_TIMEOUT
+        sdo.RESPONSE_TIMEOUT = max(before, seconds)
+        try:
+            yield
+        finally:
+            sdo.RESPONSE_TIMEOUT = before
 
     def write(self, index: int, sub: int, value) -> None:
         self.node.sdo[index][sub].raw = value
@@ -153,6 +180,12 @@ class FirmwareView(QWidget):
         self.transfer.addItems(TRANSFERS)
         self.transfer.setToolTip(TRANSFER_TIP)
         remember(app.ctx, "plugins.firmware.transfer", self.transfer)
+        self.patience = QSpinBox()
+        self.patience.setRange(1, 300)
+        self.patience.setValue(PROGRAMMING_TIMEOUT_S)
+        self.patience.setSuffix(" s")
+        self.patience.setToolTip(PATIENCE_TIP)
+        remember(app.ctx, "plugins.firmware.programming_timeout_s", self.patience)
 
         where = QGridLayout()
         where.addWidget(QLabel("Node:"), 0, 0)
@@ -161,6 +194,8 @@ class FirmwareView(QWidget):
         where.addWidget(self.program, 0, 3)
         where.addWidget(QLabel("Transfer:"), 0, 4)
         where.addWidget(self.transfer, 0, 5)
+        where.addWidget(QLabel("Programming timeout:"), 1, 0, 1, 3)
+        where.addWidget(self.patience, 1, 3)
         where.setColumnStretch(6, 1)
 
         self.download = QPushButton("Download")
@@ -341,11 +376,15 @@ class FirmwareView(QWidget):
         if not self._agreed_to_stop():  # the first step stops the program
             return
         number = self.program.value()
+        seconds = self.patience.value()
 
         def job():
-            for step in program.steps(device, number, data, self._progress):
-                self.app.log(step.what)
-                step.run()
+            # The whole sequence, not only the erase: a device may be as slow to
+            # answer the last block, or the start that checks the image.
+            with device.patient(seconds):
+                for step in program.steps(device, number, data, self._progress):
+                    self.app.log(step.what)
+                    step.run()
             return len(data)
 
         self._start("Programming")

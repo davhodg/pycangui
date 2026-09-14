@@ -17,6 +17,22 @@ RPDO mapping from the node itself, so [CAN Transmit](transmit.md) offers the
 RPDOs a remapped node actually receives rather than the ones its EDS started
 with.
 
+**Settings...** holds what is set once rather than done, and is kept in the
+workspace:
+
+- **SDO timeout** is how long to wait for a node to answer each SDO request,
+  and **retries** is how many more times to ask before giving up. The
+  defaults, 300 ms and none, are those of the `canopen` library pycangui uses.
+  Raise them for a node that is slow to answer or a bus that is busy.
+- **SDO channel, per node** is for a node whose SDO server is not on the
+  channel CiA 301 predefines, requests to 0x600 + node and answers on
+  0x580 + node. **Add** starts a row for the selected node on its predefined
+  channel; change the COB-IDs, in hex, to where its server is. **Remove** puts
+  the node back. Its heartbeat, emergencies and NMT are not affected.
+
+Both apply to every SDO pycangui sends: the object dictionary, custom panes,
+DCFs and plugins.
+
 ## The object dictionary
 
 The selected node's dictionary fills from its EDS. Double-click an entry to
