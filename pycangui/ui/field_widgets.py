@@ -23,10 +23,11 @@ parameter that did not take is very much worse than one that was not sent.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -59,6 +60,12 @@ from pycangui.custom_panes.model import Field, display_for
 REFUSED = QColor(200, 40, 40)
 UNREAD = QColor(140, 140, 140)
 
+#: A box holding a value that has been typed and not written.  Translucent, so
+#: it reads on a light theme and a dark one alike.
+PENDING = "QLineEdit { background-color: rgba(230, 150, 0, 70); }"
+KEYS_HINT = "Enter writes what is typed; Esc puts back the value last read."
+STEP_HINT = "Ctrl+Up doubles it and Ctrl+Down halves it, without writing."
+
 #: An array's sub 0 is how many entries it has, which is where a map starts.
 COUNT_SUB = 0
 #: Nothing sane has more, and a corrupt count should not ask for a thousand.
@@ -81,12 +88,19 @@ class FieldWidget(QWidget):
     #: Something the user should be told: a refusal, mostly.
     message = Signal(str)
 
+    #: Whether Ctrl+Up and Ctrl+Down double and halve what is typed.
+    can_step = False
+
     def __init__(self, item: Field, display: Display) -> None:
         super().__init__()
         self.field = item
         self.display = display_for(item, display)
         self.writable = True
         self._raw: Any = None
+        #: The box typed into, for the sorts that have one.
+        self._typed: QLineEdit | None = None
+        #: Something is typed in it that has not been written.
+        self.pending = False
 
     # --- what the pane asks of it ---------------------------------------------------
     def refresh(self) -> None:
@@ -120,10 +134,87 @@ class FieldWidget(QWidget):
             lines.append(f"Limits: {limits}")
         if self._raw is not None:
             lines.append(f"Raw: {self._raw}")
+        if self._typed is not None and self.writable:
+            lines.append(KEYS_HINT)
+            if self.can_step:
+                lines.append(STEP_HINT)
         return "\n".join(lines)
 
     def _refuse(self, why: str) -> None:
         self.message.emit(f"{self.label_text()}: {why}")
+
+    # --- a box that is typed into -----------------------------------------------------------
+    def _typed_into(self, edit: QLineEdit) -> None:
+        """Enter writes, Esc puts back, and nothing else does either.
+
+        Leaving the box used to write it too, which is how a value still being
+        thought about reached a controller because somebody clicked on the
+        plot.  What is typed now stays typed -- tinted, and safe from polling --
+        until it is sent or taken back.
+        """
+        self._typed = edit
+        edit.installEventFilter(self)
+        edit.textEdited.connect(self._on_typed)
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self._typed and event.type() in (QEvent.KeyPress, QEvent.ShortcutOverride):
+            action = self._key_action(event)
+            if action is not None:
+                # Accepting the override is what stops a window shortcut on the
+                # same keys taking them before the box sees them.
+                event.accept()
+                if event.type() == QEvent.KeyPress:
+                    action()
+                return True
+        return super().eventFilter(watched, event)
+
+    def _key_action(self, event):
+        key = event.key()
+        if key in (Qt.Key_Return, Qt.Key_Enter):  # Ctrl+Enter as well as Enter
+            return self._on_entered
+        if key == Qt.Key_Escape:
+            return self._put_back
+        if self.can_step and event.modifiers() & Qt.ControlModifier:
+            if key == Qt.Key_Up:
+                return lambda: self._step(2.0)
+            if key == Qt.Key_Down:
+                return lambda: self._step(0.5)
+        return None
+
+    def _on_typed(self, _text: str) -> None:
+        # Typing back exactly what was read is not a change.
+        self._set_pending(self._typed.text() != self._box_text(self._raw))
+
+    def _set_pending(self, on: bool) -> None:
+        self.pending = on
+        if self._typed is not None:
+            self._typed.setStyleSheet(PENDING if on else "")
+
+    def _put_back(self) -> None:
+        """The value last read, over whatever was typed."""
+        self._set_pending(False)
+        if self._typed is not None:
+            self._typed.setText(self._box_text(self._raw))
+
+    def _busy(self) -> bool:
+        """Being typed in, or holding something typed and not sent.
+
+        Either way an arriving value must not replace it: a polled value
+        landing in the box would take the typed one with it, and the next
+        thing pressed would be Enter -- which would write whatever had
+        replaced it.
+        """
+        return self._typed is not None and (self._typed.hasFocus() or self.pending)
+
+    def _box_text(self, raw: Any) -> str:
+        """What the box shows for this raw value."""
+        return "" if raw is None else str(raw)
+
+    def _on_entered(self) -> None:
+        """Write what is typed."""
+
+    def _step(self, by: float) -> None:
+        """Multiply what is typed, without writing it."""
 
     def label_text(self) -> str:
         return self.display.name or f"0x{self.field.index:04X}:{self.field.sub:02X}"
@@ -153,24 +244,23 @@ class _EntryWidget(FieldWidget):
         super().__init__(item, display)
         self.edit = QLineEdit()
         self.edit.setPlaceholderText("--")
-        self.edit.editingFinished.connect(self._on_entered)
+        self._typed_into(self.edit)
         self.unit = QLabel(self.display.unit)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.edit)
         if self.display.unit:
             layout.addWidget(self.unit)
+        self.edit.setToolTip(self._tooltip())
 
     def _apply_writable(self) -> None:
         self.edit.setReadOnly(not self.writable)
+        self.edit.setToolTip(self._tooltip())
 
     def _show(self, raw: Any, error: Any) -> None:
         self.edit.setToolTip(self._tooltip())
-        if self.edit.hasFocus():
-            # Being typed into.  A polled value landing in the box would take
-            # the half-typed number with it, and the next thing pressed would
-            # be Enter -- which would write whatever had replaced it.
-            return
+        if self._busy():
+            return  # see _busy
         if error:
             self.edit.clear()
             self.edit.setPlaceholderText(str(error))
@@ -181,6 +271,9 @@ class _EntryWidget(FieldWidget):
     def _as_text(self, raw: Any) -> str:
         return "" if raw is None else str(raw)
 
+    def _box_text(self, raw: Any) -> str:
+        return self._as_text(raw)
+
     def _on_entered(self) -> None:
         if not self.writable:
             return
@@ -190,14 +283,15 @@ class _EntryWidget(FieldWidget):
         raw = self._as_raw(typed)
         if raw is None:
             self._refuse(f"{typed!r} is not a number")
-            self._show(self._raw, None)
+            self._put_back()
             return
         if why := out_of_range(self.display, raw):
             # Never sent.  A node may clamp silently, and a parameter that did
             # not take is worse than one that was not sent.
             self._refuse(f"{typed} is {why}")
-            self._show(self._raw, None)
+            self._put_back()
             return
+        self._set_pending(False)
         self.write_requested.emit(self.field.index, self.field.sub, self._to_wire(raw))
 
     def _as_raw(self, typed: str) -> float | None:
@@ -210,6 +304,41 @@ class _EntryWidget(FieldWidget):
 
 class NumberWidget(_EntryWidget):
     """A number in its own units, refused if the EDS says it is out of range."""
+
+    can_step = True
+
+    def _step(self, by: float) -> None:
+        """Double or halve what is in the box, and leave it there to be sent.
+
+        It sounds trivial and is not: it is how a gain is walked in on a bench,
+        a factor of two at a time, each one tried before the next.  A value the
+        object holds as a whole number halves towards zero, so 1 goes to 0
+        rather than to a 0.5 the object cannot store.  Limits are checked when
+        it is written, like anything else typed.
+        """
+        if not self.writable:
+            return
+        typed = self.edit.text().strip()
+        if typed:
+            before = self._as_raw(typed)
+            if before is None:
+                self._refuse(f"{typed!r} is not a number")
+                return
+        elif self._raw is not None and not isinstance(self._raw, bool | str | bytes):
+            before = self._raw
+        else:
+            return
+        before = round(float(before), 6)  # 123.4 / 0.1 is 1233.9999999999998
+        if self.display.offset:
+            after = self.display.raw(self.display.physical(before) * by)
+        else:
+            after = before * by
+        after = round(after, 6)
+        whole = isinstance(self._raw, int) or (self._raw is None and before.is_integer())
+        if whole:
+            after = math.trunc(after)
+        self.edit.setText(self._as_text(after))
+        self._set_pending(self.edit.text() != self._box_text(self._raw))
 
     def _as_text(self, raw: Any) -> str:
         if raw is None:
@@ -346,7 +475,7 @@ class BitsWidget(FieldWidget):
         else:
             self.edit = QLineEdit()
             self.edit.setPlaceholderText("--")
-            self.edit.editingFinished.connect(self._on_entered)
+            self._typed_into(self.edit)
             layout.addWidget(self.edit)
         bits = (
             f"bit {item.first}"
@@ -362,10 +491,8 @@ class BitsWidget(FieldWidget):
 
     def _show(self, raw: Any, error: Any) -> None:
         self.setToolTip(str(error) if error else self._tooltip())
-        if (self.box is not None and self.box.hasFocus()) or (
-            self.edit is not None and self.edit.hasFocus()
-        ):
-            return  # being edited; see the note in _EntryWidget
+        if (self.box is not None and self.box.hasFocus()) or self._busy():
+            return  # being edited; see _busy
         known = not error and raw is not None
         part = self.field.extract(int(raw)) if known else None
         if self.box is not None:
@@ -377,13 +504,19 @@ class BitsWidget(FieldWidget):
         elif self.edit is not None:
             self.edit.setText("" if part is None else str(part))
 
+    def _box_text(self, raw: Any) -> str:
+        return "" if raw is None else str(self.field.extract(int(raw)))
+
     def _on_entered(self) -> None:
+        if not self.writable:
+            return
         typed = self.edit.text().strip()
         if not typed:
             return
         value = as_number(typed)
         if value is None:
             self._refuse(f"{typed!r} is not a number")
+            self._put_back()
             return
         self._send(int(value))
 
@@ -391,13 +524,18 @@ class BitsWidget(FieldWidget):
         if not self.writable or value is None:
             return
         if self._raw is None:
+            # What was typed stays, so Enter works once the read has answered.
             self._refuse("not read yet, so the rest of the word is unknown")
             self.read_requested.emit(self.field.index, self.field.sub)
             return
         if int(value) >= (1 << self.field.width):
             self._refuse(f"{value} does not fit in {self.field.width} bits")
-            self._show(self._raw, None)
+            if self.edit is not None:
+                self._put_back()
+            else:
+                self._show(self._raw, None)
             return
+        self._set_pending(False)
         self.write_requested.emit(
             self.field.index, self.field.sub, self.field.insert(int(self._raw), int(value))
         )
