@@ -126,6 +126,12 @@ without an EDS, which is the usual case for a device sitting in its loader.
 Enter bootloader and Download ask first, once a session for each node, because
 stopping the program stops whatever it was controlling.
 
+**Programming timeout** is how long the device may take to answer each request
+while a download runs, 10 s unless changed. Clearing a program erases its flash,
+and a device doing that answers only when it has finished. Everything else uses
+the SDO timeout set under *Settings...* in the [CANopen](canopen.md) pane, and a
+timeout set longer there is not shortened here.
+
 **Most devices do not do it that way.** Firmware download over CANopen is
 usually a sequence of the maker's own writes to objects of their own choosing,
 and no amount of standards reading will produce it. That is exactly why it is

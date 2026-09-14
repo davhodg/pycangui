@@ -47,6 +47,16 @@ MISSED_HEARTBEATS = 3
 MIN_HEARTBEAT_GAP_S = 0.01  # the shortest gap that can be a real heartbeat period
 MIN_HEARTBEAT_TIMEOUT_S = 1.0
 
+#: SDO timing as the ``canopen`` package ships it: 300 ms for each answer and
+#: no second try.  Settable in the CANopen pane, because a slow node or a busy
+#: bus is found in the field and not at a desk.
+DEFAULT_SDO_TIMEOUT_S = 0.3
+DEFAULT_SDO_RETRIES = 0
+#: The SDO channel CiA 301 predefines: requests to 0x600 + node, answers on
+#: 0x580 + node.  A node configured otherwise is given its own pair.
+SDO_REQUEST_BASE = 0x600
+SDO_RESPONSE_BASE = 0x580
+
 #: How many gaps to judge the period from, and how few is too few to judge at
 #: all.  The median of several is used rather than the latest one: a producer
 #: that stalls and then sends twice in quick succession puts one short gap
@@ -124,6 +134,12 @@ class CanopenManager(QObject):
         self._liveness = QTimer(self, interval=250, timeout=self._check_liveness)
         self._liveness.start()
         self.network: canopen.Network | None = None
+        #: Applied to every node's SDO client as it is made; see set_sdo_timing.
+        self.sdo_timeout_s = DEFAULT_SDO_TIMEOUT_S
+        self.sdo_retries = DEFAULT_SDO_RETRIES
+        #: node -> (request, response) COB-IDs, for the nodes whose SDO server
+        #: is not on the predefined channel.  See set_sdo_channels.
+        self.sdo_channels: dict[int, tuple[int, int]] = {}
         self._sync_on = False
         self._worker = Worker()  # starts itself the first time it is used
         bus.connected.connect(self._on_bus_connected)
@@ -295,10 +311,82 @@ class CanopenManager(QObject):
     def _ensure_node(self, node_id: int) -> canopen.RemoteNode:
         node = self.node(node_id)
         if node is None:
-            node = canopen.RemoteNode(node_id, None)  # empty object dictionary
-            self.network.add_node(node)
-            node.emcy.add_callback(lambda err, n=node_id: self._on_emcy(n, err))
+            self._adopt(node_id, canopen.RemoteNode(node_id, None))  # empty object dictionary
+            node = self.node(node_id)
         return node
+
+    def _adopt(self, node_id: int, node: canopen.RemoteNode) -> None:
+        """Put a node object on the network, the one way every one of them goes.
+
+        Two places make node objects -- one heard from, one given an EDS, which
+        replaces the first -- and a setting applied in only one of them is a
+        setting that quietly stops applying when an EDS is loaded.
+        """
+        self.network.add_node(node)  # replaces any existing node object
+        node.emcy.add_callback(lambda err, n=node_id: self._on_emcy(n, err))
+        self._apply_sdo_timing(node)
+        self._apply_sdo_channel(node_id, node)
+
+    # --- SDO channel --------------------------------------------------------------
+    def set_sdo_channels(self, channels: dict[int, tuple[int, int]]) -> None:
+        """The nodes whose SDO server is not on the predefined channel, and where it is.
+
+        Every node not listed goes back to 0x600 + id and 0x580 + id, so taking a
+        node off the list is how its override is undone.
+        """
+        self.sdo_channels = {
+            int(node_id): (int(request), int(response))
+            for node_id, (request, response) in channels.items()
+        }
+        if self.network is not None:
+            for node_id, node in list(self.network.nodes.items()):
+                self._apply_sdo_channel(node_id, node)
+
+    def sdo_channel(self, node_id: int) -> tuple[int, int]:
+        """The COB-IDs this node's SDO requests go out on and its answers come back on."""
+        return self.sdo_channels.get(
+            node_id, (SDO_REQUEST_BASE + node_id, SDO_RESPONSE_BASE + node_id)
+        )
+
+    def _apply_sdo_channel(self, node_id: int, node) -> None:
+        sdo = getattr(node, "sdo", None)
+        if sdo is None:
+            return
+        request, response = self.sdo_channel(node_id)
+        if (sdo.rx_cobid, sdo.tx_cobid) == (request, response):
+            return
+        # The client stays the same object, so everything holding node.sdo --
+        # panes, plugins, a download in progress -- goes on working; only what
+        # it sends on and listens for moves.
+        if self.network is not None:
+            try:
+                self.network.unsubscribe(sdo.tx_cobid, sdo.on_response)
+            except (KeyError, ValueError):
+                pass  # it was not listening there
+        sdo.rx_cobid, sdo.tx_cobid = request, response
+        if self.network is not None:
+            self.network.subscribe(response, sdo.on_response)
+
+    # --- SDO timing -------------------------------------------------------------
+    def set_sdo_timing(self, timeout_s: float, retries: int) -> None:
+        """How long to wait for each SDO answer, and how many times to ask again.
+
+        Applied to the nodes already known as well as to the ones still to come.
+        Set on each node's client rather than on the library's class, so that
+        nothing else in the process that uses ``canopen`` is changed with it.
+        """
+        self.sdo_timeout_s = max(0.01, float(timeout_s))
+        self.sdo_retries = max(0, int(retries))
+        if self.network is not None:
+            for node in self.network.nodes.values():
+                self._apply_sdo_timing(node)
+
+    def _apply_sdo_timing(self, node) -> None:
+        sdo = getattr(node, "sdo", None)
+        if sdo is None:
+            return
+        sdo.RESPONSE_TIMEOUT = self.sdo_timeout_s
+        sdo.MAX_RETRIES = self.sdo_retries + 1  # the library counts tries, not retries
 
     def identify(self, node_id: int) -> None:
         """Read 0x1000 and 0x1018 with raw SDO uploads (no EDS needed)."""
@@ -347,8 +435,7 @@ class CanopenManager(QObject):
             node, extras = loaded
             self._extras[node_id] = extras
             self._eds_path[node_id] = path
-            self.network.add_node(node)  # replaces any existing node object
-            node.emcy.add_callback(lambda err, n=node_id: self._on_emcy(n, err))
+            self._adopt(node_id, node)
             self.eds_loaded.emit(
                 node_id, path, node.object_dictionary.device_information.product_name or ""
             )
