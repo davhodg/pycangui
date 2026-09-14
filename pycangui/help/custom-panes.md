@@ -36,8 +36,14 @@ opens next time.
 EDS file. A custom pane is a statement about a *product*; which controller you
 point it at this afternoon is not, so it is not in the file. Pointing one at a file is
 how a configuration is built at a desk and taken to the machine: edits change
-the file in memory, and saving writes a DCF through the original text so its
+the file in memory, and **Save** writes a DCF through the original text so its
 comments survive.
+
+Until it is saved the pane says *Unsaved changes*. Pointing the pane somewhere
+else, removing it, switching workspace or closing pycangui asks first whether
+to save them. A pane pointed at an EDS saves with **Save as...**, so the EDS
+stays as it came and the edits go to a DCF of their own; the pane then carries
+on with that DCF.
 
 ## Polling
 

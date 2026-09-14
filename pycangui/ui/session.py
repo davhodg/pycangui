@@ -43,8 +43,11 @@ class Session(QObject):
     def reopen(self, name: str) -> QMainWindow:
         """Close what is open, move to that workspace, and open it again."""
         previous, self.window = self.window, None
-        if previous is not None:
-            previous.close()
+        if previous is not None and not previous.close():
+            # Somebody chose to stay -- edits on a custom pane they have not
+            # saved -- so the window they are looking at is still the one.
+            self.window = previous
+            return previous
         if name and workspaces.exists(name):
             workspaces.set_active(name)
         return self.open()

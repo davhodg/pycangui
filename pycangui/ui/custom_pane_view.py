@@ -80,6 +80,16 @@ RATE_TIP = (
     "the last one has finished, so asking for more than the bus can do gets\n"
     "you as fast as it can rather than a backlog of stale values."
 )
+SAVE_TIP = (
+    "Write the edited values into the file, as a DCF.  The rest of the file\n"
+    "-- its comments included -- is kept exactly as it was."
+)
+SAVE_EDS_TIP = (
+    "An EDS is saved under a new name, as a DCF, so the EDS itself keeps\n"
+    "the defaults it came with."
+)
+SAVE_AS_TIP = "Write the edited values to a new DCF, and carry on editing that one."
+UNSAVED = "Unsaved changes"
 
 
 class CustomPaneView(QWidget):
@@ -153,6 +163,23 @@ class CustomPaneView(QWidget):
         bar.addWidget(self.poll_rate)
         bar.addWidget(edit)
 
+        # Only for a file: a node has nothing to save, because every write
+        # has already gone to it.
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save)
+        self.save_as_button = QPushButton("Save as...")
+        self.save_as_button.setToolTip(SAVE_AS_TIP)
+        self.save_as_button.clicked.connect(self.save_as)
+        self.unsaved_note = QLabel(UNSAVED)
+        self.unsaved_note.setStyleSheet("color: #c07000; font-style: italic")
+        self.file_bar = QWidget()
+        file_row = QHBoxLayout(self.file_bar)
+        file_row.setContentsMargins(0, 0, 0, 0)
+        file_row.addWidget(self.save_button)
+        file_row.addWidget(self.save_as_button)
+        file_row.addWidget(self.unsaved_note)
+        file_row.addStretch()
+
         self.form_holder = QWidget()
         self.form = QFormLayout(self.form_holder)
         self.form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -161,10 +188,12 @@ class CustomPaneView(QWidget):
         layout.addWidget(self.heading)
         layout.addWidget(self.note)
         layout.addLayout(bar)
+        layout.addWidget(self.file_bar)
         layout.addWidget(self.form_holder)
         layout.addStretch()
 
         self.rebuild()
+        self._apply_file_controls()
         if manager is not None:
             manager.node_seen.connect(lambda *_a: self._fill_sources())
 
@@ -202,7 +231,9 @@ class CustomPaneView(QWidget):
     # --- where the values come from ----------------------------------------------------
     def _fill_sources(self) -> None:
         """The nodes on the bus, plus a way to open a file."""
-        current = self.sources.currentData()
+        current = self._key_of(self.source)
+        if current is None:
+            current = self.sources.currentData()
         self.sources.blockSignals(True)
         self.sources.clear()
         nodes = sorted(self.manager.nodes()) if hasattr(self.manager, "nodes") else []
@@ -217,8 +248,22 @@ class CustomPaneView(QWidget):
         self.sources.setCurrentIndex(max(at, 0))
         self.sources.blockSignals(False)
 
+    @staticmethod
+    def _key_of(source: Source | None) -> int | str | None:
+        """What the selector calls a source: a node id, or a file's path."""
+        if isinstance(source, NodeSource):
+            return source.node_id
+        if isinstance(source, FileSource):
+            return str(source.path)
+        return None
+
     def _on_source_chosen(self, _at: int) -> None:
         chosen = self.sources.currentData()
+        if chosen != FILE_ENTRY and chosen == self._key_of(self.source):
+            return  # the one already bound; opening it again would lose its edits
+        if not self.may_discard():
+            self._fill_sources()  # put the selector back on the file being kept
+            return
         if chosen == FILE_ENTRY:
             self._choose_file()
             return
@@ -248,14 +293,87 @@ class CustomPaneView(QWidget):
                 self.source.value.disconnect(self._on_value)
             except (RuntimeError, TypeError):
                 pass  # never connected, or already gone
+            if isinstance(self.source, FileSource):
+                try:
+                    self.source.modified.disconnect(self._apply_file_controls)
+                except (RuntimeError, TypeError):
+                    pass
         self.source = source
         if source is not None:
             source.value.connect(self._on_value)
+        if isinstance(source, FileSource):
+            source.modified.connect(self._apply_file_controls)
         # The display comes from the source, so the labels and the units may
         # be different ones now: rebuilt rather than patched.
         self.rebuild()
+        self._apply_file_controls()
         if source is not None:
             self.refresh()
+
+    # --- saving a file ---------------------------------------------------------------
+    @property
+    def unsaved(self) -> bool:
+        return isinstance(self.source, FileSource) and self.source.unsaved
+
+    def _apply_file_controls(self, *_args) -> None:
+        is_file = isinstance(self.source, FileSource)
+        self.file_bar.setVisible(is_file)
+        if not is_file:
+            return
+        self.save_button.setEnabled(self.source.unsaved)
+        self.save_button.setToolTip(SAVE_EDS_TIP if self.source.needs_new_name else SAVE_TIP)
+        self.unsaved_note.setVisible(self.source.unsaved)
+
+    def save(self) -> bool:
+        """Write the edits to the file.  False if they were not written."""
+        if not isinstance(self.source, FileSource):
+            return True
+        if self.source.needs_new_name:
+            return self.save_as()
+        return self._save_to(None)
+
+    def save_as(self) -> bool:
+        if not isinstance(self.source, FileSource):
+            return True
+        path = folders.save_file(
+            self,
+            self.ctx,
+            folders.EDS,
+            "Save configuration as",
+            "Device configuration (*.dcf);;All files (*)",
+            self.ctx.eds_dir,
+            suggested=self.source.path.stem + ".dcf",
+        )
+        return bool(path) and self._save_to(path)
+
+    def _save_to(self, path: str | None) -> bool:
+        try:
+            written = self.source.save(path)
+        except OSError as exc:
+            messages.warning(self, "The configuration was not saved", str(exc))
+            return False
+        self.ctx.log(f"{self.pane.title or self.name}: saved {written}")
+        self._fill_sources()  # saved as another file, the selector names that one
+        return True
+
+    def may_discard(self) -> bool:
+        """Whether the file's edits can go: saved, thrown away, or none to lose.
+
+        False is Cancel -- whatever was about to replace them should not.
+        """
+        if not self.unsaved:
+            return True
+        answer = messages.question(
+            self,
+            f"Save the changes to {self.source.label}?",
+            f"Values edited on {self.pane.title or self.name} have not been written to the "
+            "file.  Discard throws them away.",
+            messages.Button.Save | messages.Button.Discard | messages.Button.Cancel,
+            messages.Button.Save,
+        )
+        if answer == messages.Button.Save:
+            return self.save()
+        return answer == messages.Button.Discard
 
     def _apply_writable(self) -> None:
         writable = bool(self.source is not None and self.source.writable)

@@ -700,6 +700,24 @@ class MainWindow(QMainWindow):
         view = self.panes.view(custom_instance(name))
         return view if isinstance(view, CustomPaneView) else None
 
+    def _custom_panes_may_close(self) -> bool:
+        """Ask about every custom pane holding edits to a file, one at a time.
+
+        Cancel on any of them is Cancel for the whole close: the answer to
+        "save these?" was "wait", and closing the rest anyway is not waiting.
+        """
+        for name in self.panes.instances("custom"):
+            view = self.panes.view(name)
+            if isinstance(view, CustomPaneView) and not view.may_discard():
+                return False
+        return True
+
+    def _remove_pane(self, name: str) -> None:
+        view = self.panes.view(name)
+        if isinstance(view, CustomPaneView) and not view.may_discard():
+            return
+        self.panes.remove(name)
+
     def _on_custom_pane_changed(self, name: str) -> None:
         """A custom pane renamed itself, so its dock should say so too."""
         view = self._custom_pane_view(name)
@@ -941,7 +959,7 @@ class MainWindow(QMainWindow):
         remove.setToolTipsVisible(True)
         for name in extras:
             action = remove.addAction(
-                self.panes.docks[name].windowTitle(), lambda n=name: self.panes.remove(n)
+                self.panes.docks[name].windowTitle(), lambda n=name: self._remove_pane(n)
             )
             action.setToolTip("Close this pane for good.  Closing its window only puts it away.")
 
@@ -1142,6 +1160,11 @@ class MainWindow(QMainWindow):
             self.workspace_menu.new_empty()
 
     def closeEvent(self, event) -> None:
+        # Before anything is put away, because Cancel has to leave everything
+        # exactly as it was: a file edited on a custom pane exists only here.
+        if not self._closing and not self._custom_panes_may_close():
+            event.ignore()
+            return
         # Everything is about to be hidden, and reporting each pane going away
         # on the way out would be a paragraph nobody asked for.
         self._closing = True

@@ -397,3 +397,41 @@ def test_a_file_that_is_not_an_eds_is_an_empty_source_rather_than_a_crash(app, t
     source.request(0x2001, 0)
     settle(app)
     assert heard[0][3] == "not in this file"
+
+
+# --- and saving it -----------------------------------------------------------------------------
+def test_a_file_source_knows_when_the_disk_is_behind(app, eds, tmp_path):
+    source = custom_panes.FileSource(eds)
+    heard = []
+    source.modified.connect(heard.append)
+    assert not source.unsaved, "nothing edited yet"
+
+    source.write(0x2001, 0, 500)
+    settle(app)
+    assert source.unsaved and heard == [True]
+
+    source.save(tmp_path / "acme.dcf")
+    assert not source.unsaved and heard[-1] is False
+
+
+def test_saved_under_another_name_the_source_becomes_that_file(app, eds, tmp_path):
+    """The edits that follow belong to the copy, and so does the next Save."""
+    source = custom_panes.FileSource(eds)
+    source.write(0x2001, 0, 500)
+    out = source.save(tmp_path / "desk.dcf")
+    assert (source.path, source.label) == (out, "desk.dcf")
+    assert "ParameterValue" not in eds.read_text(), "the EDS keeps its defaults"
+
+    source.write(0x2001, 0, 600)
+    source.save()
+    settle(app)
+    text = out.read_text()
+    assert "ParameterValue=600" in text
+    assert text.count("ParameterValue") == 1, "replaced, not added a second time"
+
+
+def test_only_a_dcf_is_saved_over(app, eds, tmp_path):
+    assert custom_panes.FileSource(eds).needs_new_name
+    dcf = tmp_path / "acme.dcf"
+    dcf.write_text(EDS, encoding="utf-8")
+    assert not custom_panes.FileSource(dcf).needs_new_name
