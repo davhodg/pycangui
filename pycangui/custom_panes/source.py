@@ -137,6 +137,10 @@ class FileSource(Source):
     and the descriptions live -- survive the round trip.
     """
 
+    #: True when there are edits the file on disk does not have yet, False
+    #: once there are none.  Sent on every write and every save.
+    modified = Signal(bool)
+
     def __init__(self, path: str | Path, hooks=None) -> None:
         super().__init__()
         self.path = Path(path)
@@ -145,6 +149,8 @@ class FileSource(Source):
         self._extras = eds_extras(self.path)
         self._identity = self._identity_of(self.path)
         self._values: dict[tuple[int, int], Any] = {}
+        #: What ``_values`` was when it last went to disk.
+        self._saved: dict[tuple[int, int], Any] = {}
         self._od = None
         self.writable = True
         self.reload()
@@ -164,6 +170,7 @@ class FileSource(Source):
         except Exception:
             self._od = None  # not a file this reader understands
         self._values.clear()
+        self._saved.clear()
         self.changed.emit()
 
     # --- what the file says ------------------------------------------------------------
@@ -210,6 +217,7 @@ class FileSource(Source):
             return
         self._values[(index, sub)] = raw
         self._answer(index, sub, raw, None)
+        self.modified.emit(self.unsaved)
 
     def objects(self) -> list[tuple[int, int, str, str]]:
         return _listed(self._od)
@@ -222,11 +230,29 @@ class FileSource(Source):
     # --- and back out again -------------------------------------------------------------
     @property
     def edited(self) -> dict[tuple[int, int], Any]:
-        """What has been changed and not yet written to disk."""
+        """Every value changed since the file was opened."""
         return dict(self._values)
 
+    @property
+    def unsaved(self) -> bool:
+        """Whether there are edits the file on disk does not have."""
+        return self._values != self._saved
+
+    @property
+    def needs_new_name(self) -> bool:
+        """Saving over anything but a DCF would turn it into one.
+
+        An EDS is what a device ships with, and the next person to open it
+        expects the defaults rather than this afternoon's values.
+        """
+        return self.path.suffix.lower() != ".dcf"
+
     def save(self, path: str | Path | None = None, node_id: int | None = None) -> Path:
-        """Write a DCF, through the original text so nothing in it is lost."""
+        """Write a DCF, through the original text so nothing in it is lost.
+
+        Saved under another name, this source becomes that file: the edits
+        that follow belong to the copy, and saving again goes there too.
+        """
         from pycangui.canopen.dcf import values_from, write_dcf
 
         target = Path(path) if path is not None else self.path
@@ -234,4 +260,10 @@ class FileSource(Source):
         target.write_text(
             write_dcf(source, values_from(self._values), node_id), encoding="utf-8", newline=""
         )
+        if target.resolve() != self.path.resolve():
+            self.path = target
+            self.label = target.name
+            self.changed.emit()
+        self._saved = dict(self._values)
+        self.modified.emit(False)
         return target

@@ -496,3 +496,210 @@ def test_added_objects_land_on_the_pane(app, window, monkeypatch):
     assert [(f.index, f.label) for f in model.load("battery").fields] == [
         (0x2001, "Speed demand")
     ], "and written to the file"
+
+
+# --- saving a file ----------------------------------------------------------------------------
+ACME = """[FileInfo]
+FileName=acme.eds
+EDSVersion=4.0
+[DeviceInfo]
+VendorName=Acme
+VendorNumber=1
+ProductName=Widget
+ProductNumber=2
+RevisionNumber=3
+[MandatoryObjects]
+SupportedObjects=1
+1=0x1000
+[1000]
+ParameterName=Device type
+ObjectType=7
+DataType=7
+AccessType=ro
+DefaultValue=0
+[OptionalObjects]
+SupportedObjects=1
+1=0x2001
+[2001]
+ParameterName=Motor current
+ObjectType=7
+DataType=3
+AccessType=rw
+LowLimit=0
+HighLimit=1000
+DefaultValue=250
+"""
+
+
+@pytest.fixture
+def acme(tmp_path):
+    path = tmp_path / "acme.eds"
+    path.write_text(ACME, encoding="utf-8")
+    return path
+
+
+def bound_to(app, window, path):
+    from pycangui.custom_panes.source import FileSource
+
+    model.save("battery", sample())
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
+    view.bind(FileSource(path))
+    settle(app)
+    return view
+
+
+def type_into(app, view, text):
+    view._widgets[0].edit.setText(text)
+    view._widgets[0].edit.editingFinished.emit()
+    settle(app)
+
+
+def answering(monkeypatch, button):
+    """Answer "save the changes?" with this button, and note what was asked."""
+    asked = []
+
+    def ask(_parent, title, _text, *_args, **_kwargs):
+        asked.append(title)
+        return button
+
+    monkeypatch.setattr(messages, "question", ask)
+    return asked
+
+
+def test_a_node_has_nothing_to_save(app, window):
+    """Every write has already gone to it."""
+    model.save("battery", sample())
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
+    assert view.file_bar.isHidden(), "nothing bound"
+    view.bind(_Fake([]))
+    assert view.file_bar.isHidden()
+
+
+def test_a_file_says_when_there_is_something_to_save(app, window, tmp_path):
+    dcf = tmp_path / "acme.dcf"
+    dcf.write_text(ACME, encoding="utf-8")
+    view = bound_to(app, window, dcf)
+    assert not view.file_bar.isHidden()
+    assert not view.save_button.isEnabled() and view.unsaved_note.isHidden()
+
+    type_into(app, view, "500")
+    assert view.unsaved and view.save_button.isEnabled()
+    assert not view.unsaved_note.isHidden()
+
+    assert view.save()
+    assert "ParameterValue=500" in dcf.read_text()
+    assert not view.unsaved and view.unsaved_note.isHidden()
+
+
+def test_an_eds_is_saved_as_a_dcf_and_the_pane_carries_on_with_that(
+    app, window, tmp_path, acme, monkeypatch
+):
+    from pycangui.ui import folders
+
+    view = bound_to(app, window, acme)
+    type_into(app, view, "500")
+    target = tmp_path / "desk.dcf"
+    monkeypatch.setattr(folders, "save_file", lambda *a, **k: str(target))
+
+    assert view.save()
+    assert "ParameterValue" not in acme.read_text(), "the EDS keeps its defaults"
+    assert "ParameterValue=500" in target.read_text()
+    assert view.sources.currentText() == "desk.dcf"
+    assert not view.unsaved
+
+
+def test_cancelling_save_as_keeps_the_edits(app, window, acme, monkeypatch):
+    from pycangui.ui import folders
+
+    view = bound_to(app, window, acme)
+    type_into(app, view, "500")
+    monkeypatch.setattr(folders, "save_file", lambda *a, **k: "")
+    assert not view.save()
+    assert view.unsaved
+
+
+def test_pointing_the_pane_elsewhere_asks_and_cancel_keeps_the_file(app, window, acme, monkeypatch):
+    view = bound_to(app, window, acme)
+    type_into(app, view, "500")
+    asked = answering(monkeypatch, messages.Button.Cancel)
+
+    view.sources.setCurrentIndex(view.sources.findData(5))
+    view._on_source_chosen(view.sources.currentIndex())
+    assert asked and "acme.eds" in asked[0]
+    assert view.source.label == "acme.eds" and view.unsaved
+    assert view.sources.currentText() == "acme.eds", "the selector goes back to the file"
+
+
+def test_discard_lets_the_pane_go_elsewhere(app, window, acme, monkeypatch):
+    view = bound_to(app, window, acme)
+    type_into(app, view, "500")
+    answering(monkeypatch, messages.Button.Discard)
+
+    view.sources.setCurrentIndex(view.sources.findData(5))
+    view._on_source_chosen(view.sources.currentIndex())
+    assert view._key_of(view.source) == 5
+    assert view.file_bar.isHidden()
+
+
+def test_choosing_the_file_already_open_does_not_open_it_again(app, window, acme, monkeypatch):
+    """Opening it again would read it from disk and lose the edits."""
+    view = bound_to(app, window, acme)
+    type_into(app, view, "500")
+    asked = answering(monkeypatch, messages.Button.Cancel)
+    source = view.source
+
+    view._on_source_chosen(view.sources.currentIndex())
+    assert not asked
+    assert view.source is source and view.unsaved
+
+
+def test_closing_with_unsaved_edits_asks_and_cancel_stays_open(app, window, acme, monkeypatch):
+    view = bound_to(app, window, acme)
+    type_into(app, view, "500")
+    asked = answering(monkeypatch, messages.Button.Cancel)
+
+    assert not window.close()
+    assert asked and window.isVisible() and view.unsaved
+    answering(monkeypatch, messages.Button.Discard)  # so the fixture can close it
+
+
+def test_removing_a_pane_with_unsaved_edits_asks(app, window, acme, monkeypatch):
+    view = bound_to(app, window, acme)
+    type_into(app, view, "500")
+    name = custom_instance("battery")
+
+    answering(monkeypatch, messages.Button.Cancel)
+    window._remove_pane(name)
+    assert name in window.panes.docks
+
+    answering(monkeypatch, messages.Button.Discard)
+    window._remove_pane(name)
+    assert name not in window.panes.docks
+
+
+def test_a_workspace_switch_somebody_cancelled_leaves_the_window_they_had(app):
+    from PySide6.QtCore import Signal
+    from PySide6.QtWidgets import QMainWindow
+
+    from pycangui.ui.session import Session
+
+    class Staying(QMainWindow):
+        reopen_requested = Signal(str)
+
+        def closeEvent(self, event):
+            event.ignore()
+
+    built = []
+
+    def build():
+        built.append(Staying())
+        return built[-1]
+
+    session = Session(build)
+    first = session.open()
+    assert session.reopen("anything") is first
+    assert session.window is first and len(built) == 1
+    first.hide()
+    first.deleteLater()
