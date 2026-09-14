@@ -36,6 +36,9 @@ PROGRAM_DATA = 0x1F50
 PROGRAM_CONTROL = 0x1F51
 PROGRAM_IDENTIFICATION = 0x1F56
 FLASH_STATUS = 0x1F57
+#: CiA 301 manufacturer software version: a string, and the one thing nearly
+#: every device keeps about what it is running.
+SOFTWARE_VERSION = 0x100A
 
 #: What may be written to program control, and what it means.
 STOP, START, RESET, CLEAR = 0, 1, 2, 3
@@ -99,16 +102,33 @@ def steps(device: Device, program: int, data: bytes, progress) -> Iterator[Step]
 
 
 def enter_bootloader(device: Device, program: int) -> None:
-    """Stop the application, which is what puts most devices in their loader.
+    """Stop the application, which is what puts a CiA 302-3 device in its loader.
 
     While it is stopped the device answers very little, and slowly: timeouts
-    from here on are the expected thing rather than a fault.
+    from here on are the expected thing rather than a fault.  A device with a
+    way of its own -- a write to a maker's object, then a reset -- goes here.
     """
     device.write(PROGRAM_CONTROL, program, STOP)
 
 
-def start_application(device: Device, program: int) -> None:
+def exit_bootloader(device: Device, program: int) -> None:
+    """Start the application again, which is how the loader is left."""
     device.write(PROGRAM_CONTROL, program, START)
+
+
+def software_version(device: Device) -> str:
+    """What the device says its software is, where it says anything.
+
+    A string on the wire, and read as bytes where the EDS does not describe
+    the object, so the padding some devices leave on the end is taken off.
+    """
+    try:
+        value = device.read(SOFTWARE_VERSION, 0)
+    except Exception:
+        return ""
+    if isinstance(value, bytes | bytearray):
+        value = bytes(value).decode("latin-1")
+    return str(value).strip("\x00 \r\n")
 
 
 def identification(device: Device, program: int) -> str:
