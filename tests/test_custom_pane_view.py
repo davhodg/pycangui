@@ -277,7 +277,7 @@ def test_writing_goes_to_the_source_and_not_to_the_bus(app, window):
     view.bind(source)
 
     view._widgets[0].edit.setText("42")
-    view._widgets[0].edit.editingFinished.emit()
+    press_enter(view._widgets[0].edit)
     assert source.written == [(0x2001, 0, 42)]
 
 
@@ -551,7 +551,7 @@ def bound_to(app, window, path):
 
 def type_into(app, view, text):
     view._widgets[0].edit.setText(text)
-    view._widgets[0].edit.editingFinished.emit()
+    press_enter(view._widgets[0].edit)
     settle(app)
 
 
@@ -703,3 +703,12 @@ def test_a_workspace_switch_somebody_cancelled_leaves_the_window_they_had(app):
     assert session.window is first and len(built) == 1
     first.hide()
     first.deleteLater()
+
+
+def press_enter(edit):
+    """Enter, which is what writes a typed value -- leaving the box does not."""
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.sendEvent(edit, QKeyEvent(QEvent.KeyPress, Qt.Key_Return, Qt.NoModifier))

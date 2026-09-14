@@ -62,7 +62,8 @@ built on.
 
 A round only starts once the last one has finished, so asking for more than the
 bus can do gets you as fast as it can rather than a growing backlog of stale
-values. A box you are typing in is not overwritten by an arriving value.
+values. A box you are typing in, or one holding a value not yet written, is not
+overwritten by an arriving value.
 
 While polling, every numeric field is pushed to **Signals and Plot** under the
 source's name, so a polled object plots and exports to CSV like any other
@@ -97,6 +98,22 @@ that did not take is worse than one that was not sent. And a `flags` or `bits`
 field will not write until it has read: those write part of an object, part of
 an object cannot be written, and a word made mostly of zeroes would clear
 every bit the pane is not showing.
+
+## Typing a value
+
+A `number`, `hex` or `bits` box writes when you press **Enter** or
+**Ctrl+Enter**, and only then. Clicking somewhere else or tabbing away leaves
+what you typed in the box without sending it. Until it is written the box is
+tinted amber, and a value arriving from polling does not replace it. **Esc**
+puts back the value last read.
+
+In a `number` box, **Ctrl+Up** doubles the value and **Ctrl+Down** halves it,
+without writing, so a gain can be walked up or down a step at a time and sent
+with Enter. It works in the units shown. A value the object holds as a whole
+number halves towards zero. The limits are checked when it is written, the
+same as for anything typed. On macOS these are Cmd rather than Ctrl.
+
+Dropdowns, ticks and map cells still write as soon as they are changed.
 
 Custom panes are JSON in `workspaces\<name>\custom_panes\`, beside the hooks, and meant to
 be edited: named bits, map axes and anything else the dialog does not cover

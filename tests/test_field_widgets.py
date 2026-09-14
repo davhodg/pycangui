@@ -15,8 +15,10 @@ parameter that did not take is far worse than one that was not sent.
 """
 
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QAbstractItemView
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QFocusEvent, QKeyEvent
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QAbstractItemView, QApplication
 
 from pycangui.canopen.display import Display
 from pycangui.custom_panes.model import Field
@@ -32,6 +34,21 @@ def made(item: Field, display: Display | None = None):
     widget.read_requested.connect(lambda *a: asked.append(a))
     widget.message.connect(said.append)
     return widget, written, asked, said
+
+
+def press(edit, key, modifiers=Qt.NoModifier):
+    QApplication.sendEvent(edit, QKeyEvent(QEvent.KeyPress, key, modifiers))
+
+
+def enter(edit):
+    """What writes a typed value.  Leaving the box does not."""
+    press(edit, Qt.Key_Return)
+
+
+def typed(edit, text):
+    """Typed, key by key, so the box knows it was a person and not a reading."""
+    edit.clear()
+    QTest.keyClicks(edit, text)
 
 
 # --- what gets built --------------------------------------------------------------------
@@ -95,7 +112,7 @@ def test_a_number_is_typed_in_the_units_it_is_shown_in(app):
     assert widget.edit.text() == "123.4"
 
     widget.edit.setText("50")
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == [(0x2001, 0, 500)]
 
 
@@ -103,7 +120,7 @@ def test_a_number_outside_the_limits_never_reaches_the_bus(app):
     widget, written, _a, said = made(Field(index=0x2001, kind="number"), Display(low=0, high=1000))
     widget.set_value(0x2001, 0, 250, None)
     widget.edit.setText("2000")
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
 
     assert written == [], "a node may clamp silently, so it is refused here"
     assert said and "above the maximum" in said[0]
@@ -114,7 +131,7 @@ def test_something_that_is_not_a_number_is_refused_the_same_way(app):
     widget, written, _a, said = made(Field(index=0x2001, kind="number"))
     widget.set_value(0x2001, 0, 7, None)
     widget.edit.setText("fifty")
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == []
     assert said and "not a number" in said[0]
     assert widget.edit.text() == "7"
@@ -124,7 +141,7 @@ def test_an_empty_box_is_not_a_zero(app):
     """Tabbing through a form must not write every field it passes."""
     widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
     widget.edit.clear()
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == []
 
 
@@ -133,7 +150,7 @@ def test_a_source_that_cannot_be_written_to_does_not_offer_to(app):
     widget.set_writable(False)
     assert widget.edit.isReadOnly()
     widget.edit.setText("5")
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == []
 
 
@@ -144,14 +161,14 @@ def test_hex_is_shown_and_typed_in_hex(app):
     assert widget.edit.text() == "0x1F"
 
     widget.edit.setText("2A")  # bare digits are hex, since that is what it shows
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == [(0x2001, 0, 0x2A)]
 
 
 def test_a_hex_box_takes_a_prefix_too(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="hex"))
     widget.edit.setText("0x2A")
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == [(0x2001, 0, 0x2A)]
 
 
@@ -221,7 +238,7 @@ def test_writing_some_bits_keeps_the_others(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="bits", first=4, width=3))
     widget.set_value(0x2001, 0, 0xFF, None)
     widget.edit.setText("2")
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == [(0x2001, 0, 0xAF)]
 
 
@@ -229,7 +246,7 @@ def test_a_value_too_wide_for_the_field_is_refused(app):
     widget, written, _a, said = made(Field(index=0x2001, kind="bits", first=4, width=3))
     widget.set_value(0x2001, 0, 0x00, None)
     widget.edit.setText("9")  # three bits hold 0..7
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == []
     assert said and "does not fit in 3 bits" in said[0]
 
@@ -247,7 +264,7 @@ def test_named_bits_get_a_dropdown_and_unnamed_ones_a_box(app):
 def test_bits_will_not_be_written_before_the_word_is_read(app):
     widget, written, asked, said = made(Field(index=0x2001, kind="bits", first=4, width=3))
     widget.edit.setText("2")
-    widget.edit.editingFinished.emit()
+    enter(widget.edit)
     assert written == []
     assert said and "not read yet" in said[0]
     assert asked == [(0x2001, 0)]
@@ -387,3 +404,183 @@ def test_a_map_without_an_x_array_will_not_let_you_edit_the_x(app):
     widget.refresh()
     widget.set_value(0x2100, 0, 2, None)
     assert not widget.table.item(0, 0).flags() & Qt.ItemIsEditable
+
+
+# --- typing a value: Enter writes, and nothing else does ------------------------------------
+def test_ctrl_enter_writes_as_enter_does(app):
+    widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+    typed(widget.edit, "500")
+    press(widget.edit, Qt.Key_Return, Qt.ControlModifier)
+    assert written == [(0x2001, 0, 500)]
+
+
+def test_leaving_the_box_does_not_write_it(app):
+    """How a value still being thought about reached a controller: somebody
+    clicked on the plot."""
+    widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+    typed(widget.edit, "500")
+    QApplication.sendEvent(widget.edit, QFocusEvent(QEvent.FocusOut, Qt.TabFocusReason))
+    assert written == []
+    assert widget.edit.text() == "500" and widget.pending, "still there, still to be sent"
+
+
+def test_a_typed_value_is_marked_until_it_is_written(app):
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+    assert not widget.pending and widget.edit.styleSheet() == ""
+
+    typed(widget.edit, "500")
+    assert widget.pending and "background" in widget.edit.styleSheet()
+
+    enter(widget.edit)
+    assert not widget.pending and widget.edit.styleSheet() == ""
+
+
+def test_typing_back_what_was_read_is_not_a_change(app):
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+    typed(widget.edit, "250")
+    assert not widget.pending
+
+
+def test_an_arriving_value_does_not_replace_one_not_yet_written(app):
+    """Polling carries on while somebody decides, and must not decide for them."""
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+    typed(widget.edit, "500")
+
+    widget.set_value(0x2001, 0, 260, None)
+    assert widget.edit.text() == "500"
+
+    enter(widget.edit)
+    widget.set_value(0x2001, 0, 500, None)
+    assert widget.edit.text() == "500", "once written, the box follows the object again"
+    widget.set_value(0x2001, 0, 510, None)
+    assert widget.edit.text() == "510"
+
+
+def test_escape_puts_back_what_was_read(app):
+    widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+    typed(widget.edit, "500")
+    widget.set_value(0x2001, 0, 260, None)  # arrived while it was typed
+
+    press(widget.edit, Qt.Key_Escape)
+    assert widget.edit.text() == "260", "the latest reading, not the one typed over"
+    assert not widget.pending
+    assert written == []
+
+
+def test_the_keys_are_the_box_s_before_they_are_a_shortcut_s(app):
+    """A window shortcut on Ctrl+Up would otherwise take it first."""
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    override = QKeyEvent(QEvent.ShortcutOverride, Qt.Key_Up, Qt.ControlModifier)
+    override.ignore()
+    QApplication.sendEvent(widget.edit, override)
+    assert override.isAccepted()
+
+
+# --- doubling and halving ---------------------------------------------------------------------
+def test_ctrl_up_doubles_and_ctrl_down_halves_without_writing(app):
+    widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+
+    press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
+    assert widget.edit.text() == "500"
+    press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
+    assert widget.edit.text() == "1000"
+    press(widget.edit, Qt.Key_Down, Qt.ControlModifier)
+    assert widget.edit.text() == "500"
+    assert written == [], "nothing is sent until Enter"
+    assert widget.pending
+
+    enter(widget.edit)
+    assert written == [(0x2001, 0, 500)]
+
+
+def test_doubling_works_in_the_units_shown(app):
+    """Shown as 123.4 A: doubled is 246.8 A, which is 2468 on the wire."""
+    widget, written, _a, _s = made(
+        Field(index=0x2001, kind="number"), Display(unit="A", factor=0.1, decimals=1)
+    )
+    widget.set_value(0x2001, 0, 1234, None)
+    press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
+    assert widget.edit.text() == "246.8"
+    enter(widget.edit)
+    assert written == [(0x2001, 0, 2468)]
+
+
+def test_doubling_what_was_typed_not_what_was_read(app):
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+    typed(widget.edit, "30")
+    press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
+    assert widget.edit.text() == "60"
+
+
+def test_a_whole_number_halves_towards_zero(app):
+    """1 goes to 0, not to a 0.5 the object cannot hold -- and never gets stuck."""
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 3, None)
+    shown = []
+    for _ in range(3):
+        press(widget.edit, Qt.Key_Down, Qt.ControlModifier)
+        shown.append(widget.edit.text())
+    assert shown == ["1", "0", "0"]
+
+
+def test_a_real_number_halves_exactly(app):
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 1.5, None)
+    press(widget.edit, Qt.Key_Down, Qt.ControlModifier)
+    assert widget.edit.text() == "0.75"
+
+
+def test_doubled_past_the_limit_is_refused_when_written(app):
+    widget, written, _a, said = made(Field(index=0x2001, kind="number"), Display(low=0, high=1000))
+    widget.set_value(0x2001, 0, 600, None)
+    press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
+    assert widget.edit.text() == "1200", "shown, so it is clear what would have gone"
+    enter(widget.edit)
+    assert written == []
+    assert said and "above the maximum" in said[0]
+    assert widget.edit.text() == "600" and not widget.pending
+
+
+def test_a_code_in_hex_is_not_doubled(app):
+    """0x10 is a mask or a code, and twice a code is not a thing."""
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="hex"))
+    widget.set_value(0x2001, 0, 0x10, None)
+    press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
+    assert widget.edit.text() == "0x10"
+
+
+def test_a_read_only_number_is_not_doubled(app):
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    widget.set_value(0x2001, 0, 250, None)
+    widget.set_writable(False)
+    press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
+    assert widget.edit.text() == "250"
+
+
+def test_the_tooltip_says_which_keys_do_what(app):
+    number, _w, _a, _s = made(Field(index=0x2001, kind="number"))
+    hexed, _w2, _a2, _s2 = made(Field(index=0x2001, kind="hex"))
+    assert "Enter writes" in number.edit.toolTip() and "Ctrl+Up" in number.edit.toolTip()
+    assert "Enter writes" in hexed.edit.toolTip() and "Ctrl+Up" not in hexed.edit.toolTip()
+
+
+# --- the same for a field inside a word --------------------------------------------------------
+def test_leaving_a_bits_box_does_not_write_it(app):
+    widget, written, _a, _s = made(Field(index=0x2001, kind="bits", first=4, width=3))
+    widget.set_value(0x2001, 0, 0xFF, None)
+    typed(widget.edit, "2")
+    QApplication.sendEvent(widget.edit, QFocusEvent(QEvent.FocusOut, Qt.TabFocusReason))
+    assert written == [] and widget.pending
+
+    widget.set_value(0x2001, 0, 0x0F, None)
+    assert widget.edit.text() == "2", "not replaced while it waits"
+    press(widget.edit, Qt.Key_Escape)
+    assert widget.edit.text() == "0", "bits 4..6 of 0x0F"
