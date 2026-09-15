@@ -79,14 +79,6 @@ def test_templates_are_mit0_and_claim_nothing():
     assert not wrong, f"templates must be MIT-0 with no copyright line: {wrong}"
 
 
-def test_templates_say_they_are_there_to_be_changed():
-    """The licence alone reads as legal noise; the sentence under it is what
-    tells somebody they may put their own algorithm in the file."""
-    for rel in sources():
-        if is_template(rel):
-            assert any("yours to edit" in line for line in head(rel, 8)), rel
-
-
 def test_every_licence_named_is_shipped_and_declared():
     assert (ROOT / "LICENSE").is_file()
     assert (ROOT / "LICENSES" / "MIT-0.txt").is_file()

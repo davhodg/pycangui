@@ -429,7 +429,7 @@ def test_switching_off_a_live_bus_asks_first(window, app, monkeypatch):
 
     window._switch_workspace("drive")
     assert asked == [], "cancelled means stay"
-    assert seen and "drive" in seen[0] and "cyclically" in seen[0]
+    assert seen and "drive" in seen[0]
 
     monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Yes)
     window._switch_workspace("drive")

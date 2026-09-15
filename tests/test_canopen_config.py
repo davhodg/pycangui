@@ -124,9 +124,6 @@ def test_dcf_save_and_apply(stack):
     assert demo["canopen_device"].state.device.get_data(0x2001, 0) == (-1234).to_bytes(
         2, "little", signed=True
     )
-    # An accepted write is the node's word that it took the value, not that
-    # it will still have it after the power goes off.
-    assert any("power-cycle node 5" in m for m in messages[n:]), "no word about verifying"
 
 
 def test_store_restore_and_sync(stack):

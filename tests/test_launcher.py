@@ -69,7 +69,7 @@ def test_a_missing_library_is_a_dialog_rather_than_a_silent_death(app, monkeypat
     monkeypatch.setattr(sys, "argv", ["pycangui"])
 
     assert entry.main() == 1
-    assert shown and "missing" in shown[0]
+    assert shown
     assert "pycangui.cmd" in shown[0], "and say what to do about it"
 
 

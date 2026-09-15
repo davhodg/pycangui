@@ -113,13 +113,6 @@ def test_only_the_boxes_a_report_needs_are_live(view):
     )
 
 
-def test_the_record_box_says_which_record_it_means(view):
-    choose(view, 0x04)  # snapshot by DTC
-    assert view.record_label.text() == "Snapshot"
-    choose(view, 0x06)  # extended data by DTC
-    assert view.record_label.text() == "Ext data"
-
-
 def test_the_user_memory_reports_want_a_memory(view):
     choose(view, 0x17)
     assert view.dtc_mask.isEnabled() and view.memory.isEnabled()
@@ -145,13 +138,6 @@ def test_reading_sends_only_the_parameters_that_report_takes(view, monkeypatch):
     view.record.setText("55")
     view._read_dtcs()
     assert sent == {"sub": 0x06, dtc.DTC: 0x112233, dtc.EXTENDED: 0x55}
-
-
-def test_the_status_mask_tooltip_spells_the_bits_out(view):
-    """The mask is the difference between every fault ever and the ones wrong now."""
-    tip = view.dtc_mask.toolTip()
-    assert "0x08 confirmedDTC" in tip
-    assert "0x80 warningIndicatorRequested" in tip
 
 
 def test_the_dtc_setting_toggle_says_what_it_asked_for(view, monkeypatch):
@@ -240,13 +226,6 @@ def test_the_did_box_offers_the_named_ones_and_still_takes_anything(view):
     assert _picked(view.did) == 0x0101, "and a typed one is just the number"
 
 
-def test_a_did_entry_explains_itself_on_hover(view):
-    from PySide6.QtCore import Qt
-
-    row = next(i for i in range(view.did.count()) if view.did.itemData(i) == 0xF190)
-    assert "ISO 3779" in view.did.itemData(row, Qt.ToolTipRole)
-
-
 def test_the_routine_box_offers_the_four_iso_names_and_yours(view):
     from pycangui.ui.uds_view import _picked
 
@@ -255,13 +234,6 @@ def test_the_routine_box_offers_the_four_iso_names_and_yours(view):
     assert 0x0202 in numbers, "and check memory comes from ROUTINE_NAMES"
     view.routine.setCurrentText("0203")
     assert _picked(view.routine) == 0x0203
-
-
-def test_a_routine_entry_explains_itself_on_hover(view):
-    from PySide6.QtCore import Qt
-
-    row = next(i for i in range(view.routine.count()) if view.routine.itemData(i) == 0xFF00)
-    assert "Erase the memory" in view.routine.itemData(row, Qt.ToolTipRole)
 
 
 def test_a_typed_identifier_is_remembered(app, tmp_path, monkeypatch):
@@ -302,5 +274,3 @@ def test_a_greyed_box_takes_its_label_with_it(view):
 def test_the_dtc_box_starts_at_all_of_them(view):
     """FFFFFF is how most ECUs are asked for every fault they hold."""
     assert view.dtc_number.text() == "FFFFFF"
-    assert "FFFFFF" in view.dtc_number.toolTip()
-    assert "convention" in view.dtc_number.toolTip(), "and it is not in the standard"

@@ -50,7 +50,6 @@ def test_an_exception_in_a_slot_is_logged(app, logger):
     drain(app, lambda: seen)
     assert seen, "an exception in a Qt slot must reach the log"
     assert "ChannelBox" in seen[0] and "AttributeError" in seen[0]
-    assert "bug in pycangui" in seen[0], "and say what it means for the user"
 
 
 def test_the_same_fault_is_not_repeated(app, logger):

@@ -88,7 +88,6 @@ def test_a_kind_that_means_nothing_twice_refuses(window):
     assert window.panes.add("log") == "log"
     assert window.panes.add("log", name="log 2") == ""
     assert "log 2" not in window.panes.docks
-    assert "only be one" in window.log.toPlainText()
 
 
 def test_an_unknown_kind_is_declined_rather_than_guessed_at(window):

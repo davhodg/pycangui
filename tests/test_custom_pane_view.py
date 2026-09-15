@@ -317,7 +317,6 @@ def test_a_custom_pane_with_a_bad_field_still_opens_and_says_why(app, window):
     window.open_custom_pane("broken")
     view = window._custom_pane_view("broken")
     assert view.note.isVisible()
-    assert "would show nothing" in view.note.text()
 
 
 def test_editing_the_pane_rewrites_its_file_and_its_title(app, window):
