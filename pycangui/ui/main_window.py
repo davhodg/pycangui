@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
-from pycangui.core import workspaces
+from pycangui.core import workspace_files, workspaces
 from pycangui.core.backends import BACKENDS
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.context import Context
@@ -40,7 +40,7 @@ from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
-from pycangui.ui import folders, messages
+from pycangui.ui import folders, keep_file, messages
 from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.bus_status import BusStatus
 from pycangui.ui.canopen_view import CanopenView
@@ -291,15 +291,20 @@ class MainWindow(QMainWindow):
         self.workspace_menu = WorkspaceMenu(self, self.ctx)
         self.workspace_menu.install(file_menu)
         self.workspace_menu.switch_requested.connect(self._switch_workspace)
+        self.workspace_menu.arrangement_wanted.connect(self.save_arrangement)
         file_menu.addSeparator()
         quit_action = file_menu.addAction("Exit", self.close)
         quit_action.setMenuRole(QAction.QuitRole)  # the Apple menu, where there is one
         quit_action.setShortcut(QKeySequence.Quit)
-        for path in self.ctx.settings.get("dbc.paths", []):
-            self._load_dbc(path)
-        if (a2l := self.ctx.settings.get("xcp.a2l")) and Path(a2l).exists():
+        # Resolved against the workspace: a file kept in it is remembered
+        # relative to it, so that it is found wherever the workspace is.
+        workspace = self.ctx.workspace_dir
+        for value in self.ctx.settings.get("dbc.paths", []):
+            self._load_dbc(str(workspace_files.resolve(value, workspace)))
+        a2l = self.ctx.settings.get("xcp.a2l")
+        if a2l and (a2l := workspace_files.resolve(a2l, workspace)).exists():
             try:
-                self.xcp.load_a2l(a2l)
+                self.xcp.load_a2l(str(a2l))
             except Exception as exc:
                 self.events.warning(f"A2L load failed: {exc}")
 
@@ -586,7 +591,7 @@ class MainWindow(QMainWindow):
                 "scope",
                 "Signals and Plot",
                 Qt.LeftDockWidgetArea,
-                lambda _name: ScopeView(self.signals, self.bus.now, self.ctx),
+                lambda name: ScopeView(self.signals, self.bus.now, self.ctx, key=name),
                 several=True,
             ),
             PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
@@ -1159,6 +1164,19 @@ class MainWindow(QMainWindow):
         if answer.clickedButton() is fresh:
             self.workspace_menu.new_empty()
 
+    @Slot()
+    def save_arrangement(self) -> None:
+        """Write the pane arrangement into the workspace now.
+
+        On the way out, and before the workspace in use is exported, so that
+        the file carries the panes as they are on screen rather than as they
+        were when pycangui started.  Not where the window sits on the screen,
+        which stays in QSettings with this machine.
+        """
+        self.ctx.layout.set("window", bytes(self.saveState(LAYOUT_VERSION)))
+        self.panes.save_view_states()
+        self.panes.save()
+
     def closeEvent(self, event) -> None:
         # Before anything is put away, because Cancel has to leave everything
         # exactly as it was: a file edited on a custom pane exists only here.
@@ -1173,12 +1191,10 @@ class MainWindow(QMainWindow):
         # a write can still reach it.
         self.closing.emit()
         QSettings().setValue("geometry", self.saveGeometry())
-        self.ctx.layout.set("window", bytes(self.saveState(LAYOUT_VERSION)))
-        self.panes.save_view_states()
         # Saved before they are closed: closing one puts its pane away, and
         # what is saved should be how things were left, not how they were
         # tidied up.
-        self.panes.save()
+        self.save_arrangement()
         # Parentless windows of their own, so they would keep the application
         # running after the main window had gone.
         self.panes.close_detached()
@@ -1718,9 +1734,13 @@ class MainWindow(QMainWindow):
             self.ctx.user_dir,
         )
         if path and self._load_dbc(path, offer_relaxing=True):
+            workspace = self.ctx.workspace_dir
             paths = list(self.ctx.settings.get("dbc.paths", []))
-            if path not in paths:
-                self.ctx.settings.set("dbc.paths", [*paths, path])
+            chosen = Path(path).resolve()
+            if any(workspace_files.resolve(p, workspace).resolve() == chosen for p in paths):
+                return  # remembered already
+            value = keep_file.offer(self, self.ctx, path, workspace_files.DBC)
+            self.ctx.settings.set("dbc.paths", [*paths, value])
 
     def _load_dbc(self, path: str, offer_relaxing: bool = False) -> bool:
         """Load a database, strictly unless told otherwise.

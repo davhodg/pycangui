@@ -178,6 +178,15 @@ def clean(name: str) -> str:
 def why_not(name: str) -> str:
     """Why this name cannot be used, or "" if it can."""
     name = clean(name)
+    if reason := _not_a_folder_name(name):
+        return reason
+    if exists(name):
+        return f"There is already a workspace called {name}."
+    return ""
+
+
+def _not_a_folder_name(name: str) -> str:
+    """Why this could never be a workspace, taken or not.  "" if it could."""
     if not name:
         return "A workspace needs a name."
     if len(name) > MAX_NAME:
@@ -189,9 +198,31 @@ def why_not(name: str) -> str:
         )
     if name.lower() in _RESERVED:
         return f"Windows will not accept a folder called {name}."
-    if exists(name):
-        return f"There is already a workspace called {name}."
     return ""
+
+
+def next_free(base: str = "workspace") -> str:
+    """A name nobody has used, as close to ``base`` as it can be.
+
+    Offered, never imposed: it is what a name dialog opens on, so the easy
+    answer is one that will be accepted.  A ``base`` that could never be a
+    folder name -- a downloaded file called "drive (1)", say -- is not tidied
+    into something that looks like it; the suggestion falls back to plain
+    "workspace" and the person can type what they meant.
+    """
+    base = clean(base)
+    if _not_a_folder_name(base):
+        base = "workspace"
+    if not exists(base):
+        return base
+    number = 2
+    while True:
+        suffix = f" {number}"
+        # Shortened to fit rather than refused for length, which would never end.
+        candidate = base[: MAX_NAME - len(suffix)].rstrip(" .") + suffix
+        if why_not(candidate) == "":
+            return candidate
+        number += 1
 
 
 # --- making, renaming, removing -----------------------------------------------------------

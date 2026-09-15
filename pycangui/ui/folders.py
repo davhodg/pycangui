@@ -40,6 +40,7 @@ A2L = "a2l"
 SCRIPT = "script"
 EXPORT = "export"
 PLUGIN = "plugin"  # plugin packages, installed and exported
+WORKSPACE = "workspace"  # workspace files, exported and imported
 
 PREFIX = "folders."
 
