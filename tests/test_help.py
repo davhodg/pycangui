@@ -259,13 +259,42 @@ def test_documentation_shows_the_manual_rather_than_a_browser(app, window, monke
     monkeypatch.setattr(
         QDesktopServices, "openUrl", lambda _url: pytest.fail("it went to the internet")
     )
-    shown = []
-    monkeypatch.setattr(module.ManualDialog, "exec", lambda self: shown.append(self))
     window.help_menu._open_docs()
+    manual = window.help_menu.manual
+    assert manual is not None and manual.isVisible(), "no manual window"
+    assert isinstance(manual, module.ManualDialog)
+    assert "pycangui manual" in manual.view.toPlainText().lower(), "rendered, not raw markdown"
+    assert "#" not in manual.view.toPlainText()[:40], "the markdown was not parsed"
 
-    assert shown, "no manual window"
-    assert "pycangui manual" in shown[0].view.toPlainText().lower(), "rendered, not raw markdown"
-    assert "#" not in shown[0].view.toPlainText()[:40], "the markdown was not parsed"
+
+def test_the_manual_leaves_the_rest_of_pycangui_usable(app, window):
+    """Read beside the pane it describes: not modal, and it can be maximised."""
+    from PySide6.QtCore import Qt
+
+    window.help_menu._open_docs()
+    manual = window.help_menu.manual
+    assert not manual.isModal()
+    assert manual.windowFlags() & Qt.WindowMaximizeButtonHint
+    assert manual.parent() is None, "a window of its own, not held on top of the main one"
+
+
+def test_opening_the_manual_again_brings_back_the_same_window(app, window):
+    window.help_menu._open_docs()
+    first = window.help_menu.manual
+    first.show_page("hooks.md")
+    first.close()
+    window.help_menu._open_docs()
+    assert window.help_menu.manual is first
+    assert first.isVisible()
+
+
+def test_the_manual_closes_with_pycangui(app, window):
+    """It has no parent, so nothing else would take it down."""
+    window.help_menu._open_docs()
+    manual = window.help_menu.manual
+    window.help_menu.close_manual()  # what shutdown does for it
+    assert not manual.isVisible()
+    assert window.help_menu.manual is None
 
 
 def test_a_build_without_the_manual_falls_back_to_the_web(app, window, monkeypatch):
@@ -357,7 +386,8 @@ def test_every_picture_a_page_shows_ships():
     """A missing screenshot renders as nothing at all, which is easy to miss."""
     from pycangui.help import images_in, manual_text, missing_images
 
-    assert "main-window.png" in images_in(manual_text()), "the contents shows the main window"
+    for name in images_in(manual_text()):
+        assert name not in missing_images()
     assert missing_images() == []
 
 

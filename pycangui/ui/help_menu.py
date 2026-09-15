@@ -169,8 +169,14 @@ class ManualDialog(QDialog):
     a short one you cannot get out of.
     """
 
-    def __init__(self, parent: QMainWindow, text: str = "", page: str = help_pages.MANUAL) -> None:
+    def __init__(
+        self, parent: QMainWindow | None, text: str = "", page: str = help_pages.MANUAL
+    ) -> None:
         super().__init__(parent)
+        # A window, not a dialog: read beside the pane it describes, so it must
+        # not freeze the rest of pycangui, and a long page wants maximising.
+        self.setWindowFlags(Qt.Window | Qt.WindowMinMaxButtonsHint | Qt.WindowCloseButtonHint)
+        self.setModal(False)
         self.setWindowTitle(f"{APP_NAME} manual")
         self.resize(860, 700)
         #: Where the reader has been, so that Back goes back rather than home.
@@ -368,6 +374,9 @@ class HelpMenu(QObject):
         self.window = window
         self._worker = Worker(self)
         self._checking = False
+        #: The manual, once opened: kept, so Documentation brings the same
+        #: window forward -- on the page it was left at -- rather than a second.
+        self.manual: ManualDialog | None = None
 
         menu = window.menuBar().addMenu("&Help")
         menu.addAction("Documentation", self._open_docs)
@@ -380,14 +389,32 @@ class HelpMenu(QObject):
 
     def shutdown(self) -> None:
         self._worker.stop()
+        self.close_manual()
+
+    def close_manual(self) -> None:
+        if self.manual is not None:
+            # A window of its own, with no parent to take it down: without this
+            # it would keep pycangui running after the main window had gone.
+            self.manual.close()
+            self.manual.deleteLater()
+            self.manual = None
 
     def _open_docs(self) -> None:
-        """The shipped manual, or the web page if this build has none."""
+        """The shipped manual, or the web page if this build has none.
+
+        Opened without a parent, as a pane taken out into a window is, so it can
+        sit behind or beside the main window rather than always on top of it.
+        """
         text = manual_text()
-        if text:
-            ManualDialog(self.window, text).exec()
-        else:
+        if not text:
             QDesktopServices.openUrl(QUrl(README_PAGE))
+            return
+        if self.manual is None:
+            self.manual = ManualDialog(None, text)
+            self.manual.setWindowIcon(self.window.windowIcon())
+        self.manual.show()
+        self.manual.raise_()
+        self.manual.activateWindow()
 
     def _show_diagnostics(self) -> None:
         """Report the state of the window, and put it on the clipboard."""

@@ -92,12 +92,13 @@ carries them and from [`hooks/canopen.py::object_display`](hooks.md) where it
 does not --
 the same place the object dictionary gets them, so a pane and the tree agree.
 
-Two things a pane will not do. It will not send a number outside the limits
-the EDS declared, because a node is free to clamp it silently and a parameter
-that did not take is worse than one that was not sent. And a `flags` or `bits`
-field will not write until it has read: those write part of an object, part of
-an object cannot be written, and a word made mostly of zeroes would clear
-every bit the pane is not showing.
+Two checks a pane is designed to make. It refuses to send a number outside the
+limits the EDS declared, because a node is free to clamp it silently and a
+parameter that did not take is worse than one that was not sent. And a `flags`
+or `bits` field waits to write until it has read: those write part of an
+object, part of an object cannot be written, and a word made mostly of zeroes
+would clear every bit the pane is not showing. They are there to catch
+mistakes, not to replace knowing what a value will do.
 
 ## Typing a value
 

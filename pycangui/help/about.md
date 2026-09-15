@@ -11,10 +11,9 @@ adapter, state, load and error count, and any panes out on their own, to the
 [Event Log](event-log.md) and copies it to the clipboard -- ready to paste into
 a bug report when a bus looks silent.
 
-**Help > Check for updates...** asks GitHub whether there is a newer release --
-only when you pick it: pycangui makes no network connection of its own accord,
-sends nothing about your machine, and downloads nothing. A newer version just
-offers to open the releases page.
+**Help > Check for updates...** asks GitHub whether there is a newer release.
+If there is one, it offers to open the releases page, and installing it is up
+to you.
 
 **Help > Licences...** shows pycangui's own Apache-2.0 licence, the NOTICE
 attributions and the full third-party licence text, all shipped with the

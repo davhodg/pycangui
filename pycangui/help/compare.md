@@ -60,7 +60,7 @@ record.
 
 ## What it does not do
 
-**It does not write.** Comparing tells you what is different; putting it right
+**It is designed only to read.** Comparing tells you what is different; putting it right
 is *Apply DCF* in the [CANopen](canopen.md) pane. Writing a chosen handful of
 differences into the device in front of you is a bigger thing than this pane
 and deserves a question of its own.

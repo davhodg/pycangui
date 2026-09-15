@@ -33,11 +33,13 @@ What **is** worth reporting:
 - a way to run code, or to write outside the folder you chose, from a file
   that is meant to be data -- a DBC, EDS, DCF, A2L, firmware image, log or
   measurement file;
-- pycangui going online when you did not ask it to.  It does so only for
-  *Help > Check for updates*, for a GitHub page you chose to open, and to
-  install the optional MDF reader from PyPI after you agreed to it;
+- pycangui going online when you did not ask it to.  It is designed to go
+  online only for *Help > Check for updates*, for a GitHub page you chose to
+  open, and to install the optional MDF reader from PyPI after you agreed to it;
 - transmitting onto a real bus without asking first -- unless you told it to
-  stop asking -- or after you declined.
+  stop asking -- or after you declined.  It is designed to ask, but those
+  questions are a reminder rather than a safeguard, and pycangui is provided
+  without warranty of any kind.
 
 What is **not**, here:
 

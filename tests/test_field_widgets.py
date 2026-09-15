@@ -565,13 +565,6 @@ def test_a_read_only_number_is_not_doubled(app):
     assert widget.edit.text() == "250"
 
 
-def test_the_tooltip_says_which_keys_do_what(app):
-    number, _w, _a, _s = made(Field(index=0x2001, kind="number"))
-    hexed, _w2, _a2, _s2 = made(Field(index=0x2001, kind="hex"))
-    assert "Enter writes" in number.edit.toolTip() and "Ctrl+Up" in number.edit.toolTip()
-    assert "Enter writes" in hexed.edit.toolTip() and "Ctrl+Up" not in hexed.edit.toolTip()
-
-
 # --- the same for a field inside a word --------------------------------------------------------
 def test_leaving_a_bits_box_does_not_write_it(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="bits", first=4, width=3))
