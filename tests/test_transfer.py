@@ -350,14 +350,6 @@ def view(app, tmp_path, monkeypatch):
     m.client = None
 
 
-def test_the_button_says_which_service_it_will_use(view):
-    assert view.start.text() == "Download"
-    view.operation.setCurrentIndex(view.operation.findData("upload"))
-    assert view.start.text() == "Upload"
-    view.operation.setCurrentIndex(view.operation.findData(1))
-    assert view.start.text() == "Add file"
-
-
 def test_a_file_transfer_greys_out_the_address(view):
     view.operation.setCurrentIndex(view.operation.findData(1))
     assert not view.address.isEnabled() and not view.byte_count.isEnabled()

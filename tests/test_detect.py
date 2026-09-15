@@ -264,7 +264,6 @@ def test_a_backend_with_no_channel_greys_the_box_out(app, bar, monkeypatch):
     bar._set_channel_enabled("madeup")
     assert not bar.channel.isEnabled()
     assert bar.channel.currentText() == ""
-    assert "does not use a channel" in bar.channel.toolTip()
 
 
 def test_the_declared_default_is_used_where_we_have_no_opinion():

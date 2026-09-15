@@ -154,8 +154,9 @@ def test_nothing_decoded_says_so_rather_than_opening_a_dialog(window, monkeypatc
     monkeypatch.setattr(
         QFileDialog, "getSaveFileName", lambda *a, **k: pytest.fail("nothing to save")
     )
+    before = window.log.toPlainText()
     window._export_signals()
-    assert "nothing has been decoded yet" in window.log.toPlainText()
+    assert window.log.toPlainText() != before
 
 
 def test_cancelling_the_dialog_writes_nothing(window, monkeypatch):

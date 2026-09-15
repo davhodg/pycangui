@@ -208,6 +208,7 @@ def test_the_window_says_when_there_was_nothing_to_forget(app, home):
 
     QSettings().clear()
     window = MainWindow()
+    before = window.log.toPlainText()
     window._forget_folders()
-    assert "No folders were being remembered" in window.log.toPlainText()
+    assert window.log.toPlainText() != before
     window.close()

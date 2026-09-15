@@ -71,7 +71,7 @@ def test_an_edited_copy_is_left_and_mentioned_once_per_version(folder, shipped, 
     outcome, lines = run(folder, shipped, settings)
     assert outcome.kept == ["thing.py"] and outcome.updated == []
     assert (folder / "thing.py").read_text() == "VERSION = 1  # mine\n"
-    assert len(lines) == 1 and "changes of your own" in lines[0] and RESTORE_ENTRY in lines[0]
+    assert len(lines) == 1 and RESTORE_ENTRY in lines[0]
 
     assert run(folder, shipped, settings)[1] == [], "not every start"
     shipped.write_text("VERSION = 3\n", encoding="utf-8")

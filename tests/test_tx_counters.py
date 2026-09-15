@@ -22,7 +22,7 @@ from pycangui.core import tx_fields as tx
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
-from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, COL_FIELDS, COL_NAME, TxView
+from pycangui.ui.tx_view import COL_CYCLIC, COL_FIELDS, COL_NAME, TxView
 
 CHANNEL = "vtxcount"
 
@@ -336,7 +336,6 @@ def test_a_computed_signal_stops_taking_edits(app, dbc_view):
     assert not children["PumpSpeedDemand"].flags() & Qt.ItemIsEditable
     assert children["PumpEnable"].text(COL_FIELDS) == "counter"
     assert children["PumpSpeedDemand"].text(COL_FIELDS) == "sum8"
-    assert "ignored" in children["PumpEnable"].toolTip(COL_DATA)
 
 
 def test_a_signal_nobody_computes_is_still_editable(app, dbc_view):

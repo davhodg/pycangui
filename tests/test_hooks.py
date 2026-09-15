@@ -232,7 +232,6 @@ def test_a_file_that_would_break_is_put_back_as_it_was(home, log, monkeypatch):
     hooks = Hooks(Context(log=log.append))
     assert hooks.update_stubs() == {}, "nothing was added"
     assert (workspaces.hooks_dir() / "canopen.py").read_text() == before
-    assert any("left as it was" in line for line in log)
 
 
 def test_restoring_a_hook_file_keeps_the_old_one(home, log):

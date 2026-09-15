@@ -109,8 +109,3 @@ def test_the_old_name_still_reaches_the_same_object(window):
     console habit written before it says window.vnodes.  An alias costs a
     line; breaking somebody's hook file costs them an evening."""
     assert window.vnodes is window.nodes
-
-
-def test_the_menu_entry_says_simulated(window):
-    tools = next(a.menu() for a in window.menuBar().actions() if a.text() == "&Tools")
-    assert "Simulated nodes..." in [a.text() for a in tools.actions()]

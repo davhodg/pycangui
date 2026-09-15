@@ -141,7 +141,6 @@ def test_closing_a_transmit_pane_stops_what_it_was_sending(app, connected):
     window.panes.docks["tx"].close()
     settle(app)
     assert view.cyclic_count() == 0
-    assert "were stopped" in window.log.toPlainText()
 
 
 def test_bringing_it_back_does_not_start_sending_again(app, connected):

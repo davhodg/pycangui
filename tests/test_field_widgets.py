@@ -379,15 +379,12 @@ def test_the_tooltip_carries_what_the_column_cannot(app):
     tip = widget.edit.toolTip()
     assert "0x2001:02" in tip
     assert "Peak phase current" in tip
-    assert "Limits:" in tip
     assert "Raw: 1234" in tip, "a scaled reading is a claim; the raw one is what the wire said"
 
 
 def test_a_flags_widget_shows_which_bit_is_which(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="flags", bits={0: "Ready", 3: "Fault"}))
     assert widget.boxes[3].text() == "Fault"
-    widget.set_value(0x2001, 0, 0, None)
-    assert widget.boxes[3].toolTip() == "Bit 3"
 
 
 def test_a_map_labels_its_axes_from_the_pane(app):

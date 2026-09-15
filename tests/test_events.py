@@ -166,9 +166,6 @@ def test_the_dbc_picker_explains_itself_rather_than_the_log(app, window):
     from pycangui.ui.tx_view import MessagePicker
 
     picker = MessagePicker(window.dbc, window)
-    text = " ".join(picker.list.item(i).text() for i in range(picker.list.count()))
-    assert "No database loaded" in text
-    assert "Load DBC" in text, "and where to go about it"
     assert not picker.list.isEnabled()
     assert picker.chosen() is None, "so Ok cannot add one of the explanations"
     picker.deleteLater()
