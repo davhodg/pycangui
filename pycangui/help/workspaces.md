@@ -5,7 +5,7 @@
 A workspace is everything about the product you are working on: the
 [hooks](hooks.md) that say what its objects mean, its EDS files, its channels and bitrates, its
 databases, its transmit list, its watch lists and its pane arrangement. One
-folder, so it can be exported as one file, backed up or handed to a colleague whole.
+folder, so it can be exported as one zip file.
 
 **If you only ever work on one thing, you can stop reading here.** There is a
 workspace called `default`, it was made without asking, and everything above
@@ -51,7 +51,7 @@ the person you send it to keeps their own.
 A workspace remembers files it did not make: the CAN databases you load, the
 A2L, and an EDS you chose by hand for a device. Keep those wherever you like.
 When you add one from outside the workspace, pycangui asks whether to copy it
-in, into the workspace's `dbc`, `a2l` or `eds` folder. **No** keeps using the
+into the workspace's `dbc`, `a2l` or `eds` folder. **No** keeps using the
 file where it is. A file inside the workspace is remembered relative to it, so
 it is still found wherever the workspace is unpacked.
 
@@ -68,7 +68,7 @@ next free one, such as `drive 2`. An existing workspace is never replaced.
 When the import is done it offers to open the new workspace.
 
 A workspace can hold hooks, simulated nodes and plugins, and those are Python
-that runs as part of pycangui. Import workspaces you would be willing to run
+that runs as part of pycangui. Only import workspaces you would be willing to run
 yourself.
 
 Import refuses a file that is not a pycangui workspace, meaning a zip with no

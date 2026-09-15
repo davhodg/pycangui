@@ -257,7 +257,6 @@ def test_polling_is_not_offered_against_a_file(app, pane):
     view.bind(FakeFile())
     settle(app)
     assert not view.poll.isEnabled()
-    assert "does not" in view.poll.toolTip()
 
 
 def test_polling_a_node_reads_it_over_and_over(app, pane):

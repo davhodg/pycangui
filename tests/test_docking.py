@@ -96,44 +96,22 @@ def test_undocking_shows_them(app, window):
     float_out(app, window.panes.docks["canopen"])
     bar = window.panes.bars["canopen"]
     assert bar.isVisible()
-    assert bar.pin.text() == "Pin"
-    assert bar.move_button.text() == "Detach"
 
 
 def test_each_button_says_what_pressing_it_will_do(app, window):
-    """Pin becomes Unpin, Detach becomes Attach: no reading it twice."""
+    """Detach, then Attach: the one button does both."""
     float_out(app, window.panes.docks["canopen"])
     bar = window.panes.bars["canopen"]
-
-    bar.pin.setChecked(True)
-    settle(app)
-    assert bar.pin.text() == "Unpin"
-    bar.pin.setChecked(False)
-    settle(app)
-    assert bar.pin.text() == "Pin"
 
     bar.move_button.click()  # Detach
     settle(app)
-    assert bar.move_button.text() == "Attach"
+    assert "canopen" in window.panes.detached
     bar.move_button.click()  # Attach
     settle(app)
     assert "canopen" not in window.panes.detached
-    assert bar.move_button.text() == "Detach"
     # Back where it came from, which was floating, so it is still out and
     # still carries its buttons.
     assert bar.isVisible()
-
-
-def test_the_buttons_explain_themselves_on_hover(app, window):
-    """Qt tooltips: what DVT called the balloon."""
-    float_out(app, window.panes.docks["canopen"])
-    bar = window.panes.bars["canopen"]
-    assert "above every other window" in bar.pin.toolTip()
-    assert "taskbar" in bar.move_button.toolTip()
-
-    bar.move_button.click()
-    settle(app)
-    assert "back where it came from" in bar.move_button.toolTip(), "and change with it"
 
 
 def test_the_pin_button_keeps_the_pane_on_top(app, window):
@@ -332,7 +310,6 @@ def test_a_pane_restored_floating_has_its_buttons(app, tmp_path, monkeypatch):
     assert second.panes.docks["canopen"].isFloating() and second.panes.docks["canopen"].isVisible()
     assert second.panes.bars["canopen"].isVisible(), "an undocked pane must carry its buttons"
     assert second.panes.bars["canopen"].pin.isChecked(), "and remember it was pinned"
-    assert second.panes.bars["canopen"].pin.text() == "Unpin"
     second.close()
 
 

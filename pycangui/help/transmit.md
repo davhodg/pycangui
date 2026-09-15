@@ -5,8 +5,7 @@
 A transmit pane only sends while it is on screen. Closing one stops whatever
 it was repeating -- frames arriving on a live bus from a pane nobody can see is
 the hardest sort of fault to find, since nothing on screen accounts for them --
-and it says so in the Event Log. Bringing it back does not start them again,
-because beginning to transmit onto a bus is not something to do unasked.
+and it says so in the Event Log. Bringing it back does not start them again.
 Tabbing a transmit pane behind another, or detaching it into a window of its
 own, are not putting it away: it is still on screen and still sending.
 
@@ -44,13 +43,6 @@ whole message except its own bytes. That default is the usual rule and the
 one that is easy to get wrong: including the checksum's own bytes means
 hashing a field that is about to be overwritten, so the number never matches
 at the other end. Give it an explicit byte range where a protocol wants one.
-
-**They cannot share a place.** The checksum is written second, so a checksum
-on the counter's byte would put the counter in and then stamp it out, on every
-frame, with nothing wrong to see from this end. The dialog refuses the pair
-and says so, and a row configured that way before the check existed is not
-sent at all. Half a byte each -- the counter in the low nibble, the checksum
-in the high one -- is fine, and is a real arrangement rather than a loophole.
 
 | Algorithm | Where you meet it |
 |-----------|-------------------|

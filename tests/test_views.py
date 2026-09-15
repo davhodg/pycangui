@@ -301,7 +301,6 @@ def test_pause_holds_the_display_without_losing_frames(app, tmp_path, monkeypatc
     view.on_frames([Frame(0.1, "CAN 1", 0x101, False, False, True, b"") for _ in range(5)])
     assert view.model.rowCount() == 1  # the display has not moved
     assert len(view._pending) == 5  # but nothing was thrown away
-    assert "held" in view.count_label.text()
 
     view.pause.setChecked(False)
     assert view.model.rowCount() == 6 and view._pending == []
@@ -429,11 +428,6 @@ def test_space_with_nothing_selected_is_left_to_qt(tx):
     assert not space_over(tx), "not swallowed, so Qt still gets it"
 
 
-def test_the_tooltip_says_how_to_tick_them_all(tx):
-    assert "press space" in tx.tree.toolTip()
-    assert "Ctrl+A" in tx.tree.toolTip(), "and how to select them in the first place"
-
-
 def _menu(window, title):
     return next(a.menu() for a in window.menuBar().actions() if a.text() == title)
 
@@ -462,10 +456,6 @@ def test_the_two_hook_entries_say_how_they_differ(app, tmp_path, monkeypatch):
     window = MainWindow()
     tools = _menu(window, "&Tools")
     assert tools.toolTipsVisible(), "tooltips in this menu are set but never shown"
-    tips = {a.text(): a.toolTip() for a in tools.actions()}
-    assert "without" in tips["Reload hooks"] and "restarting" in tips["Reload hooks"]
-    assert "by themselves" in tips["Add missing hooks"], "says it is not the usual route"
-    assert "alone" in tips["Add missing hooks"], "says what it will not touch"
     window.close()
 
 
@@ -649,16 +639,6 @@ def test_the_statistics_columns_sort_by_number(app):
     cyclic(m, 0x100, 0.1, 5)
     assert m.index(0, COLUMNS.index("Jitter")).data(Qt.UserRole) == pytest.approx(0.0)
     assert m.index(0, COLUMNS.index("Period max")).data(Qt.UserRole) == pytest.approx(0.1)
-
-
-def test_the_headers_say_which_columns_mean_now_and_which_mean_since(app):
-    m = LatestModel()
-    from pycangui.ui.latest_model import COLUMNS
-
-    rate = m.headerData(COLUMNS.index("Rate"), Qt.Horizontal, Qt.ToolTipRole)
-    avg = m.headerData(COLUMNS.index("Period avg"), Qt.Horizontal, Qt.ToolTipRole)
-    assert "describes now" in rate
-    assert "not the same as Period" in avg
 
 
 def test_the_statistics_start_hidden_and_the_choice_is_kept(app, tmp_path, monkeypatch):

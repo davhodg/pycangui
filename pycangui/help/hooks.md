@@ -6,7 +6,7 @@ A **hook** is a small Python function pycangui calls at a decision point where
 the answer depends on your product rather than on any standard. Which EDS
 belongs to this node. What those five manufacturer bytes in an emergency mean.
 What the seed-to-key algorithm is. Nobody outside the company that built the
-device can answer any of those, so pycangui asks rather than guesses.
+device can answer any of those.
 
 Hooks are the smaller half of a pair. A hook answers a question pycangui
 already knows to ask, from a fixed list of them; a [plugin](plugins.md) is the
@@ -88,8 +88,7 @@ deleted; you should not otherwise need it.
 For each decision, in order:
 
 1. your function, if the file loaded and defines it;
-2. if it raises, the traceback goes to the [Event Log](event-log.md) and
-   pycangui carries on with the default;
+2. if it raises, the traceback goes to the [Event Log](event-log.md) and pycangui carries on with the default;
 3. if it returns `None`, that means "do the normal thing" and the default runs;
 4. otherwise your answer is used.
 
@@ -112,12 +111,6 @@ anything a hook wants to say arrives where everything else does.
 | `transmit.py` | a checksum your device computes its own way, for a message sent from [CAN Transmit](transmit.md) |
 | `trace.py` | what to call a frame the trace does not recognise |
 | `startup.py` | what to do once the window is up -- see below |
-
-The tables in `j1939.py` are filled in rather than hidden inside pycangui:
-the PGN names and the failure modes are there to read, and adding a proprietary
-PGN is a line in a dictionary. What is deliberately *not* shipped is anything
-copyrighted -- the several thousand SPN names from SAE J1939-71, and UDS DTC
-descriptions, which no standard defines at all.
 
 The per-protocol pages say which hook does what in context:
 [CANopen](canopen.md), [UDS](uds.md), [J1939](j1939.md) and [XCP](xcp.md).

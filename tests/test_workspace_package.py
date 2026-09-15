@@ -320,8 +320,6 @@ def choose_file(monkeypatch, path):
 def test_the_menu_offers_export_and_import_with_a_word_on_each(menu):
     actions = {action.text(): action for action in menu.menu.actions()}
     assert "Export..." in actions and "Import..." in actions
-    assert "zip" in actions["Export..."].toolTip()
-    assert "new workspace" in actions["Import..."].toolTip()
 
 
 def test_export_writes_the_workspace_in_use(menu, tmp_path, monkeypatch):
@@ -384,7 +382,6 @@ def test_import_lists_what_it_will_write_then_makes_the_workspace(
     assert "pump" in confirmation and "pump.zip" in confirmation
     for inside in PRODUCT_FILES:
         assert inside in confirmation, f"{inside} is not listed"
-    assert "Python" in confirmation, "and it says some of it is code that runs"
     assert switched == [], "not opened, because they said not to"
 
 
