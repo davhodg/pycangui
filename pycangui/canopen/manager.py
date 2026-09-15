@@ -47,6 +47,9 @@ MISSED_HEARTBEATS = 3
 MIN_HEARTBEAT_GAP_S = 0.01  # the shortest gap that can be a real heartbeat period
 MIN_HEARTBEAT_TIMEOUT_S = 1.0
 
+#: The state shown for a node put in the list by hand, until it is heard from.
+ADDED_BY_HAND = "added by hand"
+
 #: SDO timing as the ``canopen`` package ships it: 300 ms for each answer and
 #: no second try.  Settable in the CANopen pane, because a slow node or a busy
 #: bus is found in the field and not at a desk.
@@ -108,6 +111,7 @@ class CanopenManager(QObject):
     lss_found = Signal(object)  # NodeIdentity discovered by LSS
     pdo_config = Signal(int)  # node_id: its PDO configuration changed
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
+    access_level = Signal(int, object)  # node_id, the access level held (None: none known)
     message = Signal(str)  # for the Event Log pane
 
     def __init__(self, bus: BusManager, hooks=None) -> None:
@@ -130,7 +134,13 @@ class CanopenManager(QObject):
         #: The last few gaps per node, which the period is the median of.
         self._heartbeat_gaps: dict[int, deque[float]] = {}
         self.heartbeat_interval: dict[int, float] = {}
+        #: node -> seconds, for the nodes whose timeout is set rather than worked
+        #: out.  Kept across a disconnect: it is configuration, not observation.
+        self.heartbeat_overrides: dict[int, float] = {}
         self.lost_nodes: set[int] = set()
+        #: node -> the access level it said is held, or the one a login was
+        #: granted.  Forgotten on disconnect: a level lasts a connection at most.
+        self.access_levels: dict[int, int] = {}
         self._liveness = QTimer(self, interval=250, timeout=self._check_liveness)
         self._liveness.start()
         self.network: canopen.Network | None = None
@@ -221,15 +231,28 @@ class CanopenManager(QObject):
         self.pdo_update.emit(node_id, pdo_map.name, values)
 
     # --- liveness: the heartbeat consumer side ---------------------------------
+    def set_heartbeat_timeouts(self, timeouts: dict[int, float]) -> None:
+        """Nodes whose heartbeat timeout is set, in seconds, rather than worked out.
+
+        A node taken off the list goes back to the worked-out timeout.
+        """
+        self.heartbeat_overrides = {
+            int(node_id): float(seconds) for node_id, seconds in timeouts.items() if seconds > 0
+        }
+
     def heartbeat_timeout(self, node_id: int) -> float:
         """How long to wait before calling a node lost.
 
-        Uses the producer time from object 0x1017 when the EDS or the node has
-        given us one, otherwise the interval observed on the bus.  Returns 0
-        until a few heartbeats have been seen: there is nothing to judge from
-        yet, and a timeout guessed from one gap would be a node reported lost
-        on the strength of an anecdote.
+        A timeout set for this node wins, as set: whoever set it knows
+        something about the node that its heartbeats do not say.  Otherwise
+        the producer time from object 0x1017 when the EDS or the node has given
+        us one, or the interval observed on the bus.  Returns 0 until a few
+        heartbeats have been seen: there is nothing to judge from yet, and a
+        timeout guessed from one gap would be a node reported lost on the
+        strength of an anecdote.
         """
+        if (override := self.heartbeat_overrides.get(node_id)) is not None:
+            return override
         interval = None
         node = self.node(node_id)
         if node is not None and 0x1017 in node.object_dictionary:
@@ -266,6 +289,100 @@ class CanopenManager(QObject):
         self._heartbeat_gaps.clear()
         self.heartbeat_interval.clear()
         self.lost_nodes.clear()
+        self.access_levels.clear()
+
+    # --- a node added by hand ----------------------------------------------------
+    def add_node(self, node_id: int) -> bool:
+        """Put a node in the list that nobody has heard from.
+
+        A node appears by itself when its heartbeat arrives, which leaves out
+        exactly the ones somebody most needs to reach: heartbeat switched off,
+        held in pre-operational, or sitting in a bootloader.  Returns whether
+        it was added.
+        """
+        if self.network is None:
+            self.message.emit(f"Node {node_id}: not connected, so there is nothing to add it to")
+            return False
+        if not 1 <= node_id <= 127:
+            self.message.emit(f"{node_id} is not a node id (1 to 127)")
+            return False
+        self._ensure_node(node_id)
+        self.node_seen.emit(node_id, ADDED_BY_HAND)
+        return True
+
+    # --- access levels: the maker's login, through the hooks -------------------------
+    def login(self, node_id: int, level: int, password: str = "") -> None:
+        """Ask a node for an access level, the way hooks/canopen.py::login says.
+
+        CANopen has no login of its own, so the whole of it is the hook.  The
+        password goes to the hook and nowhere else: not into a message, not
+        into the settings.
+        """
+        node = self._node_for_hooks(node_id)
+        if node is None:
+            return
+        hooks = self._hooks
+
+        def job() -> tuple[object, object]:
+            granted = hooks.call("canopen", "login", node, level, password)
+            held = hooks.call("canopen", "current_level", node) if granted else None
+            return granted, held
+
+        def done(result, error: str | None) -> None:
+            if error:
+                self.message.emit(f"Node {node_id}: login failed ({error})")
+                return
+            granted, held = result
+            if granted is None:
+                self.message.emit(
+                    f"Node {node_id}: no login for this device -- hooks/canopen.py::login "
+                    "is where one is written"
+                )
+                return
+            if not granted:
+                self.access_levels.pop(node_id, None)
+                self.message.emit(f"Node {node_id}: level {level} refused")
+                self.access_level.emit(node_id, None)
+                return
+            now = held if isinstance(held, int) and not isinstance(held, bool) else level
+            self.access_levels[node_id] = now
+            asked = f" (asked for {level})" if now != level else ""
+            self.message.emit(f"Node {node_id}: logged in at level {now}{asked}")
+            self.access_level.emit(node_id, now)
+
+        self._worker.submit(job, done)
+
+    def read_level(self, node_id: int) -> None:
+        """Ask a node which access level is held, through hooks/canopen.py::current_level."""
+        node = self._node_for_hooks(node_id)
+        if node is None:
+            return
+        hooks = self._hooks
+
+        def done(held, error: str | None) -> None:
+            if error:
+                self.message.emit(f"Node {node_id}: reading the access level failed ({error})")
+                return
+            if not isinstance(held, int) or isinstance(held, bool):
+                self.message.emit(
+                    f"Node {node_id}: no way to read its access level -- "
+                    "hooks/canopen.py::current_level is where one is written"
+                )
+                return
+            self.access_levels[node_id] = held
+            self.message.emit(f"Node {node_id}: access level {held}")
+            self.access_level.emit(node_id, held)
+
+        self._worker.submit(lambda: hooks.call("canopen", "current_level", node), done)
+
+    def _node_for_hooks(self, node_id: int):
+        if self.network is None:
+            self.message.emit(f"Node {node_id}: not connected")
+            return None
+        if self._hooks is None:
+            self.message.emit(f"Node {node_id}: no hooks are loaded")
+            return None
+        return self._ensure_node(node_id)
 
     def _on_emcy(self, node_id: int, err: canopen.emcy.EmcyError) -> None:
         """Runs on the Notifier thread: decode and emit, nothing else."""

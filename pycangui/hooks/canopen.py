@@ -163,3 +163,55 @@ def object_display(index: int, sub: int, extras: dict, identity, *, ctx) -> dict
     already and needs nothing here.
     """
     return OBJECT_DISPLAY.get((index, sub))
+
+
+@hook
+def login(node, level: int, password: str, *, ctx) -> bool | None:
+    """Obtain an access level on a node, for Login... in the CANopen pane.
+
+    CANopen has no standard for this, so each maker does it their own way: a
+    password written to an object, a seed read and a key written back, or a
+    level that simply follows from a write.  Return True when the node granted
+    the level, False when it refused, or None when this device has no login,
+    which is the default.
+
+    ``node`` is the live node, ``level`` the one asked for, and ``password``
+    whatever was typed, empty if nothing was.  This runs on a worker thread,
+    so SDO calls may take their time:
+
+        node.sdo.upload(index, sub)              read, as bytes
+        node.sdo.download(index, sub, data)      write bytes
+        node.sdo[index][sub].raw                 a value, where the EDS describes it
+
+    An SDO abort raises, and a hook that raises is reported in the Event Log
+    and counts as no login.  pycangui neither logs nor keeps the password, so
+    do not log it here either.
+
+    Examples:
+
+        # A password, as a 32-bit number, written to one of the maker's objects
+        # node.sdo.download(0x2F00, 1, int(password or 0).to_bytes(4, "little"))
+        # return True
+
+        # Seed and key: read a seed and answer it
+        # seed = int.from_bytes(node.sdo.upload(0x2F00, 2), "little")
+        # key = (seed ^ 0x5A5A5A5A) & 0xFFFFFFFF   # the maker's algorithm goes here
+        # node.sdo.download(0x2F00, 3, key.to_bytes(4, "little"))
+        # return current_level(node, ctx=ctx) == level
+    """
+    return None
+
+
+@hook
+def current_level(node, *, ctx) -> int | None:
+    """The access level a node says is held now, for the Access column.
+
+    Asked after a login is granted and by Read level.  Return the level, or
+    None when the device has no way of saying, which is the default: the
+    column then shows the level the login was granted.
+
+    Example:
+
+        # return node.sdo.upload(0x2F01, 0)[0]
+    """
+    return None
