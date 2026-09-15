@@ -45,8 +45,7 @@ in the toolbar is the one the protocol panes ([CANopen](canopen.md),
 
 ## Bitrates and CAN FD
 
-Bitrates run from 50 kbit/s to 1 Mbit/s -- 50 and 100 are ordinary on
-machinery and marine buses, where a long backbone costs more than speed.
+Bitrates run from 50 kbit/s to 1 Mbit/s.
 Ticking **FD** adds a **Data** rate beside it -- 500 kbit/s to 10 Mbit/s, and
 2 Mbit/s unless you change it -- since the arbitration phase still runs at the
 bitrate on the left. python-can has no way to ask an
@@ -106,17 +105,9 @@ it. Fix the cause, then recover.
 
 ## Before it disturbs equipment
 
-Every time pycangui starts it shows a notice saying what it is capable of,
-which you click through with **Continue**, or leave with **Quit**. It is not a question about anything in particular --
-it is the sentence worth having read before your first connection rather than
-after your first mistake.
+Every time pycangui starts it shows a notice saying what it is capable of, which you click through with **Continue**, or leave with **Quit**. 
 
-**It is the one dialog here you cannot switch off.** A notice dismissed for
-good on the first afternoon is one that the colleague who picks the machine up
-in March never sees, and it costs a keypress a session. It also costs no time
-at all: the libraries pycangui needs load behind it while you read, so what it
-replaced was a second and a half of nothing on screen rather than a second and
-a half of anything.
+**It is the one dialog here you cannot switch off.** It costs no time as the libraries pycangui needs load behind it.
 
 After that, pycangui asks before it can disturb equipment that is not its own,
 once a session for each: joining a **real bus** (naming the bitrate, because a
@@ -133,18 +124,9 @@ A few actions ask for themselves wherever they happen: switching
 bus; writing to an ECU in a [UDS](uds.md) transfer; and enabling a drive from
 the [CiA 402 plugin](plugins.md), which is the moment a motor can move.
 
-Every one of those questions starts on **Cancel**, so pressing Enter without
-reading is the answer that disturbs nothing. Each carries a **Do not ask me
-this again on this machine** tick box. What "remembered" means is worth knowing: an answer is kept for
-*you*, on *this computer*, and never inside a workspace. A workspace is a
-folder made to be copied and handed to a colleague, and an agreement that
-travelled inside one would mean somebody else's window, on somebody else's
-bench, quietly not asking. Another account on the same machine is asked for
-itself, and so is the same account on another machine.
+Each carries a **Do not ask me this again on this machine** tick box.
 
-*Tools > Reset > Ask about everything again* brings the whole lot back. A setting that can be turned on and not off is one you would
-be right to distrust, and this one turns off the questions asked before
-pycangui can disturb equipment.
+*Tools > Reset > Ask about everything again* brings the whole lot back.
 
 ## Recording and replay
 
@@ -159,7 +141,7 @@ Replay plays a log back onto the selected channel with its original timing.
 The arrow beside the button holds the speed (0.1x to 20x), *Loop*, and the
 last few files replayed. There is no separate offline mode: replaying onto a
 **virtual** channel feeds the trace, the decoders, the signal hub and the plot
-without touching any hardware, which is how a colleague's recording is
+without touching any hardware, which is how a recording is
 examined with nothing attached -- and if nothing is connected when you press
 Replay, pycangui offers to create that virtual channel for you. Replaying
 onto a real bus is real traffic, so it asks first.
