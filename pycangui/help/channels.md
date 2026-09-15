@@ -12,8 +12,8 @@ settings are remembered by name. **-** removes the selected channel.
 Pick the interface and open the channel list: pycangui asks it which adapters
 are attached and lists them, so the channel is chosen rather than guessed (it
 is `can0` on socketcan, `PCAN_USBBUS1` on a PEAK, and plain `0` on an IXXAT).
-Detection also runs in the background when you change interface. It only
-enumerates adapters -- nothing is transmitted and no bitrate is applied.
+Detection also runs in the background when you change interface. It is
+designed only to list adapters, without transmitting or applying a bitrate.
 
 Channel numbers belong to an adapter, so **two identical dongles both offer
 channels 0 and 1**. The list shows each one's hardware id or serial number to

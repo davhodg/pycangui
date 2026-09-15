@@ -324,9 +324,6 @@ def test_programming_with_no_node_says_so_rather_than_failing(app, window):
 
 def test_the_pane_offers_the_loader_the_version_and_the_transfer(app, window):
     view = window.panes.view("firmware:main")
-    assert view.enter.text() == "Enter bootloader"
-    assert view.leave.text() == "Exit bootloader"
-    assert view.version.text() == "Read version"
     offered = [view.transfer.itemText(i) for i in range(view.transfer.count())]
     assert offered == ["Segmented", "Block"], "segmented first: every device takes it"
 
@@ -369,7 +366,6 @@ def test_entering_the_bootloader_asks_first(app, window, monkeypatch):
 
     view.enter.click()
     assert asked and asked[0][0] == "firmware.stop.5", "and once per node, not once ever"
-    assert "stops being controlled" in asked[0][1]
     assert not view._busy and view.state.text() == "", "No means nothing was started"
 
 

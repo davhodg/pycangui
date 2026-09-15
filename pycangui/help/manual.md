@@ -1,7 +1,5 @@
 # pycangui manual
 
-![pycangui on its demo device: the CAN Trace, CAN Transmit and Event Log above, and engine and vehicle speed plotted in Signals and Plot below](main-window.png)
-
 ## Basics
 
 - [Your files](files.md) --- what pycangui keeps, where, and where file dialogs open

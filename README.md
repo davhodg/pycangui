@@ -97,7 +97,7 @@ python -m venv .venv
 
 The `[dev]` extra adds pytest, pytest-xdist, ruff, pdoc and the MDF reader. The launcher does not install it -- running the application does not need the test tools.
 
-`python build/screenshots.py` regenerates `pycangui/help/main-window.png`, the screenshot this README and the manual share. It opens pycangui on the demo device for about a minute, with temporary settings of its own, so leave the window alone while it runs.
+`python build/screenshots.py` regenerates `pycangui/help/main-window.png`, the screenshot in this README. It opens pycangui on the demo device for about a minute, with temporary settings of its own, so leave the window alone while it runs.
 
 `python build/api_docs.py` writes API pages for people writing hooks, simulated nodes and plugins to `dist/api-docs/`. Only that surface, not the whole package: the manual says how to extend pycangui, and these pages are where to look up exactly what an object offers.
 
