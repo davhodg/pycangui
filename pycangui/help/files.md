@@ -2,8 +2,7 @@
 
 # Your files
 
-pycangui keeps what it remembers for you in one folder, and you are free to
-open, edit, back up or copy anything in it. That is `%APPDATA%\pycangui` on
+pycangui keeps what it remembers for you in one folder. It is `%APPDATA%\pycangui` on
 Windows, `~/.config/pycangui` on Linux (or under `$XDG_CONFIG_HOME` if you set
 it), and `~/Library/Application Support/pycangui` on macOS; setting
 `PYCANGUI_HOME` puts it somewhere else.
