@@ -105,7 +105,7 @@ anything a hook wants to say arrives where everything else does.
 
 | File | Answers |
 |---|---|
-| `canopen.py` | which EDS belongs to a node, what to call it, what its manufacturer emergency bytes mean, and how an object should be shown -- name, unit, scaling, limits, named bits |
+| `canopen.py` | which EDS belongs to a node, what to call it, what its manufacturer emergency bytes mean, how an object should be shown -- name, unit, scaling, limits, named bits -- and how to log in to an access level |
 | `uds.py` | the seed-to-key algorithm, the names and descriptions of data identifiers, routines and sessions, how a DID decodes and encodes, DTC descriptions, and what the erase and check routines are sent |
 | `j1939.py` | PGN names, SPN names and failure-mode descriptions |
 | `xcp.py` | the seed-to-key algorithm for CAL and the other resources |

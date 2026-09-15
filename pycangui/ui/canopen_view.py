@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMenu,
@@ -48,11 +49,12 @@ from pycangui.canopen.display import (
 )
 from pycangui.canopen.display import text as value_text
 from pycangui.canopen.manager import CanopenManager, od_entries, type_name
+from pycangui.core import workspace_files
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
-from pycangui.ui import canopen_settings, folders, messages
+from pycangui.ui import canopen_login, canopen_settings, folders, keep_file, messages
 from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
 
@@ -103,9 +105,35 @@ class CanopenView(QWidget):
 
         # --- nodes ---------------------------------------------------------
         self.nodes = QTreeWidget()
-        self.nodes.setHeaderLabels(["Node", "Name", "State", "EDS"])
+        self.nodes.setHeaderLabels(["Node", "Name", "State", "EDS", "Access"])
         self.nodes.setRootIsDecorated(False)
         self.nodes.currentItemChanged.connect(self._on_node_selected)
+        self.nodes.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.nodes.customContextMenuRequested.connect(self._node_menu)
+        # Under the list, because each is about a node in it.
+        node_bar = QHBoxLayout()
+        add_node = QPushButton("Add node...")
+        add_node.setToolTip(
+            "Put a node in the list that has not been heard from: heartbeat off,\n"
+            "held in pre-operational, or sitting in its bootloader.  It is\n"
+            "identified straight away."
+        )
+        add_node.clicked.connect(self._add_node)
+        login = QPushButton("Login...")
+        login.setToolTip(
+            "Ask the selected node for an access level.  CANopen has no standard\n"
+            "login, so this is hooks/canopen.py::login, written for your device."
+        )
+        login.clicked.connect(self._login)
+        read_level = QPushButton("Read level")
+        read_level.setToolTip(
+            "Ask the selected node which access level is held, through\n"
+            "hooks/canopen.py::current_level."
+        )
+        read_level.clicked.connect(self._read_level)
+        for b in (add_node, login, read_level):
+            node_bar.addWidget(b)
+        node_bar.addStretch()
         # Two rows: commands on top, file / persistence actions below, so the
         # bar stays narrow enough for a docked pane.
         nmt_bar = QHBoxLayout()
@@ -137,8 +165,8 @@ class CanopenView(QWidget):
         # bar is for commands, and every setting beside them hid them further.
         settings_btn = QPushButton("Settings...")
         settings_btn.setToolTip(
-            "SDO timeout and retries for every node, and the SDO channel of any\n"
-            "node whose server is not on the predefined one."
+            "SDO timeout and retries for every node; and, per node, an SDO channel\n"
+            "off the predefined one or a heartbeat timeout of its own."
         )
         settings_btn.clicked.connect(self._open_settings)
         nmt_bar.addWidget(settings_btn)
@@ -237,6 +265,7 @@ class CanopenView(QWidget):
         top_l.addLayout(nmt_bar)
         top_l.addLayout(file_bar)
         top_l.addWidget(self.nodes)
+        top_l.addLayout(node_bar)
         mid = QWidget()
         mid_l = QVBoxLayout(mid)
         mid_l.setContentsMargins(0, 0, 0, 0)
@@ -299,6 +328,7 @@ class CanopenView(QWidget):
 
         # --- wiring ------------------------------------------------------------
         manager.node_seen.connect(self.on_node_seen)
+        manager.access_level.connect(self.on_access_level)
         manager.node_lost.connect(self.on_node_lost)
         manager.node_back.connect(self.on_node_back)
         manager.identified.connect(self.on_identified)
@@ -322,6 +352,52 @@ class CanopenView(QWidget):
         item = self.nodes.currentItem()
         return None if item is None else item.data(0, ROLE_INDEX)
 
+    # --- a node by hand, and its access level --------------------------------------
+    def _node_menu(self, at) -> None:
+        menu = QMenu(self.nodes)
+        menu.addAction("Add node...", self._add_node)
+        on_a_node = self.nodes.itemAt(at) is not None
+        for text, slot in (("Login...", self._login), ("Read level", self._read_level)):
+            menu.addAction(text, slot).setEnabled(on_a_node)
+        menu.exec(self.nodes.viewport().mapToGlobal(at))
+
+    def _add_node(self) -> None:
+        node_id, chose = QInputDialog.getInt(
+            self, "Add node", "Node id, 1 to 127:", self.selected_node() or 1, 1, 127
+        )
+        if not chose:
+            return
+        if self._node_item(node_id) is None and not self.manager.add_node(node_id):
+            return
+        if (item := self._node_item(node_id)) is not None:
+            self.nodes.setCurrentItem(item)
+
+    def _login(self) -> None:
+        node_id = self.selected_node()
+        if node_id is None:
+            self.ctx.warn("Login: no node selected")
+            return
+        dialog = canopen_login.LoginDialog(
+            self, node_id, canopen_login.remembered_level(self.ctx.settings)
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return
+        level, password = dialog.chosen()
+        self.ctx.settings.set(canopen_login.LEVEL_KEY, level)  # the level, never the password
+        self.manager.login(node_id, level, password)
+
+    def _read_level(self) -> None:
+        node_id = self.selected_node()
+        if node_id is None:
+            self.ctx.warn("Read level: no node selected")
+            return
+        self.manager.read_level(node_id)
+
+    @Slot(int, object)
+    def on_access_level(self, node_id: int, level) -> None:
+        if (item := self._node_item(node_id)) is not None:
+            item.setText(4, "" if level is None else str(level))
+
     def _open_settings(self) -> None:
         dialog = canopen_settings.CanopenSettingsDialog(
             self, canopen_settings.load(self.ctx), self.selected_node()
@@ -335,9 +411,14 @@ class CanopenView(QWidget):
             f"node {node_id} on 0x{request:03X}/0x{response:03X}"
             for node_id, (request, response) in sorted(chosen.channels.items())
         )
+        heartbeats = ", ".join(
+            f"node {node_id} {ms:g} ms" for node_id, ms in sorted(chosen.heartbeat_timeouts.items())
+        )
         self.ctx.log(
             f"CANopen settings: SDO timeout {chosen.timeout_ms:.0f} ms, "
-            f"{chosen.retries} retries" + (f"; SDO channel {channels}" if channels else "")
+            f"{chosen.retries} retries"
+            + (f"; SDO channel {channels}" if channels else "")
+            + (f"; heartbeat timeout {heartbeats}" if heartbeats else "")
         )
 
     @Slot(int, str)
@@ -380,7 +461,7 @@ class CanopenView(QWidget):
             self._node_item(identity.node_id).setText(1, name)
         path = self.hooks.call("canopen", "eds_for_node", identity)
         if path is None:
-            path = self.ctx.settings.get("canopen.eds_map", {}).get(identity.key)
+            path = self._remembered_eds(identity)
         if path is None:
             path = find_eds(identity, [self.ctx.eds_dir, resources.path("")])
         if path is None:
@@ -390,6 +471,27 @@ class CanopenView(QWidget):
                 self.manager.load_eds(identity.node_id, str(path))
             else:
                 self.ctx.warn(f"Node {identity.node_id}: EDS not found: {path}")
+
+    def _remembered_eds(self, identity: NodeIdentity) -> Path | None:
+        """The EDS remembered for this device, if it is still there.
+
+        Remembered relative to the workspace when it is in it, so an imported
+        workspace finds it.  One that is not there -- a link made on another
+        computer, a file moved since -- is said, and the usual search of the
+        EDS folder carries on rather than stopping at a path that goes nowhere.
+        """
+        eds_map = self.ctx.settings.get("canopen.eds_map", {})
+        value = eds_map.get(identity.key) if isinstance(eds_map, dict) else None
+        if not isinstance(value, str) or not value:
+            return None
+        path = workspace_files.resolve(value, self.ctx.workspace_dir)
+        if path.is_file():
+            return path
+        self.ctx.warn(
+            f"Node {identity.node_id}: the EDS remembered for it is not there ({value}); "
+            "looking in the EDS folder instead"
+        )
+        return None
 
     def _ask_for_eds(self, identity: NodeIdentity) -> str | None:
         if identity.key in self._asked:
@@ -402,6 +504,7 @@ class CanopenView(QWidget):
             f"EDS file for node {identity.node_id} "
             f"(vendor {_hex(identity.vendor_id)}, product {_hex(identity.product_code)})",
             "EDS / DCF files (*.eds *.dcf);;All files (*)",
+            self.ctx.eds_dir,
         )
         if not path:
             return None
@@ -414,8 +517,10 @@ class CanopenView(QWidget):
             )
             if answer == QMessageBox.Yes:
                 eds_map = dict(self.ctx.settings.get("canopen.eds_map", {}))
-                eds_map[identity.key] = path
+                eds_map[identity.key] = keep_file.offer(self, self.ctx, path, workspace_files.EDS)
                 self.ctx.settings.set("canopen.eds_map", eds_map)
+                # The copy, if one was made: it is the file that will be used from now on.
+                return str(workspace_files.resolve(eds_map[identity.key], self.ctx.workspace_dir))
         return path
 
     def _load_eds_clicked(self) -> None:

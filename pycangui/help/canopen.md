@@ -17,6 +17,16 @@ RPDO mapping from the node itself, so [CAN Transmit](transmit.md) offers the
 RPDOs a remapped node actually receives rather than the ones its EDS started
 with.
 
+**Add node...**, under the list, puts in a node that has not been heard from:
+one with its heartbeat switched off, held in pre-operational, or sitting in its
+bootloader. It is identified straight away. **Login...** asks the selected
+node for an access level, with a password if the device wants one, and **Read
+level** asks which level is held; the **Access** column shows the answer.
+CANopen has no standard way to log in, so both are done by `login` and
+`current_level` in [`hooks/canopen.py`](hooks.md), written for your device.
+The password is passed to the hook and is neither logged nor kept. All three
+are on the right-click menu of the list too.
+
 **Settings...** holds what is set once rather than done, and is kept in the
 workspace:
 
@@ -24,14 +34,19 @@ workspace:
   and **retries** is how many more times to ask before giving up. The
   defaults, 300 ms and none, are those of the `canopen` library pycangui uses.
   Raise them for a node that is slow to answer or a bus that is busy.
-- **SDO channel, per node** is for a node whose SDO server is not on the
-  channel CiA 301 predefines, requests to 0x600 + node and answers on
-  0x580 + node. **Add** starts a row for the selected node on its predefined
-  channel; change the COB-IDs, in hex, to where its server is. **Remove** puts
-  the node back. Its heartbeat, emergencies and NMT are not affected.
+- **Per node** is for a node that needs something other than what pycangui
+  works out. **Add** starts a row for the selected node with nothing changed;
+  **Remove** puts the node back.
+  - **SDO request** and **SDO response** are for a node whose SDO server is not
+    on the channel CiA 301 predefines, requests to 0x600 + node and answers on
+    0x580 + node. Change the COB-IDs, in hex, to where its server is. Its
+    heartbeat, emergencies and NMT are not affected.
+  - **Heartbeat timeout**, in milliseconds, is how long without a heartbeat
+    before the node is called lost, instead of the timeout worked out for it.
+    Leave it blank to keep that.
 
-Both apply to every SDO pycangui sends: the object dictionary, custom panes,
-DCFs and plugins.
+The SDO settings apply to every SDO pycangui sends: the object dictionary,
+custom panes, DCFs and plugins.
 
 ## The object dictionary
 
@@ -80,8 +95,9 @@ power-cycle the node, and compare it against the DCF in the
 [compare](compare.md) pane. That is the check that means something.
 
 A node that stops sending heartbeats is marked **lost** in the node list and
-reported in the Event Log; the timeout follows the producer time from object
-0x1017, or the interval actually observed on the bus. The *LSS* tab
+reported in the Event Log. The timeout is three heartbeats, from the producer
+time in object 0x1017 or the interval actually observed on the bus, unless one
+is set for that node under *Settings...*. The *LSS* tab
 commissions a device that has no node-ID yet (CiA 305), in the three steps it
 is laid out in.
 

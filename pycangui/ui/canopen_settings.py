@@ -5,8 +5,7 @@
 The CANopen pane is for doing things to nodes -- NMT, SYNC, reading and
 writing -- and every setting put beside those made them harder to find.  So
 what is set once and left alone lives on a dialog of its own, in two halves:
-what applies to every node, and what applies to one.  The second half is where
-per-node heartbeat and identification settings belong too, when they come.
+what applies to every node, and what applies to one.
 
 Kept in the workspace, because a product's nodes are configured the way that
 product is, not the way the last one was.
@@ -46,23 +45,36 @@ from pycangui.ui import messages
 TIMEOUT_KEY = "canopen.sdo_timeout_ms"
 RETRIES_KEY = "canopen.sdo_retries"
 CHANNELS_KEY = "canopen.sdo_channels"
+HEARTBEATS_KEY = "canopen.heartbeat_timeouts"
 
 MIN_TIMEOUT_MS = 10
 MAX_TIMEOUT_MS = 60000
 MAX_RETRIES = 5
 #: CANopen's own identifiers are 11-bit.
 MAX_COB_ID = 0x7FF
-COLUMNS = ("Node", "Request COB-ID", "Response COB-ID")
+#: A heartbeat timeout shorter than this would call a node lost between two
+#: frames of an ordinary bus; longer than an hour is no longer watching it.
+MIN_HEARTBEAT_MS = 100
+MAX_HEARTBEAT_MS = 3_600_000
+
+NODE, REQUEST, RESPONSE, HEARTBEAT = range(4)
+COLUMNS = ("Node", "SDO request", "SDO response", "Heartbeat timeout")
 
 TIMEOUT_TIP = (
     "How long to wait for a node to answer each SDO request, for every SDO\n"
     "pycangui sends.  300 ms is the canopen library's own default."
 )
 RETRIES_TIP = "How many more times to ask when a node does not answer in time."
-CHANNEL_NOTE = (
-    "Only for a node whose SDO server is not on the channel CiA 301 predefines, "
-    "requests to 0x600 + node and answers on 0x580 + node.  Its heartbeat, "
-    "emergencies and NMT are not affected."
+HEARTBEAT_TIP = (
+    "In milliseconds: how long without a heartbeat before this node is called\n"
+    "lost.  Blank works it out, from the producer time in 0x1017 or the\n"
+    "heartbeats the node actually sends, as three of them."
+)
+PER_NODE_NOTE = (
+    "Only for a node that needs something other than what pycangui works out: "
+    "an SDO server off the channel CiA 301 predefines (requests to 0x600 + node, "
+    "answers on 0x580 + node), or a heartbeat timeout of its own.  Leave the "
+    "COB-IDs as they are and the timeout blank for whichever does not apply."
 )
 
 
@@ -76,6 +88,8 @@ class CanopenSettings:
     retries: int = DEFAULT_SDO_RETRIES
     #: node -> (request, response), for the nodes off the predefined channel only.
     channels: dict[int, tuple[int, int]] = field(default_factory=dict)
+    #: node -> milliseconds, for the nodes whose timeout is not worked out.
+    heartbeat_timeouts: dict[int, float] = field(default_factory=dict)
 
 
 def why_not(node_id: int, request: int, response: int) -> str:
@@ -90,9 +104,28 @@ def why_not(node_id: int, request: int, response: int) -> str:
     return ""
 
 
+def why_not_heartbeat(node_id: int, milliseconds: float) -> str:
+    """Why this heartbeat timeout will not do, or "" if it will."""
+    if not 1 <= node_id <= 127:
+        return f"node {node_id} is not a node id (1 to 127)"
+    if not MIN_HEARTBEAT_MS <= milliseconds <= MAX_HEARTBEAT_MS:
+        return (
+            f"node {node_id}: a heartbeat timeout of {milliseconds:g} ms is outside "
+            f"{MIN_HEARTBEAT_MS} ms to {MAX_HEARTBEAT_MS // 60000} minutes"
+        )
+    return ""
+
+
 def _integer(value) -> int | None:
     try:
         return int(value, 0) if isinstance(value, str) else int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _milliseconds(value) -> float | None:
+    try:
+        return float(value)
     except (TypeError, ValueError):
         return None
 
@@ -110,14 +143,11 @@ def load(ctx: Context) -> CanopenSettings:
     """What the workspace says, forgiving a hand-edited settings.json.
 
     A bad entry costs that entry: a typo in one node's channel should not take
-    the timeout, or every other node's channel, with it.
+    the timeout, or every other node's settings, with it.
     """
     out = CanopenSettings()
-    try:
-        if (timeout := ctx.settings.get(TIMEOUT_KEY)) is not None:
-            out.timeout_ms = min(max(float(timeout), MIN_TIMEOUT_MS), MAX_TIMEOUT_MS)
-    except (TypeError, ValueError):
-        pass
+    if (timeout := _milliseconds(ctx.settings.get(TIMEOUT_KEY))) is not None:
+        out.timeout_ms = min(max(timeout, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS)
     if (retries := _integer(ctx.settings.get(RETRIES_KEY))) is not None:
         out.retries = min(max(retries, 0), MAX_RETRIES)
     saved = ctx.settings.get(CHANNELS_KEY, {})
@@ -130,6 +160,13 @@ def load(ctx: Context) -> CanopenSettings:
             if request is None or response is None or why_not(node_id, request, response):
                 continue
             out.channels[node_id] = (request, response)
+    saved = ctx.settings.get(HEARTBEATS_KEY, {})
+    if isinstance(saved, dict):
+        for node, value in saved.items():
+            node_id, milliseconds = _integer(node), _milliseconds(value)
+            if node_id is None or milliseconds is None or why_not_heartbeat(node_id, milliseconds):
+                continue
+            out.heartbeat_timeouts[node_id] = milliseconds
     return out
 
 
@@ -144,22 +181,40 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
             for node_id, (request, response) in sorted(settings.channels.items())
         },
     )
+    ctx.settings.set(
+        HEARTBEATS_KEY,
+        {
+            str(node_id): int(ms) if float(ms).is_integer() else ms
+            for node_id, ms in sorted(settings.heartbeat_timeouts.items())
+        },
+    )
 
 
 def apply(manager, settings: CanopenSettings) -> None:
     manager.set_sdo_timing(settings.timeout_ms / 1000, settings.retries)
     manager.set_sdo_channels(settings.channels)
+    manager.set_heartbeat_timeouts(
+        {node_id: ms / 1000 for node_id, ms in settings.heartbeat_timeouts.items()}
+    )
+
+
+@dataclass
+class _Row:
+    node_id: int
+    request: int
+    response: int
+    heartbeat_ms: float | None
 
 
 class CanopenSettingsDialog(QDialog):
-    """Every node's SDO timing, and the SDO channel of any node off the usual one."""
+    """Every node's SDO timing, and what one node needs that the rest do not."""
 
     def __init__(
         self, parent: QWidget | None, settings: CanopenSettings, selected_node: int | None = None
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("CANopen settings")
-        self.resize(520, 420)
+        self.resize(600, 440)
         self._selected = selected_node
 
         self.timeout = QDoubleSpinBox()
@@ -180,28 +235,30 @@ class CanopenSettingsDialog(QDialog):
 
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
+        self.table.horizontalHeaderItem(HEARTBEAT).setToolTip(HEARTBEAT_TIP)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.verticalHeader().setVisible(False)
-        for node_id, (request, response) in sorted(settings.channels.items()):
-            self._add_row(node_id, request, response)
+        for node_id in sorted({*settings.channels, *settings.heartbeat_timeouts}):
+            request, response = settings.channels.get(node_id, predefined(node_id))
+            self._add_row(node_id, request, response, settings.heartbeat_timeouts.get(node_id))
         add = QPushButton("Add")
         add.setToolTip(
-            "A row for the selected node, or the first node not listed, on its\n"
-            "predefined channel -- change the COB-IDs to where its server is."
+            "A row for the selected node, or the first node not listed, with nothing\n"
+            "changed yet: its predefined SDO channel and its heartbeat timeout worked out."
         )
         add.clicked.connect(self._add)
         remove = QPushButton("Remove")
-        remove.setToolTip("Put this node back on the predefined channel.")
+        remove.setToolTip("Put this node back on what pycangui works out for itself.")
         remove.clicked.connect(self._remove)
         row = QHBoxLayout()
         row.addWidget(add)
         row.addWidget(remove)
         row.addStretch()
-        note = QLabel(CHANNEL_NOTE)
+        note = QLabel(PER_NODE_NOTE)
         note.setWordWrap(True)
-        per_node = QGroupBox("SDO channel, per node")
+        per_node = QGroupBox("Per node")
         inside = QVBoxLayout(per_node)
         inside.addWidget(note)
         inside.addWidget(self.table)
@@ -217,15 +274,22 @@ class CanopenSettingsDialog(QDialog):
         layout.addWidget(buttons)
 
     # --- the table ---------------------------------------------------------------------
-    def _add_row(self, node_id: int, request: int, response: int) -> int:
+    def _add_row(
+        self, node_id: int, request: int, response: int, heartbeat_ms: float | None = None
+    ) -> int:
         at = self.table.rowCount()
         self.table.insertRow(at)
-        for column, text in enumerate((str(node_id), f"0x{request:03X}", f"0x{response:03X}")):
-            self.table.setItem(at, column, QTableWidgetItem(text))
+        heartbeat = "" if heartbeat_ms is None else f"{heartbeat_ms:g}"
+        texts = (str(node_id), f"0x{request:03X}", f"0x{response:03X}", heartbeat)
+        for column, text in enumerate(texts):
+            item = QTableWidgetItem(text)
+            if column == HEARTBEAT:
+                item.setToolTip(HEARTBEAT_TIP)
+            self.table.setItem(at, column, item)
         return at
 
     def _add(self) -> None:
-        taken = {node_id for node_id, _q, _r in self._rows()[0]}
+        taken = {row.node_id for row in self._rows()[0]}
         if self._selected is not None and self._selected not in taken:
             node_id = self._selected
         else:
@@ -233,25 +297,27 @@ class CanopenSettingsDialog(QDialog):
         if node_id is None:
             return
         at = self._add_row(node_id, *predefined(node_id))
-        self.table.setCurrentCell(at, 1)
+        self.table.setCurrentCell(at, REQUEST)
 
     def _remove(self) -> None:
         if (at := self.table.currentRow()) >= 0:
             self.table.removeRow(at)
 
-    def _rows(self) -> tuple[list[tuple[int, int, int]], list[str]]:
+    def _text(self, at: int, column: int) -> str:
+        item = self.table.item(at, column)
+        return item.text().strip() if item is not None else ""
+
+    def _rows(self) -> tuple[list[_Row], list[str]]:
         """The rows that will do, and what is wrong with the ones that will not."""
-        rows: list[tuple[int, int, int]] = []
+        rows: list[_Row] = []
         problems: list[str] = []
         for at in range(self.table.rowCount()):
-            node_text, request_text, response_text = (
-                (self.table.item(at, column).text() if self.table.item(at, column) else "").strip()
-                for column in range(len(COLUMNS))
-            )
+            node_text = self._text(at, NODE)
             node_id = int(node_text) if node_text.isdigit() else None
             if node_id is None:
                 problems.append(f"row {at + 1}: {node_text!r} is not a node id")
                 continue
+            request_text, response_text = self._text(at, REQUEST), self._text(at, RESPONSE)
             request, response = _cob_id(request_text), _cob_id(response_text)
             if request is None or response is None:
                 bad = request_text if request is None else response_text
@@ -260,12 +326,24 @@ class CanopenSettingsDialog(QDialog):
             if reason := why_not(node_id, request, response):
                 problems.append(reason)
                 continue
-            rows.append((node_id, request, response))
+            heartbeat_text = self._text(at, HEARTBEAT)
+            heartbeat_ms = None
+            if heartbeat_text:
+                heartbeat_ms = _milliseconds(heartbeat_text.removesuffix("ms").strip())
+                if heartbeat_ms is None:
+                    problems.append(
+                        f"node {node_id}: {heartbeat_text!r} is not a heartbeat timeout in ms"
+                    )
+                    continue
+                if reason := why_not_heartbeat(node_id, heartbeat_ms):
+                    problems.append(reason)
+                    continue
+            rows.append(_Row(node_id, request, response, heartbeat_ms))
         seen: set[int] = set()
-        for node_id, _q, _r in rows:
-            if node_id in seen:
-                problems.append(f"node {node_id} is listed twice")
-            seen.add(node_id)
+        for row in rows:
+            if row.node_id in seen:
+                problems.append(f"node {row.node_id} is listed twice")
+            seen.add(row.node_id)
         return rows, problems
 
     def _accept(self) -> None:
@@ -276,14 +354,17 @@ class CanopenSettingsDialog(QDialog):
         self.accept()
 
     def settings(self) -> CanopenSettings:
-        """What was chosen.  A row left on the predefined channel is no override."""
+        """What was chosen.  Whatever a row leaves as it was is no override."""
         rows, _problems = self._rows()
         return CanopenSettings(
             timeout_ms=self.timeout.value(),
             retries=self.retries.value(),
             channels={
-                node_id: (request, response)
-                for node_id, request, response in rows
-                if (request, response) != predefined(node_id)
+                row.node_id: (row.request, row.response)
+                for row in rows
+                if (row.request, row.response) != predefined(row.node_id)
+            },
+            heartbeat_timeouts={
+                row.node_id: row.heartbeat_ms for row in rows if row.heartbeat_ms is not None
             },
         )
