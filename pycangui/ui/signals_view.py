@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
 """Signals pane: every live signal in the hub, grouped by source, with its
-latest value and a checkbox that adds it to the Plot pane."""
+latest value and two checkboxes: Plot Y1 draws it against the plot's left
+axis, Plot Y2 against the second axis on the right."""
 
 from __future__ import annotations
 
@@ -22,9 +23,22 @@ from pycangui.core.signals import SignalHub
 
 ROLE_KEY = Qt.UserRole
 
+#: The two checkbox columns: Plot Y1, the left axis, and Plot Y2, the right.
+PLOT = 3
+RIGHT = 4
+Y1_TIP = "Plot the signal against the left Y axis."
+Y2_TIP = (
+    "Plot the signal against a second Y axis, on the right of the plot, with a\n"
+    "scale of its own.  A signal is on one axis at a time."
+)
+
 
 class SignalsView(QWidget):
     plot_toggled = Signal(str, bool)  # key, on
+    axis_toggled = Signal(str, bool)  # key, on the right hand axis
+    #: *Unplot all* was pressed: whatever remembers what was plotted forgets
+    #: the lot, including signals that have no row yet to untick.
+    all_unplotted = Signal()
 
     def __init__(self, hub: SignalHub) -> None:
         super().__init__()
@@ -34,7 +48,9 @@ class SignalsView(QWidget):
         self._updating = False
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Signal", "Value", "Unit", "Plot"])
+        self.tree.setHeaderLabels(["Signal", "Value", "Unit", "Plot Y1", "Plot Y2"])
+        self.tree.headerItem().setToolTip(PLOT, Y1_TIP)
+        self.tree.headerItem().setToolTip(RIGHT, Y2_TIP)
         self.tree.setFont(QFont("Consolas", 9))
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tree.header().setStretchLastSection(True)
@@ -67,16 +83,17 @@ class SignalsView(QWidget):
             return
         group = self._groups.get(s.group)
         if group is None:
-            group = QTreeWidgetItem([s.group, "", "", ""])
+            group = QTreeWidgetItem([s.group, "", "", "", ""])
             group.setFlags(group.flags() & ~Qt.ItemIsUserCheckable)
             self._groups[s.group] = group
             self.tree.addTopLevelItem(group)
             group.setExpanded(True)
         self._updating = True
-        item = QTreeWidgetItem([s.name, "", s.unit, ""])
+        item = QTreeWidgetItem([s.name, "", s.unit, "", ""])
         item.setData(0, ROLE_KEY, key)
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-        item.setCheckState(3, Qt.Unchecked)
+        item.setCheckState(PLOT, Qt.Unchecked)
+        item.setCheckState(RIGHT, Qt.Unchecked)
         group.addChild(item)
         self._items[key] = item
         self._updating = False
@@ -96,24 +113,64 @@ class SignalsView(QWidget):
                     item.setText(2, s.unit)
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        if self._updating or column != 3:
+        if self._updating or column not in (PLOT, RIGHT):
             return
         key = item.data(0, ROLE_KEY)
-        if key:
-            self.plot_toggled.emit(key, item.checkState(3) == Qt.Checked)
+        if not key:
+            return
+        y1 = item.checkState(PLOT) == Qt.Checked
+        y2 = item.checkState(RIGHT) == Qt.Checked
+        # One axis at a time.  Two boxes both ticked would read as the signal
+        # drawn twice, so ticking one moves it there and unticks the other,
+        # and unticking the ticked one takes it off the plot.
+        if column == PLOT:
+            if y1 and y2:
+                self._tick(item, RIGHT, False)
+                self.axis_toggled.emit(key, False)  # the same curve, moved left
+            else:
+                self.plot_toggled.emit(key, y1)
+            return
+        if y2 and y1:
+            self._tick(item, PLOT, False)
+            self.axis_toggled.emit(key, True)  # the same curve, moved right
+        elif y2:
+            self.plot_toggled.emit(key, True)
+            self.axis_toggled.emit(key, True)
+        else:
+            self.plot_toggled.emit(key, False)
+
+    def _tick(self, item: QTreeWidgetItem, column: int, on: bool) -> None:
+        """Set a checkbox without it counting as somebody ticking it."""
+        self._updating = True
+        item.setCheckState(column, Qt.Checked if on else Qt.Unchecked)
+        self._updating = False
 
     def set_plotted(self, key: str, on: bool) -> None:
         item = self._items.get(key)
+        if item is None:
+            return
+        if not on:
+            self._tick(item, PLOT, False)
+            self._tick(item, RIGHT, False)
+        elif item.checkState(RIGHT) != Qt.Checked:
+            self._tick(item, PLOT, True)
+
+    def set_right(self, key: str, on: bool) -> None:
+        """Show a plotted signal on the right axis, or back on the left."""
+        item = self._items.get(key)
         if item is not None:
-            self._updating = True
-            item.setCheckState(3, Qt.Checked if on else Qt.Unchecked)
-            self._updating = False
+            self._tick(item, RIGHT, on)
+            self._tick(item, PLOT, not on)
 
     @Slot()
     def unplot_all(self) -> None:
         for item in self._items.values():
-            if item.checkState(3) == Qt.Checked:
-                item.setCheckState(3, Qt.Unchecked)  # emits plot_toggled via itemChanged
+            # Each emits plot_toggled through itemChanged.
+            if item.checkState(RIGHT) == Qt.Checked:
+                item.setCheckState(RIGHT, Qt.Unchecked)
+            elif item.checkState(PLOT) == Qt.Checked:
+                item.setCheckState(PLOT, Qt.Unchecked)
+        self.all_unplotted.emit()
 
     def _apply_search(self, text: str) -> None:
         needle = text.lower()
