@@ -9,16 +9,31 @@ the end of its message, both common in files real tools produce -- is offered
 for loading anyway rather than simply refused; turning off *Tools > Strict DBC
 checks* stops the asking. Signals with a `VAL_` table can
 be transmitted by name or by number, and the names are listed in the tooltip.
+A loaded database is loaded again next time. One kept outside the workspace
+can be copied into it when you load it, so it travels with the workspace; see
+[Workspaces](workspaces.md).
 
 Once loaded: the trace shows the message
 name and the **Signals and Plot** pane lists every signal with its live value.
-CANopen TPDO values appear there too. Tick *Plot* on any signal to draw it
+CANopen TPDO values appear there too. Tick *Plot Y1* on any signal to draw it
 alongside the list (rolling window, pause, follow); drag the splitter to give
 the plot the whole pane, or the list. `resources/demo.dbc` matches the demo
 device.
 
 The filter box above the list narrows it to the signals whose names match, and
 *Unplot all* takes everything off the plot at once.
+
+Tick *Plot Y2* instead to draw a signal against a second Y axis on the right of
+the plot, with a scale of its own, so that a speed in thousands and a
+temperature in tens can be read on the same plot. A signal is on one axis at a
+time: ticking the other box moves it there, and unticking the ticked one takes
+it off the plot. The Y2 axis is only there while a signal is on it, and its
+signals are marked *(Y2)* in the legend. Where every signal on an axis has the
+same unit, the axis is labelled with it.
+
+Each Signals and Plot pane remembers which signals it plots, and on which axis,
+from one run to the next. A signal comes back onto the plot as soon as it
+appears again: when its first frame is decoded, or when its file is imported.
 
 **Window** is how many seconds of signal the plot shows, from half a second to
 an hour. **Pause** holds the plot still while samples carry on being
@@ -29,6 +44,9 @@ collected, **Fit** zooms to everything plotted, wherever in time it is, and
 **data**, not the clock, so it stops when the data does: a quiet bus, or a
 disconnected one, holds the trace still rather than scrolling it off the left
 edge.
+
+Both Y axes share the one time axis, so *Window*, *Follow* and *Fit* apply to
+signals on either side, and *Fit* scales each Y axis to its own signals.
 
 ## Importing a measurement file
 

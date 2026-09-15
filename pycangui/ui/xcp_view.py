@@ -22,9 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.core import workspace_files
 from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
-from pycangui.ui import folders
+from pycangui.ui import folders, keep_file
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
@@ -177,9 +178,12 @@ class XcpView(QWidget):
         if path:
             try:
                 self.manager.load_a2l(path)
-                self.ctx.settings.set("xcp.a2l", path)
             except Exception as exc:  # parser is best-effort
                 self._append(f"A2L load failed: {exc}")
+                return
+            self.ctx.settings.set(
+                "xcp.a2l", keep_file.offer(self, self.ctx, path, workspace_files.A2L)
+            )
 
     # --- parameter tree --------------------------------------------------------------
     def _populate(self) -> None:

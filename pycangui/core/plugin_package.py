@@ -87,7 +87,10 @@ class Package:
         return self.info.title or self.name
 
 
-def _normal(member: str) -> str:
+# --- what any zip of ours is checked for ----------------------------------------------------
+# Public because a workspace file is read by the same rules (core/workspace_package.py).
+# Two sets of zip checks would be two chances to get one of them wrong.
+def normal(member: str) -> str:
     """A member name with the noise some zip tools add taken out.
 
     Leading ``./`` and doubled separators are how one archiver spells what
@@ -97,7 +100,7 @@ def _normal(member: str) -> str:
     return "/".join(part for part in member.replace("\\", "/").split("/") if part not in ("", "."))
 
 
-def _safe(member: str) -> bool:
+def safe(member: str) -> bool:
     """Whether a member name stays inside the folder it is extracted into.
 
     Refused rather than repaired.  Python's own ``extract`` would quietly drop
@@ -109,12 +112,73 @@ def _safe(member: str) -> bool:
     return ".." not in member.replace("\\", "/").split("/")
 
 
-def _wanted(member: str) -> bool:
-    parts = _normal(member).split("/")
+def wanted(member: str) -> bool:
+    """Whether a file is worth carrying at all: not bytecode, not a tool's own folder."""
+    parts = normal(member).split("/")
     return not (
         member.endswith("/")
         or any(part in SKIP_DIRS for part in parts)
         or Path(member).suffix in SKIP_SUFFIXES
+    )
+
+
+def screen(
+    archive: zipfile.ZipFile,
+    path: Path,
+    what: str,
+    max_bytes: int,
+    max_entries: int | None = None,
+) -> list[str]:
+    """The member names, once nothing in the zip escapes and the whole is not too big.
+
+    Everything is checked before anything is extracted, because the point is
+    that a file which fails part way through has written nothing.  ``what`` is
+    the word the refusal uses: "plugin", "workspace".
+    """
+    infos = archive.infolist()
+    if max_entries is not None and len(infos) > max_entries:
+        raise PackageError(
+            f"{path.name} holds {len(infos)} files, which is more than a {what} should."
+        )
+    members = [item.filename for item in infos]
+    for member in members:
+        if not safe(member):
+            raise PackageError(
+                f"{path.name} contains {member!r}, which would be written outside "
+                f"the {what} folder.  It has not been unpacked."
+            )
+    total = sum(item.file_size for item in infos)
+    if total > max_bytes:
+        raise PackageError(
+            f"{path.name} unpacks to {total // (1024 * 1024)} MB, which is more "
+            f"than a {what} should be."
+        )
+    return members
+
+
+def root_of(path: Path, members: list[str], entry: str = ENTRY, what: str = "plugin") -> str:
+    """The folder inside the zip that holds ``entry``, "" for a flat one, or a refusal.
+
+    Both shapes are made by hand often enough that refusing either would be
+    refusing over a detail: zipping a folder gives the first, selecting its
+    contents and zipping those gives the second.
+    """
+    tidy = [normal(m) for m in members]
+    flat = [m for m in tidy if m == entry]
+    at_top = f"/{entry}"
+    nested = sorted({m.split("/")[0] for m in tidy if m.count("/") == 1 and m.endswith(at_top)})
+    if flat and not nested:
+        return ""
+    if len(nested) == 1 and not flat:
+        return nested[0]
+    if not flat and not nested:
+        raise PackageError(
+            f"{path.name} has no {entry} in it, at the top level or in a single "
+            f"folder, so it is not a pycangui {what}."
+        )
+    raise PackageError(
+        f"{path.name} holds more than one {what}.  One file brings in one thing "
+        "under one name; send them separately."
     )
 
 
@@ -141,49 +205,16 @@ def inspect(path: str | Path) -> Package:
     if not zipfile.is_zipfile(path):
         raise PackageError(f"{path.name} is not a zip file, so it is not a plugin package.")
     with zipfile.ZipFile(path) as archive:
-        members = archive.namelist()
-        for member in members:
-            if not _safe(member):
-                raise PackageError(
-                    f"{path.name} contains {member!r}, which would be written outside "
-                    "the plugin folder.  It has not been unpacked."
-                )
-        total = sum(item.file_size for item in archive.infolist())
-        if total > MAX_BYTES:
-            raise PackageError(
-                f"{path.name} unpacks to {total // (1024 * 1024)} MB, which is more "
-                "than a plugin should be."
-            )
-        root = _root_of(path, members)
-        wanted = f"{root}/{ENTRY}" if root else ENTRY
+        members = screen(archive, path, "plugin", MAX_BYTES)
+        root = root_of(path, members)
+        entry = f"{root}/{ENTRY}" if root else ENTRY
         # By its tidied name rather than the one asked for: an archive that
         # spells it "./demo/plugin.py" holds the same plugin as one that does
         # not, and reading it back by the wrong spelling would fail.
-        member = next(m for m in members if _normal(m) == wanted)
+        member = next(m for m in members if normal(m) == entry)
         source = archive.read(member).decode("utf-8", errors="replace")
     name = check_name(root or path.stem)
     return Package(name=name, info=describe_source(source), root=root, path=path)
-
-
-def _root_of(path: Path, members: list[str]) -> str:
-    """The folder inside the zip, "" for a flat one, or a refusal."""
-    tidy = [_normal(m) for m in members]
-    flat = [m for m in tidy if m == ENTRY]
-    at_top = f"/{ENTRY}"
-    nested = sorted({m.split("/")[0] for m in tidy if m.count("/") == 1 and m.endswith(at_top)})
-    if flat and not nested:
-        return ""
-    if len(nested) == 1 and not flat:
-        return nested[0]
-    if not flat and not nested:
-        raise PackageError(
-            f"{path.name} has no {ENTRY} in it, at the top level or in a single "
-            "folder, so there is nothing in it to load."
-        )
-    raise PackageError(
-        f"{path.name} holds more than one plugin.  A package installs one thing "
-        "under one name; send them separately."
-    )
 
 
 def inspect_folder(folder: Path) -> Package:
@@ -232,7 +263,7 @@ def install(path: str | Path, into: Path, replace: bool = False) -> Package:
     try:
         with zipfile.ZipFile(package.path) as archive:
             for member in archive.namelist():
-                if _safe(member) and _wanted(member):
+                if safe(member) and wanted(member):
                     archive.extract(member, staging)
         unpacked = staging / package.root if package.root else staging
         if not (unpacked / ENTRY).is_file():
@@ -262,7 +293,7 @@ def pack(folder: Path, dest: str | Path) -> Path:
             if not item.is_file():
                 continue
             inside = item.relative_to(folder).as_posix()
-            if _wanted(inside):
+            if wanted(inside):
                 archive.write(item, f"{folder.name}/{inside}")
     return dest
 
