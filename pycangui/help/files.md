@@ -5,7 +5,9 @@
 pycangui keeps what it remembers for you in one folder. It is `%APPDATA%\pycangui` on
 Windows, `~/.config/pycangui` on Linux (or under `$XDG_CONFIG_HOME` if you set
 it), and `~/Library/Application Support/pycangui` on macOS; setting
-`PYCANGUI_HOME` puts it somewhere else.
+`PYCANGUI_HOME` puts it somewhere else. The folder is in your own user
+profile, so another login on the same computer starts with its own workspaces
+and settings.
 
 Most of it lives in a *workspace* -- `workspaces/default/` unless you make
 others -- which holds:
@@ -34,7 +36,7 @@ to what you are working on: `backends/`, which is about being able to talk to a
 bus at all, the window's position on screen, and the questions you have told
 pycangui not to ask again -- all of which stay in `QSettings`. The last of
 those is outside a workspace on purpose, so that an agreement about disturbing
-equipment cannot travel inside a folder you hand to somebody else.
+equipment is not meant to travel inside a folder you hand to somebody else.
 
 ## Where file dialogs open
 

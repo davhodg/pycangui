@@ -103,7 +103,7 @@ rest of the day.
 
 Five examples arrive in the folder on first run, one per protocol pycangui
 speaks and a gateway, and they are meant to be edited -- one you have changed
-is never written over ([Hooks](hooks.md) says how the untouched ones keep up):
+is designed to be left as it is ([Hooks](hooks.md) says how the untouched ones keep up):
 
 | File | What it shows |
 |------|---------------|

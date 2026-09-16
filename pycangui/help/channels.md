@@ -98,7 +98,7 @@ up makes the kernel restart it by itself); and anything else by closing the
 channel and opening it again, which the protocol panes see as a disconnect and
 a reconnect.
 
-pycangui never restarts a controller by itself. One that goes bus off again
+pycangui is designed not to restart a controller by itself. One that goes bus off again
 straight away is saying the cause is still there, and restarting it onto the
 wrong bitrate only puts more error frames on a bus that has working nodes on
 it. Fix the cause, then recover.
@@ -109,20 +109,20 @@ Every time pycangui starts it shows a notice saying what it is capable of, which
 
 **It is the one dialog here you cannot switch off.** It costs no time as the libraries pycangui needs load behind it.
 
-After that, pycangui asks before it can disturb equipment that is not its own,
+After that, pycangui is designed to ask before it can disturb equipment that is not its own,
 once a session for each: joining a **real bus** (naming the bitrate, because a
 controller at the wrong one cannot read a frame and signals an error on every
 one it sees, which can drive the working nodes off the bus), **transmitting**
 onto one, **replaying** a log onto one, and starting a
-[**simulated node**](virtual.md) on one. A `virtual` channel never asks about
-any of those -- nothing leaves pycangui. Change the bitrate, FD or the adapter
+[**simulated node**](virtual.md) on one. A `virtual` channel does not ask about
+any of those, since it is designed to stay inside pycangui. Change the bitrate, FD or the adapter
 and the connect question comes back, since getting those wrong is what the
 question is for.
 
 A few actions ask for themselves wherever they happen: switching
 [workspace](workspaces.md) while a channel is connected, because it closes the
 bus; writing to an ECU in a [UDS](uds.md) transfer; and enabling a drive from
-the [CiA 402 plugin](plugins.md), which is the moment a motor can move.
+the [CiA 402 plugin](cia402.md), which is the moment a motor can move.
 
 Each carries a **Do not ask me this again on this machine** tick box.
 

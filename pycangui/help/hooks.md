@@ -22,7 +22,7 @@ it.
 
 On first run each file is copied there complete, with the default behaviour and
 commented examples already in it, so there is never an empty file to start
-from. **A file you have changed is never overwritten.** One you have not
+from. **A file you have changed is designed to be left as it is.** One you have not
 changed is still pycangui's, so when a later version ships a better one it is
 simply replaced, and the Event Log says so. A changed one is left as it is,
 and the log says once that a newer version exists. The same goes for the
@@ -133,12 +133,12 @@ names -- what works in the console works here.
 rather than reaching for the bus underneath it. That joins a bus exactly as the
 Connect button does, which means a real interface still raises the question
 about the bitrate, once a session, as it would if you had pressed the button
-yourself. A [workspace](workspaces.md) is a folder that gets copied and handed
-to a colleague, and one that silently joined a live bus on somebody else's bench
+yourself. A [workspace](workspaces.md) is a folder that gets copied and shared,
+and one that silently joined a live bus on somebody else's bench
 because they opened it would be a bad thing to have built. A `virtual` channel
-never asks, because nothing leaves pycangui.
+does not ask, because it is designed to stay inside pycangui.
 
-**Nothing it does can stop pycangui starting.** If it raises, the traceback
+**It is designed not to stop pycangui starting.** If it raises, the traceback
 goes to the Event Log and the window opens anyway -- the tool you would need in
 order to fix a broken startup hook is the one that would not have started.
 
