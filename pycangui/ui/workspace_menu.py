@@ -58,7 +58,7 @@ SWITCH_TIP = (
 )
 MANAGE_TIP = "Rename, delete or export a workspace."
 EXPORT_TIP = (
-    "Write the workspace you are in out as one zip file, to give to a colleague\n"
+    "Write the workspace you are in out as one zip file, to share\n"
     "or to keep.  Backups and what belongs to this computer are left out."
 )
 IMPORT_TIP = (
@@ -330,7 +330,7 @@ class WorkspaceMenu(QObject):
     def _import_name(self, package: workspace_package.WorkspacePackage) -> str:
         """The file's own name if it is free, otherwise whatever somebody chooses.
 
-        Asked rather than numbered silently: a colleague's "drive" arriving as
+        Asked rather than numbered silently: someone else's "drive" arriving as
         "drive 2" is somebody's guess about which one they will want to find,
         and they are right here to say.  The next free name is offered, so
         accepting it is one key.
@@ -398,9 +398,7 @@ class ManageWorkspaces(QDialog):
         self.delete = QPushButton("Delete...")
         self.delete.clicked.connect(self._delete)
         self.export = QPushButton("Export...")
-        self.export.setToolTip(
-            "Write this one out as a zip file, to give to a colleague or to keep."
-        )
+        self.export.setToolTip("Write this one out as a zip file, to share or to keep.")
         self.export.clicked.connect(self._export_selected)
 
         buttons = QHBoxLayout()

@@ -10,8 +10,8 @@ database, open the panes the job wants.
 Two properties matter more than the feature.  Nothing it does can stop pycangui
 starting, because the tool needed to fix a broken startup hook is the one that
 would not have started.  And connecting through it asks the same question the
-Connect button asks, because a workspace is a folder that gets handed to
-colleagues.
+Connect button asks, because a workspace is a folder that gets
+shared.
 """
 
 import pytest
@@ -145,7 +145,7 @@ def test_a_virtual_channel_connects_without_asking(app, home, monkeypatch):
 
 
 def test_a_real_bus_still_raises_the_question(app, home, monkeypatch):
-    """A workspace is a folder that gets copied and handed to a colleague.  One
+    """A workspace is a folder that gets copied and handed to someone else.  One
     that silently joined a live bus when they opened it would be a bad thing to
     have built."""
     from pycangui.ui import confirm

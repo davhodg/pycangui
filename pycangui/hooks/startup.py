@@ -41,7 +41,7 @@ def on_startup(window, *, ctx) -> None:
     for the bus directly.  It joins a bus exactly as the Connect button does,
     which means a real interface still raises the question about the bitrate --
     once per session, as it would if you had pressed the button yourself.  A
-    workspace is a folder that gets copied and handed to colleagues, and one
+    workspace is a folder that gets copied and shared, and one
     that silently joined a live bus on somebody else's bench because they
     opened it would be a bad thing to have built.
 

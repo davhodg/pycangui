@@ -6,7 +6,7 @@ Qt hands out an opaque block of bytes for a window's dock layout and for a
 splitter's position, and the obvious home for those is QSettings, which is
 where they used to live.  But QSettings is a per-machine store -- a registry
 hive on Windows -- and a workspace has to be one folder: something that can be
-copied to a backup, kept in version control, or sent to a colleague along with
+copied to a backup, kept in version control, or sent to someone else along with
 the hooks and the EDS files that make sense of it.  A layout left behind in
 the registry would be the one part of a workspace that could not travel.
 

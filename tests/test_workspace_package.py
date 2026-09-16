@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """A workspace as one file: exported, imported, and what is refused on the way.
 
-A workspace was always meant to be handed to a colleague whole.  Export writes
+A workspace was always meant to be handed to someone else whole.  Export writes
 it to a zip and import makes a new workspace from one, so the load-bearing test
 is the round trip: what goes out is what comes back in.
 

@@ -4,7 +4,7 @@
 
 A workspace is everything about *what you are working on*: the settings, the
 hooks that say what this maker's objects mean, the EDS files, and the dock
-layout.  One folder, so it can be copied, backed up or sent to a colleague
+layout.  One folder, so it can be copied, backed up or sent to someone else
 whole.  What stays outside it is everything about *this machine*: the back
 ends that let it talk to a bus at all, and where the window sits on the
 screen.

@@ -13,7 +13,7 @@ objects and say what they are -- and it opens as a dock like any other pane, so
 two custom_panes can sit side by side comparing two nodes.
 
 The custom_panes are readable JSON in the workspace, beside the hooks that give their
-objects meaning, so one can be edited by hand and sent to a colleague along with
+objects meaning, so one can be edited by hand and sent to someone else along with
 the EDS it belongs to.
 """
 
