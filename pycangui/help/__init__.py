@@ -48,6 +48,8 @@ PAGES = (
     "event-log.md",
     "canopen.md",
     "compare.md",
+    "firmware.md",
+    "cia402.md",
     "uds.md",
     "j1939.md",
     "xcp.md",

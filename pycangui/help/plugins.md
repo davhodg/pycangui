@@ -24,8 +24,8 @@ It belongs to the [workspace](workspaces.md), the same as the hooks, because a s
 product is knowledge about that product. *Manage plugins...* is the rest of
 it:
 
-* **the tick beside each one** switches it on and off. Off means *not loaded
-  at all* -- no pane, no menu entries, and none of its code runs -- while the
+* **the tick beside each one** switches it on and off. Off is designed to mean *not loaded
+  at all* -- no pane, no menu entries, and none of its code running -- while the
   folder stays exactly as you left it, edits and all.
 * **Install from file...** installs a package, the same as *Plugins > Install
   plugin...*.
@@ -35,7 +35,7 @@ it:
   edited into it goes too.
 * **Supplied with pycangui** lists the ones that ship with it and are not
   installed here -- the same list is a submenu of the **Plugins** menu, one
-  click each. *Nothing pycangui ships is loaded until you install it*, so a
+  click each. *Nothing pycangui ships is designed to load until you install it*, so a
   window you have not asked anything of has no plugin panes in it at all.
 
 Installing a supplied plugin puts a copy in your workspace, and that copy is
@@ -91,7 +91,7 @@ pycangui ships rather than the one you are editing.
 | `confirm` | the confirmations pycangui asks before disturbing equipment, for a plugin that does too |
 | `api_version` | the API version this pycangui provides |
 
-Two things it does for you. **A plugin that fails takes only itself down** --
+Two things it does for you. **A plugin that fails is designed to take only itself down** --
 the traceback goes to the Event Log where somebody will see it, rather than to
 a console that does not exist, and the rest still load. If it fails part way
 through `register`, whatever it had already added is taken back, so the window
@@ -106,108 +106,11 @@ copy of its pane appears beside the first.
 
 Supplied rather than installed: *Plugins > Supplied with pycangui* and
 *Plugins > Manage plugins...* are where they are, and until one is installed
-none of it runs.
+none of it is meant to run. Each has a page of its own:
 
-**CANopen firmware (CiA 302-3)** downloads a program to a CANopen node: stop the
-program (0x1F51), clear it, write the image as a domain (0x1F50), start it
-again. Intel HEX, S-record and raw binary are all read; the image has to be
-one contiguous block, because a program download *is* one block of bytes and
-filling the gaps would put invented bytes into somebody's flash.
-
-**Enter bootloader** and **Exit bootloader** stop and start the program
-(0x1F51), which is how a CiA 302-3 device goes into its loader and out again.
-**Transfer** chooses how the image is written: *Segmented*, which every device
-takes, or *Block*, which sends many frames to each acknowledgement and is much
-faster on a device that supports it. A device that does not refuses block
-transfer at the start, before anything is written. **Read version** reads the
-manufacturer software version (0x100A), and the software identification
-(0x1F56) and flash status (0x1F57) where the device keeps them. It works
-without an EDS, which is the usual case for a device sitting in its loader.
-Enter bootloader and Download ask first, once a session for each node, because
-stopping the program stops whatever it was controlling.
-
-**Programming timeout** is how long the device may take to answer each request
-while a download runs, 10 s unless changed. Clearing a program erases its flash,
-and a device doing that answers only when it has finished. Everything else uses
-the SDO timeout set under *Settings...* in the [CANopen](canopen.md) pane, and a
-timeout set longer there is not shortened here.
-
-**Most devices do not do it that way.** Firmware download over CANopen is
-usually a sequence of the maker's own writes to objects of their own choosing,
-and no amount of standards reading will produce it. That is exactly why it is
-a plugin: install it, then edit the `program.py` in your workspace to be what
-the device actually wants. The copy you edit is the one that runs, and the
-pane, the progress bar and the reporting go on working around it.
-
-While a device is being programmed it answers very little and slowly, so
-timeouts are the expected thing rather than a fault -- and pulling the power
-part way through is how a controller is turned into a brick.
-
-**[CANopen DCF compare](compare.md)** puts two configurations side by side --
-two files, or a file against a live device, or a device against the EDS it was
-built from -- and says what is different. Comparing against a device reads only
-the objects the other side names, so it takes seconds and needs no EDS on the
-device.
-
-**CANopen motor control (CiA 402)** drives a motor controller: its state, its mode,
-its target and what it is actually doing.
-
-Half of that screen could have been a custom pane, and it is worth knowing
-which half. The modes, the targets and the actual values are ordinary objects
-at standard indices -- point a custom pane at 0x6060, 0x60FF and 0x606C and you
-have them, with no code at all.
-
-The other half cannot be. A drive does nothing until it has been walked
-through a state machine -- 0x06, then 0x07, then 0x0F -- and *which* of those
-writes is needed depends on what the drive answered to the last one. A fault
-is cleared by a rising edge rather than by a value, so it is two writes. And
-the state is not a value: it is decoded from overlapping masks of the
-statusword, where "Ready to switch on" and "Switched on" differ in one bit
-while "Fault" is a different mask altogether. No arrangement of boxes on a
-form expresses any of that.
-
-**Enable asks first**, once per drive per session, the same as joining a live
-bus or transmitting onto one: it is the moment a motor becomes able to move,
-and if a target is already set it may move immediately.
-
-What it refuses is as much of the point as what it does. A drive still
-starting up, or still reacting to a fault, is left alone -- it leaves those
-states by itself, and a controlword written then is ignored rather than
-refused, which looks exactly like the tool having done nothing. Quick stop is
-offered only to a drive that is running. A target is not offered at all in the
-cyclic synchronous modes, where it has to arrive every cycle over a PDO and one
-written by hand would be stale before it got there. A value too big for its
-object is refused rather than wrapped. And the button that tells a profile
-position drive to take its target is offered only while the drive is already
-enabled, because making that happen means writing the enable controlword -- a
-button that quietly does what another button asks permission for is a hole in
-the permission.
-
-**Closing the pane stops the drive.** A demand sent over SDO does not stop
-when the window showing it does: the drive holds the last controlword and the
-last target it was given and goes on acting on them. So putting the pane away,
-closing it for good, switching the plugin off or closing pycangui all halt the
-drive first -- and while it is running, a bar across the top of the pane says
-so. If it was running and the bus goes instead, nothing can be written, and
-the Event Log says that plainly rather than saying nothing.
-
-Stopping is a **halt** (controlword bit 8), not a zero target, and the
-difference matters: halt means "come to a standstill" in every mode, whereas
-zero is a *place*. Writing zero to the target position of a drive part way
-through a move would not stop it -- it would send it to position zero, which
-may be the longest move it has been asked for all day. A zero is written to
-the target as well, but only in the speed and torque modes, where the target is
-a rate and zero really is a stop.
-
-Removing power on top of that is offered as a tick box and is off by default.
-It is not obviously the safer of the two: on a vertical axis it is the load
-that decides, and whether a brake catches it is a fact about the machine rather
-than about the tool.
-
-The numbers are counts, counts per second and per mille of rated torque, which
-is what the profile defines. Turning those into millimetres or amps needs the
-gearing and the motor rating, which are the drive's business and not
-pycangui's.
+- [CANopen firmware (CiA 302-3)](firmware.md) --- downloading a program to a CANopen node
+- [CANopen DCF compare](compare.md) --- two configurations side by side
+- [CANopen motor control (CiA 402)](cia402.md) --- driving a motor controller
 
 pycangui's own plugins are packaged, installed and loaded exactly the way one
 of yours is -- installing a supplied plugin packs it and unpacks it through the

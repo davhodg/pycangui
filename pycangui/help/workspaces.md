@@ -64,14 +64,14 @@ missing falls back to the search of the EDS folder. **Cancel** exports nothing.
 *Import...* asks for the file and shows the files it will write before it
 writes anything. It always makes a new workspace, named after the file. If you
 already have a workspace with that name, it asks for another and suggests the
-next free one, such as `drive 2`. An existing workspace is never replaced.
+next free one, such as `drive 2`. Import is designed never to replace an existing workspace.
 When the import is done it offers to open the new workspace.
 
 A workspace can hold hooks, simulated nodes and plugins, and those are Python
 that runs as part of pycangui. Only import workspaces you would be willing to run
 yourself.
 
-Import refuses a file that is not a pycangui workspace, meaning a zip with no
+Import is designed to refuse a file that is not a pycangui workspace, meaning a zip with no
 `settings.json` at the top level or in a single top folder. It also refuses a
 zip that would write outside the new workspace folder, and one that is
 unreasonably large: more than 256 MB unpacked or more than 10,000 files.
@@ -79,6 +79,52 @@ unreasonably large: more than 256 MB unpacked or more than 10,000 files.
 The zip is an ordinary zip, so you can open it with any archive tool to see
 what is inside. A zip you make yourself from a workspace folder imports in the
 same way.
+
+### Sharing on a computer with several logins
+
+Workspaces live in your own user folder (see [Your files](files.md)), so on a
+lab computer each person who logs on has their own. There are two ways to
+share.
+
+**Export and import.** Export to a folder everyone can reach, such as
+`C:\Users\Public` or a network drive, and each person imports from there. An
+import is a copy, so everyone can change their own without affecting anyone
+else; a change reaches the others only when it is exported and imported again.
+
+**One folder for everyone.** Set the `PYCANGUI_HOME` environment variable to
+the same folder for every login -- for all users in the system settings, or in
+a shortcut or script that starts pycangui -- and everyone uses the same
+workspaces. The folder has to be writable by all of them. Changes one person
+makes, including to hooks, simulated nodes and plugins, are what the next
+person gets, so agree who looks after them. The "do not ask me this again"
+answers stay with each login. It suits people taking turns at the computer;
+pycangui saves as you go and does not lock anything, so two logins using the
+same folder at the same moment overwrite each other's changes.
+
+Setting the variable for every login needs administrator rights:
+
+- **Windows:** open *Start*, search for *Edit the system environment
+  variables*, press **Environment Variables...**, and under **System
+  variables** press **New...**. Name it `PYCANGUI_HOME` and give it the
+  folder, for example `C:\Users\Public\pycangui`. From an administrator
+  command prompt, `setx PYCANGUI_HOME "C:\Users\Public\pycangui" /M` does the
+  same.
+- **Linux:** add `PYCANGUI_HOME=/srv/pycangui` as a line in
+  `/etc/environment`.
+- **macOS:** there is no single place that reaches applications started from
+  the Dock. Start pycangui from a script instead, with
+  `export PYCANGUI_HOME=/Users/Shared/pycangui` before it.
+
+A login only picks up the change after logging off and on again. To use a
+shared folder for one shortcut or script instead of the whole computer, set
+the variable there: `set PYCANGUI_HOME=C:\Users\Public\pycangui` on the line
+before pycangui starts in a `.cmd` file, or
+`PYCANGUI_HOME=/srv/pycangui pycangui` on Linux and macOS.
+
+To give everyone write access to the folder on Windows, open its
+*Properties*, then *Security*, *Edit...*, select **Users** and tick
+**Modify**. On Linux and macOS, a common group with write permission does the
+same.
 
 ## One at a time
 
