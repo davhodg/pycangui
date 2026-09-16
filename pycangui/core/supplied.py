@@ -14,7 +14,7 @@ version of one:
 
 Telling those apart needs a memory of what was copied, so the fingerprint of
 each file as supplied is recorded in the workspace settings -- beside the
-files it describes, so a workspace handed to a colleague carries a record
+files it describes, so a workspace handed to someone else carries a record
 that matches its files.  A copy whose fingerprint still matches the record
 is untouched; anything else is somebody's work.
 

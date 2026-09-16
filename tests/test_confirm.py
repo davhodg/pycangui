@@ -294,8 +294,8 @@ def test_quitting_the_notice_means_it_does_not_start(app, monkeypatch):
 
 def test_it_cannot_be_switched_off(app, monkeypatch):
     """The one dialog here with no "do not ask again" on it.  A notice
-    dismissed for good on the first afternoon is one the colleague who picks
-    the machine up in March never sees, and it costs a keypress a session."""
+    dismissed for good on the first afternoon is never seen again on that
+    login, including by anyone sharing it, and it costs a keypress a session."""
     seen = []
     monkeypatch.setattr(
         QMessageBox, "exec", lambda box: seen.append(box.checkBox()) or QMessageBox.Ok

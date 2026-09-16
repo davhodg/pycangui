@@ -8,9 +8,11 @@ Two shapes of the same subject.
 tool is capable of, which has to be clicked through and cannot be switched off.
 It is not a question about anything in particular, which is why it is the one
 dialog here with no "do not ask again" on it: a notice dismissed for good on
-the first afternoon is one that the colleague who picks the machine up in March
-never sees.  It is also where the slow half of starting up hides -- the
-libraries load behind it, so the notice costs no time at all.
+the first afternoon is never seen again on that login -- not months later, and
+not by anyone else sharing the account, as a bench computer often is.  (Another
+login has settings of its own, so it sees the notice regardless.)  It is also
+where the slow half of starting up hides -- the libraries load behind it, so
+the notice costs no time at all.
 
 **Once a session, per thing.**  Three things pycangui does can disturb
 equipment that is not its own: joining a live bus, transmitting onto one, and
@@ -26,7 +28,7 @@ the wrong bitrate is exactly the mistake the question is there to catch.
 Both offer to be remembered, and what "remembered" means is the interesting
 part.  An answer is kept **against the person who gave it, on the machine they
 gave it on**, in ``QSettings`` -- never in the workspace.  A workspace is a
-folder made to be copied, backed up and handed to a colleague, and an agreement
+folder made to be copied, backed up and handed to someone else, and an agreement
 that travelled inside one would mean somebody else's window, on somebody else's
 bench, quietly not asking.  The user name is stored alongside and checked, so
 that a settings store which does somehow arrive on another machine, or under
@@ -133,8 +135,8 @@ def accept_notice(
     pycangui where a dialog is not offered a tick box.  The per-action
     questions are answered once because they are about a thing you are doing
     on purpose; this is not a question at all.  A notice dismissed for good on
-    the first afternoon is a notice the colleague who picks the machine up in
-    March never sees, and it costs one keypress a session.
+    the first afternoon is never seen again on that login, including by anyone
+    sharing the account, and it costs one keypress a session.
 
     ``while_shown`` is called once the notice is on screen and before the
     answer is waited for.  That is where the slow half of starting up goes: a

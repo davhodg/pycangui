@@ -470,7 +470,7 @@ class MainWindow(QMainWindow):
         exists is the question rather than the connection: joining a real bus
         asks about the bitrate once a session, and code reaching for
         ``channels.get(name).connect_bus(...)`` would go round that.  A
-        workspace is a folder that gets copied and handed to a colleague, so
+        workspace is a folder that gets copied and handed to someone else, so
         one that silently joined a live bus when they opened it is exactly the
         thing to make the awkward path rather than the easy one.
         """

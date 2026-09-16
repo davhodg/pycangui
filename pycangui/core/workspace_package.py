@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""A workspace as one file: the thing you hand a colleague.
+"""A workspace as one file: the thing you hand to someone else.
 
 A workspace was always meant to travel -- the hooks, the EDS files, the custom
 panes and the arrangement that make sense of one product, in one folder.  But
@@ -23,7 +23,7 @@ or *this person's history* rather than the product:
   The same list a plugin package leaves out.
 * **Numbered ``.bak`` backups** -- ``canopen.py.bak``, ``canopen.py.bak2``:
   what *Restore supplied files* kept of somebody's own edits.  A safety net for
-  the person who made them, not part of what a colleague is being given.
+  the person who made them, not part of what someone else is being given.
 * **A plugin install left half done** -- a ``.name.installing`` folder or a
   ``.name.packing.zip``, which exist only if pycangui stopped part way.
 * **Where the file dialogs were last pointed, and the recently replayed logs**
