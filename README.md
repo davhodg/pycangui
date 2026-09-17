@@ -14,7 +14,7 @@ The CI and release badges are live. The release badge includes pre-releases, so 
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 
-A user-friendly graphical CAN bus tool: live trace, transmit, CANopen, UDS, J1939, XCP and Python scripting, on any adapter supported by python-can. Apache-2.0.
+A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP and Python scripting, on any adapter supported by python-can. Apache-2.0.
 
 ![pycangui on its demo device: the CAN Trace, CAN Transmit and Event Log above, and engine and vehicle speed plotted in Signals and Plot below](pycangui/help/main-window.png)
 

@@ -269,7 +269,7 @@ class AboutDialog(QDialog):
     def __init__(self, parent: QMainWindow) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"About {APP_NAME}")
-        heading = QLabel(f"<h3>{APP_NAME} {__version__}</h3><p>A user-friendly CAN bus tool.</p>")
+        heading = QLabel(f"<h3>{APP_NAME} {__version__}</h3><p>A graphical CAN bus tool.</p>")
         heading.setTextFormat(Qt.RichText)
         details = QPlainTextEdit(environment_report())
         details.setReadOnly(True)
@@ -458,7 +458,7 @@ class HelpMenu(QObject):
             answer = messages.question(
                 self.window,
                 "Update available",
-                f"{APP_NAME} {release.version} is available.  "
+                f"{APP_NAME} {release.version} is available. "
                 f"You are running {__version__}.\n\n"
                 "Open the releases page to download it?",
                 QMessageBox.Yes | QMessageBox.No,
