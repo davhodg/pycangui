@@ -427,7 +427,7 @@ class Node(QObject):
                 raise NodeError(f"{self.name}: cannot get onto {channel}: {exc}") from exc
             self.ctx.warn(
                 f"{self.name}: {interface} would not give a second handle on {channel} "
-                f"({exc}).  Sharing the application's, so pycangui's own protocol panes "
+                f"({exc}). Sharing the application's, so pycangui's own protocol panes "
                 "will not see this node -- equipment on the bus still will."
             )
             self._buses[channel] = manager.bus
@@ -677,7 +677,7 @@ class SimulatedNodes(QObject):
             return bus
         if not bus.is_connected:
             raise NodeError(
-                f"Channel {name} is not connected.  Connect it first -- a node stands "
+                f"Channel {name} is not connected. Connect it first -- a node stands "
                 "on a channel rather than opening one of its own."
             )
         return bus

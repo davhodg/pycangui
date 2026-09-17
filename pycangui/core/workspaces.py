@@ -271,7 +271,7 @@ def delete(name: str) -> None:
     if name == DEFAULT:
         raise ValueError(f"{DEFAULT} cannot be deleted: it is the one that is always there.")
     if name == active():
-        raise ValueError(f"{name} is the workspace in use.  Switch to another one first.")
+        raise ValueError(f"{name} is the workspace in use. Switch to another one first.")
     if not exists(name):
         raise ValueError(f"There is no workspace called {name}.")
     shutil.rmtree(dir_for(name))

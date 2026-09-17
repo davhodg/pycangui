@@ -38,7 +38,7 @@ TITLE = "Simulated nodes"
 
 WHAT_THEY_ARE = (
     "A simulated node is a device pycangui pretends to be, so a real one has "
-    "something to talk to.  Each is a Python file in your workspace's "
+    "something to talk to. Each is a Python file in your workspace's "
     "<b>nodes</b> folder -- edit one, or copy it, and it is yours."
 )
 
@@ -47,7 +47,7 @@ WHAT_THEY_ARE = (
 #: suggestion rather than anything special.
 SUGGESTED_CHANNEL = "Simulation"
 
-NONE_YET = "No node files in this workspace.  Open the folder to write one."
+NONE_YET = "No node files in this workspace. Open the folder to write one."
 
 
 class SimulatedNodeDialog(QDialog):
@@ -74,11 +74,11 @@ class SimulatedNodeDialog(QDialog):
         self.channel = QComboBox()
         self.channel.setEditable(True)
         self.channel.setToolTip(
-            "Which channel to stand this node on.  A node uses pycangui's\n"
+            "Which channel to stand this node on. A node uses pycangui's\n"
             "channels like everything else, so its traffic is in the trace\n"
             "and its channel is in the connect bar.\n\n"
             "An open channel is joined -- a real adapter asks first, because\n"
-            "a node transmits.  A name pycangui does not know is added as a\n"
+            "a node transmits. A name pycangui does not know is added as a\n"
             "virtual channel and connected, which is how to give the nodes a\n"
             "bus of their own."
         )
@@ -92,7 +92,7 @@ class SimulatedNodeDialog(QDialog):
         self.rate.setRange(0.01, 1000.0)
         self.rate.setDecimals(2)
         self.rate.setSuffix(" Hz")
-        self.rate.setToolTip("How often the node's poll() runs.  Its own rate, to start with.")
+        self.rate.setToolTip("How often the node's poll() runs. Its own rate, to start with.")
 
         self.start = QPushButton("Start")
         self.start.clicked.connect(self._start)

@@ -276,14 +276,14 @@ class MainWindow(QMainWindow):
         imported = file_menu.addAction("Import signals...", self._import_signals)
         imported.setToolTip(
             "Read the signals out of a measurement file -- MDF or MF4 -- and\n"
-            "put them on the plot beside the live ones.  A CAN log holds\n"
+            "put them on the plot beside the live ones. A CAN log holds\n"
             "frames and is replayed instead; this holds signals somebody has\n"
             "already decoded."
         )
         export = file_menu.addAction("Export signals...", self._export_signals)
         export.setToolTip(
             "Write every decoded signal to a CSV: DBC signals, CANopen PDO\n"
-            "values and XCP measurements alike.  Recording writes raw CAN,\n"
+            "values and XCP measurements alike. Recording writes raw CAN,\n"
             "which means decoding it again elsewhere to get back what is\n"
             "already on screen here."
         )
@@ -340,7 +340,7 @@ class MainWindow(QMainWindow):
         reload_hooks = tools_menu.addAction("Reload hooks", self._reload_hooks)
         reload_hooks.setToolTip(
             "Read the hook files again, so that an edit takes effect without\n"
-            "restarting.  Nothing on disk is changed."
+            "restarting. Nothing on disk is changed."
         )
         stubs = tools_menu.addAction("Add missing hooks", self._update_hook_stubs)
         stubs.setToolTip(
@@ -354,13 +354,13 @@ class MainWindow(QMainWindow):
         backends = tools_menu.addAction("Open backends folder", self._open_backends_folder)
         backends.setToolTip(
             "Python files that add a CAN interface pycangui does not know\n"
-            "about.  They are loaded at startup."
+            "about. They are loaded at startup."
         )
         tools_menu.addSeparator()
         simulated = tools_menu.addAction("Simulated nodes...", self._simulated_nodes)
         simulated.setToolTip(
             "Devices pycangui pretends to be, so a real one has something\n"
-            "to talk to.  Each is a Python file in the workspace you can edit."
+            "to talk to. Each is a Python file in the workspace you can edit."
         )
         tools_menu.addSeparator()
         # Together, because "put something back the way it was" is one thing
@@ -383,7 +383,7 @@ class MainWindow(QMainWindow):
         restore = self.reset_menu.addAction("Restore supplied files...", self._restore_supplied)
         restore.setToolTip(
             "Put pycangui's own version of a hook or simulated node file back --\n"
-            "to undo an edit, or to take a newer one over your changes.  Yours is\n"
+            "to undo an edit, or to take a newer one over your changes. Yours is\n"
             "renamed rather than deleted, so nothing you wrote is lost."
         )
         self.reset_menu.addSeparator()
@@ -403,7 +403,7 @@ class MainWindow(QMainWindow):
         self.strict_dbc.setToolTip(
             "Check that a database is well formed -- no overlapping signals, none "
             "running past the end of its message -- and ask before loading one that "
-            "is not.  Turn it off to load them without being asked."
+            "is not. Turn it off to load them without being asked."
         )
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
 
@@ -738,7 +738,7 @@ class MainWindow(QMainWindow):
             return
         self.open_custom_pane(name.strip())
         self.events.information(
-            f"Custom pane {name.strip()} created.  Add objects to it from the CANopen "
+            f"Custom pane {name.strip()} created. Add objects to it from the CANopen "
             "pane: select them in the object dictionary and use Add to a custom pane."
         )
 
@@ -919,7 +919,7 @@ class MainWindow(QMainWindow):
             custom_menu.addSeparator()
         made = custom_menu.addAction("New custom pane...", self._new_custom_pane_dialog)
         made.setToolTip(
-            "A named group of objects laid out as a form.  Objects are added\n"
+            "A named group of objects laid out as a form. Objects are added\n"
             "from the CANopen pane: select them in the object dictionary and\n"
             "use Add to a custom pane."
         )
@@ -966,7 +966,7 @@ class MainWindow(QMainWindow):
             action = remove.addAction(
                 self.panes.docks[name].windowTitle(), lambda n=name: self._remove_pane(n)
             )
-            action.setToolTip("Close this pane for good.  Closing its window only puts it away.")
+            action.setToolTip("Close this pane for good. Closing its window only puts it away.")
 
         self.view_menu.addSeparator()
         self.view_menu.addAction("Dock all panes", self.panes.dock_all)
@@ -1333,7 +1333,7 @@ class MainWindow(QMainWindow):
         missing = len(wanted) - len(series)
         self.events.information(
             f"Imported {len(series)} signal(s), {points:,} points, from {path.name} as "
-            f'"{group}".  Untick Follow on the plot and press Fit to see them: they sit '
+            f'"{group}". Untick Follow on the plot and press Fit to see them: they sit '
             "at the times the file recorded, not at this window's clock."
             + (f"  {missing} held nothing readable." if missing else "")
         )
@@ -1470,7 +1470,7 @@ class MainWindow(QMainWindow):
         self.plugins_menu.addSeparator()
         install = self.plugins_menu.addAction("Install plugin...", self._install_plugin)
         install.setToolTip(
-            "A plugin package: a zip with a plugin.py in it.  It is unpacked into\n"
+            "A plugin package: a zip with a plugin.py in it. It is unpacked into\n"
             "this workspace, and you are told what is in it before it is."
         )
         if offered := self.plugin_actions.not_installed():
@@ -1491,7 +1491,7 @@ class MainWindow(QMainWindow):
         folder.setToolTip("Where this workspace's plugins live.")
         reload_action = self.plugins_menu.addAction("Reload plugins", self._reload_plugins)
         reload_action.setToolTip(
-            "Load the plugin files again.  Whatever a plugin added last time is\n"
+            "Load the plugin files again. Whatever a plugin added last time is\n"
             "taken away first, so editing one and reloading is how it gets\n"
             "written -- there is no need to restart."
         )
@@ -1578,7 +1578,7 @@ class MainWindow(QMainWindow):
         if self._demo:
             self.events.information(
                 f"{DEMO_NAME} running on {where}: {len(self._demo)} nodes, "
-                "answering CANopen, UDS, J1939 and XCP.  "
+                "answering CANopen, UDS, J1939 and XCP. "
                 "Tools > Simulated nodes to see or stop them."
             )
 
@@ -1677,7 +1677,7 @@ class MainWindow(QMainWindow):
             f"{name} is about to join {where} at "
             f"{bitrate // 1000} kbit/s.\n\n"
             "If that is not the bitrate the bus is running at, this adapter cannot "
-            "read the traffic, and signals an error on every frame it sees.  Those "
+            "read the traffic, and signals an error on every frame it sees. Those "
             "errors go out on the bus, and can stop the working nodes on it from "
             "communicating.\n\n"
             "Check the bitrate before continuing.",

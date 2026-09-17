@@ -53,10 +53,10 @@ class PlotView(QWidget):
         self.window_s.setValue(10)
         self.window_s.setSuffix(" s")
         self.pause = QCheckBox("Pause")
-        self.pause.setToolTip("Hold the plot still.  Samples carry on being collected.")
+        self.pause.setToolTip("Hold the plot still. Samples carry on being collected.")
         self.follow = QCheckBox("Follow")
         self.follow.setToolTip(
-            "Keep the newest samples in view as they arrive.  The plot\n"
+            "Keep the newest samples in view as they arrive. The plot\n"
             "follows the data, so it stops when the data does -- a quiet\n"
             "bus, or a disconnected one, holds still rather than scrolling\n"
             "the trace off the edge.\n\n"

@@ -70,8 +70,8 @@ STOP_TEXT = (
 PROGRAMMING_TIMEOUT_S = 10
 PATIENCE_TIP = (
     "How long the device may take to answer each request while a download\n"
-    "runs.  Clearing a program erases its flash and the device answers only\n"
-    "when that has finished, which can be many seconds.  Everything else\n"
+    "runs. Clearing a program erases its flash and the device answers only\n"
+    "when that has finished, which can be many seconds. Everything else\n"
     "uses the SDO timeout set in the CANopen pane."
 )
 
@@ -80,9 +80,9 @@ SEGMENTED = "Segmented"
 BLOCK = "Block"
 TRANSFERS = (SEGMENTED, BLOCK)
 TRANSFER_TIP = (
-    "Segmented: 7 bytes a frame, each one answered.  Every device takes it.\n"
+    "Segmented: 7 bytes a frame, each one answered. Every device takes it.\n"
     "Block: many frames to each answer, and much faster on a device that\n"
-    "supports it.  One that does not refuses at the start, before anything\n"
+    "supports it. One that does not refuses at the start, before anything\n"
     "is written."
 )
 
@@ -160,7 +160,7 @@ class FirmwareView(QWidget):
         self.program = QSpinBox()
         self.program.setRange(1, 127)
         self.program.setToolTip(
-            "Which program on the device.  CiA 302-3 numbers them from 1, and\n"
+            "Which program on the device. CiA 302-3 numbers them from 1, and\n"
             "a controller with two processors takes two images."
         )
 
@@ -206,7 +206,7 @@ class FirmwareView(QWidget):
         self.enter = QPushButton("Enter bootloader")
         self.enter.setToolTip(
             "Stop the program (0x1F51), which is how a CiA 302-3 device goes into its\n"
-            "loader.  A device with a way of its own is enter_bootloader in program.py."
+            "loader. A device with a way of its own is enter_bootloader in program.py."
         )
         self.enter.clicked.connect(
             lambda: self._one("Requesting the bootloader", program.enter_bootloader, ask=True)
@@ -246,7 +246,7 @@ class FirmwareView(QWidget):
         inside.addWidget(self.state)
 
         note = QLabel(
-            "Most devices use a sequence of their maker's own instead.  This "
+            "Most devices use a sequence of their maker's own instead. This "
             "plugin is installed in your workspace: edit program.py in it to be "
             "what yours wants, then Plugins > Reload plugins."
         )

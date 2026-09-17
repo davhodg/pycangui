@@ -280,7 +280,7 @@ def _copy(source, dest: Path, budget: int, path: Path) -> int:
             written += len(chunk)
             if written > budget:
                 raise PackageError(
-                    f"{path.name} unpacks to more than it says it does.  It has not been imported."
+                    f"{path.name} unpacks to more than it says it does. It has not been imported."
                 )
             out.write(chunk)
     return written

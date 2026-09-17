@@ -79,7 +79,7 @@ HEARTBEAT_MIN_SAMPLES = 3
 #: comparison, and pycangui says so rather than implying its own check was
 #: the last word.
 VERIFY_NOTE = (
-    "  The node accepted those writes.  To be sure they survive, store them, "
+    "  The node accepted those writes. To be sure they survive, store them, "
     "power-cycle node {node_id} and compare it against the DCF in the "
     "CANopen DCF compare pane."
 )

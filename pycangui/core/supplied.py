@@ -138,7 +138,7 @@ class Supplied:
                 why = "yours differs from it -- your own changes, or a copy from an older pycangui"
             lines.append(
                 f"{self.label}/{name}: this version of pycangui ships a newer one, but "
-                f"{why}, so it was left as it is.  {RESTORE_ENTRY} takes the new one "
+                f"{why}, so it was left as it is. {RESTORE_ENTRY} takes the new one "
                 "and keeps yours as a .bak."
             )
         return lines

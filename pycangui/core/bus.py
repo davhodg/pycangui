@@ -398,14 +398,14 @@ class BusManager(QObject):
         name = self.channel_name
         if health == bus_health.BUS_OFF:
             self.note.emit(
-                f"{name}: bus off.  The controller has stopped taking part in the bus "
-                "and hears nothing until it is restarted.  Fix the cause first -- "
+                f"{name}: bus off. The controller has stopped taking part in the bus "
+                "and hears nothing until it is restarted. Fix the cause first -- "
                 "usually the bitrate, the wiring or the termination -- then click "
                 f"{name} in the status bar and choose Recover from bus off."
             )
         elif health == bus_health.PASSIVE:
             self.note.emit(
-                f"{name}: error passive.  The controller has counted enough errors to "
+                f"{name}: error passive. The controller has counted enough errors to "
                 "stop flagging the ones it sees, and is close to going bus off; check "
                 "the bitrate, the wiring and the termination."
             )
@@ -449,7 +449,7 @@ class BusManager(QObject):
             self._erroring = False
             self.health = bus_health.OK
             self.note.emit(
-                f"{name}: controller restarted (it was {was}).  If it goes bus off "
+                f"{name}: controller restarted (it was {was}). If it goes bus off "
                 "again, whatever put it there is still there."
             )
         return done
@@ -465,7 +465,7 @@ class BusManager(QObject):
                 return True
             failure = (result.stderr or result.stdout or "").strip()
         self.warning.emit(
-            f"{self.channel_name}: could not restart {self.channel} ({failure}).  "
+            f"{self.channel_name}: could not restart {self.channel} ({failure}). "
             "Restarting a socketcan interface needs the right to configure it: run "
             f"'sudo ip link set {self.channel} type can restart', or give the "
             "interface a restart-ms when bringing it up and the kernel does it itself."
@@ -489,9 +489,9 @@ class BusManager(QObject):
             if not self._erroring:
                 self._erroring = True
                 self.note.emit(
-                    f"{self.channel_name}: error frames on the bus.  The controller is "
+                    f"{self.channel_name}: error frames on the bus. The controller is "
                     "rejecting what it sees; check the bitrate, the wiring and the "
-                    "termination.  They are listed in the trace under Bus errors."
+                    "termination. They are listed in the trace under Bus errors."
                 )
         elif self._erroring and now - self._errors_at > self.ERROR_QUIET_S:
             self._erroring = False
@@ -511,12 +511,12 @@ class BusManager(QObject):
         if self.interface == "virtual":
             return (
                 f"connected to {self.description}, and nothing has been received in "
-                f"{seconds}.  A virtual channel is a loopback inside pycangui: it only "
-                "carries what pycangui puts on it.  Connect to the Demo device channel, "
+                f"{seconds}. A virtual channel is a loopback inside pycangui: it only "
+                "carries what pycangui puts on it. Connect to the Demo device channel, "
                 "replay a log onto it, or send something from the Transmit pane."
             )
         return (
-            f"connected to {self.description} but nothing has been received in {seconds}.  "
+            f"connected to {self.description} but nothing has been received in {seconds}. "
             "If the bus is not idle, the usual cause is the wrong bitrate; wiring and "
             "termination are the others."
         )

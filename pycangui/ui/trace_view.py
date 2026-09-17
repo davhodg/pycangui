@@ -158,7 +158,7 @@ class TraceView(QWidget):
         self.autoscroll.setChecked(True)
         self.pause = QCheckBox("Pause")
         self.pause.setToolTip(
-            "Hold the display still.  Frames carry on being captured and recorded,\n"
+            "Hold the display still. Frames carry on being captured and recorded,\n"
             "and appear when you unpause."
         )
         self.pause.toggled.connect(self._on_pause)
@@ -176,7 +176,7 @@ class TraceView(QWidget):
         self.filter_button = QToolButton()
         self.filter_button.setText("Filter")
         self.filter_button.setToolTip(
-            "Hide whole protocol groups or channels.  Nothing is discarded:\n"
+            "Hide whole protocol groups or channels. Nothing is discarded:\n"
             "the count reads shown of captured, and unhiding brings it back."
         )
         self.filter_button.setPopupMode(QToolButton.InstantPopup)
@@ -208,7 +208,7 @@ class TraceView(QWidget):
         self.columns_button = QToolButton()
         self.columns_button.setText("Columns")
         self.columns_button.setToolTip(
-            "Which columns this view shows.  The timing statistics -- first\n"
+            "Which columns this view shows. The timing statistics -- first\n"
             "seen, shortest, average and longest gap, and jitter -- start\n"
             "hidden, because fifteen columns at once is a table nobody reads."
         )

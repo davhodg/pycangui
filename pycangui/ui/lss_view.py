@@ -38,7 +38,7 @@ from pycangui.canopen.manager import LSS_BIT_TIMINGS, CanopenManager
 from pycangui.core.context import Context
 
 WARNING = (
-    "LSS talks to nodes that have no node-ID yet.  'All nodes' is only safe "
+    "LSS talks to nodes that have no node-ID yet. 'All nodes' is only safe "
     "with a single device connected."
 )
 
@@ -105,7 +105,7 @@ class LssView(QWidget):
         row.addWidget(self.node_id)
         set_id = QPushButton("Set node-ID")
         set_id.setToolTip(
-            "Give the selected node a new node-ID.  It does not take effect\n"
+            "Give the selected node a new node-ID. It does not take effect\n"
             "until the node is reset, and is only kept if you store it."
         )
         set_id.clicked.connect(lambda: manager.lss_set_node_id(self.node_id.value()))
@@ -119,7 +119,7 @@ class LssView(QWidget):
         row.addWidget(self.bit_rate)
         set_rate = QPushButton("Set bit rate")
         set_rate.setToolTip(
-            "Change the node's bit rate.  It keeps the old one until Activate,\n"
+            "Change the node's bit rate. It keeps the old one until Activate,\n"
             "and every node on the bus has to be changed together or the ones\n"
             "left behind will no longer be able to talk to it."
         )

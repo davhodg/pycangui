@@ -145,7 +145,7 @@ def screen(
         if not safe(member):
             raise PackageError(
                 f"{path.name} contains {member!r}, which would be written outside "
-                f"the {what} folder.  It has not been unpacked."
+                f"the {what} folder. It has not been unpacked."
             )
     total = sum(item.file_size for item in infos)
     if total > max_bytes:
@@ -177,7 +177,7 @@ def root_of(path: Path, members: list[str], entry: str = ENTRY, what: str = "plu
             f"folder, so it is not a pycangui {what}."
         )
     raise PackageError(
-        f"{path.name} holds more than one {what}.  One file brings in one thing "
+        f"{path.name} holds more than one {what}. One file brings in one thing "
         "under one name; send them separately."
     )
 

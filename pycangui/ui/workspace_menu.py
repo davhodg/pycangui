@@ -52,24 +52,24 @@ SAVE_AS_TIP = (
     "The one you were in is left exactly as you left it."
 )
 SWITCH_TIP = (
-    "Open another workspace.  Everything reloads, because a workspace holds\n"
+    "Open another workspace. Everything reloads, because a workspace holds\n"
     "which channels at what bitrate, and the adapters can only be in one of\n"
     "those states at a time."
 )
 MANAGE_TIP = "Rename, delete or export a workspace."
 EXPORT_TIP = (
     "Write the workspace you are in out as one zip file, to share\n"
-    "or to keep.  Backups and what belongs to this computer are left out."
+    "or to keep. Backups and what belongs to this computer are left out."
 )
 IMPORT_TIP = (
     "Make a new workspace from a zip file somebody exported, once you have seen\n"
-    "what it will write.  Nothing you already have is changed."
+    "what it will write. Nothing you already have is changed."
 )
 
 SWITCH_WHILE_CONNECTED = (
     "{name} is connected.\n\n"
     "Opening another workspace closes every channel and reopens whatever that "
-    "workspace has, which means dropping off the bus you are on now.  Anything "
+    "workspace has, which means dropping off the bus you are on now. Anything "
     "being transmitted cyclically stops.\n\n"
     "Open {target} anyway?"
 )
@@ -79,7 +79,7 @@ IMPORT_QUESTION = "A new workspace called {name} will be made from {file}, with 
 #: same fact the plugin installer states, at the moment it becomes true.
 IMPORT_CODE = (
     "Some of it is Python -- hooks, simulated nodes or plugins -- which runs as "
-    "part of pycangui once the workspace is open.  Import workspaces you would be "
+    "part of pycangui once the workspace is open. Import workspaces you would be "
     "willing to run yourself."
 )
 IMPORT_CHANGES_NOTHING = "Nothing you already have is changed."
@@ -318,7 +318,7 @@ class WorkspaceMenu(QObject):
         answer = messages.question(
             self.window,
             "Open the imported workspace?",
-            f"{name} is ready.  Open it now?",
+            f"{name} is ready. Open it now?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )
@@ -449,7 +449,7 @@ class ManageWorkspaces(QDialog):
         if default:
             why = f"{workspaces.DEFAULT} is the one that is always there."
         elif in_use:
-            why = "This is the workspace in use.  Switch to another one first."
+            why = "This is the workspace in use. Switch to another one first."
         self.rename.setToolTip(why)
         self.delete.setToolTip(why)
 

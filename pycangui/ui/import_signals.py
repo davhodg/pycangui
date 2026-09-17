@@ -53,7 +53,7 @@ NOT_FROZEN = (
 #: environment to pip into, so there is nothing to offer doing about it.
 FROZEN = (
     "The asammdf library, which reads MDF and MF4 files, is missing from this "
-    "installation.  It is normally included, so this build is incomplete: "
+    "installation. It is normally included, so this build is incomplete: "
     "reinstalling pycangui should restore it."
 )
 

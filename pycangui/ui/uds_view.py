@@ -117,7 +117,7 @@ class UdsView(QWidget):
         self.ext.setChecked(cfg.extended_id)
         self.padding = QCheckBox("Pad")
         self.padding.setToolTip(
-            "Pad every frame out to 8 bytes.  Some ECUs require it and ignore\n"
+            "Pad every frame out to 8 bytes. Some ECUs require it and ignore\n"
             "anything shorter; others do not mind either way."
         )
         self.padding.setChecked(cfg.padding is not None)
@@ -132,7 +132,7 @@ class UdsView(QWidget):
         self.transport.currentTextChanged.connect(manager.set_backend)
         self.can_dl = QComboBox()
         self.can_dl.setToolTip(
-            "CAN_DL: how many bytes go in one ISO-TP frame.  Eight is all a\n"
+            "CAN_DL: how many bytes go in one ISO-TP frame. Eight is all a\n"
             "classic bus can carry; the longer lengths need a channel opened as\n"
             "CAN FD, and are what makes running UDS over FD worth the trouble --\n"
             "at 64 there are eight times fewer flow control rounds.\n"
@@ -145,7 +145,7 @@ class UdsView(QWidget):
         self.brs = QCheckBox("BRS")
         self.brs.setToolTip(
             "Switch to the faster data rate for the data phase of each FD\n"
-            "frame.  Without it an FD frame runs end to end at the arbitration\n"
+            "frame. Without it an FD frame runs end to end at the arbitration\n"
             "bitrate, so the data rate chosen on the toolbar never gets used."
         )
         self.brs.setChecked(cfg.bitrate_switch)
@@ -174,7 +174,7 @@ class UdsView(QWidget):
         h = QHBoxLayout(sess)
         self.session = QComboBox()
         self.session.setToolTip(
-            "DiagnosticSessionControl (0x10).  Most services are only allowed\n"
+            "DiagnosticSessionControl (0x10). Most services are only allowed\n"
             "in some sessions, and an ECU drops back to the default one after a\n"
             "few seconds of quiet unless Tester present is ticked.\n"
             "0x40 to 0x5F belong to the manufacturer and 0x60 to 0x7E to the\n"
@@ -224,7 +224,7 @@ class UdsView(QWidget):
         r.addWidget(self.reset_type)
         reset = QPushButton("Reset")
         reset.setToolTip(
-            "ECUReset (0x11).  The ECU restarts, so the session and any\n"
+            "ECUReset (0x11). The ECU restarts, so the session and any\n"
             "security unlock are lost with it."
         )
         reset.clicked.connect(lambda: self.manager.ecu_reset(self.reset_type.currentData()))
@@ -236,7 +236,7 @@ class UdsView(QWidget):
         g = QGridLayout(data)
         self.did = _picker(manager.did_choices(), 4, manager.did_description)
         self.did.setToolTip(
-            "The identifier to read or write.  The list is what ISO 14229-1\n"
+            "The identifier to read or write. The list is what ISO 14229-1\n"
             "names plus your own DID_NAMES; anything else can be typed.\n"
             "Hover an entry for what it holds."
         )
@@ -248,7 +248,7 @@ class UdsView(QWidget):
         read_did.clicked.connect(lambda: self.manager.read_did(_picked(self.did)))
         write_did = QPushButton("Write DID")
         write_did.setToolTip(
-            "WriteDataByIdentifier (0x2E).  What you type is turned into bytes\n"
+            "WriteDataByIdentifier (0x2E). What you type is turned into bytes\n"
             "by hooks/uds.py::did_encode -- hex by default."
         )
         write_did.clicked.connect(
@@ -262,7 +262,7 @@ class UdsView(QWidget):
 
         self.routine = _picker(manager.routine_choices(), 4, manager.routine_description)
         self.routine.setToolTip(
-            "The routine to run.  ISO 14229-1 names four; everything from 0200\n"
+            "The routine to run. ISO 14229-1 names four; everything from 0200\n"
             "to DFFF is the manufacturer's, which is where the rest of a flash\n"
             "sequence lives, so type those or add them to ROUTINE_NAMES."
         )
@@ -331,7 +331,7 @@ class UdsView(QWidget):
 
         self.dtc_mask = _hex_edit("FF", 50)
         self.dtc_mask.setToolTip(
-            "Which faults to ask about.  A bit set means "
+            "Which faults to ask about. A bit set means "
             + "include it:\n  "
             + "\n  ".join(STATUS_BITS)
             + "\nFF is everything; 08 is only the confirmed ones."
@@ -349,7 +349,7 @@ class UdsView(QWidget):
             "ECU is within its rights to want one particular fault instead."
         )
         self.record = _hex_edit("FF", 50)
-        self.record.setToolTip("Which record to read.  FF asks for all of them.")
+        self.record.setToolTip("Which record to read. FF asks for all of them.")
         self.memory = _hex_edit("00", 50)
         self.memory.setToolTip("Which user-defined DTC memory to read from")
         self.functional_group = _hex_edit("33", 50)
@@ -386,29 +386,29 @@ class UdsView(QWidget):
 
         self.dtc_setting = QCheckBox("DTC setting on")
         self.dtc_setting.setToolTip(
-            "ControlDTCSetting (0x85).  Untick to stop the ECU recording new\n"
+            "ControlDTCSetting (0x85). Untick to stop the ECU recording new\n"
             "faults while you work on it, so that pulling a connector does not\n"
-            "leave one behind.  The ECU turns it back on itself when the\n"
+            "leave one behind. The ECU turns it back on itself when the\n"
             "session ends, which is worth remembering when it looks as though\n"
-            "the setting did not take.  The tick says what was last asked for,\n"
+            "the setting did not take. The tick says what was last asked for,\n"
             "not what the ECU has done about it."
         )
         self.dtc_setting.setChecked(True)
         self.dtc_setting.toggled.connect(self.manager.set_dtc_setting)
         self.clear_group = _hex_edit("FFFFFF", 70)
         self.clear_group.setToolTip(
-            "Which faults to erase.  FFFFFF is all of them; a group such as\n"
+            "Which faults to erase. FFFFFF is all of them; a group such as\n"
             "FFFF33 is emissions related only."
         )
         clear_dtc = QPushButton("Clear")
         clear_dtc.setToolTip(
-            "ClearDiagnosticInformation (0x14).  The ECU's stored faults are\n"
+            "ClearDiagnosticInformation (0x14). The ECU's stored faults are\n"
             "erased, along with the freeze frames that go with them."
         )
         clear_dtc.clicked.connect(lambda: self.manager.clear_dtcs(self._int(self.clear_group)))
         self.standard = QComboBox()
         self.standard.setToolTip(
-            "Which edition of ISO 14229-1 requests are built to.  It applies to\n"
+            "Which edition of ISO 14229-1 requests are built to. It applies to\n"
             "every service, but it shows up here: the 2020 edition withdrew the\n"
             "mirror memory reports, and they cannot be sent while it is chosen."
         )
@@ -463,7 +463,7 @@ class UdsView(QWidget):
         self.block.setRange(0, 4095)
         self.block.setSpecialValueText("from ECU")
         self.block.setToolTip(
-            "Data bytes per TransferData.  Left at 0 the ECU's own\n"
+            "Data bytes per TransferData. Left at 0 the ECU's own\n"
             "maxNumberOfBlockLength is used, less the two bytes the service id\n"
             "and the block counter take out of it."
         )
@@ -483,7 +483,7 @@ class UdsView(QWidget):
         self.dfi = _hex_edit("00", 40)
         self.dfi.setToolTip(
             "dataFormatIdentifier: high nibble compression, low nibble\n"
-            "encryption.  00 is plain bytes, which is what most bootloaders\n"
+            "encryption. 00 is plain bytes, which is what most bootloaders\n"
             "want and all of them understand."
         )
         x.addWidget(QLabel("DFI"), 0, 7)
@@ -501,7 +501,7 @@ class UdsView(QWidget):
 
         self.address = _hex_edit("", 90)
         self.address.setToolTip(
-            "Where the bytes go, in hex.  A hex or S-record file carries its\n"
+            "Where the bytes go, in hex. A hex or S-record file carries its\n"
             "own address and fills this in; a raw binary has none, so for one\n"
             "of those it has to be typed."
         )
@@ -516,7 +516,7 @@ class UdsView(QWidget):
         self.ecu_path = QLineEdit()
         self.ecu_path.setPlaceholderText("path on the ECU")
         self.ecu_path.setToolTip(
-            "The name the file has on the ECU.  This is what 0x38 transfers\n"
+            "The name the file has on the ECU. This is what 0x38 transfers\n"
             "by, in place of an address."
         )
         x.addWidget(QLabel("On ECU"), 2, 5)
@@ -527,7 +527,7 @@ class UdsView(QWidget):
         self.erase = QCheckBox("Erase first")
         self.erase.setToolTip(
             f"RoutineControl start {ERASE_MEMORY:04X} over every segment before\n"
-            "the first one is written.  Flash has to be erased before it can be\n"
+            "the first one is written. Flash has to be erased before it can be\n"
             "written, and this is the one routine ISO 14229-1 names for it.\n"
             "All of them first, not each before its own download: two segments\n"
             "can share a flash block, and erasing between them would take the\n"
@@ -536,7 +536,7 @@ class UdsView(QWidget):
         self.check = QCheckBox("Check after")
         self.check.setToolTip(
             "Run a routine once each segment has been sent, to have the ECU\n"
-            "check what it was given.  Unlike the erase this one has no\n"
+            "check what it was given. Unlike the erase this one has no\n"
             "standard behind it -- the number beside it is the one the\n"
             "HIS/AUTOSAR bootloaders settled on, and yours may differ.\n"
             "What it is sent comes from hooks/uds.py::check_options."
@@ -555,7 +555,7 @@ class UdsView(QWidget):
         self.bar.setTextVisible(True)
         self.stop = QPushButton("Cancel")
         self.stop.setToolTip(
-            "Stop after the block being sent now.  The ECU is waiting for a\n"
+            "Stop after the block being sent now. The ECU is waiting for a\n"
             "TransferData it has already been promised, so stopping part way\n"
             "through one would leave the connection out of step."
         )
@@ -707,7 +707,7 @@ class UdsView(QWidget):
         self.start.setToolTip(
             {
                 "download": "RequestDownload (0x34), then a TransferData for every block,\n"
-                "then RequestTransferExit.  One RequestDownload per segment:\n"
+                "then RequestTransferExit. One RequestDownload per segment:\n"
                 "gaps in the file are left as gaps.",
                 "upload": "RequestUpload (0x35) and read the memory back into the file\n"
                 "named above, in whichever format its name asks for.",

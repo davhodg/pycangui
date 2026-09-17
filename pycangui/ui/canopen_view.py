@@ -115,13 +115,13 @@ class CanopenView(QWidget):
         add_node = QPushButton("Add node...")
         add_node.setToolTip(
             "Put a node in the list that has not been heard from: heartbeat off,\n"
-            "held in pre-operational, or sitting in its bootloader.  It is\n"
+            "held in pre-operational, or sitting in its bootloader. It is\n"
             "identified straight away."
         )
         add_node.clicked.connect(self._add_node)
         login = QPushButton("Login...")
         login.setToolTip(
-            "Ask the selected node for an access level.  CANopen has no standard\n"
+            "Ask the selected node for an access level. CANopen has no standard\n"
             "login, so this is hooks/canopen.py::login, written for your device."
         )
         login.clicked.connect(self._login)
@@ -188,7 +188,7 @@ class CanopenView(QWidget):
         apply_dcf.clicked.connect(self._apply_dcf)
         load_btn = QPushButton("Load EDS...")
         load_btn.setToolTip(
-            "Choose the EDS for the selected node by hand.  Normally one is\n"
+            "Choose the EDS for the selected node by hand. Normally one is\n"
             "found by itself from the node's identity, or by\n"
             "hooks/canopen.py::eds_for_node."
         )

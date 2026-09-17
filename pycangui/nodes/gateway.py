@@ -43,7 +43,7 @@ REMAP: dict[int, int] = {}
 def start(node, *, ctx):
     if len(node.channels) < 2:
         raise ValueError(
-            "A gateway needs at least two channels.  Add a second one when you start it."
+            "A gateway needs at least two channels. Add a second one when you start it."
         )
     node.state.reverse = {out: into for into, out in REMAP.items()}
     node.state.forwarded = 0

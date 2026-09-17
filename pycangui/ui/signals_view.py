@@ -29,7 +29,7 @@ RIGHT = 4
 Y1_TIP = "Plot the signal against the left Y axis."
 Y2_TIP = (
     "Plot the signal against a second Y axis, on the right of the plot, with a\n"
-    "scale of its own.  A signal is on one axis at a time."
+    "scale of its own. A signal is on one axis at a time."
 )
 
 
