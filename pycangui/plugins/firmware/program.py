@@ -166,7 +166,7 @@ def image_bytes(image) -> bytes:
     if len(image.segments) > 1:
         raise ValueError(
             f"{image.path} is in {len(image.segments)} pieces with gaps between them, "
-            "and a program download is one block of bytes.  Supply the image as one "
+            "and a program download is one block of bytes. Supply the image as one "
             "contiguous file, or write the sequence your device wants into the plugin."
         )
     return image.segments[0].data

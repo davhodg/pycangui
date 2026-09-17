@@ -697,7 +697,7 @@ class TxView(QWidget):
         if not self._may_transmit():
             return
         if (clash := self._clash(row)) is not None:
-            self.ctx.warn(f"TX row {row + 1}: {clash} -- not sent.  See Counter / checksum...")
+            self.ctx.warn(f"TX row {row + 1}: {clash} -- not sent. See Counter / checksum...")
             return
         try:
             can_id, data, ext, fd, _ = self._message(row)
@@ -752,7 +752,7 @@ class TxView(QWidget):
             self._set_cyclic(row, False)
             return
         if (clash := self._clash(row)) is not None:
-            self.ctx.warn(f"TX row {row + 1}: {clash} -- not started.  See Counter / checksum...")
+            self.ctx.warn(f"TX row {row + 1}: {clash} -- not started. See Counter / checksum...")
             self._set_cyclic(row, False)
             return
         try:

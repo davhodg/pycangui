@@ -36,7 +36,7 @@ from pycangui.core.context import Context
 from pycangui.ui import folders
 
 BANNER = """pycangui console -- Python {ver}
-  ctx       settings, log(), eds_dir ...       bus       connect/send/send_periodic
+  ctx       settings, log(), eds_dir ...      bus       connect/send/send_periodic
   canopen   CANopen manager (node(5).sdo[...]) hooks     user hooks
   uds       UDS manager (uds.client is the udsoncan Client when open)
   j1939     J1939 manager       xcp       XCP manager (xcp.a2l parameters)

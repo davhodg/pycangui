@@ -25,11 +25,11 @@ LEVEL_KEY = "canopen.login_level"
 MAX_LEVEL = 255
 
 LEVEL_TIP = (
-    "Which access level to ask for.  What the numbers mean is the device's own;\n"
+    "Which access level to ask for. What the numbers mean is the device's own;\n"
     "the last one asked for is remembered."
 )
 NOTE = (
-    "Done by hooks/canopen.py::login, written for your device.  The password is "
+    "Done by hooks/canopen.py::login, written for your device. The password is "
     "passed to it and is neither logged nor kept."
 )
 

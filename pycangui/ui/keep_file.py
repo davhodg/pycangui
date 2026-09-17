@@ -23,7 +23,7 @@ QUESTION = "Copy {name} into the workspace?"
 TEXT = (
     "{name} is in {folder}.\n\n"
     "A copy in the workspace travels with it when the workspace is exported, "
-    "and a file kept elsewhere does not.  No keeps using the file where it is."
+    "and a file kept elsewhere does not. No keeps using the file where it is."
 )
 
 

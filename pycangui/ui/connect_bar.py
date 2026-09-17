@@ -107,13 +107,13 @@ class ConnectBar(QToolBar):
         self.channel = ChannelBox()
         self.channel.setEditable(True)
         self.channel.setMinimumWidth(170)
-        self.channel.setToolTip("Pick an adapter, or type a channel.  Opening this looks again.")
+        self.channel.setToolTip("Pick an adapter, or type a channel. Opening this looks again.")
         self.channel.currentTextChanged.connect(lambda _t: self._save_settings())
         self.channel.expanded.connect(self._on_channel_expanded)
         self.bitrate = QComboBox()
         self.bitrate.setToolTip(
             "The arbitration bitrate, which every node on the bus has to agree\n"
-            "on.  Getting it wrong is the usual reason a bus looks idle."
+            "on. Getting it wrong is the usual reason a bus looks idle."
         )
         for b in BITRATES:
             self.bitrate.addItem(f"{b // 1000} kbit/s", b)
@@ -132,7 +132,7 @@ class ConnectBar(QToolBar):
         self.data_bitrate.currentIndexChanged.connect(lambda _i: self._save_settings())
         self.fd = QCheckBox("FD")
         self.fd.setToolTip(
-            "Open the channel as CAN FD.  The adapter and every node on the\n"
+            "Open the channel as CAN FD. The adapter and every node on the\n"
             "bus have to agree; a classic controller treats an FD frame as an\n"
             "error."
         )
@@ -279,7 +279,7 @@ class ConnectBar(QToolBar):
         self._merge(found, typed=typed or self._typed_text())
         if not found and announce:
             self.ctx.log(
-                f"Detect: {interface} reported no adapters.  Either none is attached, "
+                f"Detect: {interface} reported no adapters. Either none is attached, "
                 "its driver is not installed, or this backend cannot enumerate -- "
                 "type the channel in and connect anyway."
             )

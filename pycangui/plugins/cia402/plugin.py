@@ -69,13 +69,13 @@ BANNER_STYLE = (
 )
 DEMANDING = "DEMAND ACTIVE - node {node} is enabled and acting on its target."
 STALE = (
-    "Node {node} was enabled when it was last read.  Nothing is being read now, "
+    "Node {node} was enabled when it was last read. Nothing is being read now, "
     "so what it is doing at this moment is not known here."
 )
 
 DISABLE_TOO_TIP = (
-    "Off by default.  Closing this pane always halts the drive and zeroes a\n"
-    "speed or torque demand -- that part is not optional.  Removing power on\n"
+    "Off by default. Closing this pane always halts the drive and zeroes a\n"
+    "speed or torque demand -- that part is not optional. Removing power on\n"
     "top of that is a decision about the machine rather than about the tool:\n"
     "on a vertical axis it is the load that decides, and whether a brake\n"
     "catches it is not something pycangui can know."
@@ -87,7 +87,7 @@ COULD_NOT_STOP = (
     "It is still acting on the last target it was given."
 )
 BUS_GONE = (
-    "The bus closed while node {node} was enabled.  It is still acting on the "
+    "The bus closed while node {node} was enabled. It is still acting on the "
     "last target it was given, and nothing here can stop it now."
 )
 
@@ -96,7 +96,7 @@ BUS_GONE = (
 #: rating, which are the maker's and not ours to assume.
 UNITS_NOTE = (
     "Counts, counts per second and per mille of rated torque, which is what the "
-    "profile defines.  Turning those into millimetres or amps needs the gearing "
+    "profile defines. Turning those into millimetres or amps needs the gearing "
     "and the motor rating, which are the drive's business and not pycangui's."
 )
 
@@ -153,7 +153,7 @@ class MotorView(QWidget):
         )
         self.enable.clicked.connect(self._enable)
         self.disable = QPushButton("Disable")
-        self.disable.setToolTip("Back to Switch on disabled.  The motor is no longer driven.")
+        self.disable.setToolTip("Back to Switch on disabled. The motor is no longer driven.")
         self.disable.clicked.connect(
             lambda: self._command(lambda: cia402.steps_to_disable(self.statusword))
         )
@@ -181,7 +181,7 @@ class MotorView(QWidget):
         self.mode_box = QComboBox()
         for number, name in sorted(cia402.MODES.items()):
             self.mode_box.addItem(f"{number}  {name}", number)
-        self.mode_box.setToolTip("Written to 0x6060.  What the drive is actually in is beside it.")
+        self.mode_box.setToolTip("Written to 0x6060. What the drive is actually in is beside it.")
         set_mode = QPushButton("Set mode")
         set_mode.clicked.connect(self._set_mode)
         self.mode_now = QLabel("")

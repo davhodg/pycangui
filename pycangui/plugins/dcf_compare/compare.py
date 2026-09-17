@@ -174,7 +174,7 @@ def node_id_warning(left: Reading, right: Reading) -> str:
     if left.node_id is None or right.node_id is None or left.node_id == right.node_id:
         return ""
     return (
-        f"Left is node {left.node_id} and right is node {right.node_id}.  Every COB-ID "
+        f"Left is node {left.node_id} and right is node {right.node_id}. Every COB-ID "
         "derived from the node-ID will differ, correctly -- that is what a different "
         "node-ID means, not a difference in configuration."
     )

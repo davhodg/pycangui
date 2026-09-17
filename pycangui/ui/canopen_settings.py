@@ -62,18 +62,18 @@ COLUMNS = ("Node", "SDO request", "SDO response", "Heartbeat timeout")
 
 TIMEOUT_TIP = (
     "How long to wait for a node to answer each SDO request, for every SDO\n"
-    "pycangui sends.  300 ms is the canopen library's own default."
+    "pycangui sends. 300 ms is the canopen library's own default."
 )
 RETRIES_TIP = "How many more times to ask when a node does not answer in time."
 HEARTBEAT_TIP = (
     "In milliseconds: how long without a heartbeat before this node is called\n"
-    "lost.  Blank works it out, from the producer time in 0x1017 or the\n"
+    "lost. Blank works it out, from the producer time in 0x1017 or the\n"
     "heartbeats the node actually sends, as three of them."
 )
 PER_NODE_NOTE = (
     "Only for a node that needs something other than what pycangui works out: "
     "an SDO server off the channel CiA 301 predefines (requests to 0x600 + node, "
-    "answers on 0x580 + node), or a heartbeat timeout of its own.  Leave the "
+    "answers on 0x580 + node), or a heartbeat timeout of its own. Leave the "
     "COB-IDs as they are and the timeout blank for whichever does not apply."
 )
 

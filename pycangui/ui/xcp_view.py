@@ -64,7 +64,7 @@ class XcpView(QWidget):
         unlock = QPushButton("Unlock CAL")
         unlock.setToolTip(
             "GET_SEED and UNLOCK for the calibration resource, which most\n"
-            "slaves want before a value can be written.  The key comes from\n"
+            "slaves want before a value can be written. The key comes from\n"
             "hooks/xcp.py::compute_key."
         )
         unlock.clicked.connect(lambda: self.manager.unlock(RESOURCE_CAL))
@@ -109,7 +109,7 @@ class XcpView(QWidget):
 
         read_btn = QPushButton("Read selected")
         read_btn.setToolTip(
-            "Read the selected measurements once.  Tick Plot to keep reading\n"
+            "Read the selected measurements once. Tick Plot to keep reading\n"
             "them into the signal hub, where they can be plotted."
         )
         read_btn.clicked.connect(self._read_selected)

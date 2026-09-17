@@ -66,7 +66,7 @@ EDS_FILTER = "Device files (*.dcf *.eds);;All files (*)"
 HEADINGS = ("Index", "Sub", "Object", "Left", "Right", "")
 
 NOTHING_TO_READ = (
-    "Neither side names any objects, so there is nothing to compare.  A DCF "
+    "Neither side names any objects, so there is nothing to compare. A DCF "
     "says which objects matter; comparing two nodes needs an EDS loaded "
     "against one of them to say the same thing."
 )
@@ -90,7 +90,7 @@ class Side(QWidget):
         self.browse.clicked.connect(self._choose)
 
         self.node = QComboBox()
-        self.node.setToolTip("A node on the bus.  It is read when you press Compare.")
+        self.node.setToolTip("A node on the bus. It is read when you press Compare.")
 
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
@@ -178,7 +178,7 @@ class CompareView(QWidget):
         self.differences_only.setToolTip(
             "An object held on one side and not the other is not a difference:\n"
             "a file carries only what it was given, and a device answers only\n"
-            "what it implements.  Those are listed separately."
+            "what it implements. Those are listed separately."
         )
         self.differences_only.toggled.connect(self._show_rows)
         copy = QPushButton("Copy")

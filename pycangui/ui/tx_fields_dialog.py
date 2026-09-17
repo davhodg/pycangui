@@ -36,13 +36,13 @@ TITLE = "Counter and checksum"
 
 WHY = (
     "A receiver that checks a rolling counter or a checksum rejects every "
-    "frame of a message that never changes.  Set them here and each frame is "
+    "frame of a message that never changes. Set them here and each frame is "
     "computed as it is sent."
 )
 
 TIMING_NOTE = (
     "A message with either of these is sent by pycangui's own timer rather "
-    "than by the adapter, because every frame has to differ.  Expect a little "
+    "than by the adapter, because every frame has to differ. Expect a little "
     "more jitter in the period than the adapter would give you."
 )
 
@@ -170,7 +170,7 @@ class TxFieldsDialog(QDialog):
         self.whole = QCheckBox("Over the whole message except the checksum itself")
         self.whole.setChecked(True)
         self.whole.setToolTip(
-            "The usual rule.  Including the checksum's own bytes means hashing\n"
+            "The usual rule. Including the checksum's own bytes means hashing\n"
             "a field that is about to be overwritten, so the number never\n"
             "matches at the other end."
         )

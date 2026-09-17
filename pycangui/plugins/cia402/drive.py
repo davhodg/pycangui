@@ -254,11 +254,11 @@ class Step:
 #: ignored, which looks exactly like the tool having done nothing.
 TRANSIENT = {
     "Not ready to switch on": (
-        "The drive is still starting up.  It leaves this state by itself, and a "
+        "The drive is still starting up. It leaves this state by itself, and a "
         "controlword written now is ignored rather than refused."
     ),
     "Fault reaction active": (
-        "The drive is still reacting to a fault -- braking, most likely.  It "
+        "The drive is still reacting to a fault -- braking, most likely. It "
         "moves to Fault by itself, and can be reset from there."
     ),
     UNKNOWN: (
@@ -283,7 +283,7 @@ def steps_to_enable(statusword: int) -> list[Step]:
     """
     state = state_of(statusword)
     if why := TRANSIENT.get(state):
-        raise ValueError(f"{state}.  {why}")
+        raise ValueError(f"{state}. {why}")
     if state == "Operation enabled":
         return []
 
@@ -322,7 +322,7 @@ def steps_to_disable(statusword: int) -> list[Step]:
     """Back to Switch on disabled, from wherever it is now."""
     state = state_of(statusword)
     if why := TRANSIENT.get(state):
-        raise ValueError(f"{state}.  {why}")
+        raise ValueError(f"{state}. {why}")
     if state == "Switch on disabled":
         return []
     return [Step("Disabling the drive", DISABLE_VOLTAGE)]
@@ -360,13 +360,13 @@ def steps_to_apply_target(mode: int, statusword: int) -> list[Step]:
     """
     if mode != 1:
         raise ValueError(
-            f"{mode_name(mode)} acts on its target as it is written.  "
+            f"{mode_name(mode)} acts on its target as it is written. "
             "Only profile position waits to be told."
         )
     if not is_enabled(statusword):
         raise ValueError(
             f"The drive has to be enabled before it will take a target, and this is "
-            f"{state_of(statusword)}.  Applying one is the enable controlword with bit 4 "
+            f"{state_of(statusword)}. Applying one is the enable controlword with bit 4 "
             "added, so doing it from here would enable the drive without asking."
         )
     return [
@@ -381,7 +381,7 @@ def can_set_target(mode: int) -> tuple[bool, str]:
     if mode in CYCLIC:
         return False, (
             f"{mode_name(mode)} expects a new target every cycle, over a PDO, from "
-            "something keeping time.  One written here would be stale before it "
+            "something keeping time. One written here would be stale before it "
             "arrived."
         )
     if mode not in TARGET_FOR:

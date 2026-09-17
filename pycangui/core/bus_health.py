@@ -111,7 +111,7 @@ MEANING = {
     DOWN: "Not connected.",
     OK: "Error active: taking part in the bus normally.",
     WARNING: (
-        "Errors on the bus.  The controller is still taking part, but something "
+        "Errors on the bus. The controller is still taking part, but something "
         "is wrong -- usually the bitrate, the wiring or the termination."
     ),
     PASSIVE: (

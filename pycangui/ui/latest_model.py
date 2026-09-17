@@ -67,7 +67,7 @@ TIPS = {
     ),
     "Period max": "Longest gap since this id first appeared, or since Clear",
     "Jitter": (
-        "Longest gap minus shortest, over that whole span.  A message\non a timer"
+        "Longest gap minus shortest, over that whole span. A message\non a timer"
         " that has drifted, stalled or been blocked shows it here"
     ),
 }

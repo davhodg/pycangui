@@ -46,7 +46,7 @@ from pycangui.ui import folders, messages
 #: file from a different person, so "you agreed last time" is not an answer.
 WHAT_A_PLUGIN_IS = (
     "A plugin is Python that runs as part of pycangui, with everything pycangui "
-    "can reach: the bus, your files and the network.  Install ones you would be "
+    "can reach: the bus, your files and the network. Install ones you would be "
     "willing to run yourself."
 )
 
@@ -73,7 +73,7 @@ UNINSTALL = (
 
 INACTIVE_TIP = (
     "Switched off plugins are not loaded at all: no pane, no menu entries, and\n"
-    "none of their code runs.  The folder stays, so whatever you edited into it\n"
+    "none of their code runs. The folder stays, so whatever you edited into it\n"
     "is still there when you switch it back on."
 )
 

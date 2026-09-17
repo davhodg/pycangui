@@ -49,12 +49,12 @@ from pycangui.core.context import Context
 MAX_LINES = 5000
 
 SKIP_TIP = (
-    "Bytes to ignore at the start of each frame.  Devices often put a\n"
+    "Bytes to ignore at the start of each frame. Devices often put a\n"
     "length or a sequence number there; a stream of dots at the start\n"
     "of every eight characters is what that looks like."
 )
 NOTHING_YET = (
-    "No id yet.  Type one above.\n\n"
+    "No id yet. Type one above.\n\n"
     "There is no standard identifier for this, so it will be in the "
     "documentation for whatever you are listening to."
 )
@@ -158,7 +158,7 @@ class AsciiView(QWidget):
         self.skip.valueChanged.connect(lambda _v: self._on_changed())
 
         clear = QPushButton("Clear")
-        clear.setToolTip("Throw away the text so far.  The id goes on being read.")
+        clear.setToolTip("Throw away the text so far. The id goes on being read.")
         clear.clicked.connect(lambda: self.text.clear())
 
         bar = QHBoxLayout()

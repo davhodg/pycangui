@@ -60,28 +60,28 @@ FILE_ENTRY = "Open a DCF or EDS..."
 READ_TIP = "Read every object on this pane again."
 EDIT_TIP = (
     "Add objects to this pane, and change their labels, their order and\n"
-    "how each one is shown.  Objects can also be picked in the CANopen\n"
+    "how each one is shown. Objects can also be picked in the CANopen\n"
     "pane's object dictionary, with Add to pane."
 )
 SOURCE_TIP = (
     "Where the values come from and go to: a node on the bus, or a DCF or\n"
-    "EDS file.  The same pane over a file is how a configuration is built\n"
+    "EDS file. The same pane over a file is how a configuration is built\n"
     "at a desk and taken to the machine."
 )
 POLL_TIP = (
     "Read every object on this pane over and over, so the values follow\n"
-    "the controller.  The figure beside the box is the rate actually being\n"
+    "the controller. The figure beside the box is the rate actually being\n"
     "achieved, which for SDO reads is often well below the one asked for.\n"
     "Numeric values go to Signals and Plot while this is on, so a polled\n"
     "object plots and exports like any other signal."
 )
 RATE_TIP = (
-    "How often to read the whole pane, at most.  A round only starts when\n"
+    "How often to read the whole pane, at most. A round only starts when\n"
     "the last one has finished, so asking for more than the bus can do gets\n"
     "you as fast as it can rather than a backlog of stale values."
 )
 SAVE_TIP = (
-    "Write the edited values into the file, as a DCF.  The rest of the file\n"
+    "Write the edited values into the file, as a DCF. The rest of the file\n"
     "-- its comments included -- is kept exactly as it was."
 )
 SAVE_EDS_TIP = (
@@ -367,7 +367,7 @@ class CustomPaneView(QWidget):
             self,
             f"Save the changes to {self.source.label}?",
             f"Values edited on {self.pane.title or self.name} have not been written to the "
-            "file.  Discard throws them away.",
+            "file. Discard throws them away.",
             messages.Button.Save | messages.Button.Discard | messages.Button.Cancel,
             messages.Button.Save,
         )
@@ -522,7 +522,7 @@ class CustomPaneEditor(QDialog):
         self.description = QLineEdit(pane.description)
         self.node = QLineEdit("" if pane.node is None else str(pane.node))
         self.node.setToolTip(
-            "The node this pane usually opens against.  Only a default -- the\n"
+            "The node this pane usually opens against. Only a default -- the\n"
             "selector on the pane itself decides where the values come from."
         )
 
@@ -540,7 +540,7 @@ class CustomPaneEditor(QDialog):
 
         add = QPushButton("Add...")
         add.setToolTip(
-            "Add objects to this pane.  Pick them from whatever it is bound\n"
+            "Add objects to this pane. Pick them from whatever it is bound\n"
             "to -- a node's dictionary or an EDS -- or type an index."
         )
         add.clicked.connect(self._add)
@@ -674,10 +674,10 @@ class AddObjects(QDialog):
 
         self.index = QLineEdit()
         self.index.setPlaceholderText("2001")
-        self.index.setToolTip("In hex, as an index is always written.  0x2001 works too.")
+        self.index.setToolTip("In hex, as an index is always written. 0x2001 works too.")
         self.sub = QLineEdit()
         self.sub.setPlaceholderText("0")
-        self.sub.setToolTip("Sub-index, in hex.  Blank means 0.")
+        self.sub.setToolTip("Sub-index, in hex. Blank means 0.")
         typed = QHBoxLayout()
         typed.addWidget(QLabel("or index:"))
         typed.addWidget(self.index, 1)
@@ -695,7 +695,7 @@ class AddObjects(QDialog):
         else:
             missing = QLabel(
                 "Nothing to pick from: this pane is not bound to a node with an "
-                "EDS loaded, or to a file.  Type an index instead."
+                "EDS loaded, or to a file. Type an index instead."
             )
             missing.setWordWrap(True)
             layout.addWidget(missing)
