@@ -17,6 +17,7 @@ before the next test starts, keeps that from happening.
 
 import gc
 import os
+import weakref
 
 import pytest
 
@@ -80,33 +81,80 @@ def real_dialogs(monkeypatch):
         monkeypatch.setattr(widget, "exec", _REAL_EXEC[widget])
 
 
+#: Background threads a test started, kept weakly so registering one here
+#: never keeps it alive.  See ``_drain_qt_events`` for what is done with them.
+_THREADS: weakref.WeakSet = weakref.WeakSet()
+
+
+def _still_going(thread) -> bool:
+    """Whether this thread is running, asked in whichever way it answers.
+
+    A ``QThread`` has ``isRunning``; a python-can ``Notifier`` has ``stopped``.
+    Stopping one that has already stopped is not harmless: ``Worker.stop``
+    disconnects a signal, and PySide warns loudly when there is nothing left
+    to disconnect, which would fill the run with warnings about tests that
+    tidied up properly.
+    """
+    try:
+        if (running := getattr(thread, "isRunning", None)) is not None:
+            return bool(running())
+        return not getattr(thread, "stopped", False)
+    except RuntimeError:  # the C++ side has gone, so nothing is running
+        return False
+
+
+def _watch(cls, monkeypatch):
+    """Note every instance of ``cls`` a test makes, for stopping afterwards."""
+    original = cls.__init__
+
+    def made(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        _THREADS.add(self)
+
+    monkeypatch.setattr(cls, "__init__", made)
+
+
 @pytest.fixture(autouse=True)
-def _drain_qt_events():
+def _drain_qt_events(monkeypatch):
+    import can
+
+    from pycangui.core.logging import Player
+    from pycangui.core.worker import Worker
+
+    for cls in (Player, Worker, can.Notifier):
+        _watch(cls, monkeypatch)
     yield
+    # Nothing a test started may outlive it.  A QThread still running when Qt
+    # destroys its C++ side aborts the process -- Worker.submit says the same
+    # thing from the other end -- and a replay player or a python-can Notifier
+    # left running sends frames into the next test's bus.  Stopping them here
+    # rather than leaving it to each test means a test that forgets is slow,
+    # not a crash in whatever ran afterwards; that is how a replay player
+    # outliving its test killed a CI worker in test_export and test_right_axis.
+    for thread in list(_THREADS):
+        if not _still_going(thread):
+            continue  # its owner stopped it, which is the normal case
+        try:
+            thread.stop()
+        except Exception:  # half-built, or stopping twice
+            pass
+        if (wait := getattr(thread, "wait", None)) is not None:
+            wait(2000)
+    _THREADS.clear()
     # Fixtures tear down after this point, so deliver what is already queued
     # first, then let go of anything unreferenced before the next test.
     instance = QCoreApplication.instance()
     if instance is not None:
         for _ in range(3):
             instance.processEvents()
-    # The younger generations, not everything.  What has to go is the test's
-    # own wreckage, which by definition has survived at most one collection
-    # and so is still in generation 0 or 1; generation 2 holds the session's
-    # QApplication and every imported module, which this was never trying to
-    # free.  Walking those a thousand times over cost more than the whole of
-    # the rest of the fixture, and grew as the heap did: a full collect here
-    # is 78s against 48s for the suite.
-    #
-    # What this gives up, and it is worth being honest about it: an object
-    # that survived two collections mid-test is in generation 2, so it is
-    # freed by Python's own automatic sweep at some arbitrary later moment
-    # rather than here, where the queue has just been drained.  That is a
-    # slightly worse moment, not a new hazard -- the automatic sweep runs
-    # during tests whatever this line does.  A worker did die once under
-    # parallel load (test_replay_action, unreproduced in a dozen runs since);
-    # if that comes back, putting the full collect here is the first thing
-    # to try.
-    gc.collect(1)
+    # Everything, not only the young generations.  Collecting generations 0
+    # and 1 is much cheaper -- a full collect walks the session's QApplication
+    # and every imported module, and cost 78s against 48s for the suite -- but
+    # it leaves anything that survived two collections mid-test to Python's
+    # own sweep, at an arbitrary later moment rather than here, where the
+    # queue has just been drained and no background thread is running.  Qt
+    # objects freed at that arbitrary moment are what CI kept dying on.
+    gc.collect()
     if instance is not None:
         instance.processEvents()
 

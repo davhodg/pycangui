@@ -50,10 +50,19 @@ class _Bridge(logging.Handler):
             text = record.msg
         # The logger name says which backend spoke, which is the useful part
         # when two adapters are connected at once.
-        self._sink(
-            f"{record.levelname.title()} [{record.name}]: {text}",
-            LEVEL_NAMES.get(record.levelno, INFORMATION),
-        )
+        try:
+            self._sink(
+                f"{record.levelname.title()} [{record.name}]: {text}",
+                LEVEL_NAMES.get(record.levelno, INFORMATION),
+            )
+        except RuntimeError:
+            # The Event Log's C++ side has gone: the window is being torn down
+            # and a library is still talking.  python-can's Bus.__del__ says
+            # "was not properly shut down" from the garbage collector, which
+            # runs at moments nobody chose, this one included.  There is
+            # nowhere left to put the message, and a logging handler that
+            # raises turns a tidy shutdown into a traceback.
+            pass
 
 
 class LogBridge:
