@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pycangui"
 version = "0.0.1"
-description = "User-friendly CAN bus tool: trace, transmit, CANopen, UDS, J1939, XCP, Python scripting"
+description = "Graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP, Python scripting"
 readme = "README.md"
 # Two licences, by file.  pycangui is Apache-2.0; the hook and simulated-node
 # templates copied into a workspace are MIT-0, so the file somebody fills with
