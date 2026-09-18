@@ -116,3 +116,17 @@ def test_offers_a_virtual_channel_when_nothing_is_connected(app, setup, monkeypa
     bus = channels.get(ra.VIRTUAL_CHANNEL)
     assert bus is not None and bus.is_connected
     assert bus.interface == "virtual"
+
+
+def test_the_player_thread_is_finished_before_it_is_let_go(app, setup):
+    """Its last act is to say it has finished, which arrives while the thread
+    is still winding down: dropping it there destroys a running QThread and
+    takes the process with it."""
+    action, _channels, _path = setup
+    action.action.setChecked(True)
+    started = action.player
+    assert started is not None
+
+    drain(app, lambda: action.player is None)
+
+    assert not started.isRunning(), "waited for, not merely forgotten"
