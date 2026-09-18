@@ -137,6 +137,9 @@ def main() -> int:
     app.setOrganizationName(APP_NAME)  # QSettings uses these two for the registry/ini path
     set_icon(app)
     timing.mark("Qt started")
+    # From here on, which package each imported second belongs to. Installed
+    # after Qt because Qt is already in by now, and its cost is its own line.
+    timing.watch_imports()
 
     # confirm.py is cheap -- Qt widgets and nothing else -- and has to come
     # before the expensive imports, because it is what covers them.

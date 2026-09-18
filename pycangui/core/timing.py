@@ -40,8 +40,73 @@ _marks: list[tuple[str, float]] = []
 _on = FLAG in sys.argv or os.environ.get(ENV, "") not in ("", "0")
 
 
+#: Seconds spent executing each top-level package's modules, when imports are
+#: being watched. Exclusive of the imports a module does itself, so the totals
+#: add up rather than counting the same second under three names.
+_imports: dict[str, float] = {}
+_depth: list[float] = []
+
+
 def enabled() -> bool:
     return _on
+
+
+class _TimedImports:
+    """A finder that times what the real finders load.
+
+    Put in front of ``sys.meta_path``, it lets the normal machinery find a
+    module and then wraps the loader, so the cost lands under the package it
+    belongs to. Time spent importing something else is subtracted, so a
+    package that merely imports numpy is not blamed for numpy.
+    """
+
+    def find_spec(self, name, path=None, target=None):
+        for finder in sys.meta_path:
+            if finder is self or not hasattr(finder, "find_spec"):
+                continue
+            spec = finder.find_spec(name, path, target)
+            if spec is None or spec.loader is None:
+                continue
+            spec.loader = _TimedLoader(spec.loader, name.split(".")[0])
+            return spec
+        return None
+
+
+class _TimedLoader:
+    def __init__(self, loader, package: str) -> None:
+        self._loader = loader
+        self._package = package
+
+    def __getattr__(self, attribute):  # create_module, is_package, get_data, ...
+        return getattr(self._loader, attribute)
+
+    def exec_module(self, module) -> None:
+        began = time.perf_counter()
+        _depth.append(0.0)
+        try:
+            self._loader.exec_module(module)
+        finally:
+            spent_below = _depth.pop()
+            mine = time.perf_counter() - began - spent_below
+            _imports[self._package] = _imports.get(self._package, 0.0) + mine
+            if _depth:  # tell whoever imported us not to count our time twice
+                _depth[-1] += mine + spent_below
+
+
+def watch_imports() -> None:
+    """Start timing imports, if timing is on at all."""
+    if _on:
+        sys.meta_path.insert(0, _TimedImports())
+
+
+def import_lines(most: int = 8) -> list[str]:
+    """The packages that cost the most to import, largest first."""
+    if not _imports:
+        return []
+    worst = sorted(_imports.items(), key=lambda pair: pair[1], reverse=True)[:most]
+    lines = ["the packages that took longest to import:"]
+    lines += [f"  {took:6.3f}  {package}" for package, took in worst if took >= 0.001]
+    return lines
 
 
 def mark(label: str) -> None:
@@ -64,7 +129,7 @@ def report_lines() -> list[str]:
     lines.append(f"  {_marks[-1][1] - _STARTED:6.3f}  total")
     label, took = max(steps, key=lambda step: step[1])
     lines.append(f"the longest step was {label}, at {took:.3f} s")
-    return lines
+    return lines + import_lines()
 
 
 def write_report(folder: Path) -> Path | None:

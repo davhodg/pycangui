@@ -200,3 +200,26 @@ def test_the_environment_variable_turns_it_on_too(monkeypatch):
     assert importlib.reload(timing).enabled()
     monkeypatch.setenv(timing.ENV, "0")
     assert not importlib.reload(timing).enabled(), "0 means off, not 'set'"
+
+
+def test_imports_are_attributed_to_the_package_they_are_in(monkeypatch):
+    """The step that costs the most is usually 'libraries imported', which is
+    no use on its own: the question is always which library."""
+    import importlib
+    import sys
+
+    from pycangui.core import timing
+
+    monkeypatch.setattr("sys.argv", ["pycangui", timing.FLAG])
+    fresh = importlib.reload(timing)
+    fresh.watch_imports()
+    try:
+        for name in ("wave", "colorsys", "difflib"):  # cheap, and rarely already in
+            sys.modules.pop(name, None)
+            importlib.import_module(name)
+        lines = fresh.import_lines()
+    finally:
+        sys.meta_path[:] = [f for f in sys.meta_path if type(f).__name__ != "_TimedImports"]
+
+    assert lines and "longest to import" in lines[0]
+    assert any("difflib" in line or "wave" in line or "colorsys" in line for line in lines)
