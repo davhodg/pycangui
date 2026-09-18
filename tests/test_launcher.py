@@ -223,3 +223,53 @@ def test_imports_are_attributed_to_the_package_they_are_in(monkeypatch):
 
     assert lines and "longest to import" in lines[0]
     assert any("difflib" in line or "wave" in line or "colorsys" in line for line in lines)
+
+
+def test_the_report_says_the_notice_line_is_a_person_waiting(monkeypatch):
+    """The libraries load behind the notice and the window is built after it,
+    so the wait lands between two marks and looks like work."""
+    import importlib
+
+    from pycangui.core import timing
+
+    monkeypatch.setattr("sys.argv", ["pycangui", timing.FLAG])
+    fresh = importlib.reload(timing)
+    fresh.mark("libraries imported")
+    fresh.mark("waiting for the notice to be answered")
+    fresh.mark("panes built")
+
+    lines = fresh.report_lines()
+    assert any("waited for you" in line for line in lines), "it says which line is not work"
+
+
+def test_the_launcher_stamp_is_read_in_both_shapes(monkeypatch):
+    """A shell stamps epoch seconds, cmd stamps %TIME%, which is a clock
+    reading; the report wants seconds either way."""
+    import time as clock
+
+    from pycangui.core import timing
+
+    monkeypatch.setenv(timing.LAUNCH_ENV, f"{clock.time() - 2.0:.3f}")
+    took = timing.launcher_seconds()
+    assert took is not None and 1.5 <= took <= 4.0
+
+    now = clock.localtime()
+    a_moment_ago = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec - 1
+    hours, rest = divmod(max(a_moment_ago, 0), 3600)
+    minutes, seconds = divmod(rest, 60)
+    monkeypatch.setenv(timing.LAUNCH_ENV, f"{hours:02d}:{minutes:02d}:{seconds:02d}.00")
+    took = timing.launcher_seconds()
+    assert took is not None and 0 <= took <= 5
+
+
+def test_a_stamp_from_an_older_run_is_ignored(monkeypatch):
+    import time as clock
+
+    from pycangui.core import timing
+
+    monkeypatch.setenv(timing.LAUNCH_ENV, f"{clock.time() - 3600:.3f}")
+    assert timing.launcher_seconds() is None, "an hour is somebody else's launch"
+    monkeypatch.setenv(timing.LAUNCH_ENV, "not a time")
+    assert timing.launcher_seconds() is None
+    monkeypatch.delenv(timing.LAUNCH_ENV)
+    assert timing.launcher_seconds() is None, "nothing stamped it, so nothing to say"

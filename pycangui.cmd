@@ -13,6 +13,11 @@ rem goto; .gitattributes enforces that.
 setlocal
 cd /d "%~dp0"
 
+rem Stamped before anything else so that --timing can say what this file
+rem cost before Python was reached: the dependency check is a whole Python
+rem start on its own, and none of it is visible from inside the application.
+set PYCANGUI_LAUNCH_AT=%TIME%
+
 if exist ".venv\Scripts\python.exe" goto :check
 
 echo.
