@@ -2,10 +2,14 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Entry point: `python -m pycangui` or the `pycangui` console script."""
 
-import importlib
+# Deliberately out of order (hence the noqa): timing's clock starts when it is
+# imported, so it has to come before the imports whose cost is being measured.
+# It pulls in nothing but the standard library.
+import importlib  # noqa: I001
 import importlib.util
 import sys
 
+from pycangui.core import timing
 from PySide6.QtWidgets import QApplication
 
 from pycangui import APP_NAME
@@ -132,6 +136,7 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_NAME)  # QSettings uses these two for the registry/ini path
     set_icon(app)
+    timing.mark("Qt started")
 
     # confirm.py is cheap -- Qt widgets and nothing else -- and has to come
     # before the expensive imports, because it is what covers them.
@@ -156,6 +161,7 @@ def main() -> int:
             from pycangui.ui.main_window import MainWindow
             from pycangui.ui.session import Session
 
+            timing.mark("libraries imported")
             # Held by a Session rather than a local, because switching
             # workspace replaces the window rather than reconfiguring it.
             loaded["session"] = Session(MainWindow)
@@ -181,8 +187,24 @@ def main() -> int:
         )
         return 1
 
-    loaded["session"].open()
+    window = loaded["session"].open()
+    timing.mark("window on screen")
+    if timing.enabled():
+        report(window)
     return app.exec()
+
+
+def report(window) -> None:
+    """Say where the time went, in the Event Log and in a file.
+
+    Both, because the launcher starts pythonw and there is no console to
+    print to, and because a number somebody has to read off the screen is a
+    number that does not reach a bug report.
+    """
+    for line in timing.report_lines():
+        window.events.information(line)
+    if (path := timing.write_report(window.ctx.user_dir)) is not None:
+        window.events.information(f"startup timing written to {path}")
 
 
 if __name__ == "__main__":

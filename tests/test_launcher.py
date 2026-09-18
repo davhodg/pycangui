@@ -141,3 +141,62 @@ def test_the_stamp_is_only_written_after_a_good_answer(name):
     stamp = text.index(".deps-ok", text.index("check_deps.py"))
     installed = text.index('install -e "."')
     assert stamp > installed, f"{name} stamps before it has installed anything"
+
+
+# --- startup timing ----------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _timing_left_as_found():
+    """Reloading a module sticks, so put it back for whatever runs next."""
+    yield
+    import importlib
+
+    from pycangui.core import timing
+
+    importlib.reload(timing)
+
+
+def test_timing_is_off_unless_it_is_asked_for(monkeypatch):
+    """Off, a mark costs a comparison: the marks stay in the code either way."""
+    import importlib
+
+    from pycangui.core import timing
+
+    monkeypatch.delenv(timing.ENV, raising=False)
+    monkeypatch.setattr("sys.argv", ["pycangui"])
+    fresh = importlib.reload(timing)
+    assert not fresh.enabled()
+    fresh.mark("something")
+    assert fresh.report_lines() == [], "nothing measured, so nothing to report"
+
+
+def test_the_flag_turns_it_on_and_it_reports_each_step(monkeypatch, tmp_path):
+    import importlib
+
+    from pycangui.core import timing
+
+    monkeypatch.setattr("sys.argv", ["pycangui", timing.FLAG])
+    fresh = importlib.reload(timing)
+    assert fresh.enabled()
+    fresh.mark("first step")
+    fresh.mark("second step")
+
+    lines = fresh.report_lines()
+    assert any("first step" in line for line in lines)
+    assert any("second step" in line for line in lines)
+    assert any("total" in line for line in lines)
+    assert any("longest step" in line for line in lines), "it says which one to look at"
+
+    written = fresh.write_report(tmp_path)
+    assert written is not None and written.read_text(encoding="utf-8").count("step") >= 2
+
+
+def test_the_environment_variable_turns_it_on_too(monkeypatch):
+    import importlib
+
+    from pycangui.core import timing
+
+    monkeypatch.setattr("sys.argv", ["pycangui"])
+    monkeypatch.setenv(timing.ENV, "1")
+    assert importlib.reload(timing).enabled()
+    monkeypatch.setenv(timing.ENV, "0")
+    assert not importlib.reload(timing).enabled(), "0 means off, not 'set'"
