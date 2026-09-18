@@ -2,7 +2,10 @@
 
 # XCP
 
-The **XCP** pane speaks XCP on CAN: set the command/response ids, Connect,
+The **XCP** pane speaks XCP on CAN. The identifier boxes start empty, because
+XCP on CAN standardises no pair and a guess would be sent to whatever answered
+on it: they come from the A2L's `IF_DATA XCP` section or from the supplier, and
+*Connect* waits until both are filled in. Set them, Connect,
 press **Load A2L...** and the MEASUREMENTs and CHARACTERISTICs appear.
 Double-click to read one, edit a characteristic's value to write it (unlock CAL
 first -- the seed-to-key algorithm is

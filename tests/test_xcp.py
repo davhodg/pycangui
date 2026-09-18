@@ -78,6 +78,9 @@ def test_xcp_against_demo_slave(stack):
         return lines[-1]
 
     manager.load_a2l(str(resources.path("demo.a2l")))
+    # Said rather than assumed: XCP on CAN standardises no identifiers, so
+    # the pane starts with the boxes empty and these are the demo device's.
+    manager.set_ids(0x7A0, 0x7A1, False)
     n = len(lines)
     manager.connect_slave()
     assert "resources CAL" in last_after(n) and "(native)" in lines[-1]
@@ -256,4 +259,76 @@ def test_showing_only_the_plotted_ones(app, tmp_path, monkeypatch):
     assert _shown(view) == [first.text(0)], "a filter must not hide what is being polled"
     view.plotted_only.setChecked(False)
     assert len(_shown(view)) > 1
+    window.close()
+
+
+# --- identifiers are asked for, not guessed ---------------------------------------------
+def test_the_identifiers_start_empty_and_connect_waits_for_them(app, tmp_path, monkeypatch):
+    """XCP on CAN fixes no identifiers, so a default pair would be a guess
+    sent to whatever happens to answer on it."""
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.xcp_view
+
+    assert view.cmd_id.text() == "" and view.res_id.text() == ""
+    assert not view.connect_btn.isEnabled(), "nothing to connect to yet"
+
+    view.cmd_id.setText("7A0")
+    assert not view.connect_btn.isEnabled(), "one of the two is not enough"
+    view.res_id.setText("7A1")
+    assert view.connect_btn.isEnabled()
+
+    view.res_id.setText("nonsense")
+    assert not view.connect_btn.isEnabled(), "and it has to be an identifier"
+    window.close()
+
+
+def test_identifiers_already_chosen_are_still_there_next_time(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = MainWindow()
+    first.xcp_view.cmd_id.setText("6A0")
+    first.xcp_view.res_id.setText("6A1")
+    first.xcp_view._config()  # what pressing Connect does before it connects
+    first.close()
+
+    again = MainWindow()
+    assert again.xcp_view.cmd_id.text() == "6A0"
+    assert again.xcp_view.connect_btn.isEnabled()
+    again.close()
+
+
+def test_nothing_is_called_xcp_in_the_trace_until_the_ids_are_given(app, tmp_path, monkeypatch):
+    """A default pair would label frames as XCP on a bus with no XCP on it."""
+    from PySide6.QtCore import QSettings
+
+    from pycangui.core.bus import Frame
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    frame = Frame(
+        timestamp=0.0,
+        channel="CAN",
+        can_id=0x7A0,
+        extended=False,
+        fd=False,
+        rx=True,
+        data=b"\xff",
+    )
+
+    assert window.xcp.classify(frame) is None, "nobody said this was XCP"
+
+    window.xcp.set_ids(0x7A0, 0x7A1, False)
+    assert window.xcp.classify(frame) == "XCP cmd"
     window.close()

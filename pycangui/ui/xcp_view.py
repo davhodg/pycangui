@@ -32,6 +32,19 @@ from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
 ROLE_NAME = Qt.UserRole
+CONNECT_TIP = (
+    "XCP CONNECT to the slave on the identifiers above.\n"
+    "This is the XCP session, not the CAN channel."
+)
+NO_IDS_TIP = "Fill in the command and response identifiers first."
+#: Said on both identifier boxes, because an empty box with no explanation
+#: is a worse start than a wrong number: it has to say where the answer
+#: comes from.
+ID_TIP = (
+    "The identifier the slave listens on, and the one it answers with.\n"
+    "XCP on CAN has no standard pair: they come from the A2L's IF_DATA\n"
+    "XCP section, or from the supplier. The demo device uses 7A0 and 7A1."
+)
 #: Everything a row can be found by, worked out once when it is built.
 ROLE_SEARCH = Qt.UserRole + 1
 
@@ -70,20 +83,26 @@ class XcpView(QWidget):
         cfg = ctx.settings.get("xcp.config", {})
 
         # --- connection bar --------------------------------------------------
-        self.cmd_id = QLineEdit(cfg.get("cmd_id", "7A0"))
+        # Empty until somebody says otherwise. XCP on CAN fixes no
+        # identifiers, so any default here is a guess dressed up as a
+        # setting: it would be sent to whatever happens to answer on it,
+        # and it would label frames in the trace as XCP that are not.
+        self.cmd_id = QLineEdit(cfg.get("cmd_id", ""))
+        self.cmd_id.setPlaceholderText("hex")
+        self.cmd_id.setToolTip(ID_TIP)
         self.cmd_id.setFont(mono)
         self.cmd_id.setFixedWidth(70)
-        self.res_id = QLineEdit(cfg.get("res_id", "7A1"))
+        self.cmd_id.textChanged.connect(lambda _t: self._ids_changed())
+        self.res_id = QLineEdit(cfg.get("res_id", ""))
+        self.res_id.setPlaceholderText("hex")
+        self.res_id.setToolTip(ID_TIP)
         self.res_id.setFont(mono)
         self.res_id.setFixedWidth(70)
+        self.res_id.textChanged.connect(lambda _t: self._ids_changed())
         self.ext = QCheckBox("29-bit")
         self.ext.setToolTip("Address the slave with 29-bit identifiers rather than 11-bit")
         self.ext.setChecked(cfg.get("ext", False))
         self.connect_btn = QPushButton("Connect")
-        self.connect_btn.setToolTip(
-            "XCP CONNECT to the slave on the identifiers above.\n"
-            "This is the XCP session, not the CAN channel."
-        )
         self.connect_btn.setCheckable(True)
         self.connect_btn.toggled.connect(self._toggle_connect)
         unlock = QPushButton("Unlock CAL")
@@ -191,11 +210,33 @@ class XcpView(QWidget):
         manager.a2l_loaded.connect(lambda _n: self._populate())
         manager.a2l_loaded.connect(lambda _n: self._show_a2l())
         manager.value.connect(self._on_value)
+        manager.connected.connect(lambda _on: self._ids_changed())
         if manager.a2l is not None:
             self._populate()
         self._show_a2l()
+        self._ids_changed()
 
     # --- connection -------------------------------------------------------------
+    def _ids_changed(self) -> None:
+        """Connect is offered only once there is somewhere to connect to.
+
+        Better than letting it be pressed and answering with an error: the
+        button itself says what the pane is waiting for, and its tooltip
+        says where the numbers come from.
+        """
+        ready = self._id(self.cmd_id) is not None and self._id(self.res_id) is not None
+        self.connect_btn.setEnabled(ready or self.manager.is_connected)
+        self.connect_btn.setToolTip(CONNECT_TIP if ready else NO_IDS_TIP)
+
+    @staticmethod
+    def _id(box: QLineEdit) -> int | None:
+        """What is typed, as an identifier, or None while it is not one."""
+        try:
+            value = int(box.text().strip(), 16)
+        except ValueError:
+            return None
+        return value if 0 <= value <= 0x1FFFFFFF else None
+
     def _config(self) -> None:
         self.manager.set_ids(
             int(self.cmd_id.text(), 16), int(self.res_id.text(), 16), self.ext.isChecked()
