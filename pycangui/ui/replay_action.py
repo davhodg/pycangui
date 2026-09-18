@@ -236,7 +236,16 @@ class ReplayAction(QObject):
 
     @Slot(str)
     def _on_finished(self, reason: str) -> None:
-        self.player = None
+        # Waited for before the reference is dropped. The signal is emitted
+        # from the last line of the player's run(), so when this arrives the
+        # thread is a moment from exiting but has not exited: letting the
+        # object be collected there destroys a QThread that is still
+        # running, which aborts the process rather than raising. That is
+        # what killed a CI worker here more than once.
+        player, self.player = self.player, None
+        if player is not None:
+            player.wait(2000)
+            player.deleteLater()
         self._reset()
         name = self._path.name if self._path else ""
         if reason in ("end", "stopped"):
