@@ -174,3 +174,86 @@ def test_an_a2l_that_has_moved_is_reported_at_startup(app, tmp_path, monkeypatch
     assert "gone.a2l" in window.log.toPlainText(), "it says so instead of going quiet"
     assert window.xcp.a2l is None
     window.close()
+
+
+# --- finding a parameter in a large A2L --------------------------------------------------
+def _xcp_window(tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    a2l = tmp_path / "demo.a2l"
+    a2l.write_text(resources.path("demo.a2l").read_text(encoding="utf-8"), encoding="utf-8")
+    window.xcp.load_a2l(str(a2l))
+    return window
+
+
+def _shown(view):
+    tree = view.tree
+    return [
+        tree.topLevelItem(i).text(0)
+        for i in range(tree.topLevelItemCount())
+        if not tree.topLevelItem(i).isHidden()
+    ]
+
+
+def test_searching_narrows_the_parameter_list(app, tmp_path, monkeypatch):
+    window = _xcp_window(tmp_path, monkeypatch)
+    view = window.xcp_view
+    everything = _shown(view)
+    assert len(everything) > 1
+
+    view.search.setText("speed")
+    narrowed = _shown(view)
+
+    assert "EngineSpeed" in narrowed, "by name"
+    assert "IdleTarget" in narrowed, "by description -- 'Idle speed target'"
+    assert "BatteryVoltage" not in narrowed, "and what does not match is hidden"
+    assert len(narrowed) < len(everything)
+
+    view.search.setText("")
+    assert _shown(view) == everything, "clearing it brings everything back"
+    window.close()
+
+
+def test_a_parameter_can_be_found_by_address_or_kind(app, tmp_path, monkeypatch):
+    """A map file gives an address, not a name, and one kind at a time is
+    what somebody calibrating wants."""
+    window = _xcp_window(tmp_path, monkeypatch)
+    view = window.xcp_view
+    param = next(iter(window.xcp.a2l.parameters.values()))
+
+    view.search.setText(f"0x{param.address:x}")
+    assert param.name in _shown(view)
+
+    view.search.setText("characteristic")
+    kinds = {window.xcp.a2l.parameters[name].kind for name in _shown(view)}
+    assert kinds == {"CHARACTERISTIC"}
+    window.close()
+
+
+def test_two_words_must_both_match(app, tmp_path, monkeypatch):
+    window = _xcp_window(tmp_path, monkeypatch)
+    view = window.xcp_view
+    view.search.setText("zzzz speed")
+    assert _shown(view) == [], "nothing has both"
+    window.close()
+
+
+def test_showing_only_the_plotted_ones(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import Qt
+
+    window = _xcp_window(tmp_path, monkeypatch)
+    view = window.xcp_view
+    first = view.tree.topLevelItem(0)
+    first.setCheckState(5, Qt.Checked)
+
+    view.plotted_only.setChecked(True)
+
+    assert _shown(view) == [first.text(0)], "a filter must not hide what is being polled"
+    view.plotted_only.setChecked(False)
+    assert len(_shown(view)) > 1
+    window.close()
