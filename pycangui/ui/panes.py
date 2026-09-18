@@ -99,6 +99,15 @@ class PaneKind:
     named: bool = False
     #: Undo whatever ``build`` wired up, when an instance is removed.
     shutdown: Callable[[QWidget], None] | None = None
+    #: Open in front of the window the first time, rather than in the dock
+    #: area it was registered in. True for the panes nobody sees until they
+    #: ask for one: a protocol pane arriving as a sliver down the right-hand
+    #: edge is a pane somebody has to drag out before it can be read. What
+    #: happens after that is the saved layout's business, not this.
+    floating_first: bool = False
+    #: What it needs to be worth looking at, when it opens in front. A tree
+    #: and a table beside each other want more than the default window.
+    floating_size: tuple[int, int] | None = None
 
 
 class Panes(QObject):
@@ -124,6 +133,10 @@ class Panes(QObject):
         self.on_top: set[str] = set()
         self._views: dict[str, QWidget] = {}
         self._kind_of: dict[str, str] = {}
+        #: Panes that have been on screen at least once, and so have a place
+        #: of their own in the saved layout. A pane not in here has never
+        #: been put anywhere, which is what "first time" means.
+        self._arranged: set[str] = set(ctx.settings.get("panes.arranged", []))
         #: Pinned panes standing down while a dialog is waiting for an answer.
         self._suspended: set[str] = set()
         #: Where a detached pane came from: floating or docked, and if it was
@@ -255,6 +268,10 @@ class Panes(QObject):
         plugin's pane, the moment it is installed -- and applies only to a
         pane that is not on screen anywhere: one docked where somebody put it
         should come back there rather than jumping out into a window.
+
+        A pane of a kind that opens in front does so the *first* time it is
+        shown and never again: after that there is a saved layout with an
+        opinion about where it goes, and that opinion is the user's.
         """
         dock = self.docks.get(name)
         if dock is None:
@@ -263,10 +280,33 @@ class Panes(QObject):
             window.show()
             window.raise_()
             return
-        if floating and dock.isHidden() and not dock.isFloating():
-            self._float_new(dock)
+        kind = self.kinds.get(self._kind_of.get(name, ""))
+        first_time = kind is not None and kind.floating_first and name not in self._arranged
+        if (floating or first_time) and dock.isHidden() and not dock.isFloating():
+            self._float_new(dock, kind.floating_size if kind is not None else None)
+        self._note_arranged(name)
         dock.show()
         dock.raise_()
+
+    def _note_arranged(self, name: str) -> None:
+        """This pane has been on screen, so where it goes is settled now."""
+        if name in self._arranged:
+            return
+        self._arranged.add(name)
+        self.ctx.settings.set("panes.arranged", sorted(self._arranged))
+
+    def forget_arrangement(self) -> None:
+        """Every pane is a first time again.
+
+        Called when a saved layout has been refused -- pycangui changed the
+        set of panes, so Qt would not restore it -- because what is left is
+        the default arrangement, in which these panes have never been placed.
+        Without this, the first CANopen pane after an update arrives as a
+        sliver on the right, which is exactly what the default is trying to
+        avoid.
+        """
+        self._arranged.clear()
+        self.ctx.settings.set("panes.arranged", [])
 
     def remove(self, name: str) -> None:
         """Close a pane for good. The first of a kind stays: it is the pane.
@@ -311,7 +351,7 @@ class Panes(QObject):
         self._save_pane_state()
         self.changed.emit()
 
-    def _float_new(self, dock: QDockWidget) -> None:
+    def _float_new(self, dock: QDockWidget, least: tuple[int, int] | None = None) -> None:
         """Put a newly opened pane in its own window, in front of the main one.
 
         Qt floats a dock wherever it happened to be docked, which for a pane
@@ -323,7 +363,7 @@ class Panes(QObject):
         step = NEW_PANE_OFFSET + CASCADE * (out % CASCADE_BEFORE_WRAPPING)
         where = self.window.geometry()
         wanted = dock.widget().sizeHint() if dock.widget() is not None else None
-        width, height = NEW_PANE_SIZE
+        width, height = least or NEW_PANE_SIZE
         if wanted is not None:
             width = max(width, min(wanted.width() + 24, max(width, where.width() - 2 * step)))
             height = max(height, min(wanted.height() + 48, max(height, where.height() - 2 * step)))

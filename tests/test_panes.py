@@ -456,3 +456,51 @@ def test_a_second_instance_sits_under_the_first(app, window):
     settle(app)
     listed = [a.text() for a in window.view_menu.actions() if a.text()]
     assert listed.index("CAN Trace 2") == listed.index("CAN Trace") + 1
+
+
+# --- a pane asked for opens in front, once ----------------------------------------------
+def test_a_protocol_pane_opens_in_front_the_first_time(app, window):
+    """Docked, it arrives as a sliver down the right-hand edge: a tree and a
+    table of values need room before they are worth reading."""
+    dock = window.panes.docks["canopen"]
+    assert dock.isHidden(), "not in the opening arrangement"
+
+    window.panes.show("canopen")
+
+    assert dock.isFloating(), "in front of the window, not down the edge"
+    assert dock.width() >= 900 and dock.height() >= 600, "and big enough to read"
+
+
+def test_where_it_was_put_is_where_it_comes_back(app, window):
+    """The first time is a guess; after that there is an answer, and it is
+    the user's."""
+    window.panes.show("uds")
+    dock = window.panes.docks["uds"]
+    dock.setFloating(False)  # docked by hand
+    dock.hide()
+
+    window.panes.show("uds")
+
+    assert not dock.isFloating(), "it must not jump out again"
+
+
+def test_the_panes_in_the_opening_arrangement_stay_where_they_are(app, window):
+    for name in ("trace", "tx", "scope", "log"):
+        assert not window.panes.docks[name].isFloating()
+
+
+def test_a_refused_layout_makes_every_pane_a_first_time_again(app, window):
+    """After an update changes the set of panes, Qt declines the saved
+    layout and the default is what is left -- in which nothing has been
+    placed."""
+    window.panes.show("canopen")
+    assert "canopen" in window.ctx.settings.get("panes.arranged", [])
+
+    window.panes.forget_arrangement()
+
+    assert window.ctx.settings.get("panes.arranged") == []
+    dock = window.panes.docks["canopen"]
+    dock.setFloating(False)
+    dock.hide()
+    window.panes.show("canopen")
+    assert dock.isFloating(), "so it opens in front again rather than as a sliver"
