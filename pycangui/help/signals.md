@@ -3,7 +3,11 @@
 # Databases, signals and the plot
 
 **File > Load DBC...** decodes matching frames, from a DBC, KCD, SYM or ARXML
-database, and *File > Unload all DBCs* takes them all away again. Databases are checked
+database. *File > Remove DBC* lists the ones this workspace knows of, each with
+how many messages it holds, and takes one off the list; *Remove all* at the
+bottom clears the lot. A database that has moved since it was loaded is on
+that list marked *(missing)*, which is how it is dropped without disturbing
+the others. Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
 the end of its message, both common in files real tools produce -- is offered
 for loading anyway rather than simply refused; turning off *Tools > Strict DBC

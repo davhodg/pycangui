@@ -271,7 +271,13 @@ class MainWindow(QMainWindow):
         # --- menus & layout persistence --------------------------------------
         file_menu = self.menuBar().addMenu("&File")
         file_menu.addAction("Load DBC...", self._load_dbc_dialog)
-        file_menu.addAction("Unload all DBCs", self._unload_dbcs)
+        # Built as it opens: which databases are loaded changes while the
+        # window is up, and a list made once at startup would name the wrong
+        # files. Remove all is the last item rather than the only one, so a
+        # database that has moved can be dropped without losing the others.
+        self.dbc_menu = file_menu.addMenu("Remove DBC")
+        self.dbc_menu.setToolTipsVisible(True)
+        self.dbc_menu.aboutToShow.connect(self._build_dbc_menu)
         file_menu.addSeparator()
         imported = file_menu.addAction("Import signals...", self._import_signals)
         imported.setToolTip(
@@ -301,12 +307,18 @@ class MainWindow(QMainWindow):
         workspace = self.ctx.workspace_dir
         for value in self.ctx.settings.get("dbc.paths", []):
             self._load_dbc(str(workspace_files.resolve(value, workspace)))
-        a2l = self.ctx.settings.get("xcp.a2l")
-        if a2l and (a2l := workspace_files.resolve(a2l, workspace)).exists():
-            try:
-                self.xcp.load_a2l(str(a2l))
-            except Exception as exc:
-                self.events.warning(f"A2L load failed: {exc}")
+        if a2l := self.ctx.settings.get("xcp.a2l"):
+            a2l = workspace_files.resolve(a2l, workspace)
+            if not a2l.exists():
+                # Said, like a database that has moved, rather than passed
+                # over in silence: the XCP pane opens with no parameters and
+                # nothing to explain where they went.
+                self.events.warning(f"A2L not found: {a2l}. Remove A2L in the XCP pane clears it.")
+            else:
+                try:
+                    self.xcp.load_a2l(str(a2l))
+                except Exception as exc:
+                    self.events.warning(f"A2L load failed: {exc}")
 
         #: One action in two menus. The View menu is where you reach for it
         #: while arranging panes; Tools > Reset is where you reach for it
@@ -1724,6 +1736,59 @@ class MainWindow(QMainWindow):
         self.events.information(f"Recording to {path}" if recording else "Recording stopped")
 
     # --- DBC / signals -------------------------------------------------------
+    def _dbc_entries(self) -> list[tuple[str, str, bool]]:
+        """Every database this workspace knows of: (remembered, resolved, loaded).
+
+        The union of what is remembered and what is loaded, because the two
+        can differ: a file that has moved is remembered and not loaded, and a
+        database a hook loaded is loaded and not remembered. Both should be
+        removable, and a list of only one of them would hide the other.
+        """
+        workspace = self.ctx.workspace_dir
+        entries: list[tuple[str, str, bool]] = []
+        seen: set[str] = set()
+        for value in self.ctx.settings.get("dbc.paths", []):
+            resolved = str(workspace_files.resolve(str(value), workspace))
+            seen.add(resolved)
+            entries.append((str(value), resolved, resolved in self.dbc.databases))
+        for path in self.dbc.databases:
+            if path not in seen:
+                entries.append((path, path, True))
+        return entries
+
+    def _build_dbc_menu(self) -> None:
+        """One entry per database, and Remove all under them."""
+        self.dbc_menu.clear()
+        entries = self._dbc_entries()
+        for remembered, resolved, loaded in entries:
+            name = Path(resolved).name
+            if not loaded:
+                # Said in the menu rather than only in the log: this is where
+                # somebody comes looking after a database has moved, and the
+                # entry that has to go is the one that cannot be loaded.
+                label = f"{name} (missing)"
+            else:
+                count = len(self.dbc.databases[resolved].messages)
+                label = f"{name} ({count} messages)"
+            action = self.dbc_menu.addAction(
+                label, lambda r=remembered, p=resolved: self._remove_dbc(r, p)
+            )
+            action.setToolTip(resolved)
+        if not entries:
+            nothing = self.dbc_menu.addAction("No databases loaded")
+            nothing.setEnabled(False)
+            return
+        self.dbc_menu.addSeparator()
+        self.dbc_menu.addAction("Remove all", self._unload_dbcs)
+
+    def _remove_dbc(self, remembered: str, resolved: str) -> None:
+        """Drop one database, from what is loaded and from what is remembered."""
+        self.dbc.unload(resolved)
+        paths = [p for p in self.ctx.settings.get("dbc.paths", []) if str(p) != remembered]
+        self.ctx.settings.set("dbc.paths", paths)
+        self._refresh_transmit_sources()
+        self.events.information(f"Removed {Path(resolved).name}")
+
     def _load_dbc_dialog(self) -> None:
         path = folders.open_file(
             self,
@@ -1752,6 +1817,13 @@ class MainWindow(QMainWindow):
         startup must not put a dialog in front of a window that is still
         opening.
         """
+        if not Path(path).exists():
+            # Its own message, and one that says what to do about it. A file
+            # that has moved is remembered for ever, so without this the same
+            # failure is reported at every start with no way out of it but
+            # removing every database.
+            self.events.warning(f"DBC not found: {path}. File > Remove DBC takes it off the list.")
+            return False
         strict = bool(self.ctx.settings.get("dbc.strict", True))
         try:
             db = self.dbc.load(path, strict=strict)
