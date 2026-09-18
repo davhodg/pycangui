@@ -62,7 +62,7 @@ def test_choosing_one_offers_its_own_rate(app, dialog):
 
 def test_a_broken_file_is_listed_with_its_error_rather_than_hidden(app, window, dialog):
     """Hiding it would send its author looking for a file they can see on
-    disk.  It cannot be started, and says why."""
+    disk. It cannot be started, and says why."""
     (window.ctx.nodes_dir / "wrong.py").write_text("def poll(node:\n", encoding="utf-8")
     dialog.refresh()
 
@@ -106,6 +106,6 @@ def test_a_node_left_running_is_stopped_when_the_window_closes(app, window):
 
 def test_the_old_name_still_reaches_the_same_object(window):
     """These were virtual nodes until the rename, and a startup hook or a
-    console habit written before it says window.vnodes.  An alias costs a
+    console habit written before it says window.vnodes. An alias costs a
     line; breaking somebody's hook file costs them an evening."""
     assert window.vnodes is window.nodes

@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: MIT-0
 #
-# A starting point, copied into your workspace for you to change.  It is
+# A starting point, copied into your workspace for you to change. It is
 # yours to edit, keep private or give away: pycangui claims nothing in it
 # and asks for no credit, so what you write here needs nobody's permission.
 """A UDS server: something for the UDS pane to talk to.
 
-The example of the *reactive* half of a node.  There is no ``poll`` doing any
+The example of the *reactive* half of a node. There is no ``poll`` doing any
 work here -- a diagnostic server says nothing until it is asked -- and the
 one that exists only drains the transport.
 
@@ -17,7 +17,7 @@ to see when it gets something wrong.
 **The transport is not hand-rolled.**  ``isotp.NotifierBasedCanStack`` takes
 the channel's bus and its reader and does the segmenting, so a response
 longer than seven bytes works without this file knowing what a flow control
-frame is.  A node file reassembling multi-frame messages by hand would be a
+frame is. A node file reassembling multi-frame messages by hand would be a
 poor example and a worse ECU.
 
 To make it yours: change ``REQUEST_ID`` / ``RESPONSE_ID`` to your ECU's, put
@@ -37,7 +37,7 @@ RATE_HZ = 200
 REQUEST_ID = 0x7E0
 RESPONSE_ID = 0x7E8
 
-#: Negative response codes, from ISO 14229.  A tester tells the difference
+#: Negative response codes, from ISO 14229. A tester tells the difference
 #: between "I will not" and "I cannot" by these, so a server that answers
 #: everything with one code is barely better than silence.
 NRC_SERVICE_NOT_SUPPORTED = 0x11
@@ -54,7 +54,7 @@ NRC_NOT_SUPPORTED_IN_SESSION = 0x7F
 P2_MS = 250
 P2_STAR_MS = 5000
 
-#: What this ECU says it is.  0x0102 is writable, and only once unlocked,
+#: What this ECU says it is. 0x0102 is writable, and only once unlocked,
 #: which is what makes the security services worth having.
 IDENTIFIERS: dict[int, bytes] = {
     0xF190: b"PYCANGUI0DEMO0001",  # VIN
@@ -67,7 +67,7 @@ IDENTIFIERS: dict[int, bytes] = {
 #: Stored faults, as code -> status byte.
 FAULTS: dict[int, int] = {0x012345: 0x09, 0x9A0100: 0x2F}
 
-#: The seed this ECU hands out, and the key is every byte inverted.  A real
+#: The seed this ECU hands out, and the key is every byte inverted. A real
 #: one is a secret and an algorithm; this is a demonstration that the
 #: exchange happens at all.
 SEED = bytes([0x12, 0x34, 0x56, 0x78])
@@ -93,7 +93,7 @@ def start(node, *, ctx):
 def poll(node, *, ctx):
     """Answer whatever the transport has reassembled.
 
-    All this does is move requests from the stack to the handler.  The work
+    All this does is move requests from the stack to the handler. The work
     is in the services, and the segmenting is the library's.
     """
     while (request := node.state.stack.recv()) is not None:
@@ -124,14 +124,14 @@ def _session(node, request: bytes) -> bytes:
         return _no(0x10, NRC_SUBFUNC_NOT_SUPPORTED)
     node.state.session = sub
     if sub == 1:
-        # Back to default, and security goes with it.  An ECU that stayed
+        # Back to default, and security goes with it. An ECU that stayed
         # unlocked across a session change would be a security hole with a
         # very short life.
         node.state.unlocked = False
-    # P2, in milliseconds, then P2* in tens of them.  A real ECU promises
+    # P2, in milliseconds, then P2* in tens of them. A real ECU promises
     # 50 ms because its reply comes from an interrupt; this one's comes from a
     # timer in pycangui's own window, which waits behind a plot redrawing or a
-    # busy trace, so it promises what it can keep.  The tester believes
+    # busy trace, so it promises what it can keep. The tester believes
     # whatever is sent here and gives up on the ECU the moment it passes.
     return bytes([0x50, sub]) + (P2_MS).to_bytes(2, "big") + (P2_STAR_MS // 10).to_bytes(2, "big")
 
@@ -220,7 +220,7 @@ def _routine(node, request: bytes) -> bytes:
     return _no(0x31, NRC_SUBFUNC_NOT_SUPPORTED)
 
 
-#: Service id -> what answers it.  A table rather than a chain of ifs: adding
+#: Service id -> what answers it. A table rather than a chain of ifs: adding
 #: a service your ECU has is one line here and one function.
 _SERVICES = {
     0x10: _session,

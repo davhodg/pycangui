@@ -3,16 +3,16 @@
 """Several CAN channels at once.
 
 A *channel* is one CAN bus: a second port on a multi-channel adapter, or a
-second adapter entirely.  Two objects share the work:
+second adapter entirely. Two objects share the work:
 
 * :class:`Channels` owns every channel's :class:`~pycangui.core.bus.BusManager`
-  and merges their traffic into one signal.  The trace, the recorder and the
+  and merges their traffic into one signal. The trace, the recorder and the
   decoders listen to that, so everything is seen on one timeline -- which is
   the point of having two channels at all (watching an ECU forward messages
   from one bus to another).
 * :class:`ActiveBus` presents *one* channel with exactly the interface a single
   ``BusManager`` has, so the protocol stacks (CANopen, UDS, J1939, XCP) work
-  unchanged and simply follow the channel you select.  Switching channel looks
+  unchanged and simply follow the channel you select. Switching channel looks
   to them like a disconnect followed by a connect, which is what it is.
 
 All channels share one clock, so timestamps from different adapters can be

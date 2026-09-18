@@ -8,9 +8,9 @@ opportunity -- holding Ctrl is the only way past it -- and it is owned by the
 main window, which is why Windows keeps it out of the taskbar.
 
 Detaching goes further and takes the pane's widget out of the dock entirely,
-into a top-level window with *no parent*.  Nothing then tries to dock it, it
+into a top-level window with *no parent*. Nothing then tries to dock it, it
 gets a taskbar button of its own, and it can be sent to another display and
-left there.  Closing it puts the pane back where it came from, which is the
+left there. Closing it puts the pane back where it came from, which is the
 whole of the way back -- there is no dock to drag it into while it is out.
 """
 
@@ -39,7 +39,7 @@ class DetachedPane(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(widget)
         # Qt hides a widget when its parent changes, and adding it to a layout
-        # is a change of parent.  Showing this window will not undo that: an
+        # is a change of parent. Showing this window will not undo that: an
         # explicitly hidden child stays hidden, which is a window with a title,
         # a taskbar entry and nothing in it.
         widget.show()

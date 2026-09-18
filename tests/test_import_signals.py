@@ -7,7 +7,7 @@ Recording has always written raw CAN, and the manual said so apologetically:
 This is the other direction -- signals somebody else decoded, brought in to
 look at.
 
-The awkward parts are not the reading.  They are that an imported file is
+The awkward parts are not the reading. They are that an imported file is
 *finite* where a live signal is endless, and that it sits at its own times
 rather than at the clock this window is counting on: both of which the plot
 was built the other way round for.
@@ -29,7 +29,7 @@ def settle(app, times=5):
 # --- a finite series in a hub built for endless ones -------------------------------------
 def test_an_imported_series_is_kept_whole():
     """A live signal is trimmed to the newest samples because the old ones
-    stop mattering.  Trimming an imported one the same way loses its
+    stop mattering. Trimming an imported one the same way loses its
     *beginning*, which for something being analysed is the half people are
     usually looking for."""
     hub = SignalHub()

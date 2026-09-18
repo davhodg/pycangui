@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
 """SAE J1939 helpers that need no library: 29-bit id layout, PGN names,
-DM1 parsing, NAME decoding.  The transport (TP.BAM / TP.CM) and address
+DM1 parsing, NAME decoding. The transport (TP.BAM / TP.CM) and address
 claiming come from the `can-j1939` package in ``manager.py``."""
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def pgn_mask(pgn: int) -> int:
 
 
 def pgn_label(pgn: int) -> str:
-    """A PGN with no name to go by.  The names live in hooks/j1939.py."""
+    """A PGN with no name to go by. The names live in hooks/j1939.py."""
     return f"PGN {pgn} (0x{pgn:05X})"
 
 

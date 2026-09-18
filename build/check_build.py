@@ -4,11 +4,11 @@
 
 Two things are worth failing the build over:
 
-* a **GPL-only Qt module** having crept in.  PySide6 ships Qt Charts, Qt Data
+* a **GPL-only Qt module** having crept in. PySide6 ships Qt Charts, Qt Data
   Visualization and friends in the same wheel as the LGPL modules, and they are
-  easy to pull in by accident.  Shipping one would change the licence of the
+  easy to pull in by accident. Shipping one would change the licence of the
   whole application, quietly.
-* a **missing adapter backend or data file**.  python-can imports its backends
+* a **missing adapter backend or data file**. python-can imports its backends
   by name, so a missing one only shows up when somebody plugs in that adapter;
   the sample device files are read from disk and a missing one breaks first run.
 

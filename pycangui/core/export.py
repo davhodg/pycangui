@@ -4,18 +4,18 @@
 
 Recording writes raw CAN, which is the right thing for a recording and the
 wrong thing for analysis: whoever opens it has to repeat the decode, with the
-same databases, to get back what pycangui already had.  This writes the values.
+same databases, to get back what pycangui already had. This writes the values.
 
 **One time column per signal, with a blank column between signals.**  The
 alternative is a single time column and a value per signal, which sounds tidier
-and is a lie: signals do not arrive together.  A DBC signal lands when its
+and is a lie: signals do not arrive together. A DBC signal lands when its
 message does, a CANopen value when its PDO does, a polled object when the SDO
 comes back -- so a shared timeline can only be built by interpolating, or by
-holding the last value, or by inventing a grid.  All three put numbers in the
+holding the last value, or by inventing a grid. All three put numbers in the
 file that were never on the bus.
 
 Giving each signal its own pair of columns means every number in the file was
-measured, at the time written beside it.  The blank column between pairs is
+measured, at the time written beside it. The blank column between pairs is
 what stops a spreadsheet reading two signals as one series when you select a
 block and ask for a chart.
 
@@ -94,7 +94,7 @@ def with_samples(series: Iterable[SignalSeries]) -> list[SignalSeries]:
 
 
 def write_csv(path: str, series: Iterable[SignalSeries]) -> tuple[int, int]:
-    """Write the signals to `path`.  Returns (signals written, rows written)."""
+    """Write the signals to `path`. Returns (signals written, rows written)."""
     chosen = with_samples(series)
     if not chosen:
         return (0, 0)

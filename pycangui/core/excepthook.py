@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Put unhandled exceptions in the Event Log instead of nowhere.
 
-pycangui is started with ``pythonw.exe``, which has no console.  An exception
+pycangui is started with ``pythonw.exe``, which has no console. An exception
 raised inside a Qt slot does not propagate anywhere useful: PySide prints the
 traceback to a standard error stream that does not exist, the slot simply
 does not finish, and the window carries on looking perfectly healthy.
 
-That is not hypothetical.  A stale call to a widget method -- ``.text()`` on
+That is not hypothetical. A stale call to a widget method -- ``.text()`` on
 what had become a combo box -- stopped the demo device dead, and the only
-symptom was a bus with no traffic on it.  Nothing was logged, no dialog
+symptom was a bus with no traffic on it. Nothing was logged, no dialog
 appeared, and the menu item stayed ticked.
 
 So the hook routes tracebacks to the Event Log, where somebody can see them.
@@ -28,7 +28,7 @@ from PySide6.QtCore import QObject, Qt, QtMsgType, Signal, Slot, qInstallMessage
 
 from pycangui.core.events import ERROR, INFORMATION
 
-#: Said of a Python traceback and of nothing else.  Qt complains through the
+#: Said of a Python traceback and of nothing else. Qt complains through the
 #: same handler about things that are often not pycangui's doing at all -- a
 #: platform plugin, a window manager -- and telling somebody those are bugs in
 #: this application is both wrong and unhelpful.
@@ -82,7 +82,7 @@ class ExceptionLogger(QObject):
             self._previous_thread(args)
 
     def _qt_hook(self, mode, context, message) -> None:
-        # Critical and fatal are worth interrupting for.  A Qt warning is
+        # Critical and fatal are worth interrupting for. A Qt warning is
         # usually the explanation of something else rather than the something
         # else -- "unable to set geometry", "this plugin does not support
         # propagateSizeHints" -- so it is recorded and left there, or the

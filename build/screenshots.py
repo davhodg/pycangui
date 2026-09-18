@@ -7,10 +7,10 @@ on the demo device.
 
 It opens pycangui in its default layout, connects the demo channel, loads
 demo.dbc and plots engine and vehicle speed for half a minute, then saves the
-window.  The window is on screen for about a minute while it does; leave it be.
+window. The window is on screen for about a minute while it does; leave it be.
 
 A throwaway PYCANGUI_HOME and QSettings file are used, so your own workspace,
-layout and remembered answers are neither read nor written.  Only the demo
+layout and remembered answers are neither read nor written. Only the demo
 device and demo.dbc are involved, so nothing that is not pycangui's own can
 end up in the picture.
 """
@@ -27,7 +27,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 #: Beside the manual's pages, because the manual shows it too and a picture has
 #: to be package data to be in a wheel or an installer.
 DEFAULT_OUT = PROJECT / "pycangui" / "help" / "main-window.png"
-#: What gets plotted.  The demo engine sweeps between 800 and 2000 rpm about
+#: What gets plotted. The demo engine sweeps between 800 and 2000 rpm about
 #: every 12.6 s, so a 30 s window shows two and a half sweeps.
 PLOTTED = ("DBC EEC1/EngineSpeed", "DBC CCVS1/WheelBasedVehicleSpeed")
 WINDOW_S = 30

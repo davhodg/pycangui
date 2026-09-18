@@ -3,7 +3,7 @@
 """CAN FD: the data rate, and ISO-TP frames longer than eight bytes.
 
 Eight bytes a frame is what makes UDS over a classic bus slow -- a flow
-control round for every seven bytes of payload.  CAN FD's whole value here is
+control round for every seven bytes of payload. CAN FD's whole value here is
 CAN_DL, and it is worth nothing unless the channel underneath actually opened
 as FD, which is not the same as having ticked the box.
 """

@@ -4,7 +4,7 @@
 
 Each channel's dot says how its controller is doing -- green taking part,
 amber counting errors, red bus off, grey not connected -- and clicking the
-channel opens the way back from bus off.  Colour alone is not the message: the
+channel opens the way back from bus off. Colour alone is not the message: the
 text says the state too whenever it is anything but normal.
 """
 

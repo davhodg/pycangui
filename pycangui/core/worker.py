@@ -3,7 +3,7 @@
 """A queue-fed worker thread for blocking protocol calls (SDO, UDS requests).
 
 Each job is a plain function; its result or exception is delivered back on the
-GUI thread through ``done``, so callers never block the window.  One worker
+GUI thread through ``done``, so callers never block the window. One worker
 per protocol keeps requests for that protocol sequential, which is what the
 protocols want anyway.
 """

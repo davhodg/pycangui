@@ -2,13 +2,13 @@ pycangui
 Copyright 2026 davhodg
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use
-this file except in compliance with the License.  You may obtain a copy of the
+this file except in compliance with the License. You may obtain a copy of the
 License in the LICENSE file, or at http://www.apache.org/licenses/LICENSE-2.0
 
 The exception is the hook and simulated-node templates (pycangui/hooks and
-pycangui/nodes), which are copied into a workspace to be edited.  They are
+pycangui/nodes), which are copied into a workspace to be edited. They are
 MIT-0 (LICENSES/MIT-0.txt), claim no copyright and ask for no attribution, so
-what you write in them carries no conditions from pycangui.  Each file names
+what you write in them carries no conditions from pycangui. Each file names
 its own licence in its first line.
 
 This product includes software developed by third parties, each used unmodified
@@ -28,7 +28,7 @@ under its own licence and installed as a separate package:
   Python                               PSF-2.0     https://www.python.org
 
 The LGPL-licensed components are dynamically linked and separately replaceable;
-their sources are available from the projects listed above.  Only LGPL Qt
+their sources are available from the projects listed above. Only LGPL Qt
 modules are used -- the GPL-only Qt modules (Qt Charts, Qt Data Visualization,
 Qt Graphs, Qt Virtual Keyboard) are deliberately not used.
 

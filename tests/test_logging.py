@@ -62,7 +62,7 @@ def test_record_then_replay_round_trip(app, channels, tmp_path, suffix):
     assert path.is_file() and path.stat().st_size > 0
 
     # Replay it onto the same virtual bus: the frames come back round as they
-    # went in, because a virtual bus loops its own traffic back to us.  That
+    # went in, because a virtual bus loops its own traffic back to us. That
     # loopback is the whole reason replay needs no separate offline mode.
     received: list[Frame] = []
     bus.frames.connect(received.extend)
@@ -106,7 +106,7 @@ def test_recording_survives_switching_the_selected_channel(app, channels, tmp_pa
 
     The recorder was handed the ActiveBus facade, which emits ``disconnected``
     as the selection leaves a connected channel, and the recorder stopped on
-    ``disconnected``.  Selecting another channel to drive a protocol pane
+    ``disconnected``. Selecting another channel to drive a protocol pane
     therefore ended the recording silently, leaving a truncated file.
     """
     path = tmp_path / "switch.blf"

@@ -4,7 +4,7 @@
 
 Asked, never done unasked: people keep their files where they keep them, and a
 tool that quietly copies them somewhere else makes two versions of each and
-leaves somebody editing the one that is no longer read.  The question is only
+leaves somebody editing the one that is no longer read. The question is only
 worth asking because of export -- a copy in the workspace travels with it, and
 a file elsewhere does not -- so that is what it says.
 """
@@ -30,7 +30,7 @@ TEXT = (
 def offer(parent: QWidget | None, ctx: Context, path: str | Path, kind: str) -> str:
     """The value to remember for a file just chosen.
 
-    A file already in the workspace is simply written relative to it.  One
+    A file already in the workspace is simply written relative to it. One
     elsewhere is asked about: yes copies it in, no keeps it where it is.
     """
     workspace = ctx.workspace_dir

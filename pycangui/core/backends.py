@@ -5,12 +5,12 @@
 Every protocol in pycangui is split into
 
 * a **manager** -- the GUI-facing object: Qt signals, threading, settings,
-  A2L / EDS / DBC handling, feeding the signal hub.  This never changes.
+  A2L / EDS / DBC handling, feeding the signal hub. This never changes.
 * an **engine** (or transport) -- the part that actually talks the protocol on
-  the wire.  This is small, has a narrow interface, and is replaceable.
+  the wire. This is small, has a narrow interface, and is replaceable.
 
 Engines register themselves here under a *kind* (``"xcp"``, ``"isotp"``, ...)
-and a name.  The user picks one per kind; the choice is remembered in
+and a name. The user picks one per kind; the choice is remembered in
 ``settings.json`` under ``backends.<kind>``.
 
 Users add their own by dropping a module into ``<user dir>/backends/``:
@@ -67,7 +67,7 @@ class BackendRegistry:
         return self._by_kind.get(kind, {}).get(name)
 
     def create(self, kind: str, name: str, *args: Any, **kwargs: Any) -> Any:
-        """Build an engine.  Falls back to the first registered one if *name*
+        """Build an engine. Falls back to the first registered one if *name*
         is unknown (e.g. a user backend that failed to load this run)."""
         spec = self.get(kind, name)
         if spec is None:

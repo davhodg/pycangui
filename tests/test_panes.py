@@ -3,7 +3,7 @@
 """Several of one pane: a second trace, a second plot, and a name each.
 
 Every dock used to be a singleton, and the main window named each one by a
-string constant in nineteen places.  A second trace with its own filter is the
+string constant in nineteen places. A second trace with its own filter is the
 smallest case that breaks that, and a user's own custom_panes -- two side by side,
 one per node -- are the case it is being broken for.
 
@@ -133,7 +133,7 @@ def test_removing_an_extra_takes_its_dock_with_it(window):
 
 
 def test_the_first_of_a_kind_cannot_be_removed(window):
-    """It is the pane.  Putting it away is what the close button is for."""
+    """It is the pane. Putting it away is what the close button is for."""
     window.panes.remove("trace")
     assert "trace" in window.panes.docks
 

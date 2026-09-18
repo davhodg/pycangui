@@ -2,20 +2,20 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Reading measurement files: MDF, and the MF4 that is its current version.
 
-A CAN log holds frames.  An MDF holds *signals* -- decoded values against
+A CAN log holds frames. An MDF holds *signals* -- decoded values against
 time, as a measurement tool or a logger recorded them -- and that is a
-different thing wearing a similar name.  A file of one sort opened by a tool
+different thing wearing a similar name. A file of one sort opened by a tool
 expecting the other looks broken when it is nothing of the kind, which is most
 of why this module exists at all.
 
-What it will not do is guess.  A file that holds only frame metadata and no
+What it will not do is guess. A file that holds only frame metadata and no
 payload cannot yield signals, and saying so is more use than returning nothing
 and letting somebody conclude their file is empty.
 
 **asammdf may not be installed.**  The Windows installer bundles it, but a
 ``pip`` installation leaves it out by default -- it brings pandas with it, some
 hundred megabytes, for a format many people never meet -- and fetches it when a
-file needs it.  So everything here works out whether the library is present and
+file needs it. So everything here works out whether the library is present and
 says what to do when it is not, and nothing imports it at start-up.
 """
 
@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-#: What has to be installed, and roughly what it costs.  The number is what
+#: What has to be installed, and roughly what it costs. The number is what
 #: lands on disc, measured rather than guessed: pandas is most of it.
 PACKAGE = "asammdf"
 SIZE_MB = 100
@@ -36,14 +36,14 @@ WHY = (
     f"about {SIZE_MB} MB, for a format many people never open."
 )
 
-#: Suffixes that mean "this is a measurement file".  ``.dat`` is MDF 3, which
+#: Suffixes that mean "this is a measurement file". ``.dat`` is MDF 3, which
 #: is still what a great deal of archived data is.
 SUFFIXES = (".mf4", ".mdf", ".dat")
 FILTER = "Measurement files (*.mf4 *.mdf *.dat);;All files (*)"
 
-#: The channels ASAM uses for raw bus logging.  They are frame plumbing rather
+#: The channels ASAM uses for raw bus logging. They are frame plumbing rather
 #: than measurements -- the id, the length, the flags -- and a signals list
-#: with three hundred of them in it is a signals list nobody can use.  Read on
+#: with three hundred of them in it is a signals list nobody can use. Read on
 #: request, never by default.
 BUS_PREFIXES = ("CAN_", "LIN_", "FLX_", "ETH_")
 
@@ -53,7 +53,7 @@ _TEXT_KINDS = ("S", "U", "V", "O")
 
 
 class NotAvailableError(RuntimeError):
-    """asammdf is not installed.  The message says what to do about it."""
+    """asammdf is not installed. The message says what to do about it."""
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ class ChannelInfo:
     unit: str
     samples: int
     group: int
-    #: Frame plumbing rather than a measurement.  Kept in the list so that a
+    #: Frame plumbing rather than a measurement. Kept in the list so that a
     #: person who wants the ids can have them, and out of the way otherwise.
     bus_metadata: bool = False
 
@@ -98,10 +98,10 @@ class Summary:
     channels: int = 0
     samples: int = 0
     #: True where the file holds raw frames -- payload bytes and all -- and so
-    #: could be replayed as traffic.  Frame *metadata* without the payload does
+    #: could be replayed as traffic. Frame *metadata* without the payload does
     #: not count, because nothing can be replayed from it.
     has_frames: bool = False
-    #: What the writing tool left behind.  Worth showing: an export that went
+    #: What the writing tool left behind. Worth showing: an export that went
     #: wrong usually says so here, and it is the first place to look when a
     #: file is not what somebody expected.
     comment: str = ""
@@ -141,7 +141,7 @@ def looks_like_mdf(path: str | Path) -> bool:
 def unfinalised(path: str | Path) -> bool:
     """Whether the writer never closed the file.
 
-    A logger that lost power, or one that writes this way by design.  Most
+    A logger that lost power, or one that writes this way by design. Most
     tools refuse an unfinalised file outright; asammdf reads one, so this is
     worth saying rather than being the thing that silently differs.
     """
@@ -170,7 +170,7 @@ def summarise(path: str | Path) -> Summary:
             # MDF 3 has no attachments and raises rather than saying none, and
             # a summary is not worth failing over a field the format lacks.
             out.attachments = []
-        # The payload, not the header fields.  A file with CAN_DataFrame.ID and
+        # The payload, not the header fields. A file with CAN_DataFrame.ID and
         # no CAN_DataFrame.DataBytes has the shape of a bus log and none of the
         # substance: there is nothing in it to replay.
         names = {c.name for g in mdf.groups for c in g.channels}
@@ -181,7 +181,7 @@ def summarise(path: str | Path) -> Summary:
 def channels(path: str | Path) -> list[ChannelInfo]:
     """Every channel in a file, described but not read.
 
-    Empty channel groups are left out.  A real export is full of them -- the
+    Empty channel groups are left out. A real export is full of them -- the
     file this was written against has 382 of 882 -- because a message that did
     not occur in the exported window still gets a group, and offering somebody
     four hundred signals with nothing in them is offering them nothing.
@@ -216,9 +216,9 @@ def read(
 
     ``names`` reads only those, which is the usual way: a file with thousands
     of channels is not something to load whole on the chance that six of them
-    were wanted.  Without it, everything numeric is read.
+    were wanted. Without it, everything numeric is read.
 
-    A channel whose samples are text, or an array per sample, is left out.  A
+    A channel whose samples are text, or an array per sample, is left out. A
     time series holds numbers, and there is no honest way to plot a string.
     """
     wanted = set(names) if names is not None else None
@@ -232,14 +232,14 @@ def read(
                     continue
             samples = np.asarray(signal.samples)
             if samples.dtype.kind in _TEXT_KINDS or samples.ndim != 1:
-                # Text, or a whole record per sample.  A bus log written by
+                # Text, or a whole record per sample. A bus log written by
                 # python-can is entirely the latter: one composed channel
                 # holding id, length and payload together, which is a frame
                 # rather than a measurement and has no business on a plot.
                 continue
             if samples.size == 0:
                 # A channel whose group claims cycles can still read back with
-                # nothing in it -- real exports do this.  An empty series is
+                # nothing in it -- real exports do this. An empty series is
                 # not a signal, and one plotted is a curve with no points and
                 # a name in the legend suggesting otherwise.
                 continue

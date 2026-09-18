@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """The application icon: shipped, readable, and actually wired in.
 
-An icon fails quietly in every direction.  A missing file leaves Qt's default
+An icon fails quietly in every direction. A missing file leaves Qt's default
 with no error; an exe built without one gets PyInstaller's own, which is a
 perfectly good icon and not ours; an installer without SetupIconFile shows the
-Inno Setup box.  So each place is checked for the one thing that says it is
+Inno Setup box. So each place is checked for the one thing that says it is
 pycangui's icon rather than some icon.
 """
 
@@ -63,7 +63,7 @@ def test_the_installer_is_built_with_it():
 
 def test_the_build_check_tells_our_icon_from_pyinstallers():
     """PyInstaller embeds its own icon when given none, so "the exe has an
-    icon" proves nothing.  Our largest image's bytes inside the exe does."""
+    icon" proves nothing. Our largest image's bytes inside the exe does."""
     checks = check_build()
     ours = checks.ICON.read_bytes()
     largest = checks.largest_image(ours)

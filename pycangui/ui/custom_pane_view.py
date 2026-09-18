@@ -2,15 +2,15 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """A custom pane on screen: a named group of objects, laid out as a form.
 
-The pane is thin on purpose.  It builds a widget per field, points every one
+The pane is thin on purpose. It builds a widget per field, points every one
 of them at whatever source the pane is bound to, and gets out of the way --
 the refusing, the scaling and the read-modify-write all belong to the widgets,
-and where the values come from belongs to the source.  What is left here is
+and where the values come from belongs to the source. What is left here is
 the layout, the source selector, and Read.
 
 Which source is the one thing on screen that a pane does not carry in its
-file.  A custom pane is a statement about a *product*, and which controller you are
-pointing it at this afternoon is not.  So the file names a node as a default
+file. A custom pane is a statement about a *product*, and which controller you are
+pointing it at this afternoon is not. So the file names a node as a default
 and the selector at the top overrides it, including with a file -- the same
 pane over a DCF is how you build a configuration at a desk.
 """
@@ -50,7 +50,7 @@ from pycangui.custom_panes.source import FileSource, NodeSource, Source
 from pycangui.ui import field_widgets, folders, messages
 from pycangui.ui.persist import remember
 
-#: How many unanswered reads of one object to keep track of.  Past this,
+#: How many unanswered reads of one object to keep track of. Past this,
 #: the oldest are ones whose answers are never coming.
 MAX_WAITING = 8
 
@@ -113,7 +113,7 @@ class CustomPaneView(QWidget):
         self.source: Source | None = None
         self._widgets: list[field_widgets.FieldWidget] = []
         #: Per object, oldest first: True where polling asked for the read
-        #: and False where a person did.  See ``_request``.
+        #: and False where a person did. See ``_request``.
         self._asked: dict[tuple[int, int], list[bool]] = {}
         self.poller = Poller(self)
         self.poller.read.connect(self._on_poll_read)
@@ -147,7 +147,7 @@ class CustomPaneView(QWidget):
         remember(self.ctx, f"pane.{self.name}.poll_hz", self.poll_hz, DEFAULT_HZ)
         self.poll_hz.valueChanged.connect(self.poller.set_rate)
         self.poller.set_rate(self.poll_hz.value())
-        #: The rate actually being managed.  Shown rather than the requested
+        #: The rate actually being managed. Shown rather than the requested
         #: one, because a value read at 12 Hz that looks like it was read at
         #: 100 is the sort of thing people build conclusions on.
         self.poll_rate = QLabel("")
@@ -325,7 +325,7 @@ class CustomPaneView(QWidget):
         self.unsaved_note.setVisible(self.source.unsaved)
 
     def save(self) -> bool:
-        """Write the edits to the file.  False if they were not written."""
+        """Write the edits to the file. False if they were not written."""
         if not isinstance(self.source, FileSource):
             return True
         if self.source.needs_new_name:
@@ -413,7 +413,7 @@ class CustomPaneView(QWidget):
     def _request(self, index: int, sub: int, polling: bool) -> None:
         """Ask the source for a value, and remember who wanted it.
 
-        Who wanted it is the whole point.  A source answers in the order it
+        Who wanted it is the whole point. A source answers in the order it
         was asked, so the oldest waiting request for an object is the one this
         answer belongs to -- and a round of polling must be finished by *its
         own* answers, not by one that happened to arrive while it was waiting.
@@ -424,7 +424,7 @@ class CustomPaneView(QWidget):
         waiting = self._asked.setdefault((index, sub), [])
         waiting.append(polling)
         # A source that answers some reads and not others would otherwise grow
-        # this list for as long as the polling runs.  The oldest are the ones
+        # this list for as long as the polling runs. The oldest are the ones
         # whose answers are never coming.
         del waiting[:-MAX_WAITING]
         self.source.request(index, sub)
@@ -440,7 +440,7 @@ class CustomPaneView(QWidget):
         # sub-indices of one object, and only it knows which.
         for widget in self._widgets:
             widget.set_value(index, sub, raw, error)
-        # Only if this answer is one polling asked for.  Reading a pane by
+        # Only if this answer is one polling asked for. Reading a pane by
         # hand while it polls used to finish whichever round was in flight,
         # and the rate then read faster than the bus was really managing --
         # which is the one thing the rate is there not to do.
@@ -502,7 +502,7 @@ class CustomPaneEditor(QDialog):
     """The objects on a pane, what they are called, and how each is shown.
 
     Objects are usually picked in the CANopen pane's object dictionary, which
-    is where they can be searched for and where their names already are.  Add
+    is where they can be searched for and where their names already are. Add
     is here as well because that route needs a node on the bus with an EDS
     loaded, and the two cases it does not cover are ordinary ones: building a
     pane at a desk against a DCF, and adding an object whose index you
@@ -646,7 +646,7 @@ class CustomPaneEditor(QDialog):
 class AddObjects(QDialog):
     """Pick objects out of whatever the pane is bound to, or type an index.
 
-    Both, rather than either.  A list to search is how somebody who does not
+    Both, rather than either. A list to search is how somebody who does not
     know the index finds it, and typing one is how somebody who does gets on
     with it -- and there is no list at all when the pane is bound to a node
     that has no EDS, which must not be a dead end.
@@ -711,7 +711,7 @@ class AddObjects(QDialog):
             item.setHidden(not all(n in item.text().lower() for n in needles))
 
     def chosen_fields(self) -> list[Field]:
-        """What was picked, as fields.  Empty if the dialog was cancelled."""
+        """What was picked, as fields. Empty if the dialog was cancelled."""
         if self.exec() != QDialog.Accepted:
             return []
         out = [self._as_field(*self._entries[self.list.row(i)]) for i in self.list.selectedItems()]

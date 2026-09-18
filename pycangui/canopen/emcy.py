@@ -3,7 +3,7 @@
 """CANopen emergency (EMCY) decoding.
 
 An emergency object carries eight bytes: a 16-bit error code, the error
-register (object 0x1001), and five **manufacturer-specific** bytes.  The code
+register (object 0x1001), and five **manufacturer-specific** bytes. The code
 and register are standardised by CiA 301 and decoded here; the five remaining
 bytes mean whatever the device maker decided, so they are handed to the
 ``canopen.emcy_manufacturer`` hook for the user to decode.
@@ -14,7 +14,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
-# CiA 301 error codes.  Specific codes first, then the category of the high
+# CiA 301 error codes. Specific codes first, then the category of the high
 # nibble / byte for anything not listed.
 EMCY_CODES: dict[int, str] = {
     0x0000: "Error reset or no error",

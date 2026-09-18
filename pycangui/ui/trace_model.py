@@ -4,7 +4,7 @@
 
 Qt's model/view split: the *model* owns the data and answers questions
 ("how many rows?", "what is in cell (r, c)?"); the *view* (a QTableView) only
-asks about the cells that are currently visible.  That is what makes a
+asks about the cells that are currently visible. That is what makes a
 large trace cheap -- nothing is copied into widgets.
 """
 
@@ -16,7 +16,7 @@ from pycangui.core.bus import Frame
 
 # "Channel" replaces the old CAN / CANx column: with several buses connected
 # the channel is what you need to see, and 11 vs 29-bit is already obvious from
-# the width of the id.  FD is marked on the length instead.
+# the width of the id. FD is marked on the length instead.
 COLUMNS = ("Time", "Channel", "Dir", "ID", "Kind", "DLC", "Data")
 ROLE_GROUP = Qt.UserRole + 1
 ROLE_CHANNEL = Qt.UserRole + 2

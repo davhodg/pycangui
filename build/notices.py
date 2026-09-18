@@ -4,7 +4,7 @@
 
 Reading the licences out of the installed package metadata means the file
 cannot drift from the build: if a dependency changes or is added, the notice
-changes with it.  Run from build.cmd before packaging.
+changes with it. Run from build.cmd before packaging.
 """
 
 from __future__ import annotations
@@ -39,9 +39,9 @@ pycangui is copyright 2026 davhodg and is licensed under the Apache
 License 2.0; see LICENSE and NOTICE.
 
 This distribution includes the following third party packages, each used
-unmodified and under its own licence.  The LGPL licensed components are
+unmodified and under its own licence. The LGPL licensed components are
 dynamically linked and remain separately replaceable; their sources are
-available from their projects.  Only LGPL Qt modules are included -- the
+available from their projects. Only LGPL Qt modules are included -- the
 GPL-only Qt modules (Qt Charts, Qt Data Visualization, Qt Graphs, Qt Virtual
 Keyboard) are deliberately excluded.
 

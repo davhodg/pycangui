@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """User code that adds screens, and what happens when it goes wrong.
 
-A hook answers a question pycangui already knows to ask.  A plugin adds
-something that was not there.  Two properties matter more than any of the
+A hook answers a question pycangui already knows to ask. A plugin adds
+something that was not there. Two properties matter more than any of the
 features, and most of this file is about them: a plugin that fails takes only
 itself down, and reloading one really does remove what the last version added
 rather than leaving a second copy beside it.
@@ -100,7 +100,7 @@ def test_folders_that_are_not_meant_to_be_plugins_are_skipped(tmp_path):
 
 
 def test_nothing_pycangui_ships_is_loaded_until_it_is_installed(app, window):
-    """The catalogue is not a load path.  A screen nobody asked for in every
+    """The catalogue is not a load path. A screen nobody asked for in every
     window is exactly what installing is there to prevent."""
     assert window.plugins.loaded == {}
     assert [s.name for s in supplied()], "and yet there are some to install"
@@ -443,7 +443,7 @@ def test_saying_no_installs_nothing(app, window, tmp_path, refuses, monkeypatch)
 
 def test_the_pane_of_one_just_installed_is_shown(app, window, tmp_path, agrees, monkeypatch):
     """Every other pane opens hidden, because a plugin's screen is one among a
-    dozen.  The one you have this second asked for is the exception."""
+    dozen. The one you have this second asked for is the exception."""
     chooses(monkeypatch, package_of(PANE.format(what="hello"), tmp_path))
     window.plugin_actions.install_file()
     settle(app)
@@ -503,7 +503,7 @@ def test_removing_one_takes_its_folder_and_its_pane(app, window, agrees):
 
 # --- and switching one off ---------------------------------------------------------------------
 def test_switched_off_means_not_loaded_at_all(app, window):
-    """Not merely hidden.  Off should leave the window exactly as it would be
+    """Not merely hidden. Off should leave the window exactly as it would be
     if the plugin were not there."""
     write_plugin(window, "demo", EVERYTHING)
     window._reload_plugins()
@@ -631,7 +631,7 @@ def test_a_plugin_can_be_split_across_files(app, window):
 
 def test_the_copy_it_reaches_is_the_one_beside_it(app, window, agrees):
     """The point of installing into the workspace: the copy you edit is the
-    copy that runs.  Named absolutely, an installed plugin would reach back
+    copy that runs. Named absolutely, an installed plugin would reach back
     into the one pycangui ships and editing your own would do nothing."""
     window.plugin_actions.install_supplied("firmware")
     settle(app)

@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: MIT-0
 #
-# A starting point, copied into your workspace for you to change.  It is
+# A starting point, copied into your workspace for you to change. It is
 # yours to edit, keep private or give away: pycangui claims nothing in it
 # and asks for no credit, so what you write here needs nobody's permission.
 """pycangui trace hooks -- edit freely, this file is yours.
 
-Each function below is called by pycangui at a decision point.  Return a value
-to take over, or return None to let pycangui do the normal thing.  A function
-that raises is reported in the Event Log pane and ignored.  Tools > Reload hooks
+Each function below is called by pycangui at a decision point. Return a value
+to take over, or return None to let pycangui do the normal thing. A function
+that raises is reported in the Event Log pane and ignored. Tools > Reload hooks
 picks up changes without a restart.
 """
 
@@ -21,7 +21,7 @@ from pycangui.core.hooks import hook
 def frame_kind(frame: Frame, *, ctx) -> str | None:
     """Label shown in the trace's Kind column for a frame.
 
-    Called for every frame, so keep it quick.  Return None for the default,
+    Called for every frame, so keep it quick. Return None for the default,
     which names CANopen messages from the predefined connection set
     ("TPDO1 n5", "SDO-T n5", "HB n5", "NMT", "SYNC", "EMCY n5", ...).
     The first word of your label decides the filter group: NMT, SYNC, TIME,

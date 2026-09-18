@@ -21,7 +21,7 @@ body:
     attributes:
       label: What would help
       description: |
-        If you have an idea of how it could work.  A hook, a simulated node or a plugin may already get you there -- say if you tried one and where it fell short.
+        If you have an idea of how it could work. A hook, a simulated node or a plugin may already get you there -- say if you tried one and where it fell short.
 
   - type: dropdown
     id: area

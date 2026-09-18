@@ -3,7 +3,7 @@
 """Toolbar for the channels: pick one, configure it, connect it.
 
 The selected channel is also the one the protocol panes (CANopen, UDS, J1939,
-XCP) work with, so there is a single notion of "the channel I am on".  The
+XCP) work with, so there is a single notion of "the channel I am on". The
 trace, the recorder and the decoders always see every connected channel.
 """
 
@@ -30,12 +30,12 @@ from pycangui.core.detect import (
 )
 from pycangui.core.worker import Worker
 
-#: Arbitration bitrates, slowest first.  50 and 100 kbit/s are ordinary on
+#: Arbitration bitrates, slowest first. 50 and 100 kbit/s are ordinary on
 #: machinery and marine buses, where a long backbone costs more than speed.
 BITRATES = (50_000, 100_000, 125_000, 250_000, 500_000, 1_000_000)
 DEFAULT_BITRATE = 500_000
 
-#: Data phase rates for CAN FD.  The data phase is the point of FD: the
+#: Data phase rates for CAN FD. The data phase is the point of FD: the
 #: arbitration phase still runs at the bitrate above, so both are chosen.
 DATA_BITRATES = (
     500_000,
@@ -57,7 +57,7 @@ class ChannelBox(QComboBox):
     """The channel drop-down, which looks for adapters when it is opened.
 
     Detection normally runs in the background when the interface changes, so
-    opening this is usually instant.  Where it has not run for the interface
+    opening this is usually instant. Where it has not run for the interface
     in question -- the first open after starting up -- it runs here and
     briefly blocks, which beats showing a list that is out of date.
     """
@@ -206,7 +206,7 @@ class ConnectBar(QToolBar):
         self._detected_for = ""
         # A channel belongs to its interface -- "can0" means nothing to an
         # IXXAT -- so the old one goes, and nothing takes its place until the
-        # list is opened.  Filling it in advance meant showing invented names
+        # list is opened. Filling it in advance meant showing invented names
         # as though they had been found: an IXXAT was offered channels 0 to 3
         # whether or not any of them existed.
         interface = self.interface.currentText()
@@ -214,12 +214,12 @@ class ConnectBar(QToolBar):
         self._set_channel_enabled(interface)
 
     def _on_channel_expanded(self) -> None:
-        """Fill the list as it opens.  Nothing else fills it.
+        """Fill the list as it opens. Nothing else fills it.
 
         Opening the list is the moment somebody wants to know what is
         attached, so that is where the looking belongs -- not on a button of
         its own, and not in advance, which meant offering invented names as
-        though they had been found.  It is done once per interface; the list
+        though they had been found. It is done once per interface; the list
         stays as it was until the interface changes.
         """
         interface = self.interface.currentText()
@@ -273,7 +273,7 @@ class ConnectBar(QToolBar):
             return
         # Whatever was typed into the box while detection was out also counts:
         # it runs in the background, and someone who started typing a channel
-        # must not have it wiped when the answer arrives.  Text that matches an
+        # must not have it wiped when the answer arrives. Text that matches an
         # item is a selection, not typing -- often one pycangui suggested
         # itself -- and detection is free to replace it.
         self._merge(found, typed=typed or self._typed_text())
@@ -379,7 +379,7 @@ class ConnectBar(QToolBar):
         self.interface.setCurrentText(saved.get("interface", "virtual"))
         channel = saved.get("channel", "vcan0")
         interface = saved.get("interface", "virtual")
-        # Only what was last used.  What else is available is a question for
+        # Only what was last used. What else is available is a question for
         # the drop-down, which answers it by looking when it is opened.
         remembered = Channel(config={"channel": channel, **saved.get("extra", {})}, label=channel)
         self._fill_channels([remembered] if channel else [], select=channel)

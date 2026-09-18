@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Every Python file says which licence it is under, and says the right one.
 
-Two licences, by file.  pycangui itself is Apache-2.0 and names its copyright
-holder.  The hook and simulated-node templates are MIT-0 and name nobody:
+Two licences, by file. pycangui itself is Apache-2.0 and names its copyright
+holder. The hook and simulated-node templates are MIT-0 and name nobody:
 they are copied into a workspace for somebody to fill with their own seed-key
 algorithm or vendor tables, and a file that is "yours to edit" should not open
 with a claim that it belongs to someone else.

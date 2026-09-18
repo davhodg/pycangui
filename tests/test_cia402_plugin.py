@@ -4,11 +4,11 @@
 this is a plugin at all.
 
 Most of a drive screen could be a custom pane: the modes, the targets and the
-actual values are ordinary objects at standard indices.  What cannot is the
+actual values are ordinary objects at standard indices. What cannot is the
 walk to Operation enabled -- a sequence of writes to one object where the next
 one depends on what the drive answered to the last -- and the state itself,
 which is decoded from overlapping masks of the statusword rather than read out
-of a field.  That is what most of this file is about.
+of a field. That is what most of this file is about.
 
 Nothing here needs a bus: the state machine is handed a statusword and answers
 with what to write.
@@ -62,7 +62,7 @@ def test_ready_to_switch_on_and_switched_on_differ_in_one_bit():
 
 def test_a_statusword_the_profile_does_not_describe_is_not_guessed_at():
     """0x0041 says switch on disabled and ready to switch on at once, which is
-    a contradiction.  Naming it anyway would put a confident word on screen
+    a contradiction. Naming it anyway would put a confident word on screen
     with nothing behind it."""
     assert cia402.state_of(0x0041) == cia402.UNKNOWN
 
@@ -107,7 +107,7 @@ def test_clearing_a_fault_is_two_writes_because_bit_seven_is_an_edge():
 
 def test_a_quick_stop_is_released_the_long_way_round():
     """The direct route back to Operation enabled exists, but only for drives
-    whose quick stop option code says so.  The long way works everywhere."""
+    whose quick stop option code says so. The long way works everywhere."""
     assert words(cia402.steps_to_enable(QUICK_STOP_ACTIVE)) == [0x00, 0x06, 0x07, 0x0F]
 
 
@@ -177,7 +177,7 @@ def test_no_other_mode_is_offered_that_button():
 def test_applying_a_target_will_not_enable_a_drive_on_the_way_past():
     """The edge is made by writing the enable controlword with bit 4 added, so
     from Switched on this would enable the drive -- which is the one thing here
-    that gets asked about first.  A button that quietly does what another button
+    that gets asked about first. A button that quietly does what another button
     asks permission for is a hole in the permission."""
     with pytest.raises(ValueError, match="without asking"):
         cia402.steps_to_apply_target(1, SWITCHED_ON)
@@ -185,7 +185,7 @@ def test_applying_a_target_will_not_enable_a_drive_on_the_way_past():
 
 def test_a_cyclic_mode_will_not_take_a_target_over_sdo():
     """It expects a new one every cycle, over a PDO, from something keeping
-    time.  One written here would be stale before it arrived."""
+    time. One written here would be stale before it arrived."""
     allowed, why = cia402.can_set_target(9)
     assert not allowed
     assert "every cycle" in why
@@ -406,7 +406,7 @@ def test_stopping_halts_first_and_then_zeroes_a_rate_demand():
 
 
 def test_a_position_target_is_never_zeroed():
-    """Zero is a *place*.  Writing it to 0x607A does not stop a drive part way
+    """Zero is a *place*. Writing it to 0x607A does not stop a drive part way
     through a move -- it sends it to position zero, which may be the longest
     move it has been asked for all day."""
     writes = cia402.stop_writes(1, ENABLED)
@@ -433,7 +433,7 @@ def running(view, monkeypatch, mode=3):
 
 
 def test_putting_the_pane_away_stops_the_drive(app, window, view, monkeypatch):
-    """A drive holds the last controlword and target it was given.  A window
+    """A drive holds the last controlword and target it was given. A window
     that commanded motion and then went away has left a motor turning with
     nobody watching the screen that says so."""
     drive = running(view, monkeypatch)

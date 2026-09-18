@@ -2,12 +2,12 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Whether .venv has everything pyproject.toml asks for.
 
-The launchers used to set up only when .venv was missing.  That is fine until
+The launchers used to set up only when .venv was missing. That is fine until
 a dependency is added: every existing checkout then starts a Python that is
 short of a library, and because the launcher runs pythonw there is no console
-for the ImportError to appear in.  The window simply never opens.
+for the ImportError to appear in. The window simply never opens.
 
-So the launchers ask this first, on every start.  It is deliberately cheap --
+So the launchers ask this first, on every start. It is deliberately cheap --
 it reads installed metadata rather than importing anything, so it costs
 milliseconds and cannot be fooled by a module that imports but is the wrong
 version of itself.
@@ -36,7 +36,7 @@ def wanted(requirement: str, platform: str = sys.platform) -> bool:
     """Whether this requirement applies here.
 
     Only ``sys_platform`` markers are understood, because that is the only
-    kind pyproject.toml uses.  Anything else is treated as not applying: the
+    kind pyproject.toml uses. Anything else is treated as not applying: the
     cost of missing one is a library the launcher does not offer to install,
     while the cost of guessing the other way is a reinstall on every single
     start.

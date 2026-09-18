@@ -4,7 +4,7 @@
 
 CANopen's predefined connection set (CiA 301) fixes the function code in the
 upper 4 bits of an 11-bit id and the node id in the lower 7, so most frames
-can be named from the id alone.  The result is a short *kind* ("TPDO1 n5",
+can be named from the id alone. The result is a short *kind* ("TPDO1 n5",
 "SDO-T n5", "HB n5") and a coarse *group* used for filtering.
 """
 

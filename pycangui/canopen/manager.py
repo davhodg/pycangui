@@ -5,10 +5,10 @@
 Threads, and why:
 
 * The bus Notifier thread delivers frames to ``canopen.Network`` (heartbeats,
-  PDOs, SDO responses).  Our callbacks there only *emit signals*; Qt queues
+  PDOs, SDO responses). Our callbacks there only *emit signals*; Qt queues
   them to the GUI thread.
 * SDO transfers block until the node answers (or time out), so they run on a
-  worker thread fed by a queue.  Each job is a plain function; its result or
+  worker thread fed by a queue. Each job is a plain function; its result or
   exception comes back through the ``_Worker.done`` signal.
 * The GUI thread only ever touches ``self.network`` to add/replace nodes and
   send NMT commands, both of which are quick.
@@ -40,7 +40,7 @@ DATATYPE_NAMES: dict[int, str] = {
 }
 INTEGER_TYPES = {*datatypes.SIGNED_TYPES, *datatypes.UNSIGNED_TYPES, datatypes.BOOLEAN}
 
-#: A node is reported lost after this many heartbeats fail to arrive.  CiA 301
+#: A node is reported lost after this many heartbeats fail to arrive. CiA 301
 #: leaves the consumer window to configuration; the usual choice is a small
 #: multiple of the producer time, which is what we learn from the bus.
 MISSED_HEARTBEATS = 3
@@ -51,31 +51,31 @@ MIN_HEARTBEAT_TIMEOUT_S = 1.0
 ADDED_BY_HAND = "added by hand"
 
 #: SDO timing as the ``canopen`` package ships it: 300 ms for each answer and
-#: no second try.  Settable in the CANopen pane, because a slow node or a busy
+#: no second try. Settable in the CANopen pane, because a slow node or a busy
 #: bus is found in the field and not at a desk.
 DEFAULT_SDO_TIMEOUT_S = 0.3
 DEFAULT_SDO_RETRIES = 0
 #: The SDO channel CiA 301 predefines: requests to 0x600 + node, answers on
-#: 0x580 + node.  A node configured otherwise is given its own pair.
+#: 0x580 + node. A node configured otherwise is given its own pair.
 SDO_REQUEST_BASE = 0x600
 SDO_RESPONSE_BASE = 0x580
 
 #: How many gaps to judge the period from, and how few is too few to judge at
-#: all.  The median of several is used rather than the latest one: a producer
+#: all. The median of several is used rather than the latest one: a producer
 #: that stalls and then sends twice in quick succession puts one short gap
 #: among the good ones, and taking the latest would read that burst as the
-#: period and call a healthy node lost a moment later.  A median ignores it;
+#: period and call a healthy node lost a moment later. A median ignores it;
 #: a mean would be dragged by it.
 HEARTBEAT_SAMPLES = 5
 HEARTBEAT_MIN_SAMPLES = 3
 
-#: Said after every DCF that wrote anything.  A node that answers an SDO
+#: Said after every DCF that wrote anything. A node that answers an SDO
 #: write without an abort has accepted the value -- that is what the positive
 #: response means, and checking it by reading it straight back only proves
-#: the node can remember it until the next question.  What nobody can see
+#: the node can remember it until the next question. What nobody can see
 #: from here is whether it *keeps* it: a value that was never stored, or
 #: silently clamped on the way into the saved image, reads back perfectly
-#: until the power goes off.  So the honest advice is a power cycle and a
+#: until the power goes off. So the honest advice is a power cycle and a
 #: comparison, and pycangui says so rather than implying its own check was
 #: the last word.
 VERIFY_NOTE = (
@@ -125,7 +125,7 @@ class CanopenManager(QObject):
         self._eds_path: dict[int, str] = {}
         self.emcy_history: list[Emcy] = []
         #: node_id -> when its last heartbeat arrived, and the interval between
-        #: the last two.  A node is called lost after MISSED_HEARTBEATS of them.
+        #: the last two. A node is called lost after MISSED_HEARTBEATS of them.
         self.last_heartbeat: dict[int, float] = {}
         #: The same arrivals on the *bus* clock, for measuring the period.
         #: Separate because the two questions want different clocks -- see
@@ -135,11 +135,11 @@ class CanopenManager(QObject):
         self._heartbeat_gaps: dict[int, deque[float]] = {}
         self.heartbeat_interval: dict[int, float] = {}
         #: node -> seconds, for the nodes whose timeout is set rather than worked
-        #: out.  Kept across a disconnect: it is configuration, not observation.
+        #: out. Kept across a disconnect: it is configuration, not observation.
         self.heartbeat_overrides: dict[int, float] = {}
         self.lost_nodes: set[int] = set()
         #: node -> the access level it said is held, or the one a login was
-        #: granted.  Forgotten on disconnect: a level lasts a connection at most.
+        #: granted. Forgotten on disconnect: a level lasts a connection at most.
         self.access_levels: dict[int, int] = {}
         self._liveness = QTimer(self, interval=250, timeout=self._check_liveness)
         self._liveness.start()
@@ -148,7 +148,7 @@ class CanopenManager(QObject):
         self.sdo_timeout_s = DEFAULT_SDO_TIMEOUT_S
         self.sdo_retries = DEFAULT_SDO_RETRIES
         #: node -> (request, response) COB-IDs, for the nodes whose SDO server
-        #: is not on the predefined channel.  See set_sdo_channels.
+        #: is not on the predefined channel. See set_sdo_channels.
         self.sdo_channels: dict[int, tuple[int, int]] = {}
         self._sync_on = False
         self._worker = Worker()  # starts itself the first time it is used
@@ -193,13 +193,13 @@ class CanopenManager(QObject):
             return
         node_id = can_id - 0x700
         now = time.monotonic()
-        # Two clocks, deliberately.  The *period* is measured from when the
+        # Two clocks, deliberately. The *period* is measured from when the
         # frames arrived -- what the driver stamped them with -- and the
         # *liveness* from now, because "nothing for nine seconds" is a
         # question about the present and a bus clock may be an epoch.
         #
         # Measuring the period from this callback instead read 11 ms for a
-        # 500 ms heartbeat whenever the machine was busy.  The notifier hands
+        # 500 ms heartbeat whenever the machine was busy. The notifier hands
         # over whatever queued while the GUI was elsewhere, several at once,
         # so the gap between callbacks is the gap between two deliveries
         # rather than between two heartbeats -- which shortened the liveness
@@ -208,14 +208,14 @@ class CanopenManager(QObject):
         if (previous := self._heartbeat_stamp.get(node_id)) is not None:
             gap = arrived - previous
             # A producer time of 0x1017 is in milliseconds and nobody sets
-            # one below about ten.  A shorter gap than that is two frames
+            # one below about ten. A shorter gap than that is two frames
             # arriving together -- a periodic task catching up after the
             # machine stalled -- and taking it for the period would make
             # the liveness timeout far shorter than the node deserves.
             if MIN_HEARTBEAT_GAP_S < gap < 60:
                 gaps = self._heartbeat_gaps.setdefault(node_id, deque(maxlen=HEARTBEAT_SAMPLES))
                 gaps.append(gap)
-                # Not published until there is enough to judge from.  One gap
+                # Not published until there is enough to judge from. One gap
                 # is an anecdote, and a wrong period is worse than none: it
                 # produces a timeout, and the timeout decides whether a node
                 # gets reported lost.
@@ -244,9 +244,9 @@ class CanopenManager(QObject):
         """How long to wait before calling a node lost.
 
         A timeout set for this node wins, as set: whoever set it knows
-        something about the node that its heartbeats do not say.  Otherwise
+        something about the node that its heartbeats do not say. Otherwise
         the producer time from object 0x1017 when the EDS or the node has given
-        us one, or the interval observed on the bus.  Returns 0 until a few
+        us one, or the interval observed on the bus. Returns 0 until a few
         heartbeats have been seen: there is nothing to judge from yet, and a
         timeout guessed from one gap would be a node reported lost on the
         strength of an anecdote.
@@ -297,7 +297,7 @@ class CanopenManager(QObject):
 
         A node appears by itself when its heartbeat arrives, which leaves out
         exactly the ones somebody most needs to reach: heartbeat switched off,
-        held in pre-operational, or sitting in a bootloader.  Returns whether
+        held in pre-operational, or sitting in a bootloader. Returns whether
         it was added.
         """
         if self.network is None:
@@ -314,7 +314,7 @@ class CanopenManager(QObject):
     def login(self, node_id: int, level: int, password: str = "") -> None:
         """Ask a node for an access level, the way hooks/canopen.py::login says.
 
-        CANopen has no login of its own, so the whole of it is the hook.  The
+        CANopen has no login of its own, so the whole of it is the hook. The
         password goes to the hook and nowhere else: not into a message, not
         into the settings.
         """
@@ -798,7 +798,7 @@ class CanopenManager(QObject):
 
     # --- LSS, layer setting services (CiA 305) ----------------------------------
     # LSS configures a node's node-ID and bit rate over CAN, before it has a
-    # usable node-ID.  Exactly one node may be in configuration state at a time.
+    # usable node-ID. Exactly one node may be in configuration state at a time.
     def _lss(self):
         return self.network.lss if self.network is not None else None
 
@@ -819,7 +819,7 @@ class CanopenManager(QObject):
         """Put every node on the bus into configuration or waiting state.
 
         Only safe when a single node is connected -- otherwise several nodes
-        answer at once.  Use ``lss_select()`` on a populated bus.
+        answer at once. Use ``lss_select()`` on a populated bus.
         """
 
         def fn(lss) -> str:
@@ -973,7 +973,7 @@ class CanopenManager(QObject):
             if text is not None:
                 # A DCF is an EDS with the values filled in, so it is written
                 # by filling them in -- which keeps the comments carrying the
-                # units, the scaling and the descriptions.  Rebuilding it from
+                # units, the scaling and the descriptions. Rebuilding it from
                 # the parsed dictionary loses every one of them.
                 out = write_dcf(text, values_from(values), node_id)
                 Path(path).write_text(out, encoding="utf-8", newline="")
@@ -998,14 +998,14 @@ class CanopenManager(QObject):
     def read_objects(self, node_id: int, wanted, done) -> None:
         """Read a named list of objects, for comparing a node against a file.
 
-        Named rather than discovered, and that is the point.  Reading a whole
+        Named rather than discovered, and that is the point. Reading a whole
         object dictionary to compare it against a file is minutes of SDO
         traffic to answer a question about the two hundred objects the file
         actually holds -- and it needs an EDS loaded, which comparing against a
-        file does not.  The file says what matters; this reads that.
+        file does not. The file says what matters; this reads that.
 
         An object the node will not give up is left out rather than recorded as
-        a failure.  A device that does not implement an object is not a device
+        a failure. A device that does not implement an object is not a device
         that disagrees about it, and the comparison says "only on one side"
         because that is what is true.
 
@@ -1066,7 +1066,7 @@ class CanopenManager(QObject):
                 return
             written, total, failures = result
             self.message.emit(f"Node {node_id}: {written}/{total} parameters written from the DCF")
-            # Grouped by reason rather than listed one per line.  A DCF that
+            # Grouped by reason rather than listed one per line. A DCF that
             # goes wrong usually goes wrong the same way two hundred times --
             # one read-only object, or one value the node's range rejects --
             # and two hundred identical lines say it worse than one does.

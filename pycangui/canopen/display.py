@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """How an object's value is shown, and how a typed one is read back.
 
-Three layers, deliberately kept apart.  **Structure** -- type, access,
+Three layers, deliberately kept apart. **Structure** -- type, access,
 limits -- comes from the EDS and is what the ``canopen`` package parses.
 **Meaning** -- what the number is called, what it is measured in, how to
 scale it, what its values are named -- comes from the EDS *where the file
@@ -10,11 +10,11 @@ carries it*, and from ``hooks/canopen.py::object_display`` where it does not.
 **The value** comes from the node, or a DCF, or the EDS default.
 
 The middle layer is the one that needed inventing, because most EDS files do
-not carry it.  CiA 306 defines no key for a unit or for scaling: a vendor who
+not carry it. CiA 306 defines no key for a unit or for scaling: a vendor who
 wants one invents a key, and a vendor who does not simply leaves the tool
-guessing.  A real 654 kB EDS for a motor controller was the case that settled
+guessing. A real 654 kB EDS for a motor controller was the case that settled
 the design -- 1357 variables, of which **none** declared a unit, a factor, a
-description or an enumeration, and 1330 declared limits.  So:
+description or an enumeration, and 1330 declared limits. So:
 
 * limits are worth using, because they are nearly always there;
 * units and scaling have to be able to come from a hook, because for a file
@@ -23,8 +23,8 @@ description or an enumeration, and 1330 declared limits.  So:
   since a scaled one is a claim somebody made in a hook rather than something
   the wire said.
 
-Raw is what goes on the wire and what a DCF stores.  Physical is raw times
-the factor plus the offset, and is what a person reads and types.  Every
+Raw is what goes on the wire and what a DCF stores. Physical is raw times
+the factor plus the offset, and is what a person reads and types. Every
 conversion in pycangui goes through this module so the two cannot drift.
 """
 
@@ -48,10 +48,10 @@ class Display:
     unit: str = ""
     factor: float = 1.0
     offset: float = 0.0
-    #: Decimal places for the physical value.  None means "as many as it
+    #: Decimal places for the physical value. None means "as many as it
     #: takes", which is right when nobody has said otherwise.
     decimals: int | None = None
-    #: Raw value -> what that value means.  From the EDS where it names them,
+    #: Raw value -> what that value means. From the EDS where it names them,
     #: from the hook otherwise.
     choices: dict[int, str] = field(default_factory=dict)
     #: In raw units, as the EDS states them.
@@ -93,7 +93,7 @@ def with_overrides(base: Display, overrides: dict | None) -> Display:
     """Apply a hook's answer over what the file said.
 
     The hook wins: it is written by somebody holding the product
-    documentation, and the file demonstrably may say nothing at all.  Keys it
+    documentation, and the file demonstrably may say nothing at all. Keys it
     leaves out keep whatever the EDS had, so naming a unit does not silently
     discard the limits.
     """
@@ -133,7 +133,7 @@ def text(display: Display, raw: Any) -> str:
     """One value, said in the terms the object is understood in.
 
     Only the converted value: a cell showing "20 ms [20000]" spends half its
-    width on a number nobody came for.  The raw one is on the tooltip, which
+    width on a number nobody came for. The raw one is on the tooltip, which
     is where it belongs -- worth having, because a scaled reading is a claim
     somebody made in a hook rather than something the wire said, but not worth
     a column.
@@ -179,7 +179,7 @@ def out_of_range(display: Display, raw: float) -> str:
     """Why this value would be refused, or "" if it would not be.
 
     Checked against the limits the EDS declares, which for a real file is the
-    one piece of meaning it reliably carries.  A node is free to clamp
+    one piece of meaning it reliably carries. A node is free to clamp
     silently, so catching it here is the difference between a parameter that
     did not take and a parameter nobody knew had not taken.
     """

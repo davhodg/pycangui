@@ -7,10 +7,10 @@ from the oldest kept to the newest, divided by the gaps between them.
 
 The obvious method -- how many arrived since the last refresh, over how long
 that was -- cannot describe a slow message, and the refresh interval is where
-it breaks.  Half a second contains no frames at all of a 1 Hz message and
+it breaks. Half a second contains no frames at all of a 1 Hz message and
 either none or one of a 2 Hz message, so the answer alternated between nothing
 and twice the truth, for exactly the cyclic messages whose cycle time somebody
-is trying to read.  A window over arrivals has no such floor: it answers for a
+is trying to read. A window over arrivals has no such floor: it answers for a
 message as slow as one every hundred seconds, and is steadier than the old one
 for a fast message, since it averages over gaps rather than over a boundary.
 
@@ -76,19 +76,19 @@ ROLE_CHANNEL = Qt.UserRole + 2
 ROLE_SEARCH = Qt.UserRole + 3
 CHANGED_COLOUR = QColor(220, 120, 0)
 
-#: Arrivals kept per id.  Thirty-two of them span a third of a second of a
+#: Arrivals kept per id. Thirty-two of them span a third of a second of a
 #: 100 Hz message and three seconds of a 10 Hz one: enough gaps to average
 #: over, and recent enough to still be describing now.
 RATE_SAMPLES = 32
 #: ...and nothing older than this counts, which is what governs a message
-#: slower than about 6 Hz.  It is a smoothing choice rather than a floor:
+#: slower than about 6 Hz. It is a smoothing choice rather than a floor:
 #: because two arrivals are always kept, a message slower than the window is
-#: still measured, from its one gap.  Five seconds averages five periods of a
+#: still measured, from its one gap. Five seconds averages five periods of a
 #: 1 Hz message and picks up a changed rate within five seconds; ten would
 #: smooth more and take twice as long to admit that anything had changed.
 RATE_WINDOW = 5.0
 #: Nothing for this long, or for three of the message's own periods, and it
-#: has stopped rather than slowed.  A stopped message has no rate, and saying
+#: has stopped rather than slowed. A stopped message has no rate, and saying
 #: it still runs at 10 Hz because it used to is the one wrong answer here.
 STOPPED_AFTER = 2.0
 
@@ -100,7 +100,7 @@ class _Row:
     rate_hz: float = 0.0
     period_s: float = 0.0  # the mean gap over the window, so 1 / rate exactly
     prev_data: bytes = b""
-    #: Bus timestamps of the recent arrivals, oldest first.  Bus time rather
+    #: Bus timestamps of the recent arrivals, oldest first. Bus time rather
     #: than ours: the driver stamps a frame when it arrives, which survives
     #: the GUI delivering a hundred of them in one batch.
     times: deque[float] = field(default_factory=lambda: deque(maxlen=RATE_SAMPLES))
@@ -108,9 +108,9 @@ class _Row:
     #: The two cannot be one clock -- bus time starts again at zero on every
     #: connect, and "how long since" has to mean something across that.
     last_seen: float = field(default_factory=time.monotonic)
-    #: Every gap, not the recent ones.  ``times`` is deliberately a short
+    #: Every gap, not the recent ones. ``times`` is deliberately a short
     #: window so that Rate describes *now*; these describe the whole run, so
-    #: that a message which stalled once an hour ago still says so.  Kept as
+    #: that a message which stalled once an hour ago still says so. Kept as
     #: running totals rather than a list: one message at 1 kHz for an hour is
     #: three and a half million gaps nobody wants stored.
     first: float = -1.0  # bus time of the first frame counted

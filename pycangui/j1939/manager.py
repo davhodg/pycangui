@@ -53,10 +53,10 @@ PGN_DM2 = 65227
 def tester_name():
     """The NAME this tool claims an address under.
 
-    Built when it is asked for rather than at import.  The j1939 library brings
+    Built when it is asked for rather than at import. The j1939 library brings
     numpy with it and costs half a second, and a session that never opens the
     J1939 pane -- which is most of them -- should not pay that on the way to
-    its first window.  Every use of the library below is inside a method for
+    its first window. Every use of the library below is inside a method for
     the same reason.
     """
     import j1939 as j1939lib
@@ -99,7 +99,7 @@ class J1939Manager(QObject):
         self._rx_only: list[_RxOnlyListener] = []
         self.ca: j1939lib.ControllerApplication | None = None
         #: One timer for the claim in progress, so a claim released and made
-        #: again cannot leave two of them reporting.  A child of the manager,
+        #: again cannot leave two of them reporting. A child of the manager,
         #: so it goes when the manager does.
         self._claim_timer = QTimer(self, interval=self.CLAIM_POLL_MS, timeout=self._check_claim)
         self._claim_deadline = 0.0
@@ -115,7 +115,7 @@ class J1939Manager(QObject):
         import j1939 as j1939lib
 
         self.ecu = j1939lib.ElectronicControlUnit(send_message=self._send_message)
-        # The bus echoes our own tx (receive_own_messages, for the trace).  The
+        # The bus echoes our own tx (receive_own_messages, for the trace). The
         # ECU must not see those: its own address claim echoed back looks like a
         # contender with an identical NAME and triggers an infinite re-claim storm.
         self._rx_only = [_RxOnlyListener(inner) for inner in self.ecu._listeners]
@@ -169,7 +169,7 @@ class J1939Manager(QObject):
 
     # --- labelling ------------------------------------------------------------------
     def pgn_name(self, pgn: int) -> str:
-        """The PGN's short name, from hooks/j1939.py.  "" if it has none."""
+        """The PGN's short name, from hooks/j1939.py. "" if it has none."""
         return self._hooks.call("j1939", "pgn_name", pgn) or ""
 
     def classify(self, frame: Frame) -> str | None:
@@ -184,7 +184,7 @@ class J1939Manager(QObject):
         return self._hooks.call("j1939", "spn_description", spn) or ""
 
     def fmi_description(self, fmi: int) -> str:
-        """What the failure mode means.  Standard, so this is nearly always set."""
+        """What the failure mode means. Standard, so this is nearly always set."""
         return self._hooks.call("j1939", "fmi_description", fmi) or ""
 
     # --- address claim / sending --------------------------------------------------------
@@ -206,7 +206,7 @@ class J1939Manager(QObject):
         """Report the claim once it has resolved, however long its thread takes.
 
         This used to be one look after 600 ms, which is sooner than can-j1939
-        can ever answer.  It usually got away with it; a loaded machine did
+        can ever answer. It usually got away with it; a loaded machine did
         not, and reported "address in use" -- releasing the address -- for a
         claim that would have succeeded a moment later.
         """

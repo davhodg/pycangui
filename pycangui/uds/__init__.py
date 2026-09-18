@@ -6,21 +6,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-#: The frame lengths CAN FD has.  There is nothing in between: a message
+#: The frame lengths CAN FD has. There is nothing in between: a message
 #: shorter than the next one up is padded to reach it.
 CAN_DL = (8, 12, 16, 20, 24, 32, 48, 64)
 
 
 @dataclass
 class UdsConfig:
-    """Addressing and timing for one ECU.  Saved in settings "uds.config"."""
+    """Addressing and timing for one ECU. Saved in settings "uds.config"."""
 
     tx_id: int = 0x7E0  # tester -> ECU
     rx_id: int = 0x7E8  # ECU -> tester
     functional_id: int = 0x7DF
     extended_id: bool = False  # 29-bit CAN ids (normal addressing)
     padding: int | None = 0xCC  # None = no padding
-    #: ISO 15765-2 over CAN FD.  CAN_DL is how many bytes go in one frame:
+    #: ISO 15765-2 over CAN FD. CAN_DL is how many bytes go in one frame:
     #: 8 as it always was, or one of the FD lengths up to 64, which is what
     #: makes a transfer over FD worth having.
     can_fd: bool = False

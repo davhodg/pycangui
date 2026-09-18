@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Firmware download over CANopen.
 
-A plugin rather than part of the tool, deliberately.  What a device wants in
+A plugin rather than part of the tool, deliberately. What a device wants in
 order to take new firmware is not part of any protocol pycangui speaks: CiA
 302-3 describes one way of doing it, most makers do something else, and the
-something else is the interesting half.  Installing it puts a copy in the
+something else is the interesting half. Installing it puts a copy in the
 workspace, which is the copy that runs: edit ``program.py`` to be what the
 device actually wants and everything around it -- the pane, the progress, the
 reporting -- goes on working.
@@ -38,7 +38,7 @@ from pycangui.ui import folders
 from pycangui.ui.persist import remember
 
 # Relative, so that the copy of program.py sitting beside *this* file is
-# the one that runs.  Named absolutely, an installed plugin would reach
+# the one that runs. Named absolutely, an installed plugin would reach
 # back into the one pycangui ships and editing your own would do nothing.
 from . import program
 from .program import Device
@@ -64,7 +64,7 @@ STOP_TEXT = (
     "Stop the program on node {node}?"
 )
 
-#: How long each SDO answer may take while a download runs.  Clearing a
+#: How long each SDO answer may take while a download runs. Clearing a
 #: program erases flash, and a device doing that answers when it has finished
 #: rather than when asked; so does one writing the last block of an image.
 PROGRAMMING_TIMEOUT_S = 10
@@ -75,7 +75,7 @@ PATIENCE_TIP = (
     "uses the SDO timeout set in the CANopen pane."
 )
 
-#: How the image goes over SDO.  Segmented first: every device takes it.
+#: How the image goes over SDO. Segmented first: every device takes it.
 SEGMENTED = "Segmented"
 BLOCK = "Block"
 TRANSFERS = (SEGMENTED, BLOCK)
@@ -310,7 +310,7 @@ class FirmwareView(QWidget):
         """Asked once a session for each node, as enabling a drive is.
 
         Stopping the program is the same class of thing: whatever it was
-        controlling stops being controlled.  Keyed on the node, so agreeing for
+        controlling stops being controlled. Keyed on the node, so agreeing for
         a bench unit is not agreeing for the machine beside it.
         """
         node_id = self.node.currentData()
@@ -394,7 +394,7 @@ class FirmwareView(QWidget):
         self.app.run_in_background(job, lambda written, error: self._finished("Programming", error))
 
     def _progress(self, done: int, total: int) -> None:
-        # Called from the worker thread.  Qt marshals a queued setValue for us
+        # Called from the worker thread. Qt marshals a queued setValue for us
         # because the bar lives on the GUI thread and this is a signal.
         self.progress.setValue(done)
 

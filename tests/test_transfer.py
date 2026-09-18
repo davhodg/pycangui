@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Firmware transfer: reading the files, and the services that move them.
 
-The ECU here is a recording fake rather than the demo device.  What these
+The ECU here is a recording fake rather than the demo device. What these
 tests are about is the shape of the conversation -- how many RequestDownloads
 a file with a gap in it causes, what the block sequence counter does after
 255, how big a block is allowed to be -- and none of that is visible from the

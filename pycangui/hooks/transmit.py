@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: MIT-0
 #
-# A starting point, copied into your workspace for you to change.  It is
+# A starting point, copied into your workspace for you to change. It is
 # yours to edit, keep private or give away: pycangui claims nothing in it
 # and asks for no credit, so what you write here needs nobody's permission.
 """pycangui transmit hooks -- edit freely, this file is yours.
 
-Each function below is called by pycangui at a decision point.  Return a value
-to take over, or return None to let pycangui do the normal thing.  A function
-that raises is reported in the Event Log pane and ignored.  Tools > Reload hooks
+Each function below is called by pycangui at a decision point. Return a value
+to take over, or return None to let pycangui do the normal thing. A function
+that raises is reported in the Event Log pane and ignored. Tools > Reload hooks
 picks up changes without a restart.
 
 This one exists because a checksum is the part of a message most likely to be
-nobody's standard.  pycangui knows XOR, sums and a few CRCs, and a maker's own
+nobody's standard. pycangui knows XOR, sums and a few CRCs, and a maker's own
 arithmetic is none of them -- so when the list has no entry for what your
 device wants, the answer is not to argue with the list, it is to write it here.
 """
@@ -27,7 +27,7 @@ def checksum(name: str, can_id: int, data: bytes, *, ctx) -> int | None:
 
     Called for every message sent from a transmit pane that has a checksum
     configured, *after* its counter has been written, with ``data`` as the
-    payload at that moment.  Return an integer to use instead of the
+    payload at that moment. Return an integer to use instead of the
     configured algorithm; return None -- as this default does -- to let the
     configured one stand.
 

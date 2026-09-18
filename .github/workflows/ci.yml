@@ -11,18 +11,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Read-only unless a job says otherwise.  The repository is public, so pull
+# Read-only unless a job says otherwise. The repository is public, so pull
 # requests from forks run this workflow too, and no test needs to write.
 permissions:
   contents: read
 
 jobs:
-  # Both ends of the supported range.  The latest Python runs on both
+  # Both ends of the supported range. The latest Python runs on both
   # platforms, because platform differences (Qt, threads, drivers) are what
-  # actually bite.  The oldest supported Python runs on Linux: bugs that appear
+  # actually bite. The oldest supported Python runs on Linux: bugs that appear
   # only on the floor are real -- 3.12 and 3.13 evaluate annotations eagerly,
   # which broke the hook stubs while 3.14 hid it -- but they are rarely
-  # platform specific.  macOS has its own workflow, run on demand: macos.yml.
+  # platform specific. macOS has its own workflow, run on demand: macos.yml.
   test:
     name: Test on ${{ matrix.os }}, Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -49,7 +49,7 @@ jobs:
           python -m ruff check pycangui tests build/check_build.py build/notices.py
           python -m ruff format --check pycangui tests
 
-      # Qt needs a display.  The tests already ask for the offscreen platform,
+      # Qt needs a display. The tests already ask for the offscreen platform,
       # but Linux runners also lack the X libraries Qt links against.
       - name: Install Qt's Linux dependencies
         if: runner.os == 'Linux'
@@ -72,7 +72,7 @@ jobs:
         run: python -m pycangui --selftest
 
   # The installer is only built for a release: nothing about the packaging
-  # changes between tags, and nobody installs from an ordinary push.  Push a
+  # changes between tags, and nobody installs from an ordinary push. Push a
   # tag (git tag v0.1.0 && git push --tags) to produce and publish one, or run
   # the workflow by hand from the Actions tab.
   package:
@@ -80,7 +80,7 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
-    # Publishing the release is the one write in the workflow.  The repository
+    # Publishing the release is the one write in the workflow. The repository
     # gives the token read access by default, so without this a tag would
     # build the installer and then fail to publish it.
     permissions:

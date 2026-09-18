@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """The seven ways a pane shows an object, and what each of them refuses.
 
-The interesting behaviour is not the displaying, it is the not-writing.  Two
+The interesting behaviour is not the displaying, it is the not-writing. Two
 rules run through the lot:
 
-A widget never invents a value.  ``flags`` and ``bits`` write part of an
+A widget never invents a value. ``flags`` and ``bits`` write part of an
 object, and part of an object cannot be written -- three bits of a word go out
 with the other twenty-nine -- so they read first and refuse until they have.
 
-What is refused is refused here.  A number outside the limits the EDS declared
+What is refused is refused here. A number outside the limits the EDS declared
 never reaches the bus, because a node is free to clamp it silently and a
 parameter that did not take is far worse than one that was not sent.
 """
@@ -41,7 +41,7 @@ def press(edit, key, modifiers=Qt.NoModifier):
 
 
 def enter(edit):
-    """What writes a typed value.  Leaving the box does not."""
+    """What writes a typed value. Leaving the box does not."""
     press(edit, Qt.Key_Return)
 
 
@@ -272,7 +272,7 @@ def test_bits_will_not_be_written_before_the_word_is_read(app):
 
 # --- a map --------------------------------------------------------------------------------------
 def test_a_map_asks_how_many_points_before_asking_what_they_are(app):
-    """An array says how many entries it has in sub 0.  Asking for the rest
+    """An array says how many entries it has in sub 0. Asking for the rest
     first would be guessing at the size of somebody's curve."""
     widget, _w, asked, _s = made(Field(index=0x2100, kind="map"))
     widget.refresh()

@@ -3,20 +3,20 @@
 """Driving a CiA 402 motor controller: state, mode, targets and what it is doing.
 
 Half of this screen could be a custom pane, and it is worth being clear about
-which half.  The modes, the targets and the actual values are ordinary objects
+which half. The modes, the targets and the actual values are ordinary objects
 at standard indices -- point a custom pane at 0x6060, 0x60FF and 0x606C and you
 have them, with no code at all.
 
-The other half cannot be.  A drive does nothing until it has been walked
+The other half cannot be. A drive does nothing until it has been walked
 through a state machine: 0x06, then 0x07, then 0x0F, with the next write
 depending on what the drive answered to the last one, and a fault cleared by a
-*rising edge* rather than by a value.  The state itself is decoded from
-overlapping masks of one word, so it is not a field either.  That is the case
+*rising edge* rather than by a value. The state itself is decoded from
+overlapping masks of one word, so it is not a field either. That is the case
 for this being a plugin, and it is the whole of the case: everything here that
 did not need code was left as objects a pane could have shown.
 
 The one question in front of a button is on **Enable**, which is the moment a
-motor becomes able to move.  It is asked once per drive per session, the same
+motor becomes able to move. It is asked once per drive per session, the same
 as joining a live bus and transmitting onto one -- a dialog on every press
 would be dismissed unread, and one that never appeared would be worse.
 """
@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
 
 # Relative, so that the copy of drive.py sitting beside *this* file is the
-# one that runs.  Named absolutely, an installed plugin would reach back
+# one that runs. Named absolutely, an installed plugin would reach back
 # into the one pycangui ships and editing your own would do nothing.
 from . import drive as cia402
 from .drive import Drive, Object
@@ -91,7 +91,7 @@ BUS_GONE = (
     "last target it was given, and nothing here can stop it now."
 )
 
-#: How the numbers are shown.  Counts and per mille are what the profile says;
+#: How the numbers are shown. Counts and per mille are what the profile says;
 #: turning them into millimetres or amps needs the gearing and the motor
 #: rating, which are the maker's and not ours to assume.
 UNITS_NOTE = (
@@ -106,7 +106,7 @@ class NodeDrive(Drive):
 
     Deliberately not the manager's ``sdo_read``: that goes through the object
     dictionary and answers with a typed value where the node has an EDS and
-    with raw bytes where it has not.  The profile already says what type each
+    with raw bytes where it has not. The profile already says what type each
     of these is, so packing them here means a drive nobody has an EDS for
     behaves exactly like one that has -- which is most drives, most of the time.
     """
@@ -375,7 +375,7 @@ class MotorView(QWidget):
 
     def _took(self, obj: Object, value: int) -> None:
         self._read_something = True
-        # By where the object is rather than by which object it is.  This file
+        # By where the object is rather than by which object it is. This file
         # can be loaded twice over -- once as part of pycangui, once as the
         # installed copy of itself -- and two constants describing 0x6041 are
         # equal without being the same one.
@@ -420,7 +420,7 @@ class MotorView(QWidget):
     def _show_banner(self) -> None:
         """Say loudly when a motor is live, and say when that is only a memory.
 
-        The distinction is the point.  A drive that was enabled when it was last
+        The distinction is the point. A drive that was enabled when it was last
         read may have been stopped by something else since, and a banner that
         went on asserting the old answer would be worse than no banner: it would
         be a confident statement about equipment nobody is watching.
@@ -505,7 +505,7 @@ class MotorView(QWidget):
         """Write a sequence of controlwords, off the GUI thread.
 
         The steps are worked out from the statusword this pane last read, so a
-        drive that has moved on since will be walked from where it was.  That is
+        drive that has moved on since will be walked from where it was. That is
         the case the state machine copes with by design: every one of these
         writes is a command rather than a transition, and a drive already in the
         state a command asks for stays in it.
@@ -576,15 +576,15 @@ class MotorView(QWidget):
     def set_visible_to_user(self, on: bool) -> None:
         """Put the drive down when the pane is put away.
 
-        Two things, and the second is the one that matters.  Polling stops
+        Two things, and the second is the one that matters. Polling stops
         because every read is a round trip on somebody's bus and a pane nobody
-        can see is a pane with no reader.  The *demand* stops because it would
+        can see is a pane with no reader. The *demand* stops because it would
         not otherwise: a drive holds the last controlword and target it was
         given and goes on acting on them, so a window that commanded motion and
         then went away has left a motor turning with nobody watching the screen
         that says so.
 
-        The same rule the transmit panes follow.  Out of sight is not a reason
+        The same rule the transmit panes follow. Out of sight is not a reason
         to go on sending.
         """
         if on:
@@ -596,10 +596,10 @@ class MotorView(QWidget):
     def stop_demand(self, background: bool = True) -> None:
         """Halt the drive and take back a rate demand, if it is running at all.
 
-        ``background`` is false when the tool itself is closing.  The writes then
+        ``background`` is false when the tool itself is closing. The writes then
         go on the GUI thread, because the worker is about to be shut down and a
         safety stop handed to a queue that never runs is worse than none: it
-        would look like one.  A close that pauses for an SDO timeout is a fair
+        would look like one. A close that pauses for an SDO timeout is a fair
         price.
         """
         node = self.node.currentData()
@@ -654,7 +654,7 @@ def register(app) -> None:
 
     Four of them, and missing any one leaves a motor turning with nothing on
     screen to say so: put away, closed for good, unloaded with the plugin, and
-    the whole tool closing.  The first three are the pane facade's business and
+    the whole tool closing. The first three are the pane facade's business and
     the last is the window's, which is why the plugin API grew a hook for it.
     """
     app.add_pane(

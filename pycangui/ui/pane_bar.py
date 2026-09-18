@@ -3,7 +3,7 @@
 """A strip of buttons along the top of a pane that is out of the window.
 
 Two buttons, each saying what pressing it will do rather than what is
-currently true: Pin becomes Unpin, Detach becomes Attach.  A button that
+currently true: Pin becomes Unpin, Detach becomes Attach. A button that
 names its own effect needs no reading twice.
 
 They live at the top of the pane's own content rather than in a title bar.

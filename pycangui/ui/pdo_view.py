@@ -4,7 +4,7 @@
 node's TPDOs and RPDOs, editable and writable back to the node.
 
 Each PDO is a top-level row (COB-ID, enabled, transmission type, inhibit time,
-event timer); its mapped objects are child rows.  Mapping entries are added by
+event timer); its mapped objects are child rows. Mapping entries are added by
 picking objects out of the node's object dictionary, so the mapping can be
 rebuilt without hand-encoding 0xIIIISSLL words.
 """

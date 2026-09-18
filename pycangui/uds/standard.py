@@ -8,11 +8,11 @@ ranges around them, and the negative response codes.
 
 What is *not* here, deliberately:
 
-* **DTC descriptions.**  ISO 14229-1 does not define any.  The text for the
+* **DTC descriptions.**  ISO 14229-1 does not define any. The text for the
   standard powertrain/chassis/body/network codes is SAE J2012, which is a
   copyrighted document of some thousands of entries and cannot be shipped in
-  an Apache-2.0 project.  Everything above those ranges is manufacturer
-  specific in any case.  The code itself -- "P0217" -- is arithmetic, and is
+  an Apache-2.0 project. Everything above those ranges is manufacturer
+  specific in any case. The code itself -- "P0217" -- is arithmetic, and is
   produced by :func:`pycangui.uds.manager.dtc_code`.
 * **The failure type byte.**  The low byte of a three-byte DTC (SAE J2012-DA
   "FTB": circuit short to ground, signal stuck high, ...) is from the same
@@ -28,7 +28,7 @@ import re
 
 from udsoncan import DataIdentifier, Routine
 
-#: Names that are worth shortening.  udsoncan spells the ISO identifiers out in
+#: Names that are worth shortening. udsoncan spells the ISO identifiers out in
 #: full, which is right for a library and long for a table cell.
 SHORTER = {
     "VINDataIdentifier": "VIN",
@@ -39,7 +39,7 @@ SHORTER = {
     "SystemSupplierSpecific": "Supplier specific",
     "ISOSAEReserved": "ISO/SAE reserved",
     "ReservedForLegislativeUse": "Reserved for legislative use",
-    # Routine identifiers (Annex F).  Four are named individually; the rest of
+    # Routine identifiers (Annex F). Four are named individually; the rest of
     # the space is ranges.
     "EraseMemory": "Erase memory",
     "CheckProgrammingDependencies": "Check programming dependencies",
@@ -51,7 +51,7 @@ SHORTER = {
 }
 
 
-#: The sessions ISO 14229-1 names.  0x40 to 0x5F are the manufacturer's own
+#: The sessions ISO 14229-1 names. 0x40 to 0x5F are the manufacturer's own
 #: and 0x60 to 0x7E the supplier's, which is what hooks/uds.py::sessions is
 #: for -- only the people who built the ECU know what those are called.
 SESSIONS = {1: "default", 2: "programming", 3: "extended", 4: "safety system"}
@@ -76,7 +76,7 @@ def _pretty(name: str) -> str:
     """ "ECUSerialNumberDataIdentifier" -> "ECU serial number".
 
     udsoncan spells the ISO names out in full and runs the words together,
-    which is right for a constant and unreadable in a dropdown.  Acronyms are
+    which is right for a constant and unreadable in a dropdown. Acronyms are
     left in capitals; everything else is a sentence.
     """
     name = re.sub(r"DataIdentifier$|RoutineID$", "", name)
@@ -90,7 +90,7 @@ def _pretty(name: str) -> str:
 
 
 #: The identifiers ISO 14229-1 names one by one, as opposed to the ranges it
-#: only gives a meaning to.  udsoncan holds the named ones as class
+#: only gives a meaning to. udsoncan holds the named ones as class
 #: attributes, so this is exact rather than a guess at which is which.
 NAMED = set(_numbers(DataIdentifier).values())
 
@@ -98,10 +98,10 @@ NAMED = set(_numbers(DataIdentifier).values())
 def did_name(did: int) -> str:
     """The ISO 14229-1 name of an identifier the standard names individually.
 
-    "" for the rest.  Every identifier belongs to *some* range, so answering
+    "" for the rest. Every identifier belongs to *some* range, so answering
     with the range here would put "(manufacturer specific)" beside every
     identifier an ECU actually uses, on every line -- true, and no help at
-    all after the first time.  :func:`did_range` is where that lives.
+    all after the first time. :func:`did_range` is where that lives.
     """
     if did not in NAMED:
         return ""
@@ -131,9 +131,9 @@ def did_range(did: int) -> str:
     return SHORTER.get(name) or _pretty(name)
 
 
-#: The routine identifiers ISO 14229-1 Annex F names one by one.  There are
+#: The routine identifiers ISO 14229-1 Annex F names one by one. There are
 #: four: erase memory, check programming dependencies, erase mirror memory
-#: DTCs and the deploy loop.  Everything else in the space is a range, most of
+#: DTCs and the deploy loop. Everything else in the space is a range, most of
 #: it manufacturer specific -- which is why a flash sequence is never quite
 #: the same twice.
 NAMED_ROUTINES = set(_numbers(Routine).values())
@@ -166,7 +166,7 @@ def memory_record(address: int, size: int, width: int | None = None) -> bytes:
     """An address and a length, written the way ISO 14229-1 writes them.
 
     A leading addressAndLengthFormatIdentifier saying how many bytes each of
-    the two takes, then the address, then the length.  This is the shape
+    the two takes, then the address, then the length. This is the shape
     RequestDownload uses, and the shape the erase and check routines are
     conventionally given as their option record.
 

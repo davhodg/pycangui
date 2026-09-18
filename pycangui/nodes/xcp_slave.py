@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT-0
 #
-# A starting point, copied into your workspace for you to change.  It is
+# A starting point, copied into your workspace for you to change. It is
 # yours to edit, keep private or give away: pycangui claims nothing in it
 # and asks for no credit, so what you write here needs nobody's permission.
 """An XCP slave: a block of memory the XCP pane can read and calibrate.
@@ -10,7 +10,7 @@ The example of a node that does *both* halves -- it answers commands in
 the CANopen device -- which is what a real calibration slave does.
 
 XCP is a memory protocol: the master says "give me four bytes from this
-address", and the A2L says which address a named measurement lives at.  So
+address", and the A2L says which address a named measurement lives at. So
 this node is a ``bytearray`` and a command handler, and the addresses below
 are the ones in ``resources/demo.a2l``.
 
@@ -54,7 +54,7 @@ ERR_OUT_OF_RANGE = 0x22
 ERR_ACCESS_LOCKED = 0x25
 ERR_ACCESS_DENIED = 0x35
 
-#: Which resources are protected.  Bit 0 is calibration, so a master has to
+#: Which resources are protected. Bit 0 is calibration, so a master has to
 #: unlock before it may write anything.
 RESOURCE_CAL = 0x01
 
@@ -65,7 +65,7 @@ COOLANT_C = 0x1004
 SPEED_LIMIT = 0x2000  # characteristics: the master writes these
 IDLE_TARGET = 0x2002
 
-#: The seed handed out, and the key is every byte inverted.  A real slave
+#: The seed handed out, and the key is every byte inverted. A real slave
 #: keeps a secret and an algorithm; this shows that the exchange happens.
 SEED = bytes([0xA5, 0x5A, 0x12, 0x34])
 

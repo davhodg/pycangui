@@ -2,15 +2,15 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Putting pycangui's own hook and node files back, without eating anybody's work.
 
-Two reasons to want one back.  An edited hook is the usual way to break
-pycangui quietly: the file still loads, the answers are just wrong.  And a
+Two reasons to want one back. An edited hook is the usual way to break
+pycangui quietly: the file still loads, the answers are just wrong. And a
 file you changed is never updated by a new pycangui, so taking the newer one
-over your changes is a decision only you can make.  Either way it is a reset
+over your changes is a decision only you can make. Either way it is a reset
 rather than a repair, which is why it lives with the other resets.
 
-The rule the dialog exists to enforce is that nothing is deleted.  These
+The rule the dialog exists to enforce is that nothing is deleted. These
 files are code somebody wrote, possibly the only copy, and a tick box that
-ate one would be a tick box people are right to be afraid of.  The old file
+ate one would be a tick box people are right to be afraid of. The old file
 is renamed ``<name>.py.bak`` and said so in advance, here and in the log.
 """
 
@@ -39,7 +39,7 @@ TITLES = {"hooks": "Hooks", "nodes": "Simulated nodes"}
 
 
 class RestoreSupplied(QDialog):
-    """Which supplied files to put back.  Nothing is ticked to start with."""
+    """Which supplied files to put back. Nothing is ticked to start with."""
 
     def __init__(self, parent: QWidget | None, groups: dict[str, Supplied]) -> None:
         super().__init__(parent)

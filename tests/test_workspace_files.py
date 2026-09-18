@@ -3,7 +3,7 @@
 """Files a workspace points at: kept where people keep them, and offered a way in.
 
 A path to somebody's download folder means nothing on the computer an exported
-workspace is imported on.  pycangui does not move anybody's files to fix that:
+workspace is imported on. pycangui does not move anybody's files to fix that:
 a file in the workspace is remembered relative to it, a file elsewhere is
 offered a copy in -- when it is chosen, and again on export -- and otherwise
 left exactly where it is.

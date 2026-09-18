@@ -1,10 +1,10 @@
 @echo off
-rem Launch pycangui.  Sets itself up on first run (needs Python 3.12 or newer on
+rem Launch pycangui. Sets itself up on first run (needs Python 3.12 or newer on
 rem the PATH), then starts the application.
 rem
 rem The setup deliberately is not quiet: it downloads a couple of hundred
 rem megabytes, mostly Qt, and a silent several-minute pause looks like a hang.
-rem If "uv" is installed it is used instead of pip.  The first run is limited by
+rem If "uv" is installed it is used instead of pip. The first run is limited by
 rem the download whichever is used, but uv caches packages, so later rebuilds of
 rem .venv take seconds.
 rem
@@ -21,7 +21,7 @@ echo  First run: setting up pycangui
 echo ============================================================
 echo.
 echo  pycangui is written in Python, and needs a set of libraries
-echo  to run.  Rather than install those into the Python on your
+echo  to run. Rather than install those into the Python on your
 echo  machine -- where they could clash with something else --
 echo  they go into a "virtual environment": a self contained
 echo  folder called .venv, right next to this script, holding its
@@ -30,16 +30,16 @@ echo.
 echo  Nothing outside that folder is touched, and deleting .venv
 echo  undoes the whole thing.
 echo.
-echo  This runs once.  It downloads roughly 250 MB, most of it Qt
+echo  This runs once. It downloads roughly 250 MB, most of it Qt
 echo  (the toolkit the windows are drawn with), so expect a few
-echo  minutes.  Every later start is immediate.
+echo  minutes. Every later start is immediate.
 echo.
 
 echo  [1/3] Checking Python...
 python --version
 if errorlevel 1 goto :nopython
 
-rem uv is a much faster drop-in replacement for pip.  Used if it happens to be
+rem uv is a much faster drop-in replacement for pip. Used if it happens to be
 rem installed; never required.
 set UV=
 where uv >nul 2>&1 && set UV=1
@@ -71,7 +71,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo ============================================================
-echo  Setup finished.  Starting pycangui...
+echo  Setup finished. Starting pycangui...
 echo ============================================================
 if not defined UV (
     echo.
@@ -83,12 +83,12 @@ echo.
 
 rem A .venv built before a dependency was added is short of it, and the
 rem launcher below runs pythonw, which has no console for the ImportError
-rem to appear in: the window would simply never open.  So ask -- but only
+rem to appear in: the window would simply never open. So ask -- but only
 rem when the answer could have changed.
 rem
 rem The check costs a whole Python start, a quarter of a second on every
 rem launch, to answer a question whose answer only changes when pyproject.toml
-rem does.  So the answer is kept as a copy of the file it was the answer to,
+rem does. So the answer is kept as a copy of the file it was the answer to,
 rem and fc compares the two: identical means asked and answered already.
 :check
 fc /b "pyproject.toml" ".venv\.deps-ok" >nul 2>&1
@@ -127,7 +127,7 @@ exit /b 1
 
 :fail
 echo.
-echo Setup failed ^(errorlevel %errorlevel%^).  The messages above say why;
+echo Setup failed ^(errorlevel %errorlevel%^). The messages above say why;
 echo the usual causes are no internet connection, a proxy that blocks
 echo pypi.org, or a Python older than 3.12.
 pause

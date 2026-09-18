@@ -3,12 +3,12 @@
 """User-composed custom_panes: a named group of objects laid out as a form.
 
 The object dictionary shows one object per row sorted by index, which is the
-right way to *find* an object and the wrong way to *use* one.  Reading six
+right way to *find* an object and the wrong way to *use* one. Reading six
 related parameters means six double-clicks in three parts of a tree of fifteen
 hundred rows, and doing it again tomorrow means finding them again.
 
 A pane is that group, named and kept: a title, and a list of objects each with
-a label and a way of being shown.  Building one takes no code -- pick the
+a label and a way of being shown. Building one takes no code -- pick the
 objects and say what they are -- and it opens as a dock like any other pane, so
 two custom_panes can sit side by side comparing two nodes.
 

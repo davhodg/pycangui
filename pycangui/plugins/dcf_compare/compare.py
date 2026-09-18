@@ -8,7 +8,7 @@ save a DCF and it could apply one, and there was nothing in between.
 
 A comparison is between two **readings**, and a reading is deliberately a
 small thing -- a label, the values it holds, and what each object is called.
-Where it came from is not part of it.  That is what lets a file be compared
+Where it came from is not part of it. That is what lets a file be compared
 against a file, a file against a live node, and a node against a node without
 three implementations: reading a DCF and reading a controller both end up
 here, and everything below this line is the same afterwards.
@@ -19,7 +19,7 @@ answer that is wrong:
 **It does not treat "absent" as "different".**  A DCF carries a value only for
 the objects that had one, and a node answers only what it implements, so an
 object on one side and not the other is extremely common and almost never a
-configuration difference.  It gets a state of its own and is not counted among
+configuration difference. It gets a state of its own and is not counted among
 the differences.
 
 **It does not decide what to read on its own.**  Something has to say which
@@ -30,7 +30,7 @@ indices.
 **It does not compare across node-IDs quietly.**  Half the communication
 objects in a CANopen device are COB-IDs derived from the node-ID, so a DCF
 from node 5 against one from node 6 differs in every one of them, correctly
-and uselessly.  The node-ID of each side is carried on the reading so that
+and uselessly. The node-ID of each side is carried on the reading so that
 whatever shows the result can say so.
 """
 
@@ -39,7 +39,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-#: What a row of a comparison can be.  ``SAME`` is kept rather than dropped
+#: What a row of a comparison can be. ``SAME`` is kept rather than dropped
 #: because "these two agree about 412 objects" is worth being able to show,
 #: and because a comparison that only ever displays differences cannot be
 #: checked against anything.
@@ -50,7 +50,7 @@ RIGHT_ONLY = "right only"
 
 COMMISSIONING = "DeviceComissioning"  # spelled as CiA 306 spells it
 
-#: Below this are the communication objects a device does not configure.  The
+#: Below this are the communication objects a device does not configure. The
 #: same floor ``save_dcf`` uses, so a DCF written by pycangui and a node read
 #: by it cover the same ground.
 FIRST_INDEX = 0x1000
@@ -68,7 +68,7 @@ class Reading:
     label: str
     values: dict[tuple[int, int], object] = field(default_factory=dict)
     names: dict[tuple[int, int], str] = field(default_factory=dict)
-    #: Where the values came from, when that is a node.  Two readings taken at
+    #: Where the values came from, when that is a node. Two readings taken at
     #: different node-IDs are comparable in principle and misleading in
     #: practice, and nothing here can tell which without being told.
     node_id: int | None = None
@@ -103,7 +103,7 @@ def same_value(left: object, right: object) -> bool:
 
     A DCF holds ``0x1F80`` as text a parser turned into an integer and a node
     hands back an integer; a value that survived that round trip must not be
-    reported as a change.  Booleans are compared as the integers CANopen
+    reported as a change. Booleans are compared as the integers CANopen
     stores, since a node returning 1 and a file saying True are the same bit.
     """
     if isinstance(left, bool) or isinstance(right, bool):
@@ -167,7 +167,7 @@ def summarise(rows: list[Row]) -> str:
 def node_id_warning(left: Reading, right: Reading) -> str:
     """Said when the two sides were taken at different node-IDs, or nothing.
 
-    Not a refusal.  Comparing a controller against the file from the one
+    Not a refusal. Comparing a controller against the file from the one
     beside it is a thing people do on purpose, and the node-ID difference is
     then noise they need to be told about rather than protected from.
     """
@@ -215,7 +215,7 @@ def read_file(path: str | Path, node_id: int = 0) -> Reading:
     it match the file I was given" and just as often the one being asked.
 
     ``node_id`` resolves the ``$NODEID`` expressions a CANopen file uses for
-    its COB-IDs.  A DCF carries its own in the commissioning section and that
+    its COB-IDs. A DCF carries its own in the commissioning section and that
     one wins, because the file knows better than the caller which node it was
     taken from.
     """
@@ -266,7 +266,7 @@ def objects_to_read(*readings: Reading) -> list[tuple[int, int]]:
 
     Reading only what the other side names is faster than reading everything,
     needs no EDS on the node, and asks the question actually being asked --
-    does this device agree with this file.  Reading the whole dictionary and
+    does this device agree with this file. Reading the whole dictionary and
     then discarding most of it would be minutes of SDO traffic to answer the
     same thing.
     """

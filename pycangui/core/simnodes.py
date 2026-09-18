@@ -2,15 +2,15 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Simulated nodes: the rest of the bus, written in Python.
 
-One real device is rarely testable on its own.  It expects a controller to
+One real device is rarely testable on its own. It expects a controller to
 command it, or peers to claim addresses against, or a master to poll it, and
-without them it sits in a fault state saying nothing useful.  A simulated node
+without them it sits in a fault state saying nothing useful. A simulated node
 is the missing half: a device pycangui pretends to be, so the real one has
 something to talk to.
 
 **This is Python you write, not a GUI you configure.**  There is no node
-editor and no visual state machine.  A node is one file, and the file is the
-node -- what it sends, when, and what it does about what arrives.  The GUI's
+editor and no visual state machine. A node is one file, and the file is the
+node -- what it sends, when, and what it does about what arrives. The GUI's
 whole job is to start one on a channel and stop it again.
 
 A node file declares who it is and implements whichever of four functions it
@@ -27,7 +27,7 @@ needs::
 
 All four are optional -- a node that only listens implements ``on_frame``, one
 that only shouts implements ``poll`` -- and all four run on the GUI thread, so
-nothing in a node file has to think about locks.  The other side of that
+nothing in a node file has to think about locks. The other side of that
 bargain is that a node which blocks holds up the window, so a poll that wants
 to take a second should take it in pieces across several polls instead.
 
@@ -55,39 +55,39 @@ from PySide6.QtCore import QObject, QTimer, Signal
 #: Copied into the workspace on first run, the way hook defaults are.
 DEFAULTS_PACKAGE = "pycangui.nodes"
 
-#: What a node file may declare.  Everything has a default, so a file that
+#: What a node file may declare. Everything has a default, so a file that
 #: declares nothing at all still runs -- under its own filename.
 DEFAULT_RATE_HZ = 10.0
 FUNCTIONS = ("start", "poll", "on_frame", "stop")
 
 #: Slower than this and a timer is the wrong tool; faster and the GUI thread
-#: is the wrong place.  Both ends are held to rather than warned about,
+#: is the wrong place. Both ends are held to rather than warned about,
 #: because a typo in a rate should not be a frozen window.
 MIN_RATE_HZ = 0.01
 MAX_RATE_HZ = 1000.0
 
 #: What a node opens for itself when the application has no bus on that
-#: channel.  python-can's virtual buses rendezvous by name inside one
+#: channel. python-can's virtual buses rendezvous by name inside one
 #: process, which is the whole reason a node can exist with nothing plugged
-#: in.  Where the application *does* have the channel open -- any adapter,
+#: in. Where the application *does* have the channel open -- any adapter,
 #: real or virtual -- the node joins that bus instead of opening a second;
 #: see Node._open.
 INTERFACE = "virtual"
 
-#: Given to a virtual bus, which ignores it.  Named rather than repeated so
+#: Given to a virtual bus, which ignores it. Named rather than repeated so
 #: that nobody reads 500000 here and thinks it means anything.
 VIRTUAL_BITRATE = 500000
 
 #: How many of a node's own sends to remember, and for how long, so that
 #: the echo of one can be told from the application transmitting the same
-#: bytes.  Both are generous: the echo of a frame arrives within
+#: bytes. Both are generous: the echo of a frame arrives within
 #: milliseconds, and anything older is not an echo.
 ECHO_MEMORY = 256
 ECHO_SECONDS = 2.0
 
 
 class NodeError(RuntimeError):
-    """A node could not be started.  The message says why, for a user."""
+    """A node could not be started. The message says why, for a user."""
 
 
 @dataclass
@@ -104,7 +104,7 @@ class Kind:
     name: str = ""
     description: str = ""
     rate_hz: float = DEFAULT_RATE_HZ
-    #: What is wrong with it, if anything.  Listed anyway when there is.
+    #: What is wrong with it, if anything. Listed anyway when there is.
     error: str | None = None
 
     @property
@@ -159,13 +159,13 @@ def kinds_in(folder: Path) -> list[Kind]:
 class Node(QObject):
     """One running simulated node: its channel, its state and its way out.
 
-    Handed to every function in the node file as the first argument.  What a
+    Handed to every function in the node file as the first argument. What a
     node file keeps between calls goes in ``state``; what it sends goes
     through ``send``; and a CANopen node gets the whole SDO and heartbeat
     server from ``canopen()`` rather than building one by hand.
     """
 
-    #: A frame arrived, already back on the GUI thread.  Internal: a node file
+    #: A frame arrived, already back on the GUI thread. Internal: a node file
     #: implements ``on_frame`` and never sees this.
     _received = Signal(object)
 
@@ -182,17 +182,17 @@ class Node(QObject):
         super().__init__(parent)
         self.kind = kind
         self.channel = channel
-        #: Every channel this node is on.  One for an ordinary node; a gateway
+        #: Every channel this node is on. One for an ordinary node; a gateway
         #: is the same thing bound to more than one, which is why this is a
         #: list even in the common case.
         self.channels: list[str] = [channel]
         self.rate_hz = max(MIN_RATE_HZ, min(MAX_RATE_HZ, float(rate_hz)))
         self.ctx = ctx
-        #: Yours.  pycangui never reads it.
+        #: Yours. pycangui never reads it.
         self.state = SimpleNamespace()
 
         self._functions = functions
-        #: The application's channels this node stands on, by name.  Used
+        #: The application's channels this node stands on, by name. Used
         #: to learn what to open and never closed here: they belong to the
         #: window, and a node that closed one would disconnect it.
         self._channels: dict[str, Any] = dict(buses)
@@ -205,17 +205,17 @@ class Node(QObject):
         self._buses: dict[str, can.BusABC] = {}
         self._notifiers: dict[str, can.Notifier] = {}
         #: Channels where a second handle was refused and the application's
-        #: is being shared.  Those are not ours to close.
+        #: is being shared. Those are not ours to close.
         self._shared: set[str] = set()
         #: What this node has sent and not yet heard back, so its own
         #: echoes can be told from the application's traffic on the same
-        #: handle.  A deque because the match is by content and the oldest
+        #: handle. A deque because the match is by content and the oldest
         #: one is the right one to claim; short-lived, because a bus that
         #: does not echo at all must not fill it.
         self._sent_echoes: deque[tuple[tuple, float]] = deque(maxlen=ECHO_MEMORY)
         #: (channel, listener) for everything this node put on a channel's
         #: notifier -- its own frame forwarder, and any CANopen server it
-        #: built.  A list of pairs because one channel can carry several.
+        #: built. A list of pairs because one channel can carry several.
         self._listeners: list[tuple[str, can.Listener]] = []
         self._networks: list[Any] = []
         self._timer: QTimer | None = None
@@ -292,7 +292,7 @@ class Node(QObject):
 
         Matched by content rather than by ``is_rx``, because on a shared
         handle that flag cannot tell this node's frames from the
-        application's -- see :class:`_Received`.  Stale entries are dropped
+        application's -- see :class:`_Received`. Stale entries are dropped
         as we go, so a bus that never echoes does not fill the record and a
         frame that looks like a very old send is not mistaken for one.
         """
@@ -312,7 +312,7 @@ class Node(QObject):
         """A CANopen server on this node's bus: SDO, heartbeat, NMT, PDO.
 
         Every CANopen node wants the same several hundred lines of it, so it
-        is here rather than in each node file.  Returns the
+        is here rather than in each node file. Returns the
         ``canopen.LocalNode``: set an object with ``node.set_data(...)``, read
         one with ``get_data``, and drive its PDOs through ``node.tpdo``.
 
@@ -325,7 +325,7 @@ class Node(QObject):
         network = canopen.Network(bus=self.bus(wanted))
         local = network.create_node(node_id, str(eds))
         self._networks.append(network)
-        # Onto this node's own reader.  A second notifier on one bus races
+        # Onto this node's own reader. A second notifier on one bus races
         # the first for every frame and each gets about half, which looks
         # like a device that answers every other request.
         for listener in network.listeners:
@@ -366,7 +366,7 @@ class Node(QObject):
             self._timer.stop()
             self._timer = None
         self._call("stop")
-        # No notifiers to stop: a node never owns one.  It puts listeners on
+        # No notifiers to stop: a node never owns one. It puts listeners on
         # the channel's notifier and takes them off again below.
         self._networks.clear()
         for channel, listener in self._listeners:
@@ -403,15 +403,15 @@ class Node(QObject):
         """Take this node's own handle on a pycangui channel.
 
         The channel says which interface and which adapter channel; the
-        node opens a second handle on the same one.  That is what makes it
+        node opens a second handle on the same one. That is what makes it
         a separate participant rather than part of the application: on a
         shared handle python-can marks everything this process sent as not
         received, so the application's stacks ignore the node's frames and
-        the node cannot tell the application's from its own.  Neither side
+        the node cannot tell the application's from its own. Neither side
         can hear the other, which is the opposite of the point.
 
         A real adapter may refuse a second handle -- several drivers do --
-        and then the node shares the application's.  It still works against
+        and then the node shares the application's. It still works against
         equipment out on the bus; what it cannot do is talk to pycangui's
         own protocol panes, and it says so rather than being quietly deaf.
         """
@@ -444,7 +444,7 @@ class Node(QObject):
     def _call(self, what: str, *args: Any) -> None:
         """Run one of the node's functions, and survive whatever it does.
 
-        A node file is somebody's work in progress.  One that raises says so
+        A node file is somebody's work in progress. One that raises says so
         in the Event Log and stops -- rather than raising once every hundred
         milliseconds for the rest of the session, which fills the log with one
         message and hides everything else in it.
@@ -472,15 +472,15 @@ class _Received(can.Listener):
     """Passes on everything except what this node itself sent.
 
     pycangui opens every bus with ``receive_own_messages`` so the trace can
-    show what the tool transmitted, and a node shares that bus.  It must not
+    show what the tool transmitted, and a node shares that bus. It must not
     hear *itself*: a J1939 stack takes its own address claim for a contender
     and fights itself for ever, and a gateway forwards its own forwarded
     frame straight back, also for ever.
 
-    ``is_rx`` is not the test, though it looks like it.  On a shared handle
+    ``is_rx`` is not the test, though it looks like it. On a shared handle
     it is false for everything this process sent -- the application's own
     transmissions included -- and a node deaf to the application is a node
-    that cannot answer an SDO.  So the node keeps note of what it sent and
+    that cannot answer an SDO. So the node keeps note of what it sent and
     claims those echoes back, and anything else is somebody else's.
     """
 
@@ -500,7 +500,7 @@ class _Forwarder(can.Listener):
     """Moves a frame off the reader thread and onto the GUI thread.
 
     python-can reads on a thread of its own, and a node file called from there
-    could touch a widget and take the process down with it.  The signal is a
+    could touch a widget and take the process down with it. The signal is a
     queued connection, so ``on_frame`` runs where every other hook runs.
     """
 
@@ -531,16 +531,16 @@ class SimulatedNodes(QObject):
     ) -> None:
         super().__init__(parent)
         self.ctx = ctx
-        #: The application's channels.  A node stands on one of these like
+        #: The application's channels. A node stands on one of these like
         #: everything else does -- there is one notion of a bus in pycangui
-        #: and this is it.  A manager given none makes its own, which is what
+        #: and this is it. A manager given none makes its own, which is what
         #: a test wants and what nothing else should.
         if channels is None:
             from pycangui.core.channels import Channels
 
             channels = Channels()
         self.channels = channels
-        #: Asked before a node goes onto real equipment.  A node transmits,
+        #: Asked before a node goes onto real equipment. A node transmits,
         #: and transmitting onto a real bus is the thing pycangui asks about
         #: everywhere else; a node quietly joining one would be the hole in
         #: that.
@@ -593,7 +593,7 @@ class SimulatedNodes(QObject):
     def start(
         self, kind_id: str, channel: str, rate_hz: float | None = None, extra: list[str] = ()
     ) -> Node:
-        """Start one node, and return it.  Raises NodeError with a reason.
+        """Start one node, and return it. Raises NodeError with a reason.
 
         ``extra`` names further channels for a gateway: the node opens all of
         them, ``on_frame`` says which one a frame arrived on, and ``send``
@@ -624,7 +624,7 @@ class SimulatedNodes(QObject):
         except Exception as exc:
             # Listed as running while doing nothing is the worst of the
             # outcomes here: it looks started, and stopping it changes
-            # nothing.  It never reaches the list.
+            # nothing. It never reaches the list.
             raise NodeError(f"{kind.label} would not start: {exc}") from exc
         self._running.append(node)
         self.ctx.log(
@@ -642,7 +642,7 @@ class SimulatedNodes(QObject):
         self.changed.emit()
 
     def stop_all(self) -> None:
-        """Every node, on the way out.  A simulated node holding a bus open
+        """Every node, on the way out. A simulated node holding a bus open
         after the window has gone is a process that will not exit."""
         for node in list(self._running):
             node.stop()
@@ -655,12 +655,12 @@ class SimulatedNodes(QObject):
         Three cases, and the rule is the least surprising one for each:
 
         * a name pycangui does not know is **created and connected as a
-          virtual channel**.  Asking for a node on a channel that does not
+          virtual channel**. Asking for a node on a channel that does not
           exist is asking for that channel, and the alternative -- a node
           transmitting into a bus nothing else can see -- is a node that
           appears to do nothing for reasons nothing on screen explains.
         * a channel that is **connected** is joined, whatever it is on.
-        * a channel that exists and is **not connected** is refused.  It was
+        * a channel that exists and is **not connected** is refused. It was
           configured for something, quite possibly a real adapter, and
           quietly connecting it as virtual would be pycangui deciding what a
           named channel is for.

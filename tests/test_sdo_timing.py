@@ -3,7 +3,7 @@
 """SDO settings: how long to wait for a node, how often to ask, and where.
 
 The ``canopen`` package waits 300 ms, asks once, and talks to every node on the
-channel CiA 301 predefines.  Each of those is right for a bench node on a quiet
+channel CiA 301 predefines. Each of those is right for a bench node on a quiet
 bus and wrong for somebody's machine, and which is found out in the field -- so
 they are settings, and they have to reach every node, including the one an EDS
 has just replaced.

@@ -2,14 +2,14 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """What a pane is, and where its values come from.
 
-Two things are being pinned down here.  The *model* -- a title and a list of
+Two things are being pinned down here. The *model* -- a title and a list of
 objects with labels -- has to survive a round trip through a file somebody is
 expected to open in a text editor, and has to forgive them when they get it
 wrong: a typo in one field should cost that field, not the pane.
 
-The *source* is the one that would be expensive to get wrong.  A pane is bound
+The *source* is the one that would be expensive to get wrong. A pane is bound
 to a source and never to a node, so that the same pane serves a live
-controller, a DCF and an EDS's defaults.  Bound to a node instead, each of
+controller, a DCF and an EDS's defaults. Bound to a node instead, each of
 those becomes its own screen and comparing two of them becomes a fourth --
 and every pane written before the seam existed would have to be rewritten.
 """

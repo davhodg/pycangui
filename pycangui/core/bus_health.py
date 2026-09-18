@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """How well a CAN controller is taking part in the bus.
 
-A controller counts the errors it makes.  Past 96 it is in *warning*, past
+A controller counts the errors it makes. Past 96 it is in *warning*, past
 127 *error passive* -- it keeps working but may no longer flag errors it sees
 -- and past 255 on transmit it goes **bus off** and stops altogether, until
-something restarts it.  Bus off is the one that matters most, and the one
+something restarts it. Bus off is the one that matters most, and the one
 that is easiest to miss, since a bus-off adapter stays connected and hears
 nothing, exactly as if the bus were idle.
 
@@ -75,7 +75,7 @@ def from_socketcan_error(can_id: int, data: bytes) -> str | None:
 
 
 def from_pcan_status(code: int) -> str:
-    """PCAN's status code.  BUSHEAVY is error passive to older drivers and the
+    """PCAN's status code. BUSHEAVY is error passive to older drivers and the
     warning limit to newer ones, which added BUSPASSIVE; amber either way."""
     if code & PCAN_ERROR_BUSOFF:
         return BUS_OFF
@@ -89,7 +89,7 @@ def from_pcan_status(code: int) -> str:
 def from_state(interface: str, state: str) -> str | None:
     """python-can's ``state``, where it means the controller's state.
 
-    ``ERROR`` is bus off wherever a backend reports it.  ``PASSIVE`` usually
+    ``ERROR`` is bus off wherever a backend reports it. ``PASSIVE`` usually
     is not error passive at all: PCAN, IXXAT and SYS TEC use it for
     listen-only mode, which is a setting rather than a fault, so it counts
     only where the backend means the controller.

@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """API pages for people extending pycangui, built with pdoc.
 
-Not the whole package.  Somebody writing a hook, a simulated node or a plugin
+Not the whole package. Somebody writing a hook, a simulated node or a plugin
 touches a handful of modules, and a reference that also lists every Qt slot in
-every pane buries those few under two hundred they will never call.  The
+every pane buries those few under two hundred they will never call. The
 manual (Help > Documentation) says how to extend pycangui; these pages are
 where to look up exactly what an object offers once you are doing it.
 

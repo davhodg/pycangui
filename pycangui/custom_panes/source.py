@@ -3,10 +3,10 @@
 """Where a pane's values come from, and where a change goes.
 
 A pane is bound to a *source*, never to a node, and that is the one decision
-here worth arguing about.  The same group of objects is wanted against three
+here worth arguing about. The same group of objects is wanted against three
 different things: a live controller, a DCF somebody was sent, and the defaults
-in an EDS.  Bound to a node, each of those becomes its own feature with its own
-screen, and comparing one against another becomes a fourth.  Bound to a source,
+in an EDS. Bound to a node, each of those becomes its own feature with its own
+screen, and comparing one against another becomes a fourth. Bound to a source,
 they are one mechanism with three inputs -- and offline editing, comparison and
 live configuration all fall out of it.
 
@@ -14,7 +14,7 @@ Retrofitting this is not a refactor of the seam, it is a rewrite of every pane
 that was written before it, which is why it is here before there is a single
 pane to bind.
 
-Every source is asynchronous, including the ones that answer instantly.  A live
+Every source is asynchronous, including the ones that answer instantly. A live
 node reads over SDO on a worker thread and answers later; a file answers now.
 Making the file pretend to be slow is a great deal less trouble than making the
 pane able to cope with both, and it means the pane has exactly one path
@@ -35,7 +35,7 @@ from pycangui.canopen.display import Display, from_variable, with_overrides
 class Source(QObject):
     """One place values are read from and written to."""
 
-    #: index, sub, raw value, error text or None.  The only way an answer
+    #: index, sub, raw value, error text or None. The only way an answer
     #: arrives, whichever kind of source produced it.
     value = Signal(int, int, object, object)
     #: The source itself changed -- a different node identified, a file
@@ -44,10 +44,10 @@ class Source(QObject):
 
     #: What to call this source on screen.
     label = ""
-    #: Whether writing means anything.  An EDS's defaults are readable and not
+    #: Whether writing means anything. An EDS's defaults are readable and not
     #: writable, and a pane bound to one should say so rather than fail.
     writable = False
-    #: Whether reading it again can tell you anything new.  A controller
+    #: Whether reading it again can tell you anything new. A controller
     #: changes while you watch it; a file on disk does not, so polling one
     #: would be work with a guaranteed answer of "the same".
     live = False
@@ -57,17 +57,17 @@ class Source(QObject):
         return Display()
 
     def request(self, index: int, sub: int) -> None:
-        """Ask for a value.  The answer comes back on ``value``."""
+        """Ask for a value. The answer comes back on ``value``."""
 
     def write(self, index: int, sub: int, raw: Any) -> None:
-        """Set a value.  What the source made of it comes back on ``value``."""
+        """Set a value. What the source made of it comes back on ``value``."""
 
     def objects(self) -> list[tuple[int, int, str, str]]:
         """Everything this source knows of, as (index, sub, name, access).
 
         For picking from, so it is empty where the source does not know rather
         than wrong: a node with no EDS can still be read object by object, it
-        just cannot be browsed.  An EDS, on the other hand, knows the whole
+        just cannot be browsed. An EDS, on the other hand, knows the whole
         dictionary without a bus being present at all -- which is what lets a
         pane be built at a desk.
         """
@@ -132,13 +132,13 @@ class FileSource(Source):
 
     Writing changes the file in memory and nothing else until it is saved,
     which is the difference between editing a configuration at a desk and
-    configuring a machine.  ``save`` writes it back through the original text
+    configuring a machine. ``save`` writes it back through the original text
     so the comments -- which for a real EDS are where the units, the scaling
     and the descriptions live -- survive the round trip.
     """
 
     #: True when there are edits the file on disk does not have yet, False
-    #: once there are none.  Sent on every write and every save.
+    #: once there are none. Sent on every write and every save.
     modified = Signal(bool)
 
     def __init__(self, path: str | Path, hooks=None) -> None:

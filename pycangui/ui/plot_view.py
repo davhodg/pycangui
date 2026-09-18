@@ -37,7 +37,7 @@ class PlotView(QWidget):
         self.hub = hub
         self._now = now  # () -> seconds on the same clock as the hub samples
         self._curves: dict[str, pg.PlotDataItem] = {}
-        #: The plotted signals drawn against the right hand axis.  Always some
+        #: The plotted signals drawn against the right hand axis. Always some
         #: of the keys of ``_curves``: a signal that is not plotted is on no axis.
         self._right: set[str] = set()
 
@@ -100,19 +100,19 @@ class PlotView(QWidget):
 
         A view box has one Y scale, so a second scale needs a second box: laid
         exactly over the plot's own, sharing its X range through a link, and
-        drawn against the right axis.  Nothing in pyqtgraph's layout sizes a
+        drawn against the right axis. Nothing in pyqtgraph's layout sizes a
         box added like this, so it is kept the same size as the plot's own by
         hand, whenever that one is resized.
 
-        Put behind the plot rather than on top of it.  The two boxes cover the
+        Put behind the plot rather than on top of it. The two boxes cover the
         same area and whichever is on top takes the mouse: on top, dragging
         and scrolling in the plot would scale the right axis and leave the left
-        one, and the legend, out of reach.  Behind, the plot answers the mouse
+        one, and the legend, out of reach. Behind, the plot answers the mouse
         exactly as it did before there was a second axis.
         """
         item = self.plot.getPlotItem()
         self.right_view = pg.ViewBox()
-        # X comes from the plot, through the link.  An automatic X range of its
+        # X comes from the plot, through the link. An automatic X range of its
         # own as well would have the two boxes arguing over it on every redraw.
         self.right_view.enableAutoRange(axis=pg.ViewBox.XAxis, enable=False)
         self.right_view.setZValue(-1)
@@ -157,7 +157,7 @@ class PlotView(QWidget):
         if key in self._right:
             self.right_view.addItem(curve)
             # The legend belongs to the plot, and the plot only makes entries
-            # for what is added to the plot, so this one is made here.  Marked,
+            # for what is added to the plot, so this one is made here. Marked,
             # because two scales share one legend.
             self.legend.addItem(curve, f"{curve.name()} (Y2)")
         else:
@@ -167,7 +167,7 @@ class PlotView(QWidget):
         #
         # An imported file can be a million points, and pyqtgraph drawing
         # every one of them into eight hundred pixels is time spent to no
-        # visible effect.  Peak downsampling keeps the spikes, which are
+        # visible effect. Peak downsampling keeps the spikes, which are
         # the part somebody is looking for.
         curve.setDownsampling(auto=True, method="peak")
         curve.setClipToView(True)
@@ -199,7 +199,7 @@ class PlotView(QWidget):
         """Draw a plotted signal against the right hand axis, or back on the left.
 
         The same curve moves from one view box to the other, so it keeps its
-        colour.  Putting a signal that is not plotted on the right plots it,
+        colour. Putting a signal that is not plotted on the right plots it,
         which is what ticking the box in the list does as well.
         """
         if on and key not in self._curves:
@@ -225,13 +225,13 @@ class PlotView(QWidget):
     def _fit(self) -> None:
         """Show everything that is plotted, wherever in time it happens to be.
 
-        The way to find imported data.  A file recorded yesterday, or one
+        The way to find imported data. A file recorded yesterday, or one
         exported from 235 s into a run, sits nowhere near the clock this
         window is counting on, and hunting for it by dragging is no way to
         find anything.
         """
         self.follow.setChecked(False)
-        # Redrawn first.  The curves are filled on a timer, so fitting before
+        # Redrawn first. The curves are filled on a timer, so fitting before
         # the next tick would fit whatever was on screen a moment ago -- and
         # for a file just imported, that is nothing at all.
         self._redraw()
@@ -241,7 +241,7 @@ class PlotView(QWidget):
             return
         self.right_view.enableAutoRange(axis=pg.ViewBox.YAxis)
         # The plot's own fit only knows about the curves in its own box, and
-        # with every signal on the right that is none of them.  X is shared,
+        # with every signal on the right that is none of them. X is shared,
         # so it is fitted to both from the samples themselves.
         ends = [
             t
@@ -260,16 +260,16 @@ class PlotView(QWidget):
     def _edge(self) -> float:
         """Where the right hand edge goes while following.
 
-        The newest sample rather than the clock.  ``now()`` runs off
+        The newest sample rather than the clock. ``now()`` runs off
         ``time.monotonic`` and advances whether or not a bus is open or a
         single frame has arrived, so following it made the axis march left
         for ever with the data standing still and sliding off the edge --
-        during a quiet trace, and on after disconnecting.  Following the data
+        during a quiet trace, and on after disconnecting. Following the data
         stops when the data stops, which is also the right answer for a
         connected but idle bus: a flat line marching left says nothing that a
         stopped plot does not.
 
-        Never later than the clock, though.  A file imported at its own times
+        Never later than the clock, though. A file imported at its own times
         -- last Tuesday, or an epoch stamp -- would otherwise drag the window
         off to wherever it was recorded and take the live trace off screen.
         Finding imported data is what *Fit* is for.
@@ -284,7 +284,7 @@ class PlotView(QWidget):
         following = self.follow.isChecked()
         edge = self._edge()
         # Following, only the last few seconds are wanted and slicing to them
-        # is most of what makes a live plot cheap.  Not following, everything
+        # is most of what makes a live plot cheap. Not following, everything
         # is wanted: an imported file lies outside any window measured back
         # from now, and slicing to one would show nothing and look empty.
         t_from = edge - self.window_s.value() if following else float("-inf")

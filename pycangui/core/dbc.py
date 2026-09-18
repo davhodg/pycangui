@@ -2,8 +2,8 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """DBC (and other cantools formats: KCD, SYM, ARXML) decoding.
 
-Holds zero or more loaded databases.  ``decode(frame)`` returns the message
-name and signal values, or None if no database knows the id.  Decoding errors
+Holds zero or more loaded databases. ``decode(frame)`` returns the message
+name and signal values, or None if no database knows the id. Decoding errors
 (wrong length, bad multiplexer) are counted, not raised.
 """
 
@@ -19,7 +19,7 @@ if TYPE_CHECKING:  # for the annotations only, which are strings at run time
     from cantools.database import Database, Message
 
 # cantools costs half a second to import and is needed only once a database is
-# actually loaded.  Most sessions never load one, and the ones that do are
+# actually loaded. Most sessions never load one, and the ones that do are
 # already waiting for a file dialog by the time it matters -- so it is imported
 # where it is used rather than on the way to the first window.
 
@@ -37,8 +37,8 @@ class DbcDecoder:
 
         ``strict`` is cantools' own check that the file is well formed --
         signals that do not overlap, and none running past the end of its
-        message.  Plenty of working databases fail it: it is a statement about
-        the file, not about whether the messages in it can be used.  So it
+        message. Plenty of working databases fail it: it is a statement about
+        the file, not about whether the messages in it can be used. So it
         stays on by default, and relaxing it is offered when a load fails
         rather than being the silent default.
         """

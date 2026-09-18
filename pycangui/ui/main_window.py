@@ -89,18 +89,18 @@ def custom_name(instance: str) -> str:
     return instance[len(CUSTOM_PREFIX) :] if instance.startswith(CUSTOM_PREFIX) else instance
 
 
-# Bumped whenever the set of docks changes.  restoreState declines a state
+# Bumped whenever the set of docks changes. restoreState declines a state
 # saved under a different version, so an old layout is replaced by the current
 # default instead of being restored with panes missing.
 LAYOUT_VERSION = 4
 
-#: Open on a first run.  Everything else is one click away in the View menu:
+#: Open on a first run. Everything else is one click away in the View menu:
 #: nine panes at once is a wall, and which of the protocol panes you want
-#: depends entirely on what you have plugged in.  These four are the ones
+#: depends entirely on what you have plugged in. These four are the ones
 #: that apply whatever is on the bus.
 DEFAULT_VISIBLE = ("trace", "tx", "scope", "log")
 
-#: What the window opens at, and what Reset layout puts it back to.  Wide,
+#: What the window opens at, and what Reset layout puts it back to. Wide,
 #: because the trace and the panes beside it are read across rather than down.
 DEFAULT_WIDTH = 1400
 DEFAULT_HEIGHT = 900
@@ -119,11 +119,11 @@ RESET_EVERYTHING = (
 
 
 class MainWindow(QMainWindow):
-    #: Open this workspace instead.  Emitted rather than acted on, because a
+    #: Open this workspace instead. Emitted rather than acted on, because a
     #: switch is a full reload and the window that asks is the one that goes:
     #: something outside it has to close it and open the next.
     reopen_requested = Signal(str)
-    #: The window is going.  Emitted before anything is torn down and while the
+    #: The window is going. Emitted before anything is torn down and while the
     #: buses are still open, because something that has left equipment in a
     #: state needs one last chance to take it back -- and a signal sent after
     #: the channels had closed would be a chance in name only.
@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
         self.resize(DEFAULT_WIDTH, DEFAULT_HEIGHT)
         self.setDockNestingEnabled(True)  # full grid layouts, not just the four edges
 
-        #: Every channel.  ``self.bus`` is whichever one is selected, wearing a
+        #: Every channel. ``self.bus`` is whichever one is selected, wearing a
         #: single bus's interface, so the protocol stacks need not know about
         #: channels at all.
         self.channels = Channels()
@@ -149,7 +149,7 @@ class MainWindow(QMainWindow):
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(2000)
         #: Every line said to the user arrives here with a level, and this is
-        #: the only thing that writes to the pane.  Warnings and errors open it
+        #: the only thing that writes to the pane. Warnings and errors open it
         #: if it has been closed; notes do not.
         self.events = EventLog()
         self._surfacing = False
@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
         self.confirm = Confirmations(Remembered())
-        #: The rest of the bus, written in Python.  Reachable from the console
+        #: The rest of the bus, written in Python. Reachable from the console
         #: and from a startup hook, because standing up the devices a test
         #: needs is setup, and setup belongs in a file.
         self.nodes = SimulatedNodes(
@@ -179,7 +179,7 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         #: What it was called until the rename, and what a hook file or a
-        #: console habit written before it still says.  An alias costs a
+        #: console habit written before it still says. An alias costs a
         #: line; breaking somebody's startup hook costs them an evening.
         self.vnodes = self.nodes
         BACKENDS.load_user_backends(
@@ -206,11 +206,11 @@ class MainWindow(QMainWindow):
         self.recorder = Recorder(self.channels)  # every connected channel
 
         # --- panes -----------------------------------------------------------
-        #: Every dock, and how many of each kind there can be.  The window
+        #: Every dock, and how many of each kind there can be. The window
         #: names a pane to open it and then leaves it alone: a second trace
         #: costs a registration rather than a rewrite, and a plugin or a
         #: workspace opens one through the same door.
-        #: What names a frame in the trace.  A list rather than four calls
+        #: What names a frame in the trace. A list rather than four calls
         #: on each trace, so that a plugin can join in and every trace --
         #: including one opened later -- agrees about what things are called.
         self._labellers = [
@@ -308,9 +308,9 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 self.events.warning(f"A2L load failed: {exc}")
 
-        #: One action in two menus.  The View menu is where you reach for it
+        #: One action in two menus. The View menu is where you reach for it
         #: while arranging panes; Tools > Reset is where you reach for it
-        #: when putting things back, beside the other two.  Parented to the
+        #: when putting things back, beside the other two. Parented to the
         #: window rather than to either menu, because the View menu is
         #: rebuilt and clear() deletes the actions a menu owns.
         self.reset_layout_action = QAction("Reset layout", self)
@@ -409,7 +409,7 @@ class MainWindow(QMainWindow):
 
         #: A menu of its own rather than a corner of Tools: a plugin adds
         #: screens and commands, and Tools is where the tool's own settings
-        #: live.  It is also the answer to "what have I got installed", which
+        #: live. It is also the answer to "what have I got installed", which
         #: is not a question Tools would ever be asked.
         self.plugins_menu = self.menuBar().addMenu("&Plugins")
         self.plugins_menu.setToolTipsVisible(True)
@@ -445,7 +445,7 @@ class MainWindow(QMainWindow):
         """Tell a workspace's own code that the window is up.
 
         The one hook that answers no question: it is the setup somebody would
-        otherwise do by hand every morning.  Nothing it does can stop pycangui
+        otherwise do by hand every morning. Nothing it does can stop pycangui
         starting -- ``hooks.call`` reports a traceback to the Event Log and
         carries on -- because the tool needed to fix a broken startup hook is
         the one that would not have started.
@@ -469,7 +469,7 @@ class MainWindow(QMainWindow):
         The sanctioned way for a hook or a plugin to connect, and the reason it
         exists is the question rather than the connection: joining a real bus
         asks about the bitrate once a session, and code reaching for
-        ``channels.get(name).connect_bus(...)`` would go round that.  A
+        ``channels.get(name).connect_bus(...)`` would go round that. A
         workspace is a folder that gets copied and handed to someone else, so
         one that silently joined a live bus when they opened it is exactly the
         thing to make the awkward path rather than the easy one.
@@ -486,7 +486,7 @@ class MainWindow(QMainWindow):
         return bus.is_connected
 
     def _simulated_nodes(self) -> None:
-        """Tools > Simulated nodes.  Not modal: a node started here is meant to
+        """Tools > Simulated nodes. Not modal: a node started here is meant to
         be watched in the trace, and a dialog held over the top of it would be
         an odd way to arrange that."""
         if getattr(self, "_simnode_dialog", None) is None:
@@ -500,7 +500,7 @@ class MainWindow(QMainWindow):
 
         A node transmits, and transmitting onto a real bus is the thing
         pycangui asks about everywhere else; one that joined quietly would be
-        the hole in that.  Asked once for the whole node rather than once per
+        the hole in that. Asked once for the whole node rather than once per
         channel, because a gateway stands on two and a dialog that appears
         twice for one action is one people learn to dismiss.
 
@@ -525,7 +525,7 @@ class MainWindow(QMainWindow):
         )
 
     def _console_namespace(self) -> dict:
-        """What scripts and the console see.  Keep names stable: users rely on them."""
+        """What scripts and the console see. Keep names stable: users rely on them."""
 
         def send(can_id: int, data, ext: bool = False, fd: bool = False) -> None:
             self.bus.send(can_id, bytes(data), extended=ext, fd=fd)
@@ -549,7 +549,7 @@ class MainWindow(QMainWindow):
     def _register_panes(self) -> None:
         """What sorts of pane there are, and which of them there can be several of.
 
-        The test for a second instance is what it would show.  A trace filtered
+        The test for a second instance is what it would show. A trace filtered
         differently, a plot of other signals, another identifier read as text
         and a transmit list of other messages are each a different view or a
         different job; a second Event Log is the same log twice, and a second
@@ -559,13 +559,13 @@ class MainWindow(QMainWindow):
         the panes that work on any bus first (trace, transmit, signals, then
         the two logs), the protocol panes after them, and the two that are
         about pycangui rather than about the bus -- a custom pane and the
-        console -- at the end.  Somebody who has not chosen a protocol yet
+        console -- at the end. Somebody who has not chosen a protocol yet
         should not have to read past four of them to find the trace.
         """
         for kind in (
             PaneKind(
                 # "CAN Trace" rather than "Trace": worth saying what is being
-                # traced.  Not "Raw", which would undersell a pane that names
+                # traced. Not "Raw", which would undersell a pane that names
                 # the protocol and the DBC message of every frame; and not
                 # "Message", because what it lists is frames -- error frames
                 # included, and those are not messages at all.
@@ -774,7 +774,7 @@ class MainWindow(QMainWindow):
         """One pane per id, moving over whatever the tabbed pane used to hold.
 
         The old pane kept a list of streams in the settings and showed them as
-        tabs.  Each becomes a pane, once: somebody who had three ids being read
+        tabs. Each becomes a pane, once: somebody who had three ids being read
         finds three panes rather than an empty one and a lost list.
         """
         saved = self.ctx.settings.get("ascii.streams", [])
@@ -831,7 +831,7 @@ class MainWindow(QMainWindow):
         """A transmit pane that has been put away stops transmitting.
 
         Frames arriving on a live bus from a pane nobody can see is the hardest
-        sort of fault to find, because nothing on screen accounts for them.  So
+        sort of fault to find, because nothing on screen accounts for them. So
         closing one stops its cyclic messages -- and bringing it back does not
         start them again, since beginning to transmit onto a bus is not
         something to do without being asked.
@@ -883,7 +883,7 @@ class MainWindow(QMainWindow):
 
         The order they were *registered* in, which is the deliberate one --
         see _register_panes -- rather than the order they happened to be
-        opened in.  A workspace restores its panes in whatever order they
+        opened in. A workspace restores its panes in whatever order they
         were saved, so listing by that made the menu reshuffle itself from
         one machine to the next, and a menu you cannot learn the shape of
         is one you read every time.
@@ -908,7 +908,7 @@ class MainWindow(QMainWindow):
 
         # They are panes -- they open as docks and they are removed under
         # Remove pane -- and the only thing worth saying about them is that
-        # you made them rather than the tool shipping them.  Hence "custom",
+        # you made them rather than the tool shipping them. Hence "custom",
         # and no second word for a second concept that does not exist.
         custom_menu = self.view_menu.addMenu("Custom panes")
         custom_menu.setToolTipsVisible(True)
@@ -925,15 +925,15 @@ class MainWindow(QMainWindow):
         )
 
         # Paired with Custom panes above: the ones pycangui comes with, and the
-        # ones you built.  "Additional X" rather than "Add X" because the top
+        # ones you built. "Additional X" rather than "Add X" because the top
         # of this same menu is a list of panes shown by name, so "Add CAN
         # Trace" could be read as putting the one that exists on screen --
-        # "Additional CAN Trace" can only mean a second one.  It also leaves
+        # "Additional CAN Trace" can only mean a second one. It also leaves
         # both submenus listing things rather than one listing commands.
         standard = self.view_menu.addMenu("Standard panes")
         standard.setToolTipsVisible(True)
         # Only the ones there can be more than one of, so that the list is
-        # things you can actually do.  Every pane, one of a kind included, is
+        # things you can actually do. Every pane, one of a kind included, is
         # already named at the top of this menu.
         standard.setToolTip("The panes pycangui comes with that you can have more than one of.")
         for kind in self.panes.kinds.values():
@@ -987,7 +987,7 @@ class MainWindow(QMainWindow):
 
         Watching the bus and talking to it are the same job, so the trace and
         the transmit list share a column, with the log beside them: it is the
-        thing you glance at rather than work in.  The plot spans the bottom
+        thing you glance at rather than work in. The plot spans the bottom
         because a time axis wants every pixel of width there is.
 
         Everything else starts hidden rather than removed -- the View menu
@@ -1007,7 +1007,7 @@ class MainWindow(QMainWindow):
         # Two panes get less than an even share, and for the same reason:
         # the log's lines are short and the transmit list is a short list of
         # messages, where a trace is an endless one and a plot wants every
-        # pixel of width there is.  Dragging a splitter is the easiest thing
+        # pixel of width there is. Dragging a splitter is the easiest thing
         # in the window to undo, so these are a starting point rather than
         # an opinion about what anybody is doing.
         #
@@ -1016,7 +1016,7 @@ class MainWindow(QMainWindow):
         # outer division has to be asked for through a dock that sits
         # directly in it -- the log, not the trace, which is one level deeper
         # -- and it has to come last, because an outer call re-divides what
-        # an inner one settled.  Getting either wrong leaves the plot about
+        # an inner one settled. Getting either wrong leaves the plot about
         # eighty pixels tall, which is a strip rather than a plot.
         self.resizeDocks([trace, tx], [2, 1], Qt.Vertical)
         self.resizeDocks([trace, log], [7, 3], Qt.Horizontal)
@@ -1030,7 +1030,7 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(geo)
         state = self.ctx.layout.get("window")
         if state is None and self.ctx.workspace == workspaces.DEFAULT:
-            # Where it lived before there were workspaces.  Only for default,
+            # Where it lived before there were workspaces. Only for default,
             # which is what an existing setup became: a new workspace that
             # inherited the last one's arrangement would not be a new one.
             state = QSettings().value("windowState")
@@ -1047,7 +1047,7 @@ class MainWindow(QMainWindow):
             # The virtual channel is the default, and it is empty until
             # something fills it -- which is not obvious from looking at it.
             self.events.information(
-                "No hardware?  Connect on the virtual channel called "
+                "No hardware? Connect on the virtual channel called "
                 "Demo device and there will be something to look at."
             )
         self.panes.restore_view_states()
@@ -1058,7 +1058,7 @@ class MainWindow(QMainWindow):
 
         A workspace holds which channels at what bitrate, so opening one means
         closing the channels this one has -- which is dropping off a live bus,
-        and stopping whatever was being sent cyclically onto it.  Worth a
+        and stopping whatever was being sent cyclically onto it. Worth a
         question, and only when there is something to lose.
         """
         if name == self.ctx.workspace or not workspaces.exists(name):
@@ -1082,7 +1082,7 @@ class MainWindow(QMainWindow):
     def _rename_pane(self, name: str) -> None:
         """Call a pane whatever the job calls it.
 
-        Only the label changes.  What identifies a pane to the saved layout is
+        Only the label changes. What identifies a pane to the saved layout is
         its instance name, which nothing here touches -- so a rename cannot
         cost somebody the arrangement they were renaming.
         """
@@ -1101,11 +1101,11 @@ class MainWindow(QMainWindow):
     def _reset_layout(self) -> None:
         """Put the panes back where they start, in a window the size it opens at.
 
-        Arranged again rather than restored from a saved blob.  The blob was
+        Arranged again rather than restored from a saved blob. The blob was
         captured during construction, before the window had ever been shown,
         and splitter sizes taken then are the ones Qt had not worked out yet
         -- restoring it gave a trace filling the window and everything else
-        a strip.  Arranging a window that is on screen is the only way
+        a strip. Arranging a window that is on screen is the only way
         resizeDocks means anything.
 
         The window itself is part of the arrangement: a layout put back
@@ -1150,7 +1150,7 @@ class MainWindow(QMainWindow):
 
         Everything that accumulates lives in the workspace, so a new one is
         already the clean slate -- and it is the non-destructive one, because
-        the workspace being escaped from is still there afterwards.  Building
+        the workspace being escaped from is still there afterwards. Building
         a second route that undid it all in place would mean deleting hook
         files as a side effect of tidying window geometry.
         """
@@ -1170,7 +1170,7 @@ class MainWindow(QMainWindow):
 
         On the way out, and before the workspace in use is exported, so that
         the file carries the panes as they are on screen rather than as they
-        were when pycangui started.  Not where the window sits on the screen,
+        were when pycangui started. Not where the window sits on the screen,
         which stays in QSettings with this machine.
         """
         self.ctx.layout.set("window", bytes(self.saveState(LAYOUT_VERSION)))
@@ -1263,10 +1263,10 @@ class MainWindow(QMainWindow):
     def _import_signals(self) -> None:
         """Read a measurement file's signals onto the plot.
 
-        Deliberately not the Replay button.  A log holds frames and is played
+        Deliberately not the Replay button. A log holds frames and is played
         back onto a channel so that everything downstream sees traffic; a
         measurement holds signals somebody already decoded, and playing those
-        back would mean inventing frames they never came from.  Two files, two
+        back would mean inventing frames they never came from. Two files, two
         doors.
         """
         import sys
@@ -1397,7 +1397,7 @@ class MainWindow(QMainWindow):
     def _ask_again(self) -> None:
         """Put back every question somebody has told pycangui to stop asking.
 
-        The other half of the tick box.  A setting that can be turned on and not
+        The other half of the tick box. A setting that can be turned on and not
         off is a setting people are right to distrust, and this one turns off
         the questions asked before pycangui can disturb equipment.
         """
@@ -1419,7 +1419,7 @@ class MainWindow(QMainWindow):
         """Where a plugin's menu entries go: Plugins > its own name.
 
         Grouped by plugin rather than pooled, so that a menu entry says whose
-        it is -- which matters most when one of them is misbehaving.  Parented
+        it is -- which matters most when one of them is misbehaving. Parented
         to the window rather than to the Plugins menu, because that menu is
         cleared and rebuilt and would take the submenus with it.
         """
@@ -1559,7 +1559,7 @@ class MainWindow(QMainWindow):
     def _sync_demo(self) -> None:
         """Run the demo device exactly while a channel is connected to its bus.
 
-        Selecting the channel is the switch.  A separate on/off somewhere in a
+        Selecting the channel is the switch. A separate on/off somewhere in a
         menu meant connecting to the virtual bus and finding it empty, with
         nothing on screen to say why or what to do about it.
         """
@@ -1586,7 +1586,7 @@ class MainWindow(QMainWindow):
         """The channel the demo belongs on, if one is connected to it.
 
         Matched on the adapter channel the demo is advertised under in the
-        connect bar, so picking that entry is what opts in.  Named channels
+        connect bar, so picking that entry is what opts in. Named channels
         are the application's namespace and the demo does not get to own a
         name in it.
         """
@@ -1609,7 +1609,7 @@ class MainWindow(QMainWindow):
 
         Without this the next channel event would helpfully start it again,
         and a Stop button that undoes itself a second later is worse than
-        no Stop button.  Reconnecting the channel is how to ask for it back.
+        no Stop button. Reconnecting the channel is how to ask for it back.
         """
         running = {id(node) for node in self.nodes.running()}
         still = [node for node in self._demo if id(node) in running]
@@ -1652,7 +1652,7 @@ class MainWindow(QMainWindow):
         """Ask before joining a real bus, because the bitrate has to be right.
 
         A CAN controller at the wrong bitrate cannot read a frame correctly, so
-        it signals an error on every one it sees.  That is not a quiet failure
+        it signals an error on every one it sees. That is not a quiet failure
         on our side: those error frames go out on the wire, and the nodes that
         are working can be driven error passive and then bus off by them, which
         on a live machine means the machine stops talking to itself.
@@ -1747,7 +1747,7 @@ class MainWindow(QMainWindow):
 
         A strict failure is offered as a question rather than treated as the
         end of it: the check is about how well formed the file is, and a
-        database that fails it is usually still perfectly usable.  Only when
+        database that fails it is usually still perfectly usable. Only when
         the user asked for this file, though -- the databases restored at
         startup must not put a dialog in front of a window that is still
         opening.
@@ -1781,7 +1781,7 @@ class MainWindow(QMainWindow):
                 "That check is about how well formed the file is, not about whether "
                 "its messages can be used, and databases that fail it are usually "
                 "still fine to read and transmit.\n\n"
-                "Load it anyway?  Turning off Tools > Strict DBC checks stops the "
+                "Load it anyway? Turning off Tools > Strict DBC checks stops the "
                 "asking.",
                 QMessageBox.Yes | QMessageBox.Cancel,
                 QMessageBox.Yes,

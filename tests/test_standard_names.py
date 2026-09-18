@@ -121,7 +121,7 @@ def test_an_empty_string_suppresses_the_standard_name(app, hooks):
 
     Deleting the fallback from the user's copy is not enough on its own:
     returning None hands the question to pycangui's own copy of the function,
-    which still looks the name up.  An empty string is an answer.
+    which still looks the name up. An empty string is an answer.
     """
     from pathlib import Path
 

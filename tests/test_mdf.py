@@ -3,12 +3,12 @@
 """Reading measurement files: MDF, and the MF4 that is its current version.
 
 A CAN log holds frames and an MDF holds signals, and the confusion between
-those two is most of what this reader exists to clear up.  A measurement tool
+those two is most of what this reader exists to clear up. A measurement tool
 opening a bus log shows a wall of frame plumbing and no measurements; a CAN
-tool opening a measurement export shows nothing at all.  Neither file is
+tool opening a measurement export shows nothing at all. Neither file is
 broken, and both look it.
 
-The files here are made rather than committed.  A real export is full of the
+The files here are made rather than committed. A real export is full of the
 quirks that matter -- empty groups, one channel group per signal, channels
 that claim samples and read back with none -- but a real export is also
 somebody's product data, so the shapes are reproduced and the data is not.
@@ -90,7 +90,7 @@ def plumbing_only(tmp_path_factory):
     """Frame fields as separate scalar channels, and no payload.
 
     The layout a real export produced: CAN_DataFrame.ID and DLC as ordinary
-    signals, with the data bytes dropped.  It has the shape of a bus log and
+    signals, with the data bytes dropped. It has the shape of a bus log and
     none of the substance.
     """
     from asammdf import MDF, Signal
@@ -121,7 +121,7 @@ def test_the_first_bytes_say_whether_it_is_one_at_all(measurement, tmp_path):
 
 
 def test_an_unfinalised_file_is_recognised(tmp_path):
-    """A logger that lost power, or one that writes this way by design.  Most
+    """A logger that lost power, or one that writes this way by design. Most
     tools refuse one outright, so it is worth saying rather than being the
     difference nobody can see."""
     half = tmp_path / "half.mf4"
@@ -145,7 +145,7 @@ def test_a_bus_log_is_told_apart_from_a_measurement(bus_log):
 
 
 def test_frame_metadata_without_the_payload_is_not_frames(plumbing_only):
-    """A real export can carry CAN_DataFrame.ID and DLC and no DataBytes.  It
+    """A real export can carry CAN_DataFrame.ID and DLC and no DataBytes. It
     has the shape of a bus log and none of the substance: nothing in it can be
     replayed, and calling it a bus log would send somebody to the wrong pane."""
     assert not mdf.summarise(plumbing_only).has_frames
@@ -205,7 +205,7 @@ def test_only_the_named_signals_are_read(measurement):
 def test_a_bus_log_yields_no_signals_at_all(bus_log):
     """Not a bug: a log written by python-can holds one composed record per
     frame -- id, length and payload together -- which is a frame rather than a
-    measurement.  There is nothing in it to plot, and inventing something
+    measurement. There is nothing in it to plot, and inventing something
     would be worse than saying so."""
     assert mdf.read(bus_log) == []
     assert mdf.read(bus_log, include_bus_metadata=True) == []
@@ -213,7 +213,7 @@ def test_a_bus_log_yields_no_signals_at_all(bus_log):
 
 def test_frame_plumbing_is_left_out_unless_it_is_asked_for(plumbing_only):
     """Some tools write the frame fields as separate scalar channels rather
-    than one record.  Those *can* be plotted -- an id against time is a real
+    than one record. Those *can* be plotted -- an id against time is a real
     question -- so they are offered, out of the way."""
     plain = {s.name for s in mdf.read(plumbing_only)}
     assert not any(n.startswith(mdf.BUS_PREFIXES) for n in plain)
@@ -232,7 +232,7 @@ def test_mdf_version_3_reads_the_same_way(old_measurement):
 
 def test_a_signal_with_no_samples_is_not_returned(measurement):
     """Real exports produce them -- a channel whose group claims cycles and
-    reads back with nothing.  Plotted, it is a curve with no points and a name
+    reads back with nothing. Plotted, it is a curve with no points and a name
     in the legend suggesting otherwise."""
     assert all(len(s) > 0 for s in mdf.read(measurement))
 

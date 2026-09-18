@@ -3,25 +3,25 @@
 """The manual, shipped with the application: a page per topic.
 
 Inside the package rather than beside the README so that it survives a
-``pip install`` and lands in the frozen build.  A Help menu that needs the
+``pip install`` and lands in the frozen build. A Help menu that needs the
 internet is worth nothing on a bench, in a workshop or on a production line,
 which is where somebody is most likely to want it.
 
 Markdown, because it is the same text the repository serves on the web and Qt
 renders it directly -- ``QTextBrowser.setMarkdown`` with the GitHub dialect,
-so the tables come out as tables.  No web engine: the GPL-only Qt modules are
+so the tables come out as tables. No web engine: the GPL-only Qt modules are
 deliberately not installed, and a manual is not worth 160 MB.
 
 **A page per pane, rather than one long file.**  Nobody reads a manual; people
 look one thing up in it, and a single document answers that by making them
-scroll past nineteen topics they did not ask about.  The pages are joined by
+scroll past nineteen topics they did not ask about. The pages are joined by
 ordinary relative Markdown links, so the same files read as pages on the
 repository's web view -- there is no navigation of ours to keep working in two
 places.
 
 The files are flat in this folder rather than in a ``pages/`` subdirectory,
 because the package data is declared as one glob and a subdirectory is exactly
-the kind of thing that ships in a wheel one release and not the next.  The
+the kind of thing that ships in a wheel one release and not the next. The
 pictures the pages show sit beside them for the same reason, and the README
 uses the same files, so there is one copy of each.
 """
@@ -33,7 +33,7 @@ from importlib import resources
 #: The front page, and the only name anything outside this module needs.
 MANUAL = "manual.md"
 
-#: Every page, the front one first.  Listed rather than discovered so that a
+#: Every page, the front one first. Listed rather than discovered so that a
 #: build that lost one fails with a name in it: ``--selftest`` checks this list
 #: against what actually shipped, and a manual quietly missing its UDS page
 #: would otherwise be found by a user.
@@ -69,10 +69,10 @@ def page_text(name: str) -> str:
     """One page as Markdown, or "" if this build did not ship it.
 
     Empty rather than raising: a missing page should cost the reader that page,
-    not the application.  ``pycangui --selftest`` fails on it instead, so a
+    not the application. ``pycangui --selftest`` fails on it instead, so a
     build that dropped one is caught where it can still be fixed.
 
-    Only the pages named above are served.  The name arrives from a link inside
+    Only the pages named above are served. The name arrives from a link inside
     a document, and a document is a thing that can be edited: reading whatever
     path it asked for would turn a manual page into a way to open files.
     """
@@ -92,7 +92,7 @@ def image_bytes(name: str) -> bytes:
     """A picture a page shows, or b"" if it is not one this build shipped.
 
     The same rule as ``page_text``, for the same reason: the name comes from a
-    document.  Only a plain file name with an image suffix is read, from this
+    document. Only a plain file name with an image suffix is read, from this
     package and nowhere else -- no folders, and nothing that is not a picture.
     """
     if (
@@ -137,7 +137,7 @@ def title_of(name: str) -> str:
 
 
 def all_text() -> str:
-    """Every page, joined.  For asking whether the manual covers something."""
+    """Every page, joined. For asking whether the manual covers something."""
     return "\n\n".join(page_text(name) for name in PAGES)
 
 

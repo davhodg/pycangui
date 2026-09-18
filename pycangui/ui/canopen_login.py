@@ -4,7 +4,7 @@
 
 CANopen has no login, so this dialog only collects what a maker's login is
 likely to want -- a level and perhaps a password -- and hands both to
-``hooks/canopen.py::login``.  The level is remembered, because most people sit
+``hooks/canopen.py::login``. The level is remembered, because most people sit
 at one level; the password is not, and is never written anywhere.
 """
 

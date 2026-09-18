@@ -5,7 +5,7 @@
 Windows remembers a last-used folder per application, which is no help here:
 an EDS, a firmware image and a captured log live in three different places,
 and one shared memory means every dialog opens where the last unrelated one
-left off.  So the folder is remembered per sort of file.
+left off. So the folder is remembered per sort of file.
 """
 
 import pytest
@@ -176,7 +176,7 @@ def test_a_dialog_in_the_window_goes_through_the_same_memory(
     QSettings().clear()
     window = MainWindow()
     # The file does not exist, so cantools refuses it and the window offers to
-    # load it unchecked.  Say no: this test is about the folder, not the file.
+    # load it unchecked. Say no: this test is about the folder, not the file.
     monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Cancel)
     _opened, answer = picked
     where = tmp_path / "somewhere else"

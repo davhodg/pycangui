@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """A plugin as one file: what goes in, what comes out, and what is refused.
 
-Installed, a plugin is a folder.  Distributed, a folder is useless -- it
+Installed, a plugin is a folder. Distributed, a folder is useless -- it
 cannot be attached to an email and "unzip this into the right place" is an
 instruction people get wrong -- so a package is a zip, and installing is what
 turns one back into a folder.
@@ -110,7 +110,7 @@ def test_a_plugin_that_says_nothing_about_itself_is_still_a_plugin(tmp_path):
 
 # --- and what it will not take -------------------------------------------------------------
 def test_a_zip_that_writes_outside_its_folder_is_refused(tmp_path, into):
-    """The oldest trick there is, and this is a file somebody sent you.  Refused
+    """The oldest trick there is, and this is a file somebody sent you. Refused
     rather than repaired: Python's own extract would quietly drop the .. and
     write the file somewhere else."""
     bad = zip_of(tmp_path / "evil.zip", {"demo/plugin.py": SOURCE, "../taken-over.py": "boom"})
@@ -140,7 +140,7 @@ def test_a_plugin_buried_deeper_than_one_folder_is_refused(tmp_path):
 
 
 def test_a_package_holding_two_plugins_is_refused(tmp_path):
-    """A package installs one thing under one name.  A file that quietly
+    """A package installs one thing under one name. A file that quietly
     installs three cannot be reasoned about from its name."""
     two = zip_of(tmp_path / "both.zip", {"one/plugin.py": SOURCE, "two/plugin.py": SOURCE})
     with pytest.raises(PackageError, match="more than one plugin"):

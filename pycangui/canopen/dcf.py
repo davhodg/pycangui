@@ -3,18 +3,18 @@
 """A DCF written as what it is: the EDS, with the values filled in.
 
 CiA 306 says a device configuration file *is* an EDS with a ``ParameterValue``
-added to each object and a ``[DeviceComissioning]`` section on the end.  The
+added to each object and a ``[DeviceComissioning]`` section on the end. The
 obvious way to produce one, and the way pycangui used to, is to hand the
 parsed object dictionary back to the library's writer -- which loses
-everything the parser did not keep.  For a real motor controller EDS that is
+everything the parser did not keep. For a real motor controller EDS that is
 eleven thousand comment lines, carrying the units, the scaling and the
 description of nearly every object: a round trip through the tool quietly
 turned a documented file into an undocumented one.
 
 So the values are written into the file rather than the file being written
-from the values.  The original text goes through unchanged, comments and
+from the values. The original text goes through unchanged, comments and
 ordering and unknown sections included, and the only edits are the
-``ParameterValue`` lines and the commissioning section.  A DCF then differs
+``ParameterValue`` lines and the commissioning section. A DCF then differs
 from the EDS it came from by exactly what it is supposed to differ by, which
 is also the thing that makes the two readable side by side in a diff.
 """
@@ -98,7 +98,7 @@ def write_dcf(eds_text: str, values: dict[tuple[int, int], str], node_id: int | 
 def values_from(pairs: dict[tuple[int, int], object]) -> dict[tuple[int, int], str]:
     """Raw values as a DCF writes them.
 
-    Plain decimal for numbers.  The library's own writer formats a negative
+    Plain decimal for numbers. The library's own writer formats a negative
     number as "0x-4D2", which its own reader then refuses, so a DCF written
     that way does not survive being read back.
     """

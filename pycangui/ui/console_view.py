@@ -4,10 +4,10 @@
 
 Built on the standard library's ``code.InteractiveConsole`` so it behaves like
 the normal ``python`` prompt: multi-line blocks, ``...`` continuation, proper
-tracebacks.  Output is captured by swapping ``sys.stdout`` / ``sys.stderr``
+tracebacks. Output is captured by swapping ``sys.stdout`` / ``sys.stderr``
 only for the duration of each statement.
 
-Code runs on the GUI thread.  That keeps the API simple (no locking, you can
+Code runs on the GUI thread. That keeps the API simple (no locking, you can
 poke widgets) at the cost that a blocking call such as an SDO read freezes the
 window for its duration -- fine for interactive use.
 """
@@ -36,7 +36,7 @@ from pycangui.core.context import Context
 from pycangui.ui import folders
 
 BANNER = """pycangui console -- Python {ver}
-  ctx       settings, log(), eds_dir ...      bus       connect/send/send_periodic
+  ctx       settings, log(), eds_dir ... bus       connect/send/send_periodic
   canopen   CANopen manager (node(5).sdo[...]) hooks     user hooks
   uds       UDS manager (uds.client is the udsoncan Client when open)
   j1939     J1939 manager       xcp       XCP manager (xcp.a2l parameters)

@@ -120,7 +120,7 @@ class SignalsView(QWidget):
             return
         y1 = item.checkState(PLOT) == Qt.Checked
         y2 = item.checkState(RIGHT) == Qt.Checked
-        # One axis at a time.  Two boxes both ticked would read as the signal
+        # One axis at a time. Two boxes both ticked would read as the signal
         # drawn twice, so ticking one moves it there and unticks the other,
         # and unticking the ticked one takes it off the plot.
         if column == PLOT:

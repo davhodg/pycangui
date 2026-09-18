@@ -3,30 +3,30 @@
 """Two CANopen configurations side by side: file against file, or file against device.
 
 The pane is two source pickers and a table, and almost all of it is the two
-pickers.  Which is right: comparing is the easy half, and *deciding what to
+pickers. Which is right: comparing is the easy half, and *deciding what to
 compare against what* is the half people get wrong.
 
-Each side is a DCF or EDS file, or a node on the bus.  A file is read
+Each side is a DCF or EDS file, or a node on the bus. A file is read
 immediately; a node is read in the background, and only for the objects the
 other side names -- which is what makes comparing against a device take
 seconds rather than minutes, and what lets it work on a device nobody has an
 EDS for.
 
 Two nodes can be compared as well, and then something still has to say which
-objects: the EDS loaded against one of them.  With neither a file nor an EDS
+objects: the EDS loaded against one of them. With neither a file nor an EDS
 in sight the pane refuses and says why, rather than reading a guessed-at range
 of indices and calling the result a comparison.
 
-Nothing here writes.  Comparing tells you what is different; putting it right
+Nothing here writes. Comparing tells you what is different; putting it right
 is the [Apply DCF] button in the CANopen pane, deliberately, because "write
 these seventeen selected differences into the device in front of me" is a
 bigger thing than this pane and deserves its own question.
 
 A plugin rather than part of the tool, on the same line the other two are
 drawn along: pycangui's own job is speaking CANopen -- reading an object,
-writing one, capturing a dictionary into a DCF and putting one back.  What
+writing one, capturing a dictionary into a DCF and putting one back. What
 somebody then *does* with two captured configurations is a workflow built on
-top of that, and workflows are what plugins are for.  Uninstall it and the
+top of that, and workflows are what plugins are for. Uninstall it and the
 CANopen pane is exactly as it was.
 """
 
@@ -57,7 +57,7 @@ from pycangui.ui import folders
 # the one pycangui ships, and editing your own would do nothing.
 from . import compare as comparison
 
-#: What a side can be.  Kept as text because it is what the combo box holds
+#: What a side can be. Kept as text because it is what the combo box holds
 #: and what gets written into the settings.
 FILE, NODE = "File", "Node"
 
@@ -234,7 +234,7 @@ class CompareView(QWidget):
         """Read whichever sides need reading, then compare.
 
         A file first, always, so that a node has a list of objects to be asked
-        for.  Two nodes fall back to the EDS loaded against the left one, and
+        for. Two nodes fall back to the EDS loaded against the left one, and
         with neither the pane says so rather than inventing a range to read.
         """
         if self._busy:

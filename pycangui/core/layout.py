@@ -4,14 +4,14 @@
 
 Qt hands out an opaque block of bytes for a window's dock layout and for a
 splitter's position, and the obvious home for those is QSettings, which is
-where they used to live.  But QSettings is a per-machine store -- a registry
+where they used to live. But QSettings is a per-machine store -- a registry
 hive on Windows -- and a workspace has to be one folder: something that can be
 copied to a backup, kept in version control, or sent to someone else along with
-the hooks and the EDS files that make sense of it.  A layout left behind in
+the hooks and the EDS files that make sense of it. A layout left behind in
 the registry would be the one part of a workspace that could not travel.
 
 So the bytes go in a small JSON file beside the settings, base64 encoded
-because that is what JSON can carry.  Nobody is meant to read them; what
+because that is what JSON can carry. Nobody is meant to read them; what
 matters is that they are *in* the folder.
 
 What stays in QSettings is where the window sits on the screen, which belongs

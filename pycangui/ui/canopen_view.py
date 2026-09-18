@@ -66,7 +66,7 @@ ROLE_SEARCH = Qt.UserRole + 2
 COL_NAME = 1
 COL_ACCESS = 3
 COL_VALUE = 4
-#: A tick against the objects worth coming back to.  A real device offers
+#: A tick against the objects worth coming back to. A real device offers
 #: fifteen hundred of them and a job uses eight, so the list you build is
 #: worth more than the search that built it -- and it is the shape a
 #: user-composed pane will need later.
@@ -95,7 +95,7 @@ class CanopenView(QWidget):
         self.ctx = ctx
         self._identities: dict[int, NodeIdentity] = {}
         self._asked: set[str] = set()  # identity keys we already prompted for
-        #: Which node the object tree currently holds.  Not the node-list
+        #: Which node the object tree currently holds. Not the node-list
         #: selection: the rows belong to whoever they were filled for, and
         #: a tick has to be recorded against that device and no other.
         self._od_node: int | None = None
@@ -476,7 +476,7 @@ class CanopenView(QWidget):
         """The EDS remembered for this device, if it is still there.
 
         Remembered relative to the workspace when it is in it, so an imported
-        workspace finds it.  One that is not there -- a link made on another
+        workspace finds it. One that is not there -- a link made on another
         computer, a file moved since -- is said, and the usual search of the
         EDS folder carries on rather than stopping at a path that goes nowhere.
         """
@@ -681,7 +681,7 @@ class CanopenView(QWidget):
                 item.setData(0, ROLE_SUB, sub)
                 # What a row can be searched by, worked out once: a dictionary
                 # runs to fifteen hundred rows and filtering happens on every
-                # keystroke.  The parent's name is folded into each child so
+                # keystroke. The parent's name is folded into each child so
                 # that searching for a record reveals what is inside it.
                 parent_name = "" if sub is None else parent_items[index].text(1)
                 sub_text = "" if sub is None else f"{sub:02X}"
@@ -742,7 +742,7 @@ class CanopenView(QWidget):
             self._apply_od_filter()
 
     def _apply_od_filter(self) -> None:
-        """Hide what does not match.  Nothing is discarded and nothing is read.
+        """Hide what does not match. Nothing is discarded and nothing is read.
 
         A record is shown when any of its sub-indices is -- and every child
         carries its parent's name in what it is searched by, so a search for
@@ -775,7 +775,7 @@ class CanopenView(QWidget):
 
         Here rather than in a dialog with an index box in it, because this is
         where the objects can be searched for and where their names already
-        are.  Typing 0x2001 into a form is what these exist to avoid.
+        are. Typing 0x2001 into a form is what these exist to avoid.
         """
         chosen = self._picked_fields()
         if not chosen:
@@ -794,7 +794,7 @@ class CanopenView(QWidget):
         """The selected rows, as fields shown the way their access suggests.
 
         A writable object is offered as one that can be typed into and a
-        read-only one as a reading, since that is what they are.  Either can
+        read-only one as a reading, since that is what they are. Either can
         be changed afterwards in the pane's own editor.
         """
         out: list[PaneField] = []

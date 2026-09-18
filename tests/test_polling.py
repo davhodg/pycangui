@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Reading the same objects over and over, and saying how fast that really went.
 
-The requested rate is a ceiling, not a promise.  An SDO read is a request and a
+The requested rate is a ceiling, not a promise. An SDO read is a request and a
 response on the bus against a controller that answers when it feels like it, so
 asking for twelve objects at 100 Hz is asking for twelve hundred round trips a
-second.  Two things follow, and both are tested here: the rounds do not queue
+second. Two things follow, and both are tested here: the rounds do not queue
 up behind each other, and the rate reported is the one achieved rather than the
 one typed.
 """
@@ -365,7 +365,7 @@ def test_a_box_being_typed_into_is_not_overwritten(app, tmp_path, monkeypatch):
 # --- whose answer is this ----------------------------------------------------------------
 def test_an_answer_nobody_polled_for_does_not_finish_a_round(app, pane):
     """A source answers in the order it was asked, so the oldest waiting
-    request for an object is whose answer this is.  Anything else and a round
+    request for an object is whose answer this is. Anything else and a round
     is finished by an answer it never asked for."""
     _window, view = pane
     view.bind(FakeNode(delay_ms=50))
@@ -391,7 +391,7 @@ def test_an_answer_polling_did_ask_for_reaches_it(app, pane):
 
 
 def test_reading_by_hand_while_polling_does_not_flatter_the_rate(app, pane):
-    """The bug this pair exists for.  Reading a pane while it polled used to
+    """The bug this pair exists for. Reading a pane while it polled used to
     finish whichever round was in flight, and the rate then read faster than
     the bus was really managing -- which is the one thing that number is there
     not to do."""

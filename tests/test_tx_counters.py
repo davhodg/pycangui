@@ -6,9 +6,9 @@ The arithmetic is tested in test_tx_fields; these are about the pane doing
 the right thing with it -- which frames actually leave, on which timer, and
 whether the configuration survives being saved.
 
-The one that matters most is the timer.  A message with a counter cannot go
+The one that matters most is the timer. A message with a counter cannot go
 through the adapter's cyclic task: that repeats fixed bytes, and every frame
-of a counted message has to differ.  If that ever regresses the frames still
+of a counted message has to differ. If that ever regresses the frames still
 go out and still look plausible, and only the device at the other end knows.
 """
 
@@ -68,7 +68,7 @@ def collect(app, bus, wanted, seconds=2.0):
 
 # --- one-shot sends ----------------------------------------------------------------------
 def test_a_counted_message_moves_on_every_manual_send(app, view, listening):
-    """A receiver does not know which button sent a frame.  A manual send
+    """A receiver does not know which button sent a frame. A manual send
     that repeated the last count would be rejected like any other repeat."""
     row = a_row(view, counter=COUNTER)
     for _ in range(3):
@@ -122,7 +122,7 @@ def test_a_checksum_alone_is_enough_to_take_it_off_the_adapter(app, view):
 
 
 def test_both_kinds_count_as_cyclic_and_both_stop(app, view):
-    """Stop all cyclic says all.  A big red stop that stopped half of what
+    """Stop all cyclic says all. A big red stop that stopped half of what
     was going onto a live bus would be the worst kind of wrong."""
     plain = a_row(view)
     counted = a_row(view, counter=COUNTER)
@@ -257,7 +257,7 @@ def decode(view, msg):
 
 
 def test_a_counter_in_a_signal_is_packed_by_the_database(app, dbc_view, dbc_listening):
-    """PumpEnable is one bit.  Nothing here counts bytes or nibbles -- the
+    """PumpEnable is one bit. Nothing here counts bytes or nibbles -- the
     database knows where that bit lives, which is the whole argument for
     naming a field instead of placing it."""
     row = a_dbc_row(dbc_view, counter=DBC_COUNTER)
@@ -268,7 +268,7 @@ def test_a_counter_in_a_signal_is_packed_by_the_database(app, dbc_view, dbc_list
 
 
 def test_a_one_bit_counter_wraps_at_two(app, dbc_view, dbc_listening):
-    """The width came from the database.  Without it the counter would run
+    """The width came from the database. Without it the counter would run
     to 255 and the encode would fail, or worse, silently truncate."""
     row = a_dbc_row(dbc_view, counter=DBC_COUNTER)
     counter, _checksum = dbc_view.fields(row)
@@ -317,7 +317,7 @@ def test_a_row_says_which_signals_it_is_using(app, dbc_view):
 
 def test_a_message_missing_from_the_database_sends_what_it_had(app, dbc_view, dbc_listening):
     """A database can be unloaded or replaced while a list still refers to
-    it.  Saying so and sending the last known bytes beats sending nothing
+    it. Saying so and sending the last known bytes beats sending nothing
     and beats a traceback."""
     row = a_dbc_row(dbc_view, message="NotInTheDatabase", counter=DBC_COUNTER)
     dbc_view.send_row(row)

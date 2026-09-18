@@ -5,7 +5,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Build output.  build/ holds the packaging *sources* and is tracked; only what
+# Build output. build/ holds the packaging *sources* and is tracked; only what
 # the build writes into it is ignored.
 dist/
 build/work/
@@ -17,6 +17,6 @@ build_log.txt
 # Regenerated from the installed package metadata by build/notices.py
 THIRD-PARTY-NOTICES.txt
 
-# Working notes and analysis, kept local.  The gap analysis is derived from a
+# Working notes and analysis, kept local. The gap analysis is derived from a
 # manufacturer's reference manual: it is ours to read and not ours to publish.
 docs/

@@ -5,12 +5,12 @@ has a usable node-ID at all.
 
 The order of operations matters, so the pane is laid out as the workflow:
 
-1. **Select** the node to configure.  *Fastscan* finds an unconfigured node and
+1. **Select** the node to configure. *Fastscan* finds an unconfigured node and
    discovers its identity; *Select by address* addresses a known one; *All
    nodes* is the blunt instrument for a bench with exactly one device on it.
 2. **Configure** its node-ID and bit rate.
 3. **Store** so the settings survive a power cycle, then leave configuration
-   state.  A node-ID change takes effect after a reset; a bit rate change takes
+   state. A node-ID change takes effect after a reset; a bit rate change takes
    effect on *Activate* (every node switches together) or after a reset.
 """
 

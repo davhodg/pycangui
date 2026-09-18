@@ -8,7 +8,7 @@ something cycling unnoticed):
 
 * a **raw** row: you type the id and the data bytes;
 * a **DBC** row: picked from a loaded database, its id and length come from the
-  database and its data is *encoded from signal values*.  Expand the row and
+  database and its data is *encoded from signal values*. Expand the row and
   edit signals in physical units; the encoded bytes update, and if the message
   is cycling the running transmission is updated too.
 * a **CANopen RPDO** row: the same idea using a node's RPDO mapping, so a node's
@@ -17,7 +17,7 @@ something cycling unnoticed):
 The list is saved in settings.json ("tx.messages") and restored on start.
 There can be more than one transmit pane -- a list of background traffic left
 running and a scratch list to fiddle with is the case -- and each keeps its own
-messages.  What is *not* per pane is Stop all cyclic: the button says all, and
+messages. What is *not* per pane is Stop all cyclic: the button says all, and
 a big red stop that stopped half of what was going onto a live bus would be the
 worst kind of wrong.
 """
@@ -99,7 +99,7 @@ class MessagePicker(QDialog):
             ident = f"{msg.frame_id:08X}" if msg.is_extended_frame else f"{msg.frame_id:03X}"
             self.list.addItem(f"{msg.name}  [{ident}]  {len(msg.signals)} signals")
         if not self.list.count():
-            # Said here rather than in the Event Log.  A button that opens
+            # Said here rather than in the Event Log. A button that opens
             # nothing and writes a line into a pane you may have closed looks
             # from the outside exactly like a button that does not work.
             self.list.addItem("No database loaded.")
@@ -162,7 +162,7 @@ class RpdoPicker(QDialog):
 
 
 class TxView(QWidget):
-    #: Stop all cyclic was pressed here.  Emitted rather than acted on across
+    #: Stop all cyclic was pressed here. Emitted rather than acted on across
     #: panes, because a transmit list has no business knowing that there are
     #: other transmit lists -- the window does.
     stop_all_requested = Signal()
@@ -180,14 +180,14 @@ class TxView(QWidget):
         super().__init__()
         self.bus = bus
         self.ctx = ctx
-        #: Where this list is kept.  There can be two transmit panes, and the
+        #: Where this list is kept. There can be two transmit panes, and the
         #: second one holding the first one's messages would be one list shown
         #: twice rather than a second list.
         self.key = key
         self.confirm = confirm if confirm is not None else Confirmations()
         self.dbc = dbc
         self.canopen = canopen
-        #: Where a bespoke checksum comes from.  Optional: a transmit pane
+        #: Where a bespoke checksum comes from. Optional: a transmit pane
         #: built by a plugin or stood up in a test has no hooks, and every
         #: checksum in the list then comes from the named algorithms.
         self.hooks = hooks
@@ -209,7 +209,7 @@ class TxView(QWidget):
         self.tree.header().setStretchLastSection(True)
         # Send selected and Remove selected were always written to work on
         # several rows; the tree was left on single selection, so they never
-        # could.  Ticking Cyclic in bulk is the same selection, one key.
+        # could. Ticking Cyclic in bulk is the same selection, one key.
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tree.installEventFilter(self)
         self.tree.itemChanged.connect(self._on_item_changed)
@@ -425,7 +425,7 @@ class TxView(QWidget):
 
         With ``names``, text that is not a number is passed through as text:
         a DBC signal with a VAL_ table takes "Run" as readily as 1, and
-        cantools maps it back.  A name that is not in the table then fails the
+        cantools maps it back. A name that is not in the table then fails the
         encode and says so, which beats the alternative -- this used to
         substitute 0.0 for anything it could not parse, so a typo in a signal
         value silently transmitted zero.
@@ -490,7 +490,7 @@ class TxView(QWidget):
 
         The gate is on transmitting rather than on adding a row: a row that is
         sitting in the list has done nothing yet, and asking when it is built
-        would train the answer out of the user before it mattered.  Keyed on
+        would train the answer out of the user before it mattered. Keyed on
         the connection, so pointing the channel at a different bus asks again.
         """
         if not is_real(self.bus.interface):
@@ -521,7 +521,7 @@ class TxView(QWidget):
         """The bytes for this row's next frame, counter and checksum included.
 
         Every call advances the counter, because every call is a frame going
-        out.  A one-shot send of a counted message counts too -- a receiver
+        out. A one-shot send of a counted message counts too -- a receiver
         does not know or care which button sent it, and a manual send that
         repeated the last value would be rejected like any other repeat.
         """
@@ -534,7 +534,7 @@ class TxView(QWidget):
             return self._payload_by_signal(row, can_id, counter, checksum, sent) or data
         # In two passes, so the hook is handed the same bytes the built-in
         # algorithms would see: the counter goes in first, and only then is
-        # anybody asked what the checksum over them should be.  Handing over
+        # anybody asked what the checksum over them should be. Handing over
         # the payload as typed would be the very trap the ordering exists to
         # avoid, one layer further out.
         data = tx_fields.apply(data, counter, None, sent=sent)
@@ -559,10 +559,10 @@ class TxView(QWidget):
     ) -> bytes | None:
         """The frame for a row whose fields are named database signals.
 
-        Re-encoded rather than patched.  A signal is not necessarily
+        Re-encoded rather than patched. A signal is not necessarily
         byte-aligned -- it may be three bits straddling a byte boundary, and
         in either of the two bit-numbering conventions -- so there is no byte
-        to poke.  The database knows where the bits go; asking it twice is
+        to poke. The database knows where the bits go; asking it twice is
         cheaper than reimplementing it once.
 
         Returns None where the message is not in the database any more, and
@@ -596,7 +596,7 @@ class TxView(QWidget):
 
         An expanded database row lists every signal as an editable value, and
         two of them may not be values at all: whatever is typed there is
-        replaced as the frame is sent.  A box that takes an edit and ignores
+        replaced as the frame is sent. A box that takes an edit and ignores
         it is a box that has lied, so these stop taking edits and say in the
         Counter / checksum column what they are instead.
         """
@@ -640,7 +640,7 @@ class TxView(QWidget):
         self.item(row).setText(COL_FIELDS, tx_fields.describe(counter, checksum))
 
     def edit_fields(self, row: int) -> bool:
-        """The dialog, for one row.  True if something was changed."""
+        """The dialog, for one row. True if something was changed."""
         try:
             can_id, data, _ext, _fd, _period = self._message(row)
         except ValueError:
@@ -717,7 +717,7 @@ class TxView(QWidget):
         """Space over the list ticks or unticks Cyclic on everything selected.
 
         Qt's own space toggles one checkbox, and only when the cursor happens
-        to be in the Cyclic column.  Selecting a run of rows and pressing space
+        to be in the Cyclic column. Selecting a run of rows and pressing space
         is how you start or stop a whole set of messages at once.
         """
         if (
@@ -764,11 +764,11 @@ class TxView(QWidget):
             self._set_cyclic(row, False)
             return
         if self.computes(row):
-            # Our own timer, one frame at a time.  The adapter's cyclic task
+            # Our own timer, one frame at a time. The adapter's cyclic task
             # repeats fixed bytes, and a counter has to differ on every frame
             # -- modifying a free-running task instead would race it, so some
             # frames would carry a repeated count and some would skip one,
-            # which is exactly what the receiver is checking for.  The cost is
+            # which is exactly what the receiver is checking for. The cost is
             # the GUI's jitter in place of the adapter's timing.
             self._sent.setdefault(row, 0)
             timer = QTimer(self, interval=max(1, round(period * 1000)))
@@ -949,7 +949,7 @@ def _format(value) -> str:
     """Text for a signal value.
 
     A signal with a VAL_ table and a start value hands back cantools'
-    NamedSignalValue -- "Run" rather than 1.  It is not a str subclass and it
+    NamedSignalValue -- "Run" rather than 1. It is not a str subclass and it
     cannot be formatted as a number, so a bare f"{value:g}" raises on any DBC
     that names its enumerations, which most real ones do.
     """

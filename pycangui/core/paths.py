@@ -4,7 +4,7 @@
 
 The hooks, the EDS files, the settings and the layout moved out of here and
 into a workspace -- see ``core/workspaces.py`` -- because they are about the
-product being worked on rather than about this computer.  What is left is the
+product being worked on rather than about this computer. What is left is the
 folder they all sit under and the back ends, which are about being able to
 talk to a bus at all.
 

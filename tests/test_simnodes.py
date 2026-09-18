@@ -4,7 +4,7 @@
 
 The thing being tested is a *mechanism*, so most of these run a node file
 written in the test rather than a shipped one -- a two-line node makes it
-obvious which behaviour is the mechanism's and which is the example's.  The
+obvious which behaviour is the mechanism's and which is the example's. The
 shipped ones get their own section at the end, because an example that does
 not run is worse than no example.
 """
@@ -54,7 +54,7 @@ def manager(app, ctx):
     made.stop_all()
 
 
-#: A node that counts its own polls.  Used wherever a test needs to know
+#: A node that counts its own polls. Used wherever a test needs to know
 #: that polling happened, or that two instances are not sharing one counter.
 COUNTER = (
     "RATE_HZ = 50\n"
@@ -72,7 +72,7 @@ def spin(app, seconds=1.0, until=None):
 
     ``processEvents`` in a tight loop is not enough on its own: a QTimer
     fires on the clock, and a thousand iterations of a busy loop take no
-    time at all, so nothing would ever be due.  Returns whether ``until``
+    time at all, so nothing would ever be due. Returns whether ``until``
     came true, and comes back the moment it does rather than always waiting.
     """
     from time import monotonic, sleep
@@ -106,7 +106,7 @@ def pump(app, bus, seconds=1.0):
 
 # --- what a file says it is, before running any of it ----------------------------------
 def test_a_node_file_is_described_without_importing_it(folder):
-    """Which is what lets a broken one still be listed.  A kind that vanished
+    """Which is what lets a broken one still be listed. A kind that vanished
     from the dialog because of a typo would send somebody looking for a file
     they are staring at."""
     write(
@@ -139,7 +139,7 @@ def test_a_file_with_none_of_the_functions_is_refused(folder):
 
 
 def test_a_node_that_declares_nothing_still_runs(folder):
-    """Every declaration has a default.  Somebody trying the smallest thing
+    """Every declaration has a default. Somebody trying the smallest thing
     that could work should find that it works."""
     write(folder, "bare", "def poll(node, *, ctx): pass\n")
     kind = simnodes.kinds_in(folder)[0]
@@ -200,7 +200,7 @@ def test_stopping_puts_the_bus_down(app, folder, manager):
 
 
 def test_stop_all_takes_everything_with_it(app, folder, manager):
-    """Called as the window closes.  A node still holding a bus open is a
+    """Called as the window closes. A node still holding a bus open is a
     process that will not exit, which is a bug nobody can see."""
     write(folder, "quiet", "def poll(node, *, ctx): pass\n")
     manager.start("quiet", "vtest5")
@@ -244,7 +244,7 @@ def test_asking_for_a_kind_that_is_not_there_says_which(app, manager):
 
 def test_a_node_is_not_started_if_the_question_is_declined(app, folder, ctx):
     """A node transmits, and transmitting onto a real bus is what pycangui
-    asks about everywhere else.  One that joined quietly would be the hole
+    asks about everywhere else. One that joined quietly would be the hole
     in that."""
     write(folder, "quiet", "def poll(node, *, ctx): pass\n")
     manager = SimulatedNodes(ctx, may_transmit=lambda _channels: False)
@@ -352,7 +352,7 @@ def test_every_shipped_node_describes_itself(app, manager):
 
 @pytest.mark.parametrize("kind_id", ["j1939_engine", "xcp_slave", "uds_server"])
 def test_a_shipped_node_starts_and_stops(app, manager, kind_id):
-    """Imported and run, not merely parsed.  An example nobody starts is an
+    """Imported and run, not merely parsed. An example nobody starts is an
     example that quietly stops working."""
     node = manager.start(kind_id, f"v_{kind_id}")
     spin(app, 0.3)
@@ -404,7 +404,7 @@ def test_an_answer_too_long_for_one_frame_is_segmented(app, manager):
 
 
 def test_the_uds_server_refuses_what_it_does_not_know(app, manager):
-    """A tester tells "I will not" from "I cannot" by the code.  Silence is
+    """A tester tells "I will not" from "I cannot" by the code. Silence is
     indistinguishable from a broken bus."""
     tester = can.Bus(interface="virtual", channel="v_uds_no")
     try:
@@ -518,7 +518,7 @@ def test_a_node_stands_on_the_channel_with_a_handle_of_its_own(app, folder, ctx)
     marks everything this process sent as not-received, so pycangui's own
     protocol stacks -- which rightly ignore what the local handle sent --
     would never hear the node, and the node could not tell the application's
-    frames from its own.  Neither side could hear the other.
+    frames from its own. Neither side could hear the other.
     """
     write(folder, "shouter", "def poll(node, *, ctx): node.send(0x321, b'\x01')\n")
     channels = Channels()
@@ -540,7 +540,7 @@ def test_a_node_stands_on_the_channel_with_a_handle_of_its_own(app, folder, ctx)
 
 
 def test_stopping_leaves_the_channel_open(app, folder, ctx):
-    """It is the application's channel.  A node that closed it on the way
+    """It is the application's channel. A node that closed it on the way
     out would disconnect the window."""
     write(folder, "quiet", "def on_frame(node, frame, *, ctx): pass\n")
     channels = Channels()
@@ -578,7 +578,7 @@ def test_a_node_still_invents_a_channel_nobody_has_open(app, folder, manager):
         listening.shutdown()
 
 
-#: PDU format bytes.  An address claim is 0xEE and EEC1 is 0xF0.
+#: PDU format bytes. An address claim is 0xEE and EEC1 is 0xF0.
 CLAIM_PF = 0xEE
 EEC1_PF = 0xF0
 
@@ -624,7 +624,7 @@ def test_the_j1939_engine_claims_an_address_then_broadcasts(app, manager):
 
 
 def test_a_node_does_not_hear_its_own_transmissions(app, folder, manager):
-    """pycangui echoes what it sends so the trace can show it.  A node fed
+    """pycangui echoes what it sends so the trace can show it. A node fed
     its own frames is a node arguing with itself -- and for a gateway it is
     an endless loop, which is the version of this that hurts."""
     write(
@@ -710,7 +710,7 @@ def test_the_xcp_slave_refuses_to_be_calibrated_until_unlocked(app, manager):
 
 def test_the_canopen_node_raises_and_clears_an_emergency(app, canopen_bus):
     """An EMCY is the one CANopen message a tool cannot provoke by asking
-    for it.  A demo device that never raised one would leave the Emergencies
+    for it. A demo device that never raised one would leave the Emergencies
     tab with nothing to show and no way to get anything."""
     import struct
 

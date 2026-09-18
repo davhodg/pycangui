@@ -6,7 +6,7 @@ name: macOS
 #   gh workflow run macos.yml
 #
 # Separate from ci.yml, so a failure here reports rather than blocks a release,
-# and ordinary pushes do not wait for two Macs.  The steps mirror the test job
+# and ordinary pushes do not wait for two Macs. The steps mirror the test job
 # in ci.yml, less the lint (the same on every platform) and the Linux packages
 # Qt needs there.
 on:

@@ -2,8 +2,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- SPDX-FileCopyrightText: 2026 davhodg -->
 <!-- pycangui icon, 32 px and up: a CAN bus with four node taps and a zigzag
-     terminating resistor at each end.  Below 32 px the zigzag blurs into a
-     bar, so pycangui_small.svg draws the bar on purpose.  build/icon.py
+     terminating resistor at each end. Below 32 px the zigzag blurs into a
+     bar, so pycangui_small.svg draws the bar on purpose. build/icon.py
      renders both into pycangui.ico and pycangui.png. -->
 <rect x="0" y="0" width="256" height="256" rx="40" fill="#151b1d"/>
 <!-- CAN_H and CAN_L; each meets its own inner peak of the resistor -->

@@ -6,19 +6,19 @@ Hook files and simulated nodes are copied into the workspace to be changed,
 which leaves two things to get right when a later pycangui ships a better
 version of one:
 
-* a copy nobody has touched should simply become the new one.  It is still
+* a copy nobody has touched should simply become the new one. It is still
   pycangui's file, and leaving the old version in place means a fix that
   shipped never arrives.
-* a copy somebody has changed must not be touched.  It is code they wrote,
+* a copy somebody has changed must not be touched. It is code they wrote,
   possibly the only copy of it.
 
 Telling those apart needs a memory of what was copied, so the fingerprint of
 each file as supplied is recorded in the workspace settings -- beside the
 files it describes, so a workspace handed to someone else carries a record
-that matches its files.  A copy whose fingerprint still matches the record
+that matches its files. A copy whose fingerprint still matches the record
 is untouched; anything else is somebody's work.
 
-Line endings are left out of the fingerprint.  The same file arrives with
+Line endings are left out of the fingerprint. The same file arrives with
 CRLF from a Windows checkout and LF from a wheel, and an upgrade from one to
 the other must not make every file look edited.
 
@@ -160,7 +160,7 @@ class Supplied:
         ]
 
     def restore(self, name: str) -> Path:
-        """Put the supplied version back, keeping the old one.  Returns where
+        """Put the supplied version back, keeping the old one. Returns where
         the old one went: renamed, never deleted, and never over an earlier
         ``.bak``."""
         dest = self.folder / name

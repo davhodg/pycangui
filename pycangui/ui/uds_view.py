@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
 """UDS pane: addressing, session / security / tester present, DIDs, DTCs,
-routines, ECU reset and raw requests.  Results go to the pane's own log."""
+routines, ECU reset and raw requests. Results go to the pane's own log."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def _hex_edit(text: str, width: int = 70) -> QLineEdit:
 def _picker(known: dict[int, str], digits: int, describe=None) -> QComboBox:
     """A dropdown of the numbers somebody has a name for, that can still be typed in.
 
-    Editable on purpose.  A shortlist that will not let you send anything else
+    Editable on purpose. A shortlist that will not let you send anything else
     would be worse than no list at all: most of the identifiers and all of the
     interesting routines on a real ECU are manufacturer specific and will
     never be on it.
@@ -303,7 +303,7 @@ class UdsView(QWidget):
 
         # --- DTCs ------------------------------------------------------------------
         # ReadDTCInformation is twenty-odd reports wearing one service number,
-        # and each takes a different set of parameters.  Choosing the report
+        # and each takes a different set of parameters. Choosing the report
         # first and letting it decide which boxes are live is the only way to
         # offer all of them without offering nonsense.
         dtc_box = QGroupBox("DTCs")
@@ -358,7 +358,7 @@ class UdsView(QWidget):
         )
         # A label to the left of its box is only unambiguous while the columns
         # stay narrow; six pairs across a stretched row put every label nearer
-        # its neighbour's box than its own.  Above it, in the same column,
+        # its neighbour's box than its own. Above it, in the same column,
         # cannot come apart however the pane is resized.
         #
         # ``field`` is the parameter the box fills in, or None for the record
@@ -523,7 +523,7 @@ class UdsView(QWidget):
         x.addWidget(self.ecu_path, 2, 6, 1, 3)
 
         # A flash sequence is an erase, then the blocks, then something that
-        # has the ECU check what it was given.  Only the erase is standardised.
+        # has the ECU check what it was given. Only the erase is standardised.
         self.erase = QCheckBox("Erase first")
         self.erase.setToolTip(
             f"RoutineControl start {ERASE_MEMORY:04X} over every segment before\n"

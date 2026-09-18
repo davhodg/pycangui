@@ -5,12 +5,12 @@
 Both directions use python-can's own readers and writers, so every format it
 supports works from one file dialog: ``.blf`` (Vector binary), ``.asc``
 (Vector ASCII), ``.trc`` (PEAK), ``.csv``, ``.log`` (candump), ``.db``
-(SQLite).  The format is chosen from the file extension.
+(SQLite). The format is chosen from the file extension.
 
 * **Recording** attaches a writer to every connected channel's ``can.Notifier``,
   so it records exactly what is on the bus regardless of what the trace is
   filtering, and costs the GUI thread nothing.
-* **Replay** runs on a worker thread and honours the recorded timing.  (The
+* **Replay** runs on a worker thread and honours the recorded timing. (The
   timing loop is written out rather than using ``can.MessageSync`` so that the
   speed can be scaled and a long replay can be stopped promptly.)  It always
   transmits, onto one channel chosen when it starts; replaying onto a
@@ -72,10 +72,10 @@ class _StampedWriter(can.Listener):
 class Recorder(QObject):
     """Writes every frame on every connected channel to a log file.
 
-    Deliberately *not* tied to the selected channel.  A recording runs in the
+    Deliberately *not* tied to the selected channel. A recording runs in the
     background for minutes while the selection is used to drive the protocol
     panes, so following the selection meant a recording silently stopped when
-    the selection moved off the channel it started on.  What gets recorded is
+    the selection moved off the channel it started on. What gets recorded is
     what the trace shows.
     """
 

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
 """Persistent key/value store for things the GUI remembers (identity -> EDS
-file, last used adapter, ...).  One JSON file, dotted keys, saved on change.
+file, last used adapter, ...). One JSON file, dotted keys, saved on change.
 
 Kept separate from QSettings (which holds window layout) so the contents are
 human readable and easy to hand-edit or version control.
