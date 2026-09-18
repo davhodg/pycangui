@@ -47,6 +47,12 @@ REPORT_NAME = "startup-timing.txt"
 #: and the launcher's dependency check -- is outside anything Python here can
 #: see, so the report says so rather than pretending to a total.
 _STARTED = time.perf_counter()
+#: The wall clock at the same moment, for comparing against the launchers'
+#: stamps. Taken here rather than when the report is written: the report
+#: comes seconds later, and measuring against it charged the launcher with
+#: everything that happened after it -- Qt, the libraries, the window, and
+#: however long somebody took to read the notice.
+_STARTED_WALL = time.time()
 
 _marks: list[tuple[str, float]] = []
 _on = FLAG in sys.argv or os.environ.get(ENV, "") not in ("", "0")
@@ -121,20 +127,20 @@ def import_lines(most: int = 8) -> list[str]:
     return lines
 
 
-def _since(stamp: str) -> float | None:
-    """Seconds since a launcher's stamp, in either shape it can take."""
+def _until_import(stamp: str) -> float | None:
+    """Seconds from a launcher's stamp to this module being imported."""
     try:
         if ":" in stamp:  # cmd's %TIME%, which is a time of day
             hours, minutes, seconds = stamp.split(":")
             began = int(hours) * 3600 + int(minutes) * 60 + float(seconds.replace(",", "."))
-            now = time.localtime()
+            now = time.localtime(_STARTED_WALL)
             since_midnight = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec
-            since_midnight += time.time() % 1
+            since_midnight += _STARTED_WALL % 1
             took = since_midnight - began
             if took < 0:  # started before midnight, running after it
                 took += 86400
         else:
-            took = time.time() - float(stamp.replace(",", "."))
+            took = _STARTED_WALL - float(stamp.replace(",", "."))
     except (ValueError, TypeError):
         return None
     return took if 0 <= took <= SANE_LAUNCH_S else None
@@ -142,8 +148,8 @@ def _since(stamp: str) -> float | None:
 
 def launcher_seconds() -> tuple[float | None, float | None]:
     """(the script's own work, starting Python), as far as either is known."""
-    began = _since(os.environ.get(LAUNCH_ENV, "").strip())
-    started_python = _since(os.environ.get(PYTHON_ENV, "").strip())
+    began = _until_import(os.environ.get(LAUNCH_ENV, "").strip())
+    started_python = _until_import(os.environ.get(PYTHON_ENV, "").strip())
     if began is None:
         return None, started_python
     if started_python is None:
