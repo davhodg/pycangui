@@ -199,7 +199,22 @@ def main() -> int:
     timing.mark("window on screen")
     if timing.enabled():
         report(window)
+    note_a_slow_start(window)
     return app.exec()
+
+
+def note_a_slow_start(window) -> None:
+    """Say so when this start had to compile Python again.
+
+    Not a judgement about the clock: the count comes from the compiled files
+    themselves, so it is said exactly on the starts where it is true -- the
+    first after an update -- and never on the others.
+    """
+    from pycangui.core import slow_start
+
+    said = slow_start.message(timing.started_at(), timing.total_work())
+    if said is not None:
+        window.events.information(said)
 
 
 def report(window) -> None:

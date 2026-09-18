@@ -155,8 +155,9 @@ def _timing_left_as_found():
     importlib.reload(timing)
 
 
-def test_timing_is_off_unless_it_is_asked_for(monkeypatch):
-    """Off, a mark costs a comparison: the marks stay in the code either way."""
+def test_the_report_is_off_unless_it_is_asked_for(monkeypatch):
+    """The marks are always taken -- a start that turns out to have been slow
+    cannot be measured afterwards -- but nothing is reported unasked."""
     import importlib
 
     from pycangui.core import timing
@@ -164,9 +165,9 @@ def test_timing_is_off_unless_it_is_asked_for(monkeypatch):
     monkeypatch.delenv(timing.ENV, raising=False)
     monkeypatch.setattr("sys.argv", ["pycangui"])
     fresh = importlib.reload(timing)
-    assert not fresh.enabled()
+    assert not fresh.enabled(), "so __main__ writes no report"
     fresh.mark("something")
-    assert fresh.report_lines() == [], "nothing measured, so nothing to report"
+    assert fresh.total_work() > 0, "and the start is still measured"
 
 
 def test_the_flag_turns_it_on_and_it_reports_each_step(monkeypatch, tmp_path):
