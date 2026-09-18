@@ -119,6 +119,9 @@ rem again next time rather than remembered as an answer.
 copy /y "pyproject.toml" ".venv\.deps-ok" >nul
 
 :run
+rem Stamped again here, so --timing can tell this file's own work apart
+rem from starting the interpreter: the two have different cures.
+set PYCANGUI_PYTHON_AT=%TIME%
 start "" ".venv\Scripts\pythonw.exe" -m pycangui %*
 exit /b 0
 

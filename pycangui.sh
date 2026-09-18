@@ -111,4 +111,7 @@ else
     cp pyproject.toml .venv/.deps-ok
 fi
 
+# Stamped again, so --timing can tell this script's own work apart from
+# starting the interpreter: the two have different cures.
+export PYCANGUI_PYTHON_AT=$(date +%s.%N 2>/dev/null || date +%s)
 exec .venv/bin/python -m pycangui "$@"

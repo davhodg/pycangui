@@ -249,8 +249,9 @@ def test_the_launcher_stamp_is_read_in_both_shapes(monkeypatch):
 
     from pycangui.core import timing
 
+    monkeypatch.delenv(timing.PYTHON_ENV, raising=False)
     monkeypatch.setenv(timing.LAUNCH_ENV, f"{clock.time() - 2.0:.3f}")
-    took = timing.launcher_seconds()
+    took, _starting = timing.launcher_seconds()
     assert took is not None and 1.5 <= took <= 4.0
 
     now = clock.localtime()
@@ -258,7 +259,7 @@ def test_the_launcher_stamp_is_read_in_both_shapes(monkeypatch):
     hours, rest = divmod(max(a_moment_ago, 0), 3600)
     minutes, seconds = divmod(rest, 60)
     monkeypatch.setenv(timing.LAUNCH_ENV, f"{hours:02d}:{minutes:02d}:{seconds:02d}.00")
-    took = timing.launcher_seconds()
+    took, _starting = timing.launcher_seconds()
     assert took is not None and 0 <= took <= 5
 
 
@@ -267,9 +268,25 @@ def test_a_stamp_from_an_older_run_is_ignored(monkeypatch):
 
     from pycangui.core import timing
 
+    monkeypatch.delenv(timing.PYTHON_ENV, raising=False)
     monkeypatch.setenv(timing.LAUNCH_ENV, f"{clock.time() - 3600:.3f}")
-    assert timing.launcher_seconds() is None, "an hour is somebody else's launch"
+    assert timing.launcher_seconds() == (None, None), "an hour is somebody else's launch"
     monkeypatch.setenv(timing.LAUNCH_ENV, "not a time")
-    assert timing.launcher_seconds() is None
+    assert timing.launcher_seconds() == (None, None)
     monkeypatch.delenv(timing.LAUNCH_ENV)
-    assert timing.launcher_seconds() is None, "nothing stamped it, so nothing to say"
+    assert timing.launcher_seconds() == (None, None), "nothing stamped it, nothing to say"
+
+
+def test_the_script_and_the_interpreter_are_counted_apart(monkeypatch):
+    """Doing less in the script and starting Python faster are different
+    problems, so one number for both would not say which to work on."""
+    import time as clock
+
+    from pycangui.core import timing
+
+    now = clock.time()
+    monkeypatch.setenv(timing.LAUNCH_ENV, f"{now - 3.0:.3f}")  # script began
+    monkeypatch.setenv(timing.PYTHON_ENV, f"{now - 1.0:.3f}")  # python started
+    script, interpreter = timing.launcher_seconds()
+    assert script is not None and 1.5 <= script <= 2.5, "the script's own two seconds"
+    assert interpreter is not None and 0.5 <= interpreter <= 1.5
