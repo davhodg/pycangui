@@ -100,6 +100,15 @@ LAYOUT_VERSION = 4
 #: that apply whatever is on the bus.
 DEFAULT_VISIBLE = ("trace", "tx", "scope", "log")
 
+#: What a protocol pane opens at when it is asked for. A tree beside a
+#: table of values, with a toolbar above and a log below, needs room: the
+#: 620x460 a new pane gets by default is enough for a trace and not for
+#: these.
+PROTOCOL_PANE_SIZE = (1000, 700)
+#: The console is typed into, so it wants width for a line of Python and
+#: enough height to see what the last few commands said.
+CONSOLE_PANE_SIZE = (900, 520)
+
 #: What the window opens at, and what Reset layout puts it back to. Wide,
 #: because the trace and the panes beside it are read across rather than down.
 DEFAULT_WIDTH = 1400
@@ -623,30 +632,39 @@ class MainWindow(QMainWindow):
                 self._new_ascii,
                 several=True,
                 shutdown=self._drop_ascii,
+                floating_first=True,
             ),
             PaneKind(
                 "canopen",
                 "CANopen",
                 Qt.RightDockWidgetArea,
                 lambda _name: CanopenView(self.canopen, self.hooks, self.ctx),
+                floating_first=True,
+                floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
                 "uds",
                 "UDS",
                 Qt.RightDockWidgetArea,
                 lambda _name: UdsView(self.uds, self.ctx, self.confirm),
+                floating_first=True,
+                floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
                 "j1939",
                 "J1939",
                 Qt.RightDockWidgetArea,
                 lambda _name: J1939View(self.j1939, self.ctx),
+                floating_first=True,
+                floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
                 "xcp",
                 "XCP",
                 Qt.RightDockWidgetArea,
                 lambda _name: XcpView(self.xcp, self.ctx),
+                floating_first=True,
+                floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
                 "custom",
@@ -661,6 +679,8 @@ class MainWindow(QMainWindow):
                 "Python Console",
                 Qt.BottomDockWidgetArea,
                 lambda _name: ConsoleView(self._console_namespace(), self.ctx),
+                floating_first=True,
+                floating_size=CONSOLE_PANE_SIZE,
             ),
         ):
             self.panes.register(kind)
@@ -1057,7 +1077,20 @@ class MainWindow(QMainWindow):
             state = QSettings().value("windowState")
         # restoreState declines a layout saved under an older LAYOUT_VERSION,
         # which leaves the default in place -- the same as never having run.
-        if state is None or not self.restoreState(state, LAYOUT_VERSION):
+        restored = state is not None and self.restoreState(state, LAYOUT_VERSION)
+        if state is not None and not restored:
+            # Said rather than silently starting from the default: somebody
+            # who had arranged the panes deserves to know why they moved,
+            # and "it forgot my layout after an update" is otherwise a
+            # mystery reported as a bug.
+            self.events.information(
+                "The saved pane arrangement is from a version with a different set "
+                "of panes, so this window opens with the default one."
+            )
+            # Every pane is unplaced again, so each opens in front of the
+            # window the first time rather than as a sliver on the right.
+            self.panes.forget_arrangement()
+        if not restored:
             hidden = [
                 d.windowTitle() for n, d in self.panes.docks.items() if n not in DEFAULT_VISIBLE
             ]

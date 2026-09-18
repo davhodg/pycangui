@@ -6,7 +6,16 @@ pycangui opens with four panes: the **CAN Trace** with **CAN Transmit** under it
 and the **Event Log** beside them, and **Signals and Plot** spanning underneath.
 The rest (CANopen, UDS, J1939, XCP, ASCII Log, Python Console) start hidden, because which of them you want
 depends on what you have plugged in; turn any on in the **View** menu, and
-*View > Reset layout* puts everything back. Panes are dockable, so drag them
+*View > Reset layout* puts everything back.
+
+One of those opens **in front of the window** the first time, at a size it can
+be read at, rather than as a strip down the edge of a window that is already
+full. Only the first time: dock it where you want it, and that is where it
+comes back. If an update changes the set of panes, the saved arrangement
+cannot be restored -- pycangui says so in the [Event Log](event-log.md) -- and
+every pane is a first time again.
+
+Panes are dockable, so drag them
 where you like: the arrangement is remembered.
 
 Drag a pane out of the window, or double-click its title bar, and it floats.
