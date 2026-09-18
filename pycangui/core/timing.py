@@ -33,6 +33,10 @@ ENV = "PYCANGUI_TIMING"
 #: starting. A shell writes epoch seconds; cmd writes %TIME%, which is
 #: HH:MM:SS.ss in whatever the machine's separators are.
 LAUNCH_ENV = "PYCANGUI_LAUNCH_AT"
+#: Stamped again by the launchers immediately before they start Python, so
+#: that the script's own work and the interpreter starting are separate
+#: numbers: one is fixed by doing less in the script, the other is not.
+PYTHON_ENV = "PYCANGUI_PYTHON_AT"
 #: Longer than this and the stamp is from an earlier run left in the
 #: environment, not from the launch that is starting now.
 SANE_LAUNCH_S = 600.0
@@ -117,11 +121,8 @@ def import_lines(most: int = 8) -> list[str]:
     return lines
 
 
-def launcher_seconds() -> float | None:
-    """How long the launcher took before Python, if it said when it started."""
-    stamp = os.environ.get(LAUNCH_ENV, "").strip()
-    if not stamp:
-        return None
+def _since(stamp: str) -> float | None:
+    """Seconds since a launcher's stamp, in either shape it can take."""
     try:
         if ":" in stamp:  # cmd's %TIME%, which is a time of day
             hours, minutes, seconds = stamp.split(":")
@@ -137,6 +138,18 @@ def launcher_seconds() -> float | None:
     except (ValueError, TypeError):
         return None
     return took if 0 <= took <= SANE_LAUNCH_S else None
+
+
+def launcher_seconds() -> tuple[float | None, float | None]:
+    """(the script's own work, starting Python), as far as either is known."""
+    began = _since(os.environ.get(LAUNCH_ENV, "").strip())
+    started_python = _since(os.environ.get(PYTHON_ENV, "").strip())
+    if began is None:
+        return None, started_python
+    if started_python is None:
+        return began, None
+    # The second stamp is later, so less time has passed since it.
+    return max(began - started_python, 0.0), started_python
 
 
 def mark(label: str) -> None:
@@ -158,10 +171,13 @@ def report_lines() -> list[str]:
         "startup timing (seconds), from the first import in __main__",
         "(the notice line is how long it waited for you, not work):",
     ]
-    if (launcher := launcher_seconds()) is not None:
-        # Before the clock above started: the launcher's dependency check and
-        # the interpreter itself, which is where a slow start often hides.
-        lines.append(f"  {launcher:6.3f}  the launcher and starting Python (before the rest)")
+    # Before the clock above started, and often the largest part of the wait:
+    # the launcher's own checks, then the interpreter itself starting.
+    script, interpreter = launcher_seconds()
+    if script is not None:
+        lines.append(f"  {script:6.3f}  the launcher script (before the rest)")
+    if interpreter is not None:
+        lines.append(f"  {interpreter:6.3f}  starting Python (before the rest)")
     lines += [f"  {took:6.3f}  {label}" for label, took in steps]
     lines.append(f"  {_marks[-1][1] - _STARTED:6.3f}  total")
     label, took = max(steps, key=lambda step: step[1])
