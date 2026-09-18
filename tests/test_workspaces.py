@@ -595,3 +595,17 @@ def test_reset_everything_is_a_new_empty_workspace(window, monkeypatch):
     assert not (workspaces.dir_for("clean") / "settings.json").exists(), "nothing carried over"
     old = workspaces.dir_for(workspaces.DEFAULT) / "settings.json"
     assert json.loads(old.read_text())["dbc.paths"] == ["mine.dbc"], "and the old one is intact"
+
+
+def test_a_folder_is_made_once_and_left_alone_after(tmp_path, monkeypatch):
+    """Making a directory is the expensive call on a watched or redirected
+    profile, so it is asked about first; the folder still has to appear."""
+    from pycangui.core import paths
+
+    wanted = tmp_path / "deep" / "folder"
+    assert paths.made(wanted).is_dir(), "it makes what is not there, parents and all"
+
+    made = []
+    monkeypatch.setattr(type(wanted), "mkdir", lambda self, **k: made.append(self))
+    assert paths.made(wanted) == wanted
+    assert made == [], "and does not ask the file system to make it again"
