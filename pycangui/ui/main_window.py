@@ -226,8 +226,12 @@ class MainWindow(QMainWindow):
         #: What names a frame in the trace. A list rather than four calls
         #: on each trace, so that a plugin can join in and every trace --
         #: including one opened later -- agrees about what things are called.
+        # In order of who knows best: a database somebody loaded names what
+        # it was written to name, and each protocol speaks only where it has
+        # been told what it is looking at.
         self._labellers = [
             self.dbc.message_name,
+            self.canopen.classify,
             self.uds.classify,
             self.j1939.classify,
             self.xcp.classify,

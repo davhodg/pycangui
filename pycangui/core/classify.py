@@ -47,6 +47,21 @@ _FUNCTION_CODES: dict[int, tuple[str, str, bool]] = {
 }
 
 
+def predefined_labels(node_id: int) -> dict[int, str]:
+    """Where CiA 301 says one node's frames are, and what to call each.
+
+    Used for a node that is known to be there. The same table read the
+    other way round -- id to node -- would claim most of the 11-bit range
+    for CANopen on a bus that has none, which is why nothing calls it that
+    way any more.
+    """
+    labels = {}
+    for code, (prefix, _group, has_node) in _FUNCTION_CODES.items():
+        if has_node:
+            labels[(code << 7) | node_id] = f"{prefix} n{node_id}"
+    return labels
+
+
 def classify(can_id: int, extended: bool) -> tuple[str, str]:
     """Return (kind, group) for a CAN id."""
     if extended:

@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.bus import Frame
-from pycangui.core.classify import ERROR_GROUP, GROUPS, classify, group_of
+from pycangui.core.classify import ERROR_GROUP, GROUPS, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.ui.latest_model import COLUMNS as LATEST_COLUMNS
@@ -315,16 +315,23 @@ class TraceView(QWidget):
 
     # --- frames ----------------------------------------------------------------------
     def _classify(self, frames: list[Frame]) -> None:
-        """Label precedence: the user hook first, then what the CAN id says on
-        its own (CANopen's predefined connection set), then the other labellers
-        -- DBC message names, J1939 PGNs, UDS and XCP.
+        """Name a frame, in order of who has the best claim to know.
 
-        The id-based label wins over a database name on purpose: "TxPDO1 n5"
-        says which node sent it, which a DBC message name cannot. The database
-        still names the signals in the Signals and Plot panes.
+        The hook first, because it is this workspace's own answer about this
+        product. Then the databases somebody loaded, which name what they
+        were written to name. Then each protocol, and only where it has been
+        told what it is looking at: the XCP identifiers somebody typed, the
+        UDS addresses in the pane, the CANopen ids of nodes that are
+        actually there.
 
-        The filter group always comes from the id, so a PDO stays under PDO
-        whatever it ends up being called.
+        This order used to be the other way about, on the grounds that
+        "TxPDO1 n5" says which node sent a frame where a database name
+        cannot. True on a CANopen bus. On a bus with no CANopen on it, the
+        predefined connection set claims 0x180 to 0x67F and the names in the
+        database somebody deliberately loaded never got a look in.
+
+        The group follows the name, so a frame nobody can account for sits
+        under Other rather than being filed as a PDO.
         """
         for f in frames:
             if f.error:
@@ -336,14 +343,13 @@ class TraceView(QWidget):
                 # else on the wire.
                 f.kind, f.group = "Bus error", ERROR_GROUP
                 continue
-            co_kind, co_group = classify(f.can_id, f.extended)
             kind = self.hooks.call("trace", "frame_kind", f)
-            if kind is None and not co_kind:
+            if kind is None:
                 for fn in self.classifiers:
                     if kind := fn(f):
                         break
-            f.kind = kind or co_kind
-            f.group = co_group if co_group != "Other" else group_of(f.kind)
+            f.kind = kind or ""
+            f.group = group_of(f.kind) if f.kind else ("J1939" if f.extended else "Other")
 
     def _on_mode_changed(self, index: int) -> None:
         self.stack.setCurrentIndex(index)

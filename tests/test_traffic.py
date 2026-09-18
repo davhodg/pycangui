@@ -13,6 +13,8 @@ import time
 import pytest
 from PySide6.QtCore import QSettings
 
+from pycangui.canopen.manager import CanopenManager
+from pycangui.core.bus import BusManager, Frame
 from pycangui.core.detect import DEMO_CHANNEL, channels_for
 from pycangui.ui.main_window import MainWindow
 
@@ -105,3 +107,64 @@ def test_the_demo_is_decoded_not_just_listed(app, window):
 
     kinds = {window.trace.model.data(window.trace.model.index(row, 4)) for row in range(20)}
     assert any("Heartbeat" in str(k) or "PDO" in str(k) for k in kinds), kinds
+
+
+# --- who gets to say what a frame is ---------------------------------------------------
+def test_canopen_names_nothing_until_a_node_is_known(app, tmp_path, monkeypatch):
+    """The predefined connection set claims 0x180 to 0x67F. Read that way on
+    a bus with no CANopen on it, an ordinary message becomes 'RxPDO1 n5'."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    manager = CanopenManager(bus)  # before the bus connects: it learns by signal
+    bus.connect_bus("virtual", "vcan_labels", 500000, False)
+    pdo = Frame(0.0, "CAN", 0x185, False, False, True, b"\x00")
+
+    assert manager.classify(pdo) is None, "nobody has said there is a node here"
+
+    manager.add_node(5)
+    assert manager.classify(pdo) == "TxPDO1 n5"
+    manager.shutdown()
+    bus.disconnect_bus()
+
+
+def test_the_broadcast_ids_come_with_the_first_node(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    manager = CanopenManager(bus)  # before the bus connects: it learns by signal
+    bus.connect_bus("virtual", "vcan_labels", 500000, False)
+    sync = Frame(0.0, "CAN", 0x080, False, False, True, b"")
+
+    assert manager.classify(sync) is None
+    manager.add_node(3)
+    assert manager.classify(sync) == "SYNC", "a bus with a node on it has a SYNC id"
+    manager.shutdown()
+    bus.disconnect_bus()
+
+
+def test_a_node_on_its_own_sdo_channel_is_named_there(app, tmp_path, monkeypatch):
+    """The channel somebody configured is where that node's SDOs are, and
+    0x600 plus the node id is then somebody else's id."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    manager = CanopenManager(bus)  # before the bus connects: it learns by signal
+    bus.connect_bus("virtual", "vcan_labels", 500000, False)
+    manager.add_node(4)
+    manager.set_sdo_channels({4: (0x640, 0x5C0)})
+
+    moved = Frame(0.0, "CAN", 0x640, False, False, True, b"")
+    assert manager.classify(moved) == "SDO-R n4"
+    assert manager.classify(Frame(0.1, "CAN", 0x5C0, False, False, True, b"")) == "SDO-T n4"
+    manager.shutdown()
+    bus.disconnect_bus()
+
+
+def test_nothing_on_an_extended_id_is_called_canopen(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    manager = CanopenManager(bus)  # before the bus connects: it learns by signal
+    bus.connect_bus("virtual", "vcan_labels", 500000, False)
+    manager.add_node(5)
+    j1939 = Frame(0.0, "CAN", 0x18FEF105, True, False, True, b"")
+    assert manager.classify(j1939) is None
+    manager.shutdown()
+    bus.disconnect_bus()

@@ -11,6 +11,13 @@ from dataclasses import dataclass
 CAN_DL = (8, 12, 16, 20, 24, 32, 48, 64)
 
 
+#: An address box left empty. The standard addresses are a good default,
+#: but a bus that uses those ids for something else should be able to say
+#: so, and then nothing is named UDS on the strength of a number nobody
+#: typed.
+NO_ID = -1
+
+
 @dataclass
 class UdsConfig:
     """Addressing and timing for one ECU. Saved in settings "uds.config"."""
