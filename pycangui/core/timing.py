@@ -164,9 +164,13 @@ def launcher_seconds() -> tuple[float | None, float | None]:
 
 
 def mark(label: str) -> None:
-    """Note that this step has just finished."""
-    if _on:
-        _marks.append((label, time.perf_counter()))
+    """Note that this step has just finished.
+
+    Always recorded, whether or not anybody asked for a report: it is a
+    string and a float appended to a list, and a start that turns out to
+    have been slow cannot be measured after the fact.
+    """
+    _marks.append((label, time.perf_counter()))
 
 
 def report_lines() -> list[str]:
@@ -195,6 +199,28 @@ def report_lines() -> list[str]:
     label, took = max(work or steps, key=lambda step: step[1])
     lines.append(f"the longest step was {label}, at {took:.3f} s")
     return lines + import_lines()
+
+
+def started_at() -> float:
+    """The wall clock as this module was imported, which is as near as
+    anything gets to when the process began."""
+    return _STARTED_WALL
+
+
+def total_work() -> float:
+    """How long starting took, not counting the wait for the notice.
+
+    Zero before anything has been marked, which is what a test or a script
+    that imported this module and never started a window will see.
+    """
+    if not _marks:
+        return 0.0
+    previous, total = _STARTED, 0.0
+    for label, at in _marks:
+        if label != NOTICE_STEP:
+            total += at - previous
+        previous = at
+    return total
 
 
 def write_report(folder: Path) -> Path | None:
