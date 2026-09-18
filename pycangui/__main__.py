@@ -180,7 +180,7 @@ def main() -> int:
     # window is built after it: without this, every step between the two
     # carries however long somebody took to read the notice and press
     # Continue, and the report blames the first thing the window does.
-    timing.mark("waiting for the notice to be answered")
+    timing.mark(timing.NOTICE_STEP)
     if not loaded:  # nothing ran it, so do it here rather than not at all
         load()
     if (missing := loaded.get("error")) is not None:

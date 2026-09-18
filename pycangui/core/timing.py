@@ -41,6 +41,11 @@ PYTHON_ENV = "PYCANGUI_PYTHON_AT"
 #: environment, not from the launch that is starting now.
 SANE_LAUNCH_S = 600.0
 REPORT_NAME = "startup-timing.txt"
+#: The one step that is not work: the libraries load behind the start-up
+#: notice and the window is built after it, so a person reading the notice
+#: sits between two marks. It is shown, because it is part of the wait, and
+#: left out of the total, because it is not something to make faster.
+NOTICE_STEP = "waiting for the notice to be answered"
 
 #: The clock starts when this module is imported, which ``__main__`` does
 #: before anything heavy. Whatever ran before that -- the interpreter itself,
@@ -175,7 +180,7 @@ def report_lines() -> list[str]:
         previous = at
     lines = [
         "startup timing (seconds), from the first import in __main__",
-        "(the notice line is how long it waited for you, not work):",
+        f"({NOTICE_STEP} is you, and is not in the total):",
     ]
     # Before the clock above started, and often the largest part of the wait:
     # the launcher's own checks, then the interpreter itself starting.
@@ -185,8 +190,9 @@ def report_lines() -> list[str]:
     if interpreter is not None:
         lines.append(f"  {interpreter:6.3f}  starting Python (before the rest)")
     lines += [f"  {took:6.3f}  {label}" for label, took in steps]
-    lines.append(f"  {_marks[-1][1] - _STARTED:6.3f}  total")
-    label, took = max(steps, key=lambda step: step[1])
+    work = [step for step in steps if step[0] != NOTICE_STEP]
+    lines.append(f"  {sum(took for _, took in work):6.3f}  total, not counting the wait")
+    label, took = max(work or steps, key=lambda step: step[1])
     lines.append(f"the longest step was {label}, at {took:.3f} s")
     return lines + import_lines()
 
