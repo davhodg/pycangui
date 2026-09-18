@@ -165,7 +165,9 @@ class MainWindow(QMainWindow):
         #: Qt slot would otherwise go nowhere at all -- see the module.
         self.exceptions = ExceptionLogger(self.events.post)
         self.exceptions.install()
+        timing.mark("workspace settings")
         self.hooks = Hooks(self.ctx)
+        timing.mark("hook files")
         #: Shared so that agreeing once covers connecting, transmitting and
         #: replaying rather than each asking again.
         self.confirm = Confirmations(Remembered())
@@ -182,10 +184,11 @@ class MainWindow(QMainWindow):
         #: console habit written before it still says. An alias costs a
         #: line; breaking somebody's startup hook costs them an evening.
         self.vnodes = self.nodes
+        timing.mark("simulated nodes")
         BACKENDS.load_user_backends(
             self.ctx.backends_dir, self.events.information, self.events.warning
         )
-        timing.mark("settings, hooks and simulated nodes")
+        timing.mark("backends")
 
         # --- toolbar ---------------------------------------------------------
         self.connect_bar = ConnectBar(self.channels, self.ctx)
