@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
-from pycangui.core import workspace_files, workspaces
+from pycangui.core import timing, workspace_files, workspaces
 from pycangui.core.backends import BACKENDS
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.context import Context
@@ -185,6 +185,7 @@ class MainWindow(QMainWindow):
         BACKENDS.load_user_backends(
             self.ctx.backends_dir, self.events.information, self.events.warning
         )
+        timing.mark("settings, hooks and simulated nodes")
 
         # --- toolbar ---------------------------------------------------------
         self.connect_bar = ConnectBar(self.channels, self.ctx)
@@ -268,6 +269,7 @@ class MainWindow(QMainWindow):
         self.channels.note.connect(self.events.information)
         self.channels.warning.connect(self.events.warning)
 
+        timing.mark("panes built")
         # --- menus & layout persistence --------------------------------------
         file_menu = self.menuBar().addMenu("&File")
         file_menu.addAction("Load DBC...", self._load_dbc_dialog)
@@ -307,6 +309,7 @@ class MainWindow(QMainWindow):
         workspace = self.ctx.workspace_dir
         for value in self.ctx.settings.get("dbc.paths", []):
             self._load_dbc(str(workspace_files.resolve(value, workspace)))
+        timing.mark("databases")
         if a2l := self.ctx.settings.get("xcp.a2l"):
             a2l = workspace_files.resolve(a2l, workspace)
             if not a2l.exists():
@@ -319,6 +322,7 @@ class MainWindow(QMainWindow):
                     self.xcp.load_a2l(str(a2l))
                 except Exception as exc:
                     self.events.warning(f"A2L load failed: {exc}")
+        timing.mark("A2L")
 
         #: One action in two menus. The View menu is where you reach for it
         #: while arranging panes; Tools > Reset is where you reach for it
@@ -441,11 +445,13 @@ class MainWindow(QMainWindow):
         self.plugin_actions = PluginActions(self, self.ctx, self.plugins)
         self.plugin_actions.changed.connect(self._plugins_changed)
         self.plugins.load_all()
+        timing.mark("plugins")
         self._build_plugins_menu()
         self.panes.restore_instances()
         self._build_view_menu()
         self._restore_layout()
         self.panes.restore_state()
+        timing.mark("layout restored")
         # Last, and deferred until the window is actually on screen: a startup
         # hook that connects a real bus raises the bitrate question, and a
         # modal dialog in front of a window that has not been shown yet is a

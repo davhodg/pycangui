@@ -15,3 +15,5 @@
 ## If pycangui will not start
 
 Started from the source folder, `pycangui.cmd` and `pycangui.sh` install anything missing before they start pycangui, and a library that is still missing is reported in a window rather than as nothing happening. `python -m pycangui --selftest` imports everything a build is most likely to be missing and exits with 0 if it is all there, which is how the build checks itself.
+
+**If pycangui is slow to start**, `--timing` says where the seconds went: `pycangui.cmd --timing` (or `pycangui.sh --timing`, or `PYCANGUI_TIMING=1` to leave it on). It reports each step -- Qt, the libraries, the workspace's hooks and simulated nodes, the panes, the databases, the A2L, the plugins, the layout -- into the [Event Log](event-log.md) and into `startup-timing.txt` in [pycangui's own folder](files.md). The clock starts inside Python, so what the launcher does before that, and the interpreter's own start, are not in the total.
