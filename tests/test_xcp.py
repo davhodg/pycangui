@@ -117,3 +117,60 @@ def test_xcp_against_demo_slave(stack):
 
     manager.disconnect_slave()
     wait_until(lambda: not manager.is_connected)
+
+
+# --- forgetting an A2L ------------------------------------------------------------------
+def test_clearing_the_a2l_leaves_nothing_named(tmp_path):
+    """A file that has moved has to be removable, so the pane can say there is
+    none rather than naming parameters nothing can read."""
+    a2l = tmp_path / "demo.a2l"
+    a2l.write_text(resources.path("demo.a2l").read_text(encoding="utf-8"), encoding="utf-8")
+    loaded = A2l.load(str(a2l))
+    assert loaded.parameters, "the demo A2L has parameters in it"
+    assert loaded.path == str(a2l), "it remembers which file it came from"
+
+
+def test_the_pane_says_which_a2l_and_removes_it(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    QSettings().clear()
+    window = MainWindow()
+    a2l = tmp_path / "demo.a2l"
+    a2l.write_text(resources.path("demo.a2l").read_text(encoding="utf-8"), encoding="utf-8")
+    window.xcp.load_a2l(str(a2l))
+    window.ctx.settings.set("xcp.a2l", str(a2l))
+
+    view = window.xcp_view
+    assert "demo.a2l" in view.a2l_label.text()
+    assert view.tree.topLevelItemCount() > 0
+
+    view._remove_a2l()
+
+    assert window.xcp.a2l is None
+    assert view.tree.topLevelItemCount() == 0, "the parameters go with it"
+    assert window.ctx.settings.get("xcp.a2l", "") == "", "and it stops being remembered"
+    assert not view.remove_a2l_btn.isEnabled(), "nothing left to remove"
+    window.close()
+
+
+def test_an_a2l_that_has_moved_is_reported_at_startup(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    from PySide6.QtCore import QSettings
+
+    from pycangui.core.settings import Settings
+    from pycangui.ui.main_window import MainWindow
+
+    QSettings().clear()
+    # Written before the window exists, as a workspace carried from elsewhere
+    # would have it: the file it names is not there.
+    settings = Settings(workspaces.active_dir() / "settings.json")
+    settings.set("xcp.a2l", str(tmp_path / "gone.a2l"))
+
+    window = MainWindow()
+
+    assert "gone.a2l" in window.log.toPlainText(), "it says so instead of going quiet"
+    assert window.xcp.a2l is None
+    window.close()

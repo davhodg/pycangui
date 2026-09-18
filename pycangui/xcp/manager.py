@@ -167,6 +167,13 @@ class XcpManager(QObject):
             f"{len(self.a2l.characteristics())} characteristics"
         )
 
+    def clear_a2l(self) -> None:
+        """Forget the A2L. Polling goes with it: it is named parameters that
+        are polled, and there are none left to name."""
+        self.a2l = None
+        self._polled.clear()
+        self.a2l_loaded.emit(0)
+
     # --- read / write ------------------------------------------------------------------
     def _read_value(self, param: Parameter) -> float:
         size = DATATYPES[param.datatype][1]

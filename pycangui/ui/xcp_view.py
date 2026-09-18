@@ -5,6 +5,8 @@ measurements, and stream measurements into the Plot via the signal hub."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
@@ -113,8 +115,19 @@ class XcpView(QWidget):
             "them into the signal hub, where they can be plotted."
         )
         read_btn.clicked.connect(self._read_selected)
+        # Which A2L the names came from, and the way to be rid of it. Without
+        # this the file is remembered for ever with nothing on screen saying
+        # which one it is, and a file that has moved can only be replaced.
+        self.a2l_label = QLabel()
+        self.remove_a2l_btn = QPushButton("Remove A2L")
+        self.remove_a2l_btn.setToolTip(
+            "Forget this A2L. The parameters go with it; the connection and\n"
+            "the identifiers stay as they are."
+        )
+        self.remove_a2l_btn.clicked.connect(self._remove_a2l)
         row = QHBoxLayout()
-
+        row.addWidget(self.a2l_label)
+        row.addWidget(self.remove_a2l_btn)
         row.addStretch()
         row.addWidget(read_btn)
 
@@ -133,9 +146,11 @@ class XcpView(QWidget):
         manager.result.connect(self._append)
         manager.connected.connect(self._on_connected)
         manager.a2l_loaded.connect(lambda _n: self._populate())
+        manager.a2l_loaded.connect(lambda _n: self._show_a2l())
         manager.value.connect(self._on_value)
         if manager.a2l is not None:
             self._populate()
+        self._show_a2l()
 
     # --- connection -------------------------------------------------------------
     def _config(self) -> None:
@@ -184,6 +199,31 @@ class XcpView(QWidget):
             self.ctx.settings.set(
                 "xcp.a2l", keep_file.offer(self, self.ctx, path, workspace_files.A2L)
             )
+
+    def _show_a2l(self) -> None:
+        """Name the A2L in use, or say there is none."""
+        remembered = str(self.ctx.settings.get("xcp.a2l", "") or "")
+        loaded = self.manager.a2l is not None
+        if loaded:
+            name = Path(self.manager.a2l.path).name if self.manager.a2l.path else "an A2L"
+            self.a2l_label.setText(f"A2L: {name}")
+        elif remembered:
+            # Remembered and not loaded means it has moved or been deleted.
+            # Named here as well as in the log, because this is where somebody
+            # is when they wonder why the parameters have gone.
+            self.a2l_label.setText(f"A2L: {Path(remembered).name} (missing)")
+        else:
+            self.a2l_label.setText("No A2L loaded")
+        self.a2l_label.setToolTip(remembered)
+        self.remove_a2l_btn.setEnabled(loaded or bool(remembered))
+
+    def _remove_a2l(self) -> None:
+        """Forget the A2L, whether or not the file is still where it was."""
+        self.manager.clear_a2l()
+        self.ctx.settings.remove("xcp.a2l")
+        self._populate()
+        self._show_a2l()
+        self._append("A2L removed")
 
     # --- parameter tree --------------------------------------------------------------
     def _populate(self) -> None:

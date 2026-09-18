@@ -81,6 +81,9 @@ class A2l:
     def __init__(self) -> None:
         self.parameters: dict[str, Parameter] = {}
         self.conversions: dict[str, Conversion] = {}
+        #: Where it was read from, so the pane can say which file these names
+        #: came from. Empty for one parsed from text, as the tests do.
+        self.path = ""
 
     @classmethod
     def parse(cls, text: str) -> A2l:
@@ -100,7 +103,9 @@ class A2l:
     @classmethod
     def load(cls, path: str) -> A2l:
         with open(path, encoding="utf-8", errors="replace") as f:
-            return cls.parse(f.read())
+            a2l = cls.parse(f.read())
+        a2l.path = str(path)
+        return a2l
 
     def measurements(self) -> list[Parameter]:
         return [p for p in self.parameters.values() if p.kind == "MEASUREMENT"]

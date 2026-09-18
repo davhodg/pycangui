@@ -164,3 +164,68 @@ def test_turning_the_check_off_stops_the_asking(app, tmp_path, dbc_file, monkeyp
     assert window._load_dbc(dbc_file(OVERLAPPING), offer_relaxing=True)
     assert window.dbc.loaded
     window.close()
+
+
+# --- removing one database at a time ---------------------------------------------------
+def test_one_database_can_be_removed_without_the_others(app, tmp_path, dbc_file, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    first = dbc_file(NAMED_VALUES, "first.dbc")
+    second = dbc_file(NAMED_VALUES.replace("WithChoices", "Other"), "second.dbc")
+    for path in (first, second):
+        assert window._load_dbc(path)
+        window.ctx.settings.set("dbc.paths", [*window.ctx.settings.get("dbc.paths", []), path])
+
+    window._remove_dbc(first, first)
+
+    assert first not in window.dbc.databases
+    assert second in window.dbc.databases, "removing one must leave the rest loaded"
+    assert window.ctx.settings.get("dbc.paths") == [second], "and it stops being remembered"
+    window.close()
+
+
+def test_a_database_that_has_moved_can_be_removed(app, tmp_path, dbc_file, monkeypatch):
+    """The whole point: a file that has gone cannot be loaded, so removing it
+    must not depend on it being loaded."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    gone = str(tmp_path / "moved-away.dbc")
+    window.ctx.settings.set("dbc.paths", [gone])
+
+    window._build_dbc_menu()
+    labels = [action.text() for action in window.dbc_menu.actions()]
+    assert any("moved-away.dbc" in label for label in labels), "it is on the menu"
+
+    window._remove_dbc(gone, gone)
+    assert window.ctx.settings.get("dbc.paths") == []
+    window.close()
+
+
+def test_a_missing_database_says_where_to_remove_it(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    before = window.log.toPlainText()
+
+    assert not window._load_dbc(str(tmp_path / "not-here.dbc"))
+
+    assert window.log.toPlainText() != before, "it says so rather than failing silently"
+    window.close()
+
+
+def test_the_menu_lists_what_is_loaded_and_offers_remove_all(app, tmp_path, dbc_file, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    assert window._load_dbc(dbc_file(NAMED_VALUES))
+
+    window._build_dbc_menu()
+    actions = [a for a in window.dbc_menu.actions() if not a.isSeparator()]
+    assert len(actions) == 2, "the database, and Remove all"
+    actions[-1].trigger()
+
+    assert not window.dbc.loaded, "Remove all unloads everything"
+    assert window.ctx.settings.get("dbc.paths") == []
+    window.close()
