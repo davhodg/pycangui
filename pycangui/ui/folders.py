@@ -13,6 +13,11 @@ dialog starts where that one was; that has no effect on where a HEX file or a
 log opens. It is kept in the workspace's settings rather than globally,
 because which folder a product's files are in is a fact about that product.
 
+The chosen file *type* is remembered the same way and for the same reason. A
+dialog offering Intel HEX, S-record, raw binary and All files reopened on the
+first of those every time, however many times somebody had picked another --
+a small thing that happens on every single open.
+
 Getting back to where it started: a remembered folder that no longer exists is
 ignored and the default is used, and *Tools > Forget remembered folders* puts
 every one of them back at once. Nothing here overrides an explicit path a
@@ -43,10 +48,18 @@ PLUGIN = "plugin"  # plugin packages, installed and exported
 WORKSPACE = "workspace"  # workspace files, exported and imported
 
 PREFIX = "folders."
+#: The chosen file type is kept beside the folder and under the same
+#: prefix, so that Forget remembered folders clears both: they are two
+#: halves of "where the last one of these came from".
+TYPE_SUFFIX = ".type"
 
 
 def key(kind: str) -> str:
     return f"{PREFIX}{kind}"
+
+
+def type_key(kind: str) -> str:
+    return f"{PREFIX}{kind}{TYPE_SUFFIX}"
 
 
 def remembered(ctx: Context, kind: str) -> Path | None:
@@ -64,11 +77,24 @@ def start_in(ctx: Context, kind: str, default: Path | str) -> Path:
     return remembered(ctx, kind) or Path(default)
 
 
-def remember(ctx: Context, kind: str, chosen: str | Path) -> None:
-    """Note where a file was actually picked, once one has been."""
+def remember(ctx: Context, kind: str, chosen: str | Path, chosen_type: str = "") -> None:
+    """Note where a file was picked, and which type was picked with it."""
     folder = Path(chosen).parent
     if folder.is_dir():
         ctx.settings.set(key(kind), str(folder))
+    if chosen_type:
+        ctx.settings.set(type_key(kind), chosen_type)
+
+
+def remembered_type(ctx: Context, kind: str, offered: str) -> str:
+    """The type last chosen for this sort of file, if it is still offered.
+
+    A dialog that reopened on a type no longer in its list would show
+    nothing at all, so a remembered type that has since been renamed or
+    dropped is ignored and the dialog starts at the first entry as before.
+    """
+    stored = str(ctx.settings.get(type_key(kind), "") or "")
+    return stored if stored and stored in offered.split(";;") else ""
 
 
 def forget_all(ctx: Context) -> int:
@@ -88,12 +114,21 @@ def open_file(
     filter: str,
     default: Path | str,
 ) -> str:
-    """Ask for a file to read, starting where this sort of file was last found."""
-    path, _ = QFileDialog.getOpenFileName(
-        parent, caption, str(start_in(ctx, kind, default)), filter
+    """Ask for a file to read, as this sort of file was last asked for.
+
+    The type as well as the folder: a dialog offering HEX, S-record, raw
+    binary and All files reopened on the first of them every time, however
+    many times somebody had picked the third.
+    """
+    path, chosen_type = QFileDialog.getOpenFileName(
+        parent,
+        caption,
+        str(start_in(ctx, kind, default)),
+        filter,
+        remembered_type(ctx, kind, filter),
     )
     if path:
-        remember(ctx, kind, path)
+        remember(ctx, kind, path, chosen_type)
     return path
 
 
@@ -106,11 +141,15 @@ def save_file(
     default: Path | str,
     suggested: str = "",
 ) -> str:
-    """Ask where to write a file, starting where this sort of file last went."""
+    """Ask where to write a file, as this sort of file was last written."""
     folder = start_in(ctx, kind, default)
-    path, _ = QFileDialog.getSaveFileName(
-        parent, caption, str(folder / suggested if suggested else folder), filter
+    path, chosen_type = QFileDialog.getSaveFileName(
+        parent,
+        caption,
+        str(folder / suggested if suggested else folder),
+        filter,
+        remembered_type(ctx, kind, filter),
     )
     if path:
-        remember(ctx, kind, path)
+        remember(ctx, kind, path, chosen_type)
     return path

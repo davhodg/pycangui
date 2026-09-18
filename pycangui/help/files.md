@@ -40,17 +40,21 @@ equipment is not meant to travel inside a folder you hand to somebody else.
 
 ## Where file dialogs open
 
-A file dialog opens where you last used **that sort of file**. Open an EDS and
+A file dialog opens where you last used **that sort of file**, and on the file
+type you picked there. Open an EDS and
 the next EDS dialog starts where that one was; a firmware image, a captured log
 and a CAN database each keep their own folder, so picking one does not move the
-others. The folders live in the workspace, since which folder a product's
+others. The same goes for the type: a dialog offering Intel HEX, S-record and
+raw binary reopens on whichever you chose last, rather than on the first every
+time. The folders live in the workspace, since which folder a product's
 files are in is a fact about that product and should not follow you into the
 next one.
 
 A remembered folder that no longer exists -- a memory stick unplugged, a folder
-deleted -- is ignored, and the dialog opens at its default instead. *Tools >
-Reset > Forget remembered folders* puts every one of them back to pycangui's
-own folders at once.
+deleted -- is ignored, and the dialog opens at its default instead; so is a
+remembered type that the dialog no longer offers. *Tools >
+Reset > Forget remembered folders* puts every one of them, folders and types
+alike, back to pycangui's own at once.
 
 ## Starting again
 
