@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: MIT-0
 #
-# A starting point, copied into your workspace for you to change.  It is
+# A starting point, copied into your workspace for you to change. It is
 # yours to edit, keep private or give away: pycangui claims nothing in it
 # and asks for no credit, so what you write here needs nobody's permission.
 """A J1939 engine: claims an address, broadcasts, and answers requests.
 
 Where ``canopen_device.py`` takes a whole protocol server from
 ``node.canopen()``, this one builds its own from the ``j1939`` library --
-which is the more usual shape.  pycangui has a server to hand you for
+which is the more usual shape. pycangui has a server to hand you for
 CANopen and not for anything else, so most node files look like this: bring
 the stack you need, wire it to the channel, and get on with what your device
 does.
 
-A J1939 device cannot simply start shouting.  It claims a source address
+A J1939 device cannot simply start shouting. It claims a source address
 first and defends it, and until that succeeds nothing it sends means
 anything -- which is why ``poll`` checks before it broadcasts.
 
@@ -34,7 +34,7 @@ NAME = "J1939 engine"
 DESCRIPTION = "Claims an address, broadcasts engine and wheel speed, reports a fault."
 RATE_HZ = 10
 
-#: The address this ECU claims.  0x00 is the engine's by convention.
+#: The address this ECU claims. 0x00 is the engine's by convention.
 ADDRESS = 0x00
 
 #: Who it says it is, which is what decides who wins an address contest.
@@ -49,7 +49,7 @@ DM1 = (0xFE, 0xCA)  # active diagnostic trouble codes
 COMPONENT_ID = 65259
 COMPONENT_ID_PGN = (0xFE, 0xEB)
 
-#: Every N polls.  EEC1 is a fast message and the others are not, and a node
+#: Every N polls. EEC1 is a fast message and the others are not, and a node
 #: that sent all three at the fastest rate is one that fills somebody's trace.
 EVERY_CCVS1 = 2
 EVERY_DM1 = 10
@@ -61,7 +61,7 @@ def ecu_name():
     """Who this ECU says it is.
 
     A J1939 NAME is sixty-four bits saying what a device is and who made
-    it, and it is what decides who wins when two claim one address.  Its
+    it, and it is what decides who wins when two claim one address. Its
     own function so that the number can be checked against a decoder
     without standing the whole engine up.
     """
@@ -145,7 +145,7 @@ def _requested(node, pgn: int) -> None:
     """Answer a request for what this ECU is.
 
     Thirty-four bytes, so the library breaks it into a broadcast
-    announcement and a run of data frames.  Nothing here has to know that,
+    announcement and a run of data frames. Nothing here has to know that,
     which is the point of using a stack rather than composing frames.
     """
     if pgn == COMPONENT_ID:

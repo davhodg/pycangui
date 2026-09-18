@@ -5,7 +5,7 @@
 The two belong together: the checkbox that plots a signal lives in the signal
 list, so as separate docks Qt would happily tab them and hide the list behind
 the plot -- ticking a signal and watching the trace it draws would mean
-switching tabs.  In one pane with a splitter between them, both are always
+switching tabs. In one pane with a splitter between them, both are always
 visible, and either can be dragged shut when only the other is wanted: a full
 width plot, or a plain watch window of live values.
 """
@@ -69,12 +69,12 @@ class ScopeView(QWidget):
 
         Kept under the pane's instance name, as a trace keeps its settings, so
         a second plot keeps its own signals rather than showing the first
-        one's.  Which of them are on the right hand axis is kept beside them.
+        one's. Which of them are on the right hand axis is kept beside them.
 
         Signals are put back as they turn up rather than all at once, because
         at startup hardly any of them exist yet: a DBC signal is in the hub
         once a frame of it has been decoded, and an imported one once its file
-        is imported again.  Until then a signal stays on the saved list -- it
+        is imported again. Until then a signal stays on the saved list -- it
         is not forgotten for not having arrived yet.
         """
         self._settings = ctx.settings

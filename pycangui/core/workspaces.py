@@ -4,22 +4,22 @@
 
 A workspace is everything about *what you are working on*: the settings, the
 hooks that say what this maker's objects mean, the EDS files, and the dock
-layout.  One folder, so it can be copied, backed up or sent to someone else
-whole.  What stays outside it is everything about *this machine*: the back
+layout. One folder, so it can be copied, backed up or sent to someone else
+whole. What stays outside it is everything about *this machine*: the back
 ends that let it talk to a bus at all, and where the window sits on the
 screen.
 
 The design constraint is that somebody with one product must never have to
-know the word exists.  On first run there is a workspace called ``default``,
+know the word exists. On first run there is a workspace called ``default``,
 created silently, and pycangui behaves exactly as it did before there were
-any.  The name appears in the title bar only when it is *not* ``default``.
+any. The name appears in the title bar only when it is *not* ``default``.
 
 There is no Save, and therefore no unsaved changes: a workspace saves
-continuously, which is what ``settings.json`` has always done.  The whole
+continuously, which is what ``settings.json`` has always done. The whole
 surface is *Save as...* (fork what is on screen into a new name), *Switch
 to*, and *Manage*.
 
-One is active at a time, and that is not a simplification.  The most
+One is active at a time, and that is not a simplification. The most
 load-bearing thing a workspace holds is which channels at what bitrate, and
 the tool owns one set of adapter handles: two workspaces would either share
 those channels, in which case they are not independent, or want different
@@ -35,29 +35,29 @@ from pathlib import Path
 
 from pycangui.core import paths
 
-#: The one every installation has.  Created silently, never deleted, and never
+#: The one every installation has. Created silently, never deleted, and never
 #: named in the window title -- somebody who only ever has this one should not
 #: be able to tell that workspaces were built.
 DEFAULT = "default"
 
 #: Under the user folder: the workspaces themselves, and the note saying which
-#: of them is in use.  The pointer is the only thing here that is not inside a
+#: of them is in use. The pointer is the only thing here that is not inside a
 #: workspace, because it is the one question asked before there is one.
 ROOT = "workspaces"
 POINTER = "workspaces.json"
 
 #: What was in the user folder before workspaces existed, and what therefore
-#: moves into ``default`` the first time this runs.  Anything else -- back
+#: moves into ``default`` the first time this runs. Anything else -- back
 #: ends, a recorded log somebody left there -- belongs to the machine and is
 #: left exactly where it is.
 MIGRATED = ("settings.json", "hooks", "eds")
 
 MAX_NAME = 64
-#: A workspace name is a folder name, so it has to survive being one.  Letters,
+#: A workspace name is a folder name, so it has to survive being one. Letters,
 #: digits, space, dot, dash and underscore, starting with a letter or a digit.
 _ALLOWED = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]*$")
 #: Windows refuses these as filenames whatever the extension, and has since
-#: DOS.  A workspace called "con" would be created, apparently, and then be
+#: DOS. A workspace called "con" would be created, apparently, and then be
 #: unopenable.
 _RESERVED = frozenset(
     {"con", "prn", "aux", "nul"}
@@ -98,7 +98,7 @@ def exists(name: str) -> bool:
 
 
 def active() -> str:
-    """Which workspace is in use.  ``default`` when nothing says otherwise."""
+    """Which workspace is in use. ``default`` when nothing says otherwise."""
     _ensure()
     try:
         chosen = json.loads(_pointer().read_text(encoding="utf-8")).get("active")
@@ -136,7 +136,7 @@ def nodes_dir() -> Path:
 
 
 def custom_panes_dir() -> Path:
-    """The panes the user built.  Beside the hooks, because one of these is
+    """The panes the user built. Beside the hooks, because one of these is
     knowledge about a product in exactly the way a hook is, and the two travel
     together.
 
@@ -167,7 +167,7 @@ def _made(path: Path) -> Path:
 def clean(name: str) -> str:
     """The name as it will actually be used.
 
-    Only the space around it, which nobody typed on purpose.  Everything else
+    Only the space around it, which nobody typed on purpose. Everything else
     is left alone and refused by name below rather than quietly repaired:
     turning "CAN 1/2" into "CAN 12" would leave somebody looking for a
     workspace that is not called what they called it.
@@ -186,7 +186,7 @@ def why_not(name: str) -> str:
 
 
 def _not_a_folder_name(name: str) -> str:
-    """Why this could never be a workspace, taken or not.  "" if it could."""
+    """Why this could never be a workspace, taken or not. "" if it could."""
     if not name:
         return "A workspace needs a name."
     if len(name) > MAX_NAME:
@@ -205,7 +205,7 @@ def next_free(base: str = "workspace") -> str:
     """A name nobody has used, as close to ``base`` as it can be.
 
     Offered, never imposed: it is what a name dialog opens on, so the easy
-    answer is one that will be accepted.  A ``base`` that could never be a
+    answer is one that will be accepted. A ``base`` that could never be a
     folder name -- a downloaded file called "drive (1)", say -- is not tidied
     into something that looks like it; the suggestion falls back to plain
     "workspace" and the person can type what they meant.
@@ -230,7 +230,7 @@ def create(name: str, copy_from: str | None = None) -> Path:
     """A new workspace, optionally forked from an existing one.
 
     Save as... forks, because what somebody means by it is "keep what I have
-    and start calling it something else".  An empty new one would throw away
+    and start calling it something else". An empty new one would throw away
     the arrangement they were looking at when they asked.
     """
     if (reason := why_not(name)) != "":
@@ -251,7 +251,7 @@ def rename(old: str, new: str) -> None:
         raise ValueError(f"There is no workspace called {old}.")
     if (reason := why_not(new)) != "":
         raise ValueError(reason)
-    # Asked before the folder moves.  Afterwards the pointer names something
+    # Asked before the folder moves. Afterwards the pointer names something
     # that is no longer there, so active() has already fallen back to default
     # and the rename would quietly send somebody somewhere else.
     was_active = active() == old
@@ -281,7 +281,7 @@ def delete(name: str) -> None:
 def migrate() -> list[str]:
     """Move a pre-workspace setup into ``default``, in place.
 
-    The first thing this feature does, not the last.  Done any other way it
+    The first thing this feature does, not the last. Done any other way it
     announces itself by losing an existing user's settings, hooks and EDS
     files, which is the opposite of the intent: somebody who never asked for
     workspaces should not be able to tell that anything happened.

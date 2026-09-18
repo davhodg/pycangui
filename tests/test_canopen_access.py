@@ -4,10 +4,10 @@
 
 A node appears by itself when its heartbeat arrives, which leaves out the ones
 somebody most needs to reach: heartbeat off, held in pre-operational, sitting
-in a bootloader.  So one can be added by hand.
+in a bootloader. So one can be added by hand.
 
 CANopen has no login of its own, so logging in is entirely the maker's, written
-in ``hooks/canopen.py``.  What pycangui owns is asking, saying what came back,
+in ``hooks/canopen.py``. What pycangui owns is asking, saying what came back,
 and not letting a password go anywhere but the hook.
 """
 

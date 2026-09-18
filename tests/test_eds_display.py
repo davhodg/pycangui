@@ -4,10 +4,10 @@
 
 CiA 306 defines no key for a unit or for scaling, so a maker with that to say
 either invents a key or hides it in a comment -- and a comment survives every
-conforming reader by being ignored.  Neither reaches the object dictionary the
+conforming reader by being ignored. Neither reaches the object dictionary the
 ``canopen`` package builds.
 
-The file below uses an invented tag on purpose.  None of these fields are
+The file below uses an invented tag on purpose. None of these fields are
 CANopen, so pycangui reads none of them: what is tested is that they arrive
 intact, are shown, and survive being written back out.
 """
@@ -137,7 +137,7 @@ def test_what_the_parser_does_keep_is_read_from_the_variable(eds):
 def test_nothing_is_read_from_the_vendor_fields_by_default(app, tmp_path, monkeypatch):
     """None of those fields are CANopen: the tag, the names and the meanings
     are one maker's convention, and the next maker's SCALING could be a
-    divisor.  A wrong scaling is worse than a raw number."""
+    divisor. A wrong scaling is worse than a raw number."""
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     from pycangui.core.context import Context
     from pycangui.core.hooks import Hooks

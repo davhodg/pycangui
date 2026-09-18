@@ -3,31 +3,31 @@
 """A workspace as one file: the thing you hand to someone else.
 
 A workspace was always meant to travel -- the hooks, the EDS files, the custom
-panes and the arrangement that make sense of one product, in one folder.  But
+panes and the arrangement that make sense of one product, in one folder. But
 a folder cannot be attached to an email, zipping it by hand carries along
 whatever else has collected in it, and "unzip this into the right place" at the
 other end is an instruction people get wrong.
 
-So *Export* writes a zip and *Import* makes a new workspace from one.  A plain
+So *Export* writes a zip and *Import* makes a new workspace from one. A plain
 zip rather than a format of our own, so that somebody can open it and see what
-they are being handed before they take it.  It is read by the same rules as a
+they are being handed before they take it. It is read by the same rules as a
 plugin package, through the same code in :mod:`pycangui.core.plugin_package`:
 nothing that climbs out of its folder, nothing absurdly large, and nothing that
 is not what it says it is.
 
-What an export leaves out, and why.  Everything here describes *this machine*
+What an export leaves out, and why. Everything here describes *this machine*
 or *this person's history* rather than the product:
 
 * **``__pycache__``, ``.pyc`` and a version-control or editor folder** --
   bytecode compiled by whatever Python the sender had, and tools' own clutter.
   The same list a plugin package leaves out.
 * **Numbered ``.bak`` backups** -- ``canopen.py.bak``, ``canopen.py.bak2``:
-  what *Restore supplied files* kept of somebody's own edits.  A safety net for
+  what *Restore supplied files* kept of somebody's own edits. A safety net for
   the person who made them, not part of what someone else is being given.
 * **A plugin install left half done** -- a ``.name.installing`` folder or a
   ``.name.packing.zip``, which exist only if pycangui stopped part way.
 * **Where the file dialogs were last pointed, and the recently replayed logs**
-  -- the ``folders.*`` and ``replay.recent`` keys in ``settings.json``.  They
+  -- the ``folders.*`` and ``replay.recent`` keys in ``settings.json``. They
   are paths on this disc, and at the far end they point nowhere, or somewhere
   unrelated.
 
@@ -36,7 +36,7 @@ answer, are not in the folder to begin with: both are kept in QSettings, per
 machine, for exactly this reason.
 
 Import applies the same filter, so that a zip somebody made by hand from the
-folder arrives the way an exported one would.  And import only ever makes a
+folder arrives the way an exported one would. And import only ever makes a
 *new* workspace: taking one in over the top of an existing one would be the one
 operation here with no way back.
 """
@@ -64,21 +64,21 @@ from pycangui.core.plugin_package import (
 
 FILTER = "Workspace files (*.zip);;All files (*)"
 
-#: What makes a zip a workspace.  Every workspace has one as soon as anything
+#: What makes a zip a workspace. Every workspace has one as soon as anything
 #: has been changed in it, and an export writes an empty one for a workspace
 #: that has not, so a zip without it was made from something else.
 MARKER = "settings.json"
 
-#: Unpacked.  Far more than a workspace of hooks, EDS files and panes comes to
+#: Unpacked. Far more than a workspace of hooks, EDS files and panes comes to
 #: -- a plugin bringing data files with it is the large case -- and still a
 #: limit, so a few kilobytes of zip cannot become a full disc.
 MAX_BYTES = 256 * 1024 * 1024
-#: Files in it.  Generous for the same reason, and finite for the same reason:
+#: Files in it. Generous for the same reason, and finite for the same reason:
 #: a zip of a hundred thousand empty entries is small and fills a folder with
 #: nothing anybody wanted.
 MAX_ENTRIES = 10_000
 
-#: The settings that are paths on this machine.  ``folders.`` is the prefix
+#: The settings that are paths on this machine. ``folders.`` is the prefix
 #: :mod:`pycangui.ui.folders` keeps its remembered dialog folders under.
 _LOCAL_PREFIXES = ("folders.",)
 _LOCAL_KEYS = frozenset({"replay.recent"})
@@ -97,7 +97,7 @@ class WorkspacePackage:
     """What is in a workspace file, read without extracting any of it."""
 
     #: The name it would be made under: the file's own name, as whoever sent
-    #: it chose to call it.  Not necessarily free, or even usable -- that is
+    #: it chose to call it. Not necessarily free, or even usable -- that is
     #: asked separately, because the answer depends on what is here already.
     name: str
     #: The folder inside the zip everything lives under, or "" for one whose
@@ -132,7 +132,7 @@ def shareable_settings(data: bytes) -> bytes:
     """``settings.json`` without the keys that are paths on this machine.
 
     Returned exactly as it was when there is nothing to take out, so that an
-    export of a hand-formatted file does not come back reformatted.  One that
+    export of a hand-formatted file does not come back reformatted. One that
     will not parse is carried as it is: pycangui reads a damaged settings file
     as empty anyway, and quietly replacing it would lose what somebody might
     still recover by hand.
@@ -226,11 +226,11 @@ def _inside(member: str, root: str) -> str:
 
 
 def install(path: str | Path, name: str) -> Path:
-    """Make a new workspace called ``name`` from a workspace file.  Returns its folder.
+    """Make a new workspace called ``name`` from a workspace file. Returns its folder.
 
     Never over an existing one, whatever is asked: the name is checked here as
     well as by whoever asked for it, since a workspace of that name could have
-    appeared in between.  Unpacked into a folder of its own and then moved into
+    appeared in between. Unpacked into a folder of its own and then moved into
     place, so that a file which turns out to be broken half way through leaves
     no half-made workspace in the Switch to menu.
     """
@@ -268,7 +268,7 @@ def install(path: str | Path, name: str) -> Path:
 
 
 def _copy(source, dest: Path, budget: int, path: Path) -> int:
-    """Copy one member out, counting as it goes.  Returns the bytes written.
+    """Copy one member out, counting as it goes. Returns the bytes written.
 
     The sizes a zip declares were checked before anything was unpacked, and
     this is the other half: a member that turns out larger than it said is

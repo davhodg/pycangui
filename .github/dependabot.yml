@@ -1,10 +1,10 @@
-# Version updates.  Security updates are switched on in the repository settings
+# Version updates. Security updates are switched on in the repository settings
 # and need nothing here; this is what proposes the ordinary upgrades.
 version: 2
 updates:
-  # The actions in .github/workflows.  They move to new runtimes on GitHub's
+  # The actions in .github/workflows. They move to new runtimes on GitHub's
   # timetable rather than ours, and the Node 20 deprecation was a warning in a
-  # run log that nobody reads.  This makes the next one a pull request.
+  # run log that nobody reads. This makes the next one a pull request.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -13,7 +13,7 @@ updates:
       actions:
         patterns: ["*"]
 
-  # pyproject.toml.  Nearly every requirement is a floor (>=), which already
+  # pyproject.toml. Nearly every requirement is a floor (>=), which already
   # admits each new release, so "increase-if-necessary" leaves those alone and
   # only moves what a new release falls outside -- today, the ruff pin in the
   # dev extra, which is pinned precisely so that moving it is a decision.

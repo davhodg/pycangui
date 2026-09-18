@@ -5,12 +5,12 @@
 One object with one caller each way: a plugin calls into it to add things, and
 it calls into the parts of pycangui that already know how to hold them -- the
 pane facade for a dock, the menu bar for an entry, the toolbar for a button.
-Nothing here reimplements any of that, which is the point.  ``add_pane`` and
+Nothing here reimplements any of that, which is the point. ``add_pane`` and
 ``View > New pane`` and a workspace reopening what it was closed with are three
 callers of the same code, so they cannot drift apart.
 
 Everything added is recorded against the plugin that added it, so that
-reloading really is reloading.  Without that, a plugin edited and loaded again
+reloading really is reloading. Without that, a plugin edited and loaded again
 leaves its old pane, its old menu entries and its old buttons on screen beside
 the new ones, and the second reload leaves three.
 """
@@ -27,7 +27,7 @@ from PySide6.QtWidgets import QWidget
 from pycangui.core.plugins import API_VERSION
 from pycangui.ui.panes import PaneKind
 
-#: What a plugin may say instead of importing Qt to name a dock area.  A plugin
+#: What a plugin may say instead of importing Qt to name a dock area. A plugin
 #: should not have to know what a ``Qt.DockWidgetArea`` is in order to say
 #: "put it on the right".
 AREAS = {
@@ -39,7 +39,7 @@ AREAS = {
 
 
 class PluginApp:
-    """What ``register(app)`` is given.  One of these per plugin."""
+    """What ``register(app)`` is given. One of these per plugin."""
 
     #: So a plugin can ask rather than guess, and degrade rather than fail.
     api_version = API_VERSION
@@ -91,12 +91,12 @@ class PluginApp:
 
         Hidden because a plugin's screen is one more pane among a dozen, and
         opening every one of them on top of whatever somebody was doing is how
-        a tool becomes a wall.  It is in the View menu, which is where every
+        a tool becomes a wall. It is in the View menu, which is where every
         other pane is found.
 
         ``shutdown`` is called with the pane when it goes -- closed for good, or
-        taken away because the plugin was unloaded.  A plugin that has only put
-        things on screen needs nothing here.  One that has put a piece of
+        taken away because the plugin was unloaded. A plugin that has only put
+        things on screen needs nothing here. One that has put a piece of
         equipment into a state does: the equipment does not stop because the
         window showing it did.
         """
@@ -139,7 +139,7 @@ class PluginApp:
         The other half of ``shutdown``: a pane is not removed when the tool is
         closed, it goes with the window, so a plugin that has left equipment
         running would otherwise never hear about the one moment it most needs
-        to.  Called on the GUI thread while the buses are still open, which is
+        to. Called on the GUI thread while the buses are still open, which is
         the only time a last write can still be sent.
         """
         self.window.closing.connect(callback)
@@ -150,7 +150,7 @@ class PluginApp:
 
         Not called at load time -- a plugin's screen is one more pane among a
         dozen, and opening every one of them at start-up is how a tool becomes
-        a wall.  Called the moment a plugin is *installed*, because somebody
+        a wall. Called the moment a plugin is *installed*, because somebody
         who has just asked for it should be shown what they got rather than
         having to go and look for it in a menu.
         """
@@ -221,7 +221,7 @@ class PluginApp:
 
     # --- and taking it all back ----------------------------------------------------------------
     def remove_all(self) -> None:
-        """Undo everything this plugin added.  Called before it is loaded again."""
+        """Undo everything this plugin added. Called before it is loaded again."""
         for kind in self._kinds:
             self.panes.unregister(kind)
         self._kinds.clear()

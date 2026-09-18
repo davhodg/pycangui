@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Counters and checksums for transmitted messages.
 
-The arithmetic, away from the pane.  A wrong checksum is invisible from the
+The arithmetic, away from the pane. A wrong checksum is invisible from the
 sending end -- the frames go out and look fine -- so the only place it can be
 caught is here, which is why these are specific about values rather than
 merely about shapes.
@@ -158,7 +158,7 @@ def test_a_counter_can_start_somewhere_else_and_step_by_more_than_one():
 # --- the two together, which is where the order matters ---------------------
 def test_the_checksum_covers_the_counter_that_was_just_written():
     """The whole reason this module exists rather than two independent
-    features.  A checksum computed before the counter is stale on every
+    features. A checksum computed before the counter is stale on every
     frame, and looks perfectly healthy from the sending end."""
     counter = Counter(at=Placement(byte=0, part=tx.LOW))
     checksum = Checksum(at=Placement(byte=7), algorithm="sum8")
@@ -171,7 +171,7 @@ def test_the_checksum_covers_the_counter_that_was_just_written():
 
 
 def test_every_frame_differs_when_a_counter_is_in_use():
-    """Which is the point.  A receiver checking for a moving counter rejects
+    """Which is the point. A receiver checking for a moving counter rejects
     a stream of identical frames, and that is what the pane sent before."""
     counter = Counter(at=Placement(byte=0, part=tx.LOW))
     checksum = Checksum(at=Placement(byte=7), algorithm="crc8_j1850")
@@ -227,7 +227,7 @@ def test_a_row_can_say_what_it_is_doing():
 class FakeMessage:
     """A stand-in database message: signals at fixed byte positions.
 
-    Deliberately not cantools.  What is being tested here is the two-encode
+    Deliberately not cantools. What is being tested here is the two-encode
     dance, not the packing -- a real database is exercised in
     test_tx_counters, where the pane has one.
     """

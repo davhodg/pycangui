@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Starting and stopping simulated nodes.
 
-Deliberately small.  A node is a Python file and everything interesting
+Deliberately small. A node is a Python file and everything interesting
 about it is in there; the only questions this dialog asks are the ones the
 file cannot answer for itself -- which channel, how fast, and a second
-channel if it is a gateway.  Anything more here would be the node editor
+channel if it is a gateway. Anything more here would be the node editor
 that simulated nodes exist in order not to be.
 
 Not a dock pane: this is used for a moment at the start of a session and
@@ -42,7 +42,7 @@ WHAT_THEY_ARE = (
     "<b>nodes</b> folder -- edit one, or copy it, and it is yours."
 )
 
-#: Offered when a node wants a bus of its own.  Typing a name pycangui does
+#: Offered when a node wants a bus of its own. Typing a name pycangui does
 #: not know adds it as a virtual channel and connects it, so this is a
 #: suggestion rather than anything special.
 SUGGESTED_CHANNEL = "Simulation"

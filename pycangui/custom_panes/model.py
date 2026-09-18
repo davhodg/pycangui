@@ -3,15 +3,15 @@
 """What a custom pane is, and the file it is kept in.
 
 A custom pane is a title and a list of fields; a field is one object dictionary
-entry with a label and a way of being shown.  The seven ways are the whole
+entry with a label and a way of being shown. The seven ways are the whole
 vocabulary, and they are enough to express every configuration screen in a
 manufacturer's tool: a range-checked number, a hex code, a named choice, a
 word of flags, a field packed into some bits of a larger object, an XY map,
 and a value that is only read.
 
 Kept as indented JSON in the workspace, beside the hooks that say what the
-objects mean.  That is deliberate: a custom pane is knowledge about a product, the
-same as the hooks and the EDS, and all three should travel together.  It is
+objects mean. That is deliberate: a custom pane is knowledge about a product, the
+same as the hooks and the EDS, and all three should travel together. It is
 also why the index is written as ``"0x2001"`` rather than as 8193 -- nobody
 speaks about a CANopen object in decimal, and the file is meant to be opened
 in a text editor.
@@ -54,14 +54,14 @@ class Field:
     index: int
     sub: int = 0
     kind: str = "number"
-    #: What to call it here.  Empty means whatever the source says it is
+    #: What to call it here. Empty means whatever the source says it is
     #: called, which is usually right and occasionally unreadable.
     label: str = ""
 
     # --- meaning, where the pane knows better than the file ---------------------
     #: These sit on top of whatever the EDS and the display hook produced, for
     #: the case the hook cannot cover: one object that means something
-    #: particular *on this pane*.  Left unset, the source's answer stands.
+    #: particular *on this pane*. Left unset, the source's answer stands.
     unit: str = ""
     factor: float | None = None
     offset: float | None = None
@@ -72,7 +72,7 @@ class Field:
     choices: dict[int, str] = field(default_factory=dict)
 
     # --- flags and bits ----------------------------------------------------------
-    #: ``flags``: bit number -> what that bit means.  Only the named ones are
+    #: ``flags``: bit number -> what that bit means. Only the named ones are
     #: shown; a word with three meaningful bits should not display 32 ticks.
     bits: dict[int, str] = field(default_factory=dict)
     #: ``bits``: the least significant bit of the field, and how wide it is.
@@ -94,7 +94,7 @@ class Field:
 
     @property
     def mask(self) -> int:
-        """Which bits of the object this field occupies.  ``bits`` only."""
+        """Which bits of the object this field occupies. ``bits`` only."""
         return ((1 << self.width) - 1) << self.first if self.width else 0
 
     def extract(self, raw: int) -> int:
@@ -120,7 +120,7 @@ class CustomPane:
     title: str = ""
     description: str = ""
     fields: list[Field] = field(default_factory=list)
-    #: The node this pane opens against, where it has a usual one.  A pane is
+    #: The node this pane opens against, where it has a usual one. A pane is
     #: bound to a *source* rather than to a node -- the same pane serves a
     #: live node, a DCF and an EDS's defaults -- so this is only a default.
     node: int | None = None
@@ -247,7 +247,7 @@ def display_for(item: Field, base: Display) -> Display:
 
     The pane wins where it speaks, because it is the more specific statement:
     the hook says what an object means on this product, and the pane says what
-    it means *on this screen*, which is occasionally narrower.  Everything the
+    it means *on this screen*, which is occasionally narrower. Everything the
     pane leaves unset keeps whatever the EDS and the hook produced, so naming
     a field does not silently discard the limits the file declared.
     """
@@ -318,7 +318,7 @@ def delete(name: str) -> None:
 def problems(pane: CustomPane) -> list[str]:
     """What is wrong with this pane, said in the terms it was written in.
 
-    Reported rather than raised.  A pane with one bad field is still a pane,
+    Reported rather than raised. A pane with one bad field is still a pane,
     and refusing to open it would leave somebody with no way to see which
     field was the problem.
     """

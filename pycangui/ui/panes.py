@@ -3,22 +3,22 @@
 """Every pane in the window: what kinds there are, and how many of each.
 
 The docks used to be a fixed list built in the main window's constructor, and
-nineteen places in it named one by a string constant.  That is fine while
+nineteen places in it named one by a string constant. That is fine while
 there is exactly one of everything and impossible the moment there are two:
 a second trace with a different filter, two plots watching different signals,
 and -- the case this exists for -- two of a user's own panes side by side,
 one per node.
 
-So a pane has a *kind* and an *instance*.  The kind knows its title, where it
+So a pane has a *kind* and an *instance*. The kind knows its title, where it
 opens and how to build one; the instance is a name, which is also the dock's
 ``objectName``, which is how Qt's ``saveState``/``restoreState`` identify a
-dock.  The first instance of a kind is named after the kind, so every layout,
+dock. The first instance of a kind is named after the kind, so every layout,
 detached-pane list and settings key written before any of this existed still
-refers to exactly the pane it always did.  Later ones get a number.
+refers to exactly the pane it always did. Later ones get a number.
 
-This is deliberately a facade rather than dock plumbing.  Three callers want
+This is deliberately a facade rather than dock plumbing. Three callers want
 the same object: a plugin adding a screen, a workspace reopening the set of
-panes it was saved with, and the View menu creating one on demand.  Written
+panes it was saved with, and the View menu creating one on demand. Written
 once, they cannot drift apart.
 """
 
@@ -41,7 +41,7 @@ from pycangui.core.context import Context
 from pycangui.ui.detached import DetachedPane
 from pycangui.ui.pane_bar import PaneBar
 
-#: Events after which Qt may have put its own window flags back.  It does that
+#: Events after which Qt may have put its own window flags back. It does that
 #: whenever it moves a dock about -- at the end of a drag above all -- so
 #: "always on top" cannot be set once and forgotten.
 REAPPLY_AFTER = (
@@ -51,21 +51,21 @@ REAPPLY_AFTER = (
 )
 
 #: Qt sends these to every window of the application when a modal dialog opens
-#: and when it closes.  A pinned pane has to stand down in between: it is above
+#: and when it closes. A pinned pane has to stand down in between: it is above
 #: everything, the dialog included, and a dialog nobody can see or reach --
 #: while the window hiding it cannot be moved, because the dialog is holding
 #: the application -- is indistinguishable from a lock-up.
 BLOCKED, UNBLOCKED = QEvent.WindowBlocked, QEvent.WindowUnblocked
 
-#: Said once a session, the first time a pane is undocked.  Qt hit-tests the
+#: Said once a session, the first time a pane is undocked. Qt hit-tests the
 #: dock areas the whole time one is being dragged, so without this a pane
 #: cannot be put in front of the main window at all.
 UNDOCK_TIP = "Hold Ctrl while dragging an undocked pane to stop it docking again."
 
-#: A pane opened now is opened floating, in front of the window.  Docking
+#: A pane opened now is opened floating, in front of the window. Docking
 #: it takes the room the panes already on screen were using, and somebody
 #: asking for a second trace or a pane wants to look at it beside what is
-#: there rather than instead of it.  Dragging it in is one gesture; finding
+#: there rather than instead of it. Dragging it in is one gesture; finding
 #: where it landed and dragging it out is two.
 #: The size it opens at, unless the pane asks for more.
 NEW_PANE_SIZE = (620, 460)
@@ -89,11 +89,11 @@ class PaneKind:
     #: two traces saving their filter under the same name would be one trace
     #: shown twice.
     build: Callable[[str], QWidget]
-    #: Whether a second one means anything.  The Event Log is one log however
+    #: Whether a second one means anything. The Event Log is one log however
     #: many windows you point at it; a trace is not.
     several: bool = False
     #: Instances are named by whoever opens them rather than numbered, and so
-    #: are not offered as "another one of these".  A pane is the case: there
+    #: are not offered as "another one of these". A pane is the case: there
     #: is no such thing as CustomPane 2, there is the pane called Battery limits,
     #: and it is opened by name from its own menu.
     named: bool = False
@@ -127,7 +127,7 @@ class Panes(QObject):
         #: Pinned panes standing down while a dialog is waiting for an answer.
         self._suspended: set[str] = set()
         #: Where a detached pane came from: floating or docked, and if it was
-        #: floating, where it was.  Attach puts it back there rather than
+        #: floating, where it was. Attach puts it back there rather than
         #: dropping it into the main window, which is not where it was.
         self._came_from: dict[str, tuple[bool, object]] = {}
         self._said_undock_tip = False
@@ -135,7 +135,7 @@ class Panes(QObject):
         #: fires on a change rather than on every event Qt sends.
         self._shown: dict[str, bool] = {}
         #: What each pane was configured with, where it needed anything: which
-        #: file this one shows, which identifier that one reads.  Kept here so
+        #: file this one shows, which identifier that one reads. Kept here so
         #: that a builder can ask for it and the workspace can write it down,
         #: which is what lets a pane be more than one of a kind without the
         #: kind having to be a special sort.
@@ -144,11 +144,11 @@ class Panes(QObject):
         #: pane is reading an identifier like any other.
         self._config: dict[str, dict] = self._saved_config()
         #: What each pane was called when it was made, which is what "the
-        #: default name" means.  For most kinds that is the kind's title and a
+        #: default name" means. For most kinds that is the kind's title and a
         #: number, but a custom pane is called whatever its file says and no
         #: amount of looking at "custom:battery" will produce "Battery limits".
         self._made_as: dict[str, str] = {}
-        #: Panes part way between a dock and a window of their own.  Qt hides
+        #: Panes part way between a dock and a window of their own. Qt hides
         #: the dock before the window exists, so for a moment the pane looks
         #: put away when it is only moving -- and something listening for that
         #: would act on a state that never really happened.
@@ -193,7 +193,7 @@ class Panes(QObject):
 
         ``floating`` is what a person asking for a pane means: it opens in
         front of the window rather than taking room from the panes already
-        on screen.  The panes built at start-up and the ones restored with
+        on screen. The panes built at start-up and the ones restored with
         the workspace do not, because where those go is the saved layout's
         business and not this call's.
         """
@@ -269,11 +269,11 @@ class Panes(QObject):
         dock.raise_()
 
     def remove(self, name: str) -> None:
-        """Close a pane for good.  The first of a kind stays: it is the pane.
+        """Close a pane for good. The first of a kind stays: it is the pane.
 
         Hiding and removing are different answers to different questions, and
         the dock's own close button gives the first one -- every pane can be
-        put away and brought back from the View menu.  This is the other one,
+        put away and brought back from the View menu. This is the other one,
         which is why it is not on the title bar.
         """
         kind = self.kinds.get(self._kind_of.get(name, ""))
@@ -315,7 +315,7 @@ class Panes(QObject):
         """Put a newly opened pane in its own window, in front of the main one.
 
         Qt floats a dock wherever it happened to be docked, which for a pane
-        that was never on screen is a sliver at the edge.  So it is given a
+        that was never on screen is a sliver at the edge. So it is given a
         size and a place: down and right of the window's corner, stepping for
         each one already out, and wrapping before it walks off the screen.
         """
@@ -343,7 +343,7 @@ class Panes(QObject):
         if kind is None:
             return
         # remove() protects the first instance of a kind because that one *is*
-        # the pane.  The protection does not apply when the kind itself is
+        # the pane. The protection does not apply when the kind itself is
         # going, so the panes are pointed at a stand-in whose name no instance
         # can equal, which is what makes them ordinary removable ones.
         going = replace(kind, name=f"{kind_name} (unloading)")
@@ -357,7 +357,7 @@ class Panes(QObject):
 
     # --- what it is called ------------------------------------------------------------
     def titles(self) -> dict[str, str]:
-        """The panes somebody has renamed.  Only those: a default is not a name."""
+        """The panes somebody has renamed. Only those: a default is not a name."""
         stored = self.ctx.settings.get("panes.titles", {})
         return {str(k): str(v) for k, v in stored.items()} if isinstance(stored, dict) else {}
 
@@ -369,11 +369,11 @@ class Panes(QObject):
         return self._title(kind, name) if kind is not None else name
 
     def rename(self, name: str, title: str) -> None:
-        """Call a pane something.  An empty title puts the default back.
+        """Call a pane something. An empty title puts the default back.
 
         The *instance name* is untouched, and that is the whole reason this is
         safe: it is the dock's objectName, which is the only thing Qt's
-        restoreState uses to put a pane back where it was.  A rename that
+        restoreState uses to put a pane back where it was. A rename that
         changed it would lose the arrangement it was renaming.
         """
         dock = self.docks.get(name)
@@ -397,7 +397,7 @@ class Panes(QObject):
 
         For a pane whose title comes from its contents -- a custom pane is
         called whatever its file says -- so that editing the file does not
-        quietly undo a rename.  It still becomes the default, so clearing a
+        quietly undo a rename. It still becomes the default, so clearing a
         rename later lands on what the file says now rather than what it said
         when the pane was opened.
         """
@@ -409,7 +409,7 @@ class Panes(QObject):
 
     # --- what it was made with ------------------------------------------------------------
     def config(self, name: str) -> dict:
-        """What this pane was opened with.  Empty for one that needed nothing.
+        """What this pane was opened with. Empty for one that needed nothing.
 
         Answers before the pane exists as well as after, so that whatever is
         about to build one can ask what it is meant to be showing.
@@ -456,7 +456,7 @@ class Panes(QObject):
         # The buttons live at the top of the pane's own content rather than in
         # a title bar: giving a dock a custom title bar makes Qt float it
         # frameless, which would cost it the native frame and the move, resize
-        # and close that come with it.  Hidden while the pane is docked, since
+        # and close that come with it. Hidden while the pane is docked, since
         # none of it applies then.
         bar = PaneBar()
         bar.hide()
@@ -481,7 +481,7 @@ class Panes(QObject):
     def on_screen(self, name: str) -> bool:
         """Whether this pane is somewhere a person can actually see it.
 
-        Not simply whether its dock is visible.  A pane tabbed behind another
+        Not simply whether its dock is visible. A pane tabbed behind another
         is on screen as far as anybody is concerned -- it is one click away and
         nothing has been put away -- and a detached pane is on screen in a
         window of its own precisely while its dock is hidden.
@@ -511,7 +511,7 @@ class Panes(QObject):
         that costs it the native frame along with the move, resize and close
         that come with it.
         """
-        # Visible as well as floating.  A pane that was undocked and then
+        # Visible as well as floating. A pane that was undocked and then
         # closed is restored floating but hidden, which said this at every
         # start-up with nothing on screen to say it about.
         if floating and dock.isVisible() and not self._said_undock_tip:
@@ -543,7 +543,7 @@ class Panes(QObject):
         detached = name in self.detached
         if detached and dock.isVisible():
             # There is nothing in it -- the pane is in a window of its own --
-            # so an empty one must not be left on screen.  Qt shows a restored
+            # so an empty one must not be left on screen. Qt shows a restored
             # floating dock *after* the layout is put back, which is after the
             # pane was taken out of it, so hiding it once is not enough.
             dock.hide()
@@ -556,7 +556,7 @@ class Panes(QObject):
 
         Without this a warning can open behind a pinned window, where it
         cannot be read, and the window cannot be moved out of the way either,
-        because the dialog is holding the application.  Nothing on screen says
+        because the dialog is holding the application. Nothing on screen says
         why, which is worse than the warning going unread.
         """
         name = next(
@@ -613,7 +613,7 @@ class Panes(QObject):
         widget = dock.widget()
         if widget is None:
             return
-        # Where to put it back.  Attaching a pane that was floating should
+        # Where to put it back. Attaching a pane that was floating should
         # float it again: the main window is not where it was.
         self._came_from[name] = (dock.isFloating(), dock.geometry())
         self._moving.add(name)
@@ -638,7 +638,7 @@ class Panes(QObject):
         Hidden unless asked otherwise: closing a window means closing it,
         exactly as closing a docked pane does, and a pane that reappeared in
         the main window because you had shut it would be answering a question
-        nobody asked.  The widget goes home either way, so the View menu can
+        nobody asked. The widget goes home either way, so the View menu can
         show it again.
         """
         window = self.detached.pop(name, None)
@@ -701,7 +701,7 @@ class Panes(QObject):
 
         Kept apart from what is remembered *about* a pane below, because the
         two are written at different times: the instances while the window is
-        still being built, the rest only when somebody moves something.  One
+        still being built, the rest only when somebody moves something. One
         call doing both wrote an empty pin list over the saved one before
         anything had had the chance to read it.
         """

@@ -3,7 +3,7 @@
 """The Help menu: how to drive it, what it is, what it is licensed under.
 
 Documentation shows the manual that ships inside the package, rendered here
-rather than opened in a browser.  A Help menu that needs the internet is worth
+rather than opened in a browser. A Help menu that needs the internet is worth
 nothing on a bench or a production line, which is where it is most wanted; the
 web copy is the fallback for a build that somehow arrived without one.
 """
@@ -49,7 +49,7 @@ class LicenceFile(NamedTuple):
     generated: bool = False
 
 
-#: Shown in the Licences window, in this order.  All three are shipped beside
+#: Shown in the Licences window, in this order. All three are shipped beside
 #: the executable in a build.
 LICENCE_FILES = (
     LicenceFile("Licence", "LICENSE", "pycangui is licensed under the Apache License 2.0."),
@@ -105,7 +105,7 @@ def licence_text(entry: LicenceFile) -> str:
 def missing_licence_files(frozen: bool) -> list[str]:
     """Licence files that ought to be present but are not.
 
-    A generated file is required only of a packaged build.  A source checkout
+    A generated file is required only of a packaged build. A source checkout
     has no copy -- THIRD-PARTY-NOTICES.txt is built from the packages actually
     installed and is not committed -- which is what broke CI when this check
     was first added, because a stale copy from an earlier build was sitting in
@@ -124,7 +124,7 @@ class _ManualView(QTextBrowser):
     ``setMarkdown`` gives the document no location, so a picture arrives here
     as a bare name with nothing to be relative to -- the problem the links have,
     solved the same way: it is looked up among the files the manual ships, and
-    nowhere else.  A picture wider than the page is scaled to fit, because a
+    nowhere else. A picture wider than the page is scaled to fit, because a
     screenshot of the main window is wider than a help window.
     """
 
@@ -152,18 +152,18 @@ class ManualDialog(QDialog):
     """The shipped manual, rendered, a page at a time.
 
     Qt reads Markdown itself, so these are the same files the repository serves
-    on the web with no conversion step to go stale.  The GitHub dialect is
+    on the web with no conversion step to go stale. The GitHub dialect is
     asked for by name because the manual is full of tables, and the CommonMark
     default does not have them.
 
     The pages link to one another with ordinary relative links, which is what
-    lets them work unchanged in a browser.  Qt will not follow one by itself --
+    lets them work unchanged in a browser. Qt will not follow one by itself --
     ``setMarkdown`` gives the document no location to be relative *to* -- so a
     click arrives here as a bare filename and is looked up in the manual's own
-    list of pages.  Anything not in that list is a link out of the manual, and
+    list of pages. Anything not in that list is a link out of the manual, and
     goes to the browser.
 
-    Back and Contents are buttons as well as links at the top of each page.  A
+    Back and Contents are buttons as well as links at the top of each page. A
     page that can only be left from its first line is a page people scroll back
     up through, and the one thing worse than a document too long to navigate is
     a short one you cannot get out of.
@@ -211,7 +211,7 @@ class ManualDialog(QDialog):
         self.view.verticalScrollBar().setValue(0)  # a new page starts at its top
 
     def show_page(self, name: str, remember: bool = True) -> bool:
-        """Open one page of the manual.  False if there is no such page."""
+        """Open one page of the manual. False if there is no such page."""
         text = help_pages.page_text(name)
         if not text:
             return False
@@ -303,7 +303,7 @@ def environment_report() -> str:
 def diagnostics(window) -> str:
     """Everything needed to work out why a bus looks silent.
 
-    Written for copying into a bug report.  "Connected, frames arriving, none
+    Written for copying into a bug report. "Connected, frames arriving, none
     shown" and "connected, no frames at all" are entirely different faults and
     look identical from a description; this separates them.
     """

@@ -17,7 +17,7 @@ set PYTHON=.venv\Scripts\python.exe
 echo.
 echo === Environment ===================================================
 if not exist "%PYTHON%" (
-    echo Creating the virtual environment in .venv.  First time only, and it
+    echo Creating the virtual environment in .venv. First time only, and it
     echo downloads roughly 250 MB of packages -- Qt is most of it -- so on a
     echo slow connection this takes several minutes.
     python -m venv .venv

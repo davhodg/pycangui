@@ -27,7 +27,7 @@ class Context:
         #: The back ends are about this machine's ability to talk to a bus at
         #: all, so they are shared by every workspace rather than owned by one.
         self.backends_dir: Path = paths.backends_dir()
-        #: Which product is being worked on.  Everything below belongs to it.
+        #: Which product is being worked on. Everything below belongs to it.
         self.workspace: str = workspaces.active()
         self.workspace_dir: Path = workspaces.active_dir()
         self.hooks_dir: Path = workspaces.hooks_dir()

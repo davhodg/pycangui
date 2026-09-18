@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """One window at a time, replaced when the workspace changes.
 
-Switching workspace is a full reload.  The settings, the hooks, the EDS
+Switching workspace is a full reload. The settings, the hooks, the EDS
 bindings and the dock layout all come from the workspace and are read once,
 while the window is being built, so the honest way to open another one is to
 build another window rather than to talk the running one out of everything it
@@ -10,7 +10,7 @@ already read.
 
 A window cannot do that to itself -- it would be closing the object running
 the code -- so something outside it holds the pair: close the old one, move
-the pointer, open the next.  The order matters.  Closing first means the
+the pointer, open the next. The order matters. Closing first means the
 window writes its layout and its settings into the workspace it was actually
 in, rather than into the one being opened.
 """

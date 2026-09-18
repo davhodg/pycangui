@@ -3,7 +3,7 @@
 """Firmware download over CANopen, and the plugin API carrying a real screen.
 
 The sequence is CiA 302-3, which is the only written-down way of doing this --
-and the way most devices do not do it.  What is tested here is that the steps
+and the way most devices do not do it. What is tested here is that the steps
 are the ones the standard says, in the order it says, and that the parts which
 cannot be honest about a device refuse rather than guess.
 
@@ -120,7 +120,7 @@ def test_progress_is_reported_while_the_bytes_go():
 
 # --- what it will not do ----------------------------------------------------------------------
 def test_an_image_with_holes_in_it_is_refused():
-    """A program download is one block of bytes.  Filling the gaps would put
+    """A program download is one block of bytes. Filling the gaps would put
     invented bytes into somebody's flash."""
     image = Image([Segment(0, b"aaaa"), Segment(0x1000, b"bbbb")])
     with pytest.raises(ValueError, match="pieces"):
@@ -276,7 +276,7 @@ def window(app, bare):
 
 
 def test_it_is_supplied_rather_than_present(app, bare):
-    """Nothing pycangui ships is loaded until somebody installs it.  A screen
+    """Nothing pycangui ships is loaded until somebody installs it. A screen
     nobody asked for in every window is what installing is there to prevent."""
     assert "firmware:main" not in bare.panes.docks
     assert bare.plugins.loaded == {}

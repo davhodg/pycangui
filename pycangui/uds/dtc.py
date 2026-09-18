@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """ReadDTCInformation (0x19): which report, and what each one needs.
 
-The service is really twenty-odd services wearing one number.  A report asks
+The service is really twenty-odd services wearing one number. A report asks
 for a count or a list or one record; some take a status mask, some a DTC
 number, some a record number, some a memory selection, and a few take nothing
-at all.  Sending the wrong ones is answered with 0x13 and no explanation, so
+at all. Sending the wrong ones is answered with 0x13 and no explanation, so
 the table below is what lets the pane grey out the boxes a report has no use
 for rather than leaving you to guess.
 
@@ -30,7 +30,7 @@ MEMORY = "memory_selection"
 GROUP = "functional_group_id"
 
 #: No report takes a snapshot record number and an extended data record number
-#: at once, so the pane offers one box for both.  This says which it is filling.
+#: at once, so the pane offers one box for both. This says which it is filling.
 RECORDS = (SNAPSHOT, EXTENDED)
 
 
@@ -102,7 +102,7 @@ REPORTS: tuple[Report, ...] = (
 
 BY_SUBFUNCTION = {report.subfunction: report for report in REPORTS}
 
-#: The eight status bits of ISO 14229-1, low bit first.  Worth spelling out:
+#: The eight status bits of ISO 14229-1, low bit first. Worth spelling out:
 #: the mask is the difference between "every fault this ECU has ever seen" and
 #: "the ones that are wrong now".
 STATUS_BITS = (
@@ -116,7 +116,7 @@ STATUS_BITS = (
     "0x80 warningIndicatorRequested",
 )
 
-#: Editions udsoncan can encode to.  It matters here because the 2020 edition
+#: Editions udsoncan can encode to. It matters here because the 2020 edition
 #: withdrew the mirror memory reports, and udsoncan enforces that.
 STANDARDS = (2006, 2013, 2020)
 DEFAULT_STANDARD = 2020

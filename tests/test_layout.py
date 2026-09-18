@@ -21,7 +21,7 @@ def window(app, tmp_path, monkeypatch):
 
 
 def test_only_the_general_panes_are_open_to_start_with(app, window):
-    """Eleven panes at once is a wall.  These four apply whatever is on the
+    """Eleven panes at once is a wall. These four apply whatever is on the
     bus; the protocol ones depend on what you have plugged in, and are one
     click away in View."""
     visible = {name for name, dock in window.panes.docks.items() if dock.isVisible()}
@@ -30,7 +30,7 @@ def test_only_the_general_panes_are_open_to_start_with(app, window):
 
 def test_the_default_layout_is_the_one_drawn_in_arrange_default(app, window):
     """Trace above transmit on the left, the log beside them, the plot
-    across the bottom.  Watching the bus and talking to it are the same
+    across the bottom. Watching the bus and talking to it are the same
     job; the log is glanced at rather than worked in."""
     trace, tx, log, scope = (
         window.panes.docks[n].geometry() for n in ("trace", "tx", "log", "scope")
@@ -87,7 +87,7 @@ def test_the_log_says_where_the_hidden_panes_went(app, window):
 def test_reset_layout_gives_the_same_sizes_as_a_fresh_window(app, window):
     """The bug this exists for: Reset layout restored a saveState captured
     during construction, before the window had ever been shown, so the
-    splitter sizes in it were the ones Qt had not worked out yet.  Pressing
+    splitter sizes in it were the ones Qt had not worked out yet. Pressing
     it gave a trace filling the window and everything else a strip -- and
     the test here only checked which panes were visible, so it passed."""
 

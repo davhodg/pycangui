@@ -45,7 +45,7 @@ def test_the_extension_api_renders(tmp_path):
 def test_documented_members_are_public_ones(tmp_path):
     """Asserted on pdoc's anchors rather than on the page text: every
     public method's source is embedded in its page, so a private helper's
-    *name* appears wherever a public method calls it.  What matters is that
+    *name* appears wherever a public method calls it. What matters is that
     it gets no entry of its own."""
     render(tmp_path, "pycangui.core.hooks")
     page = (tmp_path / "pycangui/core/hooks.html").read_text(encoding="utf-8")

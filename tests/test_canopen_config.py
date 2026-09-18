@@ -49,7 +49,7 @@ def named(manager, node_id=5):
 
 def test_pdo_configs_from_the_eds(stack):
     manager, _demo, _tmp = stack
-    # Wait for the mapping to be *complete*, not merely present.  The configs
+    # Wait for the mapping to be *complete*, not merely present. The configs
     # are read over SDO one entry at a time, so a truthy list is a list that
     # may still be filling -- and asserting on it caught TPDO1 with two of its
     # three entries whenever the machine was busy enough.

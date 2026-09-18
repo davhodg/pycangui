@@ -3,13 +3,13 @@
 """The files a workspace points at, and whether they travel with it.
 
 A workspace remembers files it did not make: the CAN databases loaded into it,
-the A2L, the EDS chosen by hand for a device.  People keep those wherever they
+the A2L, the EDS chosen by hand for a device. People keep those wherever they
 keep them -- a shared drive, a project folder, a download -- and pycangui
-leaves them there.  But a path to somebody's download folder means nothing on
+leaves them there. But a path to somebody's download folder means nothing on
 the computer an exported workspace is imported on.
 
-So two things.  A file that *is* in the workspace is written relative to it,
-and so still points at the right file wherever the workspace is unpacked.  And
+So two things. A file that *is* in the workspace is written relative to it,
+and so still points at the right file wherever the workspace is unpacked. And
 a file that is not can be copied in -- asked when the file is chosen, and asked
 again on export, where it matters -- and is otherwise left exactly where it is.
 
@@ -63,9 +63,9 @@ def resolve(value: str | Path, workspace: Path) -> Path:
 
 
 def copy_in(path: str | Path, kind: str, workspace: Path) -> Path:
-    """Copy a file into the workspace's folder for its kind.  Returns the copy.
+    """Copy a file into the workspace's folder for its kind. Returns the copy.
 
-    The same file copied twice is one copy.  A different file that happens to
+    The same file copied twice is one copy. A different file that happens to
     share a name is kept beside the first rather than over it: two products'
     ``drive.eds`` are not the same file because they are called the same.
     """
@@ -134,7 +134,7 @@ def tidy(settings, workspace: Path) -> int:
     """Rewrite full paths to files inside the workspace as relative ones.
 
     Nothing is lost doing it, and a full path is exactly what breaks on the
-    next computer, so it is done without asking.  Returns how many changed.
+    next computer, so it is done without asking. Returns how many changed.
     """
     changed = 0
     for reference in references(settings):
@@ -157,7 +157,7 @@ def bring_in(settings, workspace: Path) -> tuple[list[Path], list[Path]]:
     """Copy in the files kept outside the workspace, and point the settings at the copies.
 
     Returns what was copied and what could not be, because it is not there any
-    more.  Those are left pointing where they did: a link that is broken now
+    more. Those are left pointing where they did: a link that is broken now
     may be a drive that is not mounted, and rewriting it would lose where the
     file was.
     """

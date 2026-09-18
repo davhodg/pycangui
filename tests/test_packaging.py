@@ -3,14 +3,14 @@
 """What ships, ships.
 
 A wheel carries the .py files whatever anyone does; everything else has to be
-declared, and forgetting is silent.  `pip install pycangui` shipped without
+declared, and forgetting is silent. `pip install pycangui` shipped without
 demo.eds, demo.dbc or demo.a2l for exactly that reason -- so the "Without
 hardware" walkthrough in the README could not find the files it tells you to
 open -- and nobody noticed, because the launchers install editable and read
 the source tree, and the frozen build copies those folders by hand in the
 spec.
 
-Two packaging paths means two places to forget.  These tests walk the package
+Two packaging paths means two places to forget. These tests walk the package
 looking for files that are not code and insist that both know about them, so
 the next thing put in a resources or help folder either ships or fails here.
 """

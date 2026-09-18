@@ -5,7 +5,7 @@
 It used to be one pane with a tab per id and a hand-rolled pop-out button.
 That was the right shape when a dock could only ever be one of a kind; two
 streams side by side is what people want, and tabs are precisely the thing that
-forbids it.  So the tabs are gone, and what is left has to hold: each pane
+forbids it. So the tabs are gone, and what is left has to hold: each pane
 reads its own id, remembers it, and says which one it is showing.
 """
 

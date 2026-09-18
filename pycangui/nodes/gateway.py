@@ -1,18 +1,18 @@
 # SPDX-License-Identifier: MIT-0
 #
-# A starting point, copied into your workspace for you to change.  It is
+# A starting point, copied into your workspace for you to change. It is
 # yours to edit, keep private or give away: pycangui claims nothing in it
 # and asks for no credit, so what you write here needs nobody's permission.
 """A gateway: one node standing on two channels.
 
-There is nothing new here.  A gateway is a simulated node bound to more than
+There is nothing new here. A gateway is a simulated node bound to more than
 one bus, and that is the whole of the difference -- same file, same four
-functions.  Start it with a second channel and ``node.channels`` has two
+functions. Start it with a second channel and ``node.channels`` has two
 entries; ``frame.channel`` says which one a frame came from, and
 ``node.send(..., channel=...)`` picks where it goes.
 
 What this one does is the simplest useful thing: pass frames both ways, drop
-the ones on ``BLOCKED``, and shift the ids in ``REMAP`` as they cross.  That
+the ones on ``BLOCKED``, and shift the ids in ``REMAP`` as they cross. That
 covers most of what a real gateway is asked for -- keeping two segments apart
 while letting some traffic through, or making a device answer at the id
 another expects.
@@ -27,14 +27,14 @@ from __future__ import annotations
 NAME = "Gateway"
 DESCRIPTION = "Relays frames between two channels, with an id map and a block list."
 
-#: No poll: a gateway has nothing to say on its own.  Left out entirely
+#: No poll: a gateway has nothing to say on its own. Left out entirely
 #: rather than defined and empty, so no timer is started for it.
 
-#: Ids never passed on, whichever side they arrive from.  A gateway that
+#: Ids never passed on, whichever side they arrive from. A gateway that
 #: forwards everything is a piece of wire.
 BLOCKED: set[int] = set()
 
-#: Ids that change as they cross, ``{arriving: leaving}``.  Applied in the
+#: Ids that change as they cross, ``{arriving: leaving}``. Applied in the
 #: direction it is written, and in reverse coming back, so a conversation
 #: still works both ways.
 REMAP: dict[int, int] = {}

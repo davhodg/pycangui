@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""CANopen protocol layer (built on the `canopen` package).  Types that user
+"""CANopen protocol layer (built on the `canopen` package). Types that user
 hooks see live here so they are importable from user code."""
 
 from __future__ import annotations
@@ -50,8 +50,8 @@ def eds_identity(path: Path) -> tuple[int | None, int | None, int | None]:
 
 
 #: The keys the ``canopen`` package reads out of an object section and keeps
-#: on the parsed variable.  Everything else in the section is discarded, and
-#: :func:`eds_extras` is what picks it up.  Lower case because an EDS is an
+#: on the parsed variable. Everything else in the section is discarded, and
+#: :func:`eds_extras` is what picks it up. Lower case because an EDS is an
 #: INI file and configparser folds keys.
 PARSED_KEYS = frozenset(
     {
@@ -84,20 +84,20 @@ def eds_extras(path: Path | str) -> dict[tuple[int, int], dict[str, str]]:
     part is not a key the parser failed to recognise -- it is a *comment*.
     CiA 306 defines no key for a unit or for scaling, so a vendor with that to
     say has two choices: invent a key, or hide it in a comment where no
-    conforming reader will trip over it.  The second is commoner than the
+    conforming reader will trip over it. The second is commoner than the
     first, and configparser discards those lines before it looks at anything.
 
-    Both are collected.  An ordinary ``Key=value`` the ``canopen`` package
+    Both are collected. An ordinary ``Key=value`` the ``canopen`` package
     does not read, and a comment of the form::
 
         ;VENDORTAG FIELD_NAME=value
 
-    which becomes the key ``"VENDORTAG FIELD_NAME"``.  The tag is kept because
+    which becomes the key ``"VENDORTAG FIELD_NAME"``. The tag is kept because
     it is part of what distinguishes one vendor's convention from another, and
     because pycangui is not the thing that should be deciding what any of it
     means -- ``hooks/canopen.py::object_display`` is.
 
-    Keys keep the case the file wrote them in.  Keyed by (index, subindex),
+    Keys keep the case the file wrote them in. Keyed by (index, subindex),
     and an object with no sub-index is sub 0.
     """
     try:

@@ -4,7 +4,7 @@
 
 A template that sends people to a menu entry which has since been renamed
 costs a round of questions on every report, and nothing about the template
-would ever say so.  So the links it quotes are read back from the real thing.
+would ever say so. So the links it quotes are read back from the real thing.
 """
 
 from pathlib import Path

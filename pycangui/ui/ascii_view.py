@@ -5,19 +5,19 @@
 Some devices use a CAN id as a console: ASCII in the data bytes of an ordinary
 frame, a few characters at a time, printf fashion.
 
-No protocol says which identifier that happens on.  CANopen comes closest --
+No protocol says which identifier that happens on. CANopen comes closest --
 it has objects for a console, and they are PDO mappable -- but an object is
 not an identifier, and nothing standard settles which one a device ends up
-printing on.  Devices that are not CANopen at all do the same thing on an
+printing on. Devices that are not CANopen at all do the same thing on an
 identifier of their own choosing.
 
-Which is why the identifier here is yours to give.  One pane reads one id.
+Which is why the identifier here is yours to give. One pane reads one id.
 
 It used to be one pane with a tab per id and a button to pop a tab out into a
 window of its own -- the right shape when a dock could only ever be one of a
-kind, and the wrong one now.  Two streams side by side is the arrangement
+kind, and the wrong one now. Two streams side by side is the arrangement
 people want, and tabs are precisely the thing that forbids it; the pop-out was
-a second implementation of what every pane now gets for nothing.  Drop one of
+a second implementation of what every pane now gets for nothing. Drop one of
 these onto another and Qt tabs them, so the old arrangement is still there --
 as a choice rather than as the only option.
 """
@@ -44,7 +44,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 
-#: How many lines a stream keeps.  A device printing steadily will run to
+#: How many lines a stream keeps. A device printing steadily will run to
 #: megabytes over an afternoon, and none of it is worth the memory.
 MAX_LINES = 5000
 
@@ -65,12 +65,12 @@ def decode(data: bytes, skip: int = 0) -> str:
 
     NUL bytes are dropped: a frame is a fixed length and the tail of it is
     padding far more often than it is data, so keeping them would put a run of
-    holes at the end of every eight characters.  Carriage return goes too, so
+    holes at the end of every eight characters. Carriage return goes too, so
     that a device ending its lines with CRLF does not come out double spaced.
     Newline and tab are kept, because they are the layout the device intended.
 
     Everything else that is not printable becomes a dot rather than
-    disappearing.  A stream of dots is how you find out that the id is wrong,
+    disappearing. A stream of dots is how you find out that the id is wrong,
     or that the first byte is a length and `skip` should be 1.
     """
     text = []
@@ -95,7 +95,7 @@ class Stream:
 
     @property
     def chosen(self) -> bool:
-        """Whether an id has been given.  A pane opens without one."""
+        """Whether an id has been given. A pane opens without one."""
         return self.can_id > 0
 
     @property
@@ -130,7 +130,7 @@ class Stream:
 class AsciiView(QWidget):
     """One identifier, read as text."""
 
-    #: The id, the name or the skip changed.  The window writes it down and
+    #: The id, the name or the skip changed. The window writes it down and
     #: renames the pane; this widget knows about neither.
     changed = Signal(object)
 

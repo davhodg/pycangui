@@ -3,7 +3,7 @@
 """CANopen settings: what is set once, rather than done.
 
 The CANopen pane is for doing things to nodes -- NMT, SYNC, reading and
-writing -- and every setting put beside those made them harder to find.  So
+writing -- and every setting put beside those made them harder to find. So
 what is set once and left alone lives on a dialog of its own, in two halves:
 what applies to every node, and what applies to one.
 
@@ -354,7 +354,7 @@ class CanopenSettingsDialog(QDialog):
         self.accept()
 
     def settings(self) -> CanopenSettings:
-        """What was chosen.  Whatever a row leaves as it was is no override."""
+        """What was chosen. Whatever a row leaves as it was is no override."""
         rows, _problems = self._rows()
         return CanopenSettings(
             timeout_ms=self.timeout.value(),

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""UDS client side.  Requests run on a worker thread (they block on the ECU's
+"""UDS client side. Requests run on a worker thread (they block on the ECU's
 reply); every outcome comes back as a ``result`` signal with a readable line
 for the pane, so the pane never touches udsoncan directly."""
 
@@ -88,7 +88,7 @@ FILE_MODES = {
 FILE_MODES_SENDING = (1, 3, 6)
 FILE_MODES_RECEIVING = (4, 5)
 
-#: RoutineControl identifiers that go with a memory download.  Erase is the
+#: RoutineControl identifiers that go with a memory download. Erase is the
 #: one ISO 14229-1 names (Annex F); what to run afterwards to have the ECU
 #: check what it was given is manufacturer specific, and 0x0202 is only the
 #: number the HIS/AUTOSAR flash bootloaders settled on.
@@ -373,7 +373,7 @@ class UdsManager(QObject):
                 return fn(client)
             except NotImplementedError as exc:
                 # udsoncan refuses the mirror memory reports unless the client
-                # is told to encode to an older edition.  Its own message says
+                # is told to encode to an older edition. Its own message says
                 # so, and is better than anything invented here.
                 return f"{name}: {exc}"
 
@@ -383,7 +383,7 @@ class UdsManager(QObject):
         """One report, said in whatever terms it answered in.
 
         The reports do not share a shape: some come back with a count, some
-        with a list, some with a record and nothing else.  Printing only the
+        with a list, some with a record and nothing else. Printing only the
         fields that are actually set is what keeps a count from being reported
         as "0 DTCs".
         """
@@ -452,7 +452,7 @@ class UdsManager(QObject):
         """ControlDTCSetting (0x85): whether the ECU may record new DTCs.
 
         Turned off while working on a vehicle, so that pulling a connector
-        does not leave a fault behind.  The ECU turns it back on by itself when
+        does not leave a fault behind. The ECU turns it back on by itself when
         the session ends, which is a thing worth remembering when it looks as
         though the setting did not take.
         """
@@ -515,7 +515,7 @@ class UdsManager(QObject):
             return
         self._busy = True
         self._cancel.clear()
-        # Tester present is stopped rather than left ticking.  The worker runs
+        # Tester present is stopped rather than left ticking. The worker runs
         # one job at a time, so every tick raised during a long transfer would
         # queue behind it and then arrive in a burst once it finished; the
         # transfer is itself enough to keep the session alive.
@@ -552,7 +552,7 @@ class UdsManager(QObject):
         """Bits needed to write this number, never fewer than eight.
 
         udsoncan works this out from the bit length, which makes it zero for
-        the number zero -- and then refuses the zero it just produced.  An
+        the number zero -- and then refuses the zero it just produced. An
         image that starts at address 0 is an ordinary thing for a bootloader
         to be given, so the floor is put in here.
         """
@@ -561,7 +561,7 @@ class UdsManager(QObject):
     def _memory(self, address: int, size: int, width: int | None) -> MemoryLocation:
         """Where to write, and how wide to say it.
 
-        `width` is in bits, or None for the narrowest that fits.  Some
+        `width` is in bits, or None for the narrowest that fits. Some
         bootloaders insist on a fixed width whatever the numbers are, and
         answer anything else with NRC 0x13.
         """
@@ -577,7 +577,7 @@ class UdsManager(QObject):
         """How many data bytes fit in one TransferData.
 
         maxNumberOfBlockLength counts the whole request message, so the
-        service id and the block sequence counter come out of it first.  Those
+        service id and the block sequence counter come out of it first. Those
         two bytes are the usual reason a download runs perfectly until the ECU
         answers 0x31 to the last block.
         """
@@ -588,7 +588,7 @@ class UdsManager(QObject):
     def _send_blocks(
         self, c: Client, data: bytes, size: int, label: str, done: int, total: int
     ) -> int:
-        """TransferData until the bytes run out.  Returns the new running total."""
+        """TransferData until the bytes run out. Returns the new running total."""
         sequence = 1  # ISO 14229: the first block is 1, and 0xFF is followed by 0
         for start in range(0, len(data), size):
             if self._cancel.is_set():
@@ -624,7 +624,7 @@ class UdsManager(QObject):
         """RoutineControl start 0xFF00 over one segment's addresses.
 
         Flash has to be erased before it can be written, and ISO 14229-1 names
-        this routine for the purpose.  What goes in the option record is not
+        this routine for the purpose. What goes in the option record is not
         standardised; an address and length in the usual format is what most
         bootloaders expect, and hooks/uds.py::erase_options is where to change
         it for one that does not.
@@ -668,7 +668,7 @@ class UdsManager(QObject):
     ) -> None:
         """Send a firmware image to the ECU: 0x34, 0x36 per block, then 0x37.
 
-        One RequestDownload per segment.  A file with gaps in it has them for a
+        One RequestDownload per segment. A file with gaps in it has them for a
         reason, and filling them would write bytes the file never contained
         over whatever the ECU had at those addresses.
 
@@ -742,7 +742,7 @@ class UdsManager(QObject):
     ) -> None:
         """RequestFileTransfer (0x38): the ECU's own filesystem, addressed by name.
 
-        No memory address anywhere.  The path on the ECU says what is being
+        No memory address anywhere. The path on the ECU says what is being
         written or read, so a raw binary needs nothing else to place it.
         """
         name = FILE_MODES.get(mode, str(mode)).capitalize()

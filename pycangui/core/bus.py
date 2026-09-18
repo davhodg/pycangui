@@ -4,12 +4,12 @@
 
 Design notes (Python / Qt idioms used here):
 
-* python-can's ``Notifier`` owns the receive thread.  It fans every frame out
+* python-can's ``Notifier`` owns the receive thread. It fans every frame out
   to a list of *listeners*; the trace collector is one, and protocol stacks
   (canopen's ``Network``) add their own, so there is exactly one reader per bus.
-* Qt widgets may only be touched from the main thread.  The collector only
+* Qt widgets may only be touched from the main thread. The collector only
   appends to a list under a lock; a ``QTimer`` on the main thread drains it
-  every 20 ms and emits one batched signal.  Thousands of frames/s become
+  every 20 ms and emits one batched signal. Thousands of frames/s become
   ~50 GUI updates/s.
 * ``dataclass(slots=True)`` makes a cheap record type -- the Python
   equivalent of a plain C struct.
@@ -33,9 +33,9 @@ def frame_bits(dlc: int, extended: bool, fd: bool) -> int:
     """Roughly how many bits a frame occupies on the wire.
 
     Classic CAN: 47 bits of overhead for an 11-bit id, 67 for a 29-bit one,
-    plus the data.  Bit stuffing adds up to a fifth more on unlucky payloads,
+    plus the data. Bit stuffing adds up to a fifth more on unlucky payloads,
     so a nominal 20% is included -- bus load is an indication, not a
-    measurement, and the exact figure depends on the data itself.  CAN FD with
+    measurement, and the exact figure depends on the data itself. CAN FD with
     bit rate switching sends its data faster than its header, which this does
     not model, so FD loads read high.
     """
@@ -56,7 +56,7 @@ class Frame:
     data: bytes
     kind: str = ""  # protocol label, filled in by the trace view (hook frame_kind)
     #: An error frame rather than traffic: the controller reporting a
-    #: fault on the wire.  Its id carries error flags, not an identifier.
+    #: fault on the wire. Its id carries error flags, not an identifier.
     error: bool = False
     group: str = "Other"  # filter group, from the CAN id (see core.classify)
 
@@ -111,13 +111,13 @@ class _Collector(can.Listener):
 
 
 class BusManager(QObject):
-    """Owns the python-can bus and its Notifier.  Lives in the GUI thread.
+    """Owns the python-can bus and its Notifier. Lives in the GUI thread.
 
     Signals:
-        connected(str):   emitted after a successful connect, with a description
-        disconnected():   emitted just before the bus goes away
-        frames(list):     batches of Frame objects (rx and tx)
-        error(str):       human readable error text
+        connected(str): emitted after a successful connect, with a description
+        disconnected(): emitted just before the bus goes away
+        frames(list): batches of Frame objects (rx and tx)
+        error(str): human readable error text
     """
 
     connected = Signal(str)
@@ -129,7 +129,7 @@ class BusManager(QObject):
 
     DRAIN_PERIOD_MS = 20
     LOAD_PERIOD_MS = 500
-    #: How long a newly connected bus may stay silent before saying so.  A
+    #: How long a newly connected bus may stay silent before saying so. A
     #: wrong bitrate connects perfectly happily and then hears nothing, which
     #: is indistinguishable from a quiet bus unless somebody mentions it.
     QUIET_WARNING_S = 5.0
@@ -142,7 +142,7 @@ class BusManager(QObject):
         self.notifier: can.Notifier | None = None
         #: Shown in the trace's Ch column; distinguishes one adapter from another.
         self.channel_name = channel_name
-        #: python-can interface name while connected, "" otherwise.  Replay asks
+        #: python-can interface name while connected, "" otherwise. Replay asks
         #: for it: putting frames onto "virtual" is harmless, onto anything else
         #: it is real traffic on a real bus.
         self.interface = ""
@@ -161,7 +161,7 @@ class BusManager(QObject):
         self._state = ""
         #: How the controller is doing: one of the states in core.bus_health.
         self.health = bus_health.DOWN
-        #: The last state socketcan's error frames announced.  They are sent
+        #: The last state socketcan's error frames announced. They are sent
         #: when it changes, not while it lasts, so it is kept between them.
         self._frame_health: str | None = None
         #: What connect_bus was given, so recover() can open the same bus again.
@@ -198,7 +198,7 @@ class BusManager(QObject):
 
         ``extra`` is the rest of the configuration the adapter reported when
         it was detected -- an IXXAT's ``unique_hardware_id``, a Vector's
-        ``serial``.  Without it a channel number is ambiguous as soon as two
+        ``serial``. Without it a channel number is ambiguous as soon as two
         of the same adapter are plugged in, since each numbers its own
         channels from zero.
         """
@@ -214,7 +214,7 @@ class BusManager(QObject):
         }
         if interface != "virtual":
             kwargs["bitrate"] = bitrate
-            # Only what the backend declares.  Handing fd=True to one that does
+            # Only what the backend declares. Handing fd=True to one that does
             # not take it is swallowed by its **kwargs, and the channel opens
             # as classic CAN while everything on screen says FD.
             if fd:
@@ -328,7 +328,7 @@ class BusManager(QObject):
         """Start a cyclic transmission; hardware-timed where the adapter supports it.
 
         Returns the task (``task.modify_data(msg)`` / ``task.stop()``), or None
-        if not connected.  All tasks are stopped automatically on disconnect.
+        if not connected. All tasks are stopped automatically on disconnect.
         """
         if self.bus is None:
             self.error.emit("Not connected")
@@ -382,7 +382,7 @@ class BusManager(QObject):
     def _report_health(self) -> None:
         """Say when the controller goes error passive or bus off, and back.
 
-        This is the difference between a quiet bus and a broken one.  An
+        This is the difference between a quiet bus and a broken one. An
         adapter that has gone bus off -- the wrong bitrate, a shorted line, no
         termination -- stays connected and simply hears nothing, which is
         exactly what an idle bus looks like from the outside.
@@ -414,7 +414,7 @@ class BusManager(QObject):
             self.note.emit(f"{name}: no longer {was}, {now}")
 
     def recover(self) -> bool:
-        """Restart a controller that has gone bus off.  Returns whether it was.
+        """Restart a controller that has gone bus off. Returns whether it was.
 
         The adapter's own reset where python-can has one (PCAN, Vector, NI);
         the kernel's restart on socketcan, which needs the right to configure
@@ -476,7 +476,7 @@ class BusManager(QObject):
         """Say when error frames start and stop, not that each one happened.
 
         The frames themselves go to the trace like any others, under their own
-        filter group, because that is where you look at frames.  The log gets
+        filter group, because that is where you look at frames. The log gets
         the condition: a bus in trouble produces thousands a second, and a
         line each would bury everything else in it.
         """
@@ -504,7 +504,7 @@ class BusManager(QObject):
 
         A virtual channel has no bitrate, no wiring and no termination, so
         offering those as the likely causes -- which is the right answer for
-        an adapter -- is worse than saying nothing.  It carries only what
+        an adapter -- is worse than saying nothing. It carries only what
         pycangui itself puts on it.
         """
         seconds = f"{self.QUIET_WARNING_S:.0f} s"

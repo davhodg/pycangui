@@ -4,7 +4,7 @@
 
 A second list is a real thing to want: the background traffic a rig needs left
 running, and a scratch list to try something in, without the two being the same
-list.  Two things have to hold for that to be safe rather than clever -- Stop
+list. Two things have to hold for that to be safe rather than clever -- Stop
 all cyclic still means all of them, and a list nobody can see is not quietly
 putting frames on the bus.
 """

@@ -3,7 +3,7 @@
 """A second Y axis, on the right of the plot, for signals with a scale of their own.
 
 A speed in thousands and a temperature in tens share one axis badly: the
-temperature is a flat line along the bottom.  The plot draws those against a
+temperature is a flat line along the bottom. The plot draws those against a
 second view box on the right, the list has a second checkbox that chooses
 them, and each Signals and Plot pane remembers the choice between runs.
 """
@@ -179,7 +179,7 @@ def test_fit_scales_each_axis_to_its_own_signals(app, plot):
 
 
 def test_fit_finds_a_file_that_is_only_on_the_right_axis(app, plot):
-    """The plot's own fit knows only the curves in its own view box.  With
+    """The plot's own fit knows only the curves in its own view box. With
     the one signal on the right, that is nothing, and the file would stay
     wherever the live trace had left the axis."""
     view, hub, _clock = plot

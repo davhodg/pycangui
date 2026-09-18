@@ -9,28 +9,28 @@ tool is capable of, which has to be clicked through and cannot be switched off.
 It is not a question about anything in particular, which is why it is the one
 dialog here with no "do not ask again" on it: a notice dismissed for good on
 the first afternoon is never seen again on that login -- not months later, and
-not by anyone else sharing the account, as a bench computer often is.  (Another
+not by anyone else sharing the account, as a bench computer often is. (Another
 login has settings of its own, so it sees the notice regardless.)  It is also
 where the slow half of starting up hides -- the libraries load behind it, so
 the notice costs no time at all.
 
 **Once a session, per thing.**  Three things pycangui does can disturb
 equipment that is not its own: joining a live bus, transmitting onto one, and
-replaying a log onto one.  Each asks before the first time, and then stays out
+replaying a log onto one. Each asks before the first time, and then stays out
 of the way -- a dialog on every send would be worse than useless, because it
 would be dismissed unread.
 
-The unit of "once" is the *key*, which spells out what was agreed to.  Keying
+The unit of "once" is the *key*, which spells out what was agreed to. Keying
 the connect question on the bitrate rather than on the channel is deliberate:
 saying yes to 500 kbit/s is not saying yes to 125 kbit/s on the same bus, and
 the wrong bitrate is exactly the mistake the question is there to catch.
 
 Both offer to be remembered, and what "remembered" means is the interesting
-part.  An answer is kept **against the person who gave it, on the machine they
-gave it on**, in ``QSettings`` -- never in the workspace.  A workspace is a
+part. An answer is kept **against the person who gave it, on the machine they
+gave it on**, in ``QSettings`` -- never in the workspace. A workspace is a
 folder made to be copied, backed up and handed to someone else, and an agreement
 that travelled inside one would mean somebody else's window, on somebody else's
-bench, quietly not asking.  The user name is stored alongside and checked, so
+bench, quietly not asking. The user name is stored alongside and checked, so
 that a settings store which does somehow arrive on another machine, or under
 another account, asks that person for themselves.
 """
@@ -43,7 +43,7 @@ from collections.abc import Callable
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication, QCheckBox, QMessageBox, QWidget
 
-#: Kept outside every workspace, deliberately.  See the module docstring.
+#: Kept outside every workspace, deliberately. See the module docstring.
 AGREED_SETTING = "confirmations/agreed"
 USER_SETTING = "confirmations/user"
 
@@ -57,7 +57,7 @@ REMEMBER_TIP = (
 
 NOTICE_TITLE = "Before you start"
 #: Says what the tool can do and what to do about that, and promises nothing
-#: about what it will not do.  A promise in a safety notice is one a fault can
+#: about what it will not do. A promise in a safety notice is one a fault can
 #: break, and the person who read it has stopped checking for themselves -- so
 #: the questions pycangui asks are described as what they are, a reminder.
 NOTICE = (
@@ -91,7 +91,7 @@ class Remembered:
     A thin wrapper over ``QSettings`` rather than a store of our own, because
     ``QSettings`` is already per user by construction -- the registry under
     HKEY_CURRENT_USER on Windows, the account's own config directory
-    elsewhere -- which is most of what is wanted here.  The user name is
+    elsewhere -- which is most of what is wanted here. The user name is
     written alongside and checked on the way out, so that the one case
     ``QSettings`` does not cover, a store copied somewhere else, is covered
     too: it asks that person for themselves rather than assuming the answer
@@ -115,7 +115,7 @@ class Remembered:
         self._settings.setValue(AGREED_SETTING, sorted(self.keys() | {key}))
 
     def clear(self) -> int:
-        """Forget everything, so every question comes back.  Returns how many."""
+        """Forget everything, so every question comes back. Returns how many."""
         how_many = len(self.keys())
         for name in (AGREED_SETTING, USER_SETTING):
             self._settings.remove(name)
@@ -125,23 +125,23 @@ class Remembered:
 def accept_notice(
     parent: QWidget | None = None, while_shown: Callable[[], None] | None = None
 ) -> bool:
-    """Show the start-up notice.  False means the user chose not to go on.
+    """Show the start-up notice. False means the user chose not to go on.
 
     Shown before the window is built rather than over the top of it, so that
     nothing -- not a startup hook, not a workspace reopening its channels --
     can have touched a bus before it has been read.
 
     **Every time, with no way to switch it off**, which is the one place in
-    pycangui where a dialog is not offered a tick box.  The per-action
+    pycangui where a dialog is not offered a tick box. The per-action
     questions are answered once because they are about a thing you are doing
-    on purpose; this is not a question at all.  A notice dismissed for good on
+    on purpose; this is not a question at all. A notice dismissed for good on
     the first afternoon is never seen again on that login, including by anyone
     sharing the account, and it costs one keypress a session.
 
     ``while_shown`` is called once the notice is on screen and before the
-    answer is waited for.  That is where the slow half of starting up goes: a
+    answer is waited for. That is where the slow half of starting up goes: a
     second of libraries loads behind a dialog somebody is reading, instead of
-    a second of nothing before one appears.  The safety notice pays for itself
+    a second of nothing before one appears. The safety notice pays for itself
     twice.
     """
     box = QMessageBox(
@@ -157,7 +157,7 @@ def accept_notice(
     box.setDefaultButton(QMessageBox.Ok)
     if while_shown is not None:
         # Painted first, then the slow work: the point is that something is on
-        # screen while it happens.  Done here rather than on a timer inside
+        # screen while it happens. Done here rather than on a timer inside
         # exec() so that it has demonstrably run by the time anybody answers.
         box.show()
         QApplication.processEvents()
@@ -189,10 +189,10 @@ class Confirmations:
         pressing return without reading carefully.
 
         The tick box is offered only where there is somewhere to keep the
-        answer.  Offering it and then forgetting at the end of the session
+        answer. Offering it and then forgetting at the end of the session
         would be a promise the dialog could not keep.
 
-        The question is the dialog's text, not only its title.  macOS does not
+        The question is the dialog's text, not only its title. macOS does not
         show a message box's title at all, so a question kept there would leave
         Yes and Cancel under an explanation of something nobody had asked.
         """
@@ -220,7 +220,7 @@ class Confirmations:
         self._agreed.add(key)
 
     def forget(self, key: str | None = None) -> None:
-        """Ask again this session.  What was remembered for good is untouched."""
+        """Ask again this session. What was remembered for good is untouched."""
         if key is None:
             self._agreed.clear()
         else:

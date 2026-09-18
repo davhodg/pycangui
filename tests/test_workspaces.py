@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """One workspace per product, and one called default nobody has to meet.
 
-The load-bearing test here is the migration.  Somebody who never asked for
+The load-bearing test here is the migration. Somebody who never asked for
 workspaces, and who will never open the menu, must not be able to tell that
 this was built: their settings, their hooks and their EDS files become the
-``default`` workspace in place, and everything carries on.  Done any other way
+``default`` workspace in place, and everything carries on. Done any other way
 the feature announces itself by losing an existing setup.
 """
 
@@ -230,7 +230,7 @@ def test_two_workspaces_do_not_share_settings_or_hooks(home):
 
 
 def test_the_layout_lives_in_the_workspace_folder(home):
-    """So that a workspace is one thing that can be copied or sent on.  In
+    """So that a workspace is one thing that can be copied or sent on. In
     QSettings it would be the one part of it that could not travel."""
     ctx = Context(log=print)
     ctx.layout.set("window", b"\x01\x02\x03")
@@ -262,7 +262,7 @@ def test_the_user_folder_itself_is_still_the_user_folder(home):
 
 # --- and the window that opens on it -----------------------------------------------------------
 def test_an_existing_arrangement_survives_the_upgrade(app, home):
-    """The dock layout used to live in QSettings.  Somebody who had arranged
+    """The dock layout used to live in QSettings. Somebody who had arranged
     their panes should find them arranged, not reset."""
     from pycangui.ui.main_window import MainWindow
 

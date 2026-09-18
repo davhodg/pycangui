@@ -5,22 +5,22 @@
 A message that carries a rolling counter and a checksum over its own bytes is
 completely ordinary -- most safety-relevant messages have both -- and a tool
 that sends the same eight bytes for ever cannot talk to any receiver that
-checks either one.  Every frame is rejected, and the reason is invisible from
+checks either one. Every frame is rejected, and the reason is invisible from
 the sending end.
 
 This module is the arithmetic, with no Qt in it: where the fields sit, what
-goes in them, and in what order.  The transmit pane owns the timer and the
+goes in them, and in what order. The transmit pane owns the timer and the
 dialog; the awkward parts are all here, where they can be tested.
 
 **Order is not optional.** The counter is written first and the checksum is
-computed afterwards, over bytes that already include it.  A checksum computed
+computed afterwards, over bytes that already include it. A checksum computed
 first is stale on every frame -- and that is a bug which looks like a working
 feature from the sending end, right up until somebody reads the receiving end.
 
-Positions are byte- and nibble-addressed rather than arbitrary bit ranges.  A
+Positions are byte- and nibble-addressed rather than arbitrary bit ranges. A
 four-bit counter sharing a byte is at least as common as a whole one, so
 nibbles have to be expressible; arbitrary bit ranges would also need a bit
-numbering convention, and CAN has two of those that disagree.  Byte and nibble
+numbering convention, and CAN has two of those that disagree. Byte and nibble
 dodge the argument and cover what people actually build.
 """
 
@@ -37,7 +37,7 @@ BIG, LITTLE = "big", "little"
 
 
 class FieldError(ValueError):
-    """A counter or checksum that cannot be applied.  The message says why."""
+    """A counter or checksum that cannot be applied. The message says why."""
 
 
 @dataclass(frozen=True)
@@ -155,7 +155,7 @@ def _crc16_ccitt(data: bytes) -> int:
     return _crc(data, poly=0x1021, init=0xFFFF, xorout=0x0000, width=16)
 
 
-#: Name -> (function, how many bytes it produces).  The name is what is saved
+#: Name -> (function, how many bytes it produces). The name is what is saved
 #: in settings.json, so these strings are a format and do not change lightly.
 ALGORITHMS: dict[str, tuple[Callable[[bytes], int], int]] = {
     "xor": (_xor, 1),
@@ -184,7 +184,7 @@ class Counter:
 
     Either at a byte or nibble position, or -- where the message comes from a
     database -- in a named signal, and then the database decides where the
-    bits go.  Exactly one of the two, because a field cannot be in two places.
+    bits go. Exactly one of the two, because a field cannot be in two places.
     """
 
     at: Placement | None = None
@@ -192,7 +192,7 @@ class Counter:
     signal: str = ""
     start: int = 0
     step: int = 1
-    #: Wrap at this many counts.  Zero means "whatever the field holds", which
+    #: Wrap at this many counts. Zero means "whatever the field holds", which
     #: is what almost everybody wants and saves saying 16 for a nibble.
     wrap: int = 0
 
@@ -203,9 +203,9 @@ class Counter:
     def modulus(self, bits: int | None = None) -> int:
         """What the count wraps at.
 
-        The configured wrap wins.  Failing that a placement knows its own
+        The configured wrap wins. Failing that a placement knows its own
         size; a signal does not, so its width comes from the database and
-        arrives here as ``bits``.  With neither, a byte is the assumption
+        arrives here as ``bits``. With neither, a byte is the assumption
         least likely to surprise.
         """
         if self.wrap > 0:
@@ -227,7 +227,7 @@ class Checksum:
     #: The database signal to put it in, instead of ``at``.
     signal: str = ""
     algorithm: str = "xor"
-    #: Which bytes to compute over, inclusive.  ``None`` for both means the
+    #: Which bytes to compute over, inclusive. ``None`` for both means the
     #: default for the kind of field this is -- see ``over``.
     first: int | None = None
     last: int | None = None
@@ -251,7 +251,7 @@ class Checksum:
         * At a **position**, that means leaving its bytes out -- hashing a
           field about to be overwritten never matches at the other end.
         * In a **signal**, its bits may share a byte with something else, so
-          leaving whole bytes out would drop real data.  Instead the whole
+          leaving whole bytes out would drop real data. Instead the whole
           frame is hashed with the signal set to zero, which the caller
           arranges; see ``apply_signals``.
         """
@@ -292,7 +292,7 @@ def conflict(counter: Counter | None, checksum: Checksum | None) -> str | None:
     destroyed, on every frame, and nothing at the sending end looks wrong.
     Invisible from here and obvious at the other end, so it is refused.
 
-    Only what the configuration itself can answer is answered.  A counter in
+    Only what the configuration itself can answer is answered. A counter in
     a named signal against a checksum at a byte position may overlap too,
     but where a signal's bits land is the database's answer, not one this
     module holds.
@@ -333,7 +333,7 @@ def apply(
     maker's own arithmetic -- and is used in place of the named algorithm
     while still being written where the configuration says.
 
-    The counter goes in first.  See the module docstring: a checksum computed
+    The counter goes in first. See the module docstring: a checksum computed
     before the counter is stale on every frame.
     """
     if (clash := conflict(counter, checksum)) is not None:
@@ -365,12 +365,12 @@ def apply_signals(
 
     ``encode`` turns a dictionary of signal values into the payload -- the
     database's job, and the reason this path is *simpler* than the positional
-    one rather than harder.  Where the bits of a signal live, whether they
+    one rather than harder. Where the bits of a signal live, whether they
     straddle a byte, and which of the two bit-numbering conventions the file
     uses are all questions the database has already answered.
 
     The checksum is computed over the frame encoded with its **own signal set
-    to zero**, and the frame is then encoded again with the real value.  Two
+    to zero**, and the frame is then encoded again with the real value. Two
     encodes rather than patching bytes: a signal is not necessarily
     byte-aligned, so there is no byte to patch, and zeroing is the convention
     a database-described checksum is defined by in any case.

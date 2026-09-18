@@ -2,15 +2,15 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Opening a measurement file and putting its signals on the plot.
 
-The awkward part is not the reading, it is the *choosing*.  A real export
+The awkward part is not the reading, it is the *choosing*. A real export
 holds thousands of channels -- the one this was written against has 1,344
 with anything in them -- and a tool that pushed all of them into the signals
 list would produce a list nobody could find anything in, having spent a
-minute doing it.  So the file is described first, from its header, and
+minute doing it. So the file is described first, from its header, and
 nothing is read until somebody has said what they want.
 
 Imported signals sit under the file's name as their group, beside the live
-ones rather than instead of them, and *Forget* takes them away again.  A
+ones rather than instead of them, and *Forget* takes them away again. A
 signals list that only ever grows is one people stop opening.
 """
 
@@ -45,7 +45,7 @@ MANY = 200
 
 INSTALL_TITLE = "Reading measurement files"
 NOT_FROZEN = (
-    "{why}\n\nInstall it now?  It is downloaded from PyPI into this "
+    "{why}\n\nInstall it now? It is downloaded from PyPI into this "
     "installation of pycangui, and only this one."
 )
 #: The installed build ships asammdf, so reaching this means the installation

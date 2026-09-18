@@ -3,12 +3,12 @@
 """Send python-can's own log messages to the Event Log.
 
 The backends say a great deal through the standard :mod:`logging` module and
-nothing through their return values.  The IXXAT backend, for one, reports every
+nothing through their return values. The IXXAT backend, for one, reports every
 bus error that way -- ``log.warning("CAN error: ...")`` -- so a wrong bitrate,
 which produces a steady stream of error frames and no traffic at all, looked
 from inside pycangui exactly like a bus with nothing on it.
 
-Warnings and errors go to the Event Log by default.  Info is where the useful
+Warnings and errors go to the Event Log by default. Info is where the useful
 detail lives when something is actually wrong (which channels a backend
 opened, filters being applied), so Tools > Verbose CAN logging turns it on
 rather than making it the default and burying the log in noise.
@@ -21,7 +21,7 @@ from collections.abc import Callable
 
 from pycangui.core.events import ERROR, INFORMATION, WARNING
 
-#: The loggers worth relaying.  python-can names its loggers "can.<backend>",
+#: The loggers worth relaying. python-can names its loggers "can.<backend>",
 #: so this covers every backend including ones installed later.
 LOGGERS = ("can", "canopen", "j1939", "udsoncan", "isotp")
 
@@ -57,9 +57,9 @@ class _Bridge(logging.Handler):
             )
         except RuntimeError:
             # The Event Log's C++ side has gone: the window is being torn down
-            # and a library is still talking.  python-can's Bus.__del__ says
+            # and a library is still talking. python-can's Bus.__del__ says
             # "was not properly shut down" from the garbage collector, which
-            # runs at moments nobody chose, this one included.  There is
+            # runs at moments nobody chose, this one included. There is
             # nowhere left to put the message, and a logging handler that
             # raises turns a tidy shutdown into a traceback.
             pass

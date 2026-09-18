@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Asking GitHub whether there is a newer release.
 
-This runs only when the user picks Help > Check for updates.  pycangui makes
+This runs only when the user picks Help > Check for updates. pycangui makes
 no network connection of its own accord, and this one sends nothing about the
 machine it is on: it is an ordinary unauthenticated GET of a public API URL,
 and nothing is downloaded or installed -- a newer version just offers to open
@@ -50,7 +50,7 @@ class Release:
 
 
 def latest_release(timeout: float = TIMEOUT_S) -> tuple[Release | None, str]:
-    """Return (release, problem).  Exactly one of the two is meaningful.
+    """Return (release, problem). Exactly one of the two is meaningful.
 
     Every failure is reported as text rather than raised: not being able to
     reach GitHub is an ordinary thing to happen, not an error in pycangui.

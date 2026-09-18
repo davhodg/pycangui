@@ -17,12 +17,12 @@ images, one per processor.
 
 **Most devices do not do it this way.**  Firmware download over CANopen is
 very often a maker's own sequence of writes to objects of their own choosing,
-and no amount of standards reading will produce it.  That is exactly why this
+and no amount of standards reading will produce it. That is exactly why this
 is a plugin: installing it puts a copy in the workspace, so edit ``steps`` in
-that copy to be what the device actually wants.  Nothing else has to change,
+that copy to be what the device actually wants. Nothing else has to change,
 and the pane, the progress and the reporting go on working.
 
-Nothing here touches Qt or the bus directly.  It is handed something that can
+Nothing here touches Qt or the bus directly. It is handed something that can
 read and write objects, which is what makes it testable without either.
 """
 
@@ -31,7 +31,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
-#: CiA 302-3.  One sub-index per program, counted from 1.
+#: CiA 302-3. One sub-index per program, counted from 1.
 PROGRAM_DATA = 0x1F50
 PROGRAM_CONTROL = 0x1F51
 PROGRAM_IDENTIFICATION = 0x1F56
@@ -44,7 +44,7 @@ SOFTWARE_VERSION = 0x100A
 STOP, START, RESET, CLEAR = 0, 1, 2, 3
 CONTROL_NAMES = {STOP: "stop", START: "start", RESET: "reset", CLEAR: "clear"}
 
-#: Written in blocks so that there is something to report between them.  The
+#: Written in blocks so that there is something to report between them. The
 #: figure is a compromise: small enough that a slow bus still moves the bar,
 #: large enough that the reporting is not most of the work.
 BLOCK = 1024
@@ -105,7 +105,7 @@ def enter_bootloader(device: Device, program: int) -> None:
     """Stop the application, which is what puts a CiA 302-3 device in its loader.
 
     While it is stopped the device answers very little, and slowly: timeouts
-    from here on are the expected thing rather than a fault.  A device with a
+    from here on are the expected thing rather than a fault. A device with a
     way of its own -- a write to a maker's object, then a reset -- goes here.
     """
     device.write(PROGRAM_CONTROL, program, STOP)
@@ -134,7 +134,7 @@ def software_version(device: Device) -> str:
 def identification(device: Device, program: int) -> str:
     """What the device says it is running, where it says anything.
 
-    Reported rather than checked.  What a maker puts in here is a checksum
+    Reported rather than checked. What a maker puts in here is a checksum
     computed their way, and comparing it against one worked out from the file
     would be inventing agreement that was never established.
     """
@@ -158,7 +158,7 @@ def image_bytes(image) -> bytes:
     """The contiguous run to write, or a reason it cannot be written.
 
     A CiA 302-3 download is one domain: it is the bytes, not the addresses, so
-    a file with holes in it has no honest single answer.  Filling the gaps
+    a file with holes in it has no honest single answer. Filling the gaps
     would put invented bytes into somebody's flash, so this refuses instead.
     """
     if not image.segments:

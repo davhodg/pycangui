@@ -3,9 +3,9 @@
 """One offscreen QApplication for the whole test session, and a drain between
 tests.
 
-The drain matters more than it looks.  Managers, buses and demo devices are
+The drain matters more than it looks. Managers, buses and demo devices are
 created per test and talk to each other through Qt signals, some of them
-emitted from worker threads and so *queued*.  If a queued signal is still in
+emitted from worker threads and so *queued*. If a queued signal is still in
 the event queue when the test ends and its target is garbage collected, Qt
 delivers it to a dead C++ object and the interpreter dies with a segmentation
 fault (an access violation on Windows) somewhere in a later test -- which is
@@ -56,8 +56,8 @@ def _no_unanswered_dialogs(monkeypatch):
 
     Offscreen or not, ``exec`` runs its own event loop and waits, so a test
     that reaches an unexpected dialog does not fail -- it hangs, which is the
-    worst thing in a suite to work out.  This turns that into an ordinary
-    failure naming the dialog.  A test that means to answer one patches
+    worst thing in a suite to work out. This turns that into an ordinary
+    failure naming the dialog. A test that means to answer one patches
     ``exec`` itself, and its patch replaces this one.
     """
 
@@ -82,7 +82,7 @@ def real_dialogs(monkeypatch):
 
 
 #: Background threads a test started, kept weakly so registering one here
-#: never keeps it alive.  See ``_drain_qt_events`` for what is done with them.
+#: never keeps it alive. See ``_drain_qt_events`` for what is done with them.
 _THREADS: weakref.WeakSet = weakref.WeakSet()
 
 
@@ -124,10 +124,10 @@ def _drain_qt_events(monkeypatch):
     for cls in (Player, Worker, can.Notifier):
         _watch(cls, monkeypatch)
     yield
-    # Nothing a test started may outlive it.  A QThread still running when Qt
+    # Nothing a test started may outlive it. A QThread still running when Qt
     # destroys its C++ side aborts the process -- Worker.submit says the same
     # thing from the other end -- and a replay player or a python-can Notifier
-    # left running sends frames into the next test's bus.  Stopping them here
+    # left running sends frames into the next test's bus. Stopping them here
     # rather than leaving it to each test means a test that forgets is slow,
     # not a crash in whatever ran afterwards; that is how a replay player
     # outliving its test killed a CI worker in test_export and test_right_axis.
@@ -147,12 +147,12 @@ def _drain_qt_events(monkeypatch):
     if instance is not None:
         for _ in range(3):
             instance.processEvents()
-    # Everything, not only the young generations.  Collecting generations 0
+    # Everything, not only the young generations. Collecting generations 0
     # and 1 is much cheaper -- a full collect walks the session's QApplication
     # and every imported module, and cost 78s against 48s for the suite -- but
     # it leaves anything that survived two collections mid-test to Python's
     # own sweep, at an arbitrary later moment rather than here, where the
-    # queue has just been drained and no background thread is running.  Qt
+    # queue has just been drained and no background thread is running. Qt
     # objects freed at that arbitrary moment are what CI kept dying on.
     gc.collect()
     if instance is not None:
@@ -186,7 +186,7 @@ class _OneChannel:
     """A Channels stand-in wrapping the single bus a test already has.
 
     A node stands on a pycangui channel, and these tests have a BusManager
-    rather than a Channels.  This is the adapter between the two, and it
+    rather than a Channels. This is the adapter between the two, and it
     refuses to invent a second one: a test asking for a channel it did not
     set up has a bug in it.
     """
@@ -206,7 +206,7 @@ class _Demo:
     """The running demo, reachable by protocol.
 
     ``demo["canopen_device"].state.device`` is the CANopen server, and the
-    others keep their own state the same way.  A test that wants to reach
+    others keep their own state the same way. A test that wants to reach
     inside the device -- to check a value landed in the object dictionary,
     say -- goes through the node that owns it, which is also how a node file
     would.

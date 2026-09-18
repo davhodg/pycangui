@@ -5,21 +5,21 @@
 Three problems, all of which made connecting to real hardware guesswork:
 
 * **What do I type?**  A channel is "can0" on socketcan, "PCAN_USBBUS1" on a
-  PEAK, and plain "0" on an IXXAT.  Most backends can enumerate what is
+  PEAK, and plain "0" on an IXXAT. Most backends can enumerate what is
   actually attached, so ask them rather than expecting the user to know.
 
 * **Which one of them?**  Channel numbers are per adapter, so two IXXAT
   dongles both report channels 0 and 1, and only ``unique_hardware_id`` tells
-  them apart.  Vector uses a serial number, neoVI likewise.  A channel on its
+  them apart. Vector uses a serial number, neoVI likewise. A channel on its
   own therefore cannot identify a device, and whichever the driver happened to
-  pick would be the one you got.  So the whole configuration a backend reports
+  pick would be the one you got. So the whole configuration a backend reports
   is carried through to ``can.Bus``, which is what python-can intends -- its
   detected configurations are documented as being passed back verbatim.
 
 * **What type is it?**  ``can.Bus`` hands the channel straight to the backend,
   and the backends disagree: IXXAT and Kvaser declare ``channel: int``,
-  socketcan and PCAN declare ``str``.  A "0" typed into a text box is a
-  string, and an IXXAT given a string does not open.  The type is read from
+  socketcan and PCAN declare ``str``. A "0" typed into a text box is a
+  string, and an IXXAT given a string does not open. The type is read from
   the backend's own signature, so a new or changed backend needs no edit here;
   the small table below is only for backends that cannot be imported at all on
   this platform, such as a Windows-only vendor driver seen from Linux.
@@ -37,13 +37,13 @@ import can.interfaces
 DETECT_TIMEOUT_S = 5.0
 
 #: Backends that declare ``channel: int``, as a fallback for when the backend
-#: cannot be imported and so cannot be asked.  Reading the signature is the
+#: cannot be imported and so cannot be asked. Reading the signature is the
 #: primary route and keeps working as python-can changes; this is only reached
 #: when the module will not load at all -- a Windows-only vendor driver on
 #: Linux, say -- which is also a case where connecting could not work anyway.
 INT_CHANNEL_BACKENDS = frozenset({"cantact", "ixxat", "kvaser"})
 
-#: Channels worth offering when an interface cannot enumerate its own.  Not
+#: Channels worth offering when an interface cannot enumerate its own. Not
 #: a claim that these exist -- they are the conventional names, so that the
 #: box is something to choose from rather than something to guess at.
 SUGGESTIONS = {
@@ -59,12 +59,12 @@ SUGGESTIONS = {
     "udp_multicast": ("225.0.0.1",),
 }
 
-#: The channel the demo device runs on.  Selecting it is what starts the
+#: The channel the demo device runs on. Selecting it is what starts the
 #: device: a channel that says what is on it beats a separate switch
 #: somewhere else that you have to know about.
 DEMO_CHANNEL = "vcan0"
 
-#: The virtual channels, and what each one carries.  A fixed set rather than
+#: The virtual channels, and what each one carries. A fixed set rather than
 #: whatever the backend reports: python-can's virtual bus lists the channels
 #: in use plus one random unused name, which is a different name every time,
 #: is never the one the demo runs on, and means nothing to anybody.
@@ -75,17 +75,17 @@ VIRTUAL_CHANNELS = (
 )
 
 #: Backends that are a serial port underneath, so the ports themselves are
-#: the useful suggestion.  pyserial is a declared dependency (python-can does
+#: the useful suggestion. pyserial is a declared dependency (python-can does
 #: not require it, but the slcan and serial backends do not work without it).
 SERIAL_BACKENDS = frozenset({"slcan", "serial", "robotell", "seeedstudio", "usb2can"})
 
-#: Keys that say *which device*, rather than which channel on it.  Used only
+#: Keys that say *which device*, rather than which channel on it. Used only
 #: to build a readable label; every reported key is passed to the backend
-#: whether it is listed here or not.  hw_type and the various index fields
+#: whether it is listed here or not. hw_type and the various index fields
 #: are deliberately absent: "55" identifies nothing to a human.
 IDENTITY_KEYS = ("unique_hardware_id", "serial", "device", "vid", "pid")
 
-#: Longest value worth putting in a label.  Backends report objects as well
+#: Longest value worth putting in a label. Backends report objects as well
 #: as numbers -- Vector hands back its entire channel configuration, whose
 #: repr runs to a dozen lines -- and a label is for recognising a device,
 #: not for describing it exhaustively.
@@ -96,7 +96,7 @@ MAX_LABEL_VALUE = 40
 class Channel:
     """One channel an interface reports as being present."""
 
-    #: Everything the backend reported, minus "interface".  Passed to can.Bus
+    #: Everything the backend reported, minus "interface". Passed to can.Bus
     #: as keyword arguments, so a second dongle is addressed unambiguously.
     config: dict = field(default_factory=dict)
     label: str = ""
@@ -137,7 +137,7 @@ def channel_annotation(interface: str) -> str:
 
 #: Backends that take ``fd`` or ``data_bitrate`` but cannot be imported on
 #: the machine doing the asking -- no vendor driver here, so no signature to
-#: read.  Same reason as INT_CHANNEL_BACKENDS above: a Linux build must not
+#: read. Same reason as INT_CHANNEL_BACKENDS above: a Linux build must not
 #: decide that a Windows-only adapter has no FD support.
 FD_BACKENDS = frozenset({"ixxat", "vector", "socketcan", "nixnet", "udp_multicast"})
 DATA_BITRATE_BACKENDS = frozenset({"ixxat", "vector"})
@@ -156,9 +156,9 @@ def bus_parameters(interface: str) -> frozenset[str]:
 def takes_fd(interface: str) -> bool:
     """Whether python-can can put this backend into FD mode from a keyword.
 
-    Several cannot.  pcan, kvaser and slcan take no ``fd`` at all: FD is
+    Several cannot. pcan, kvaser and slcan take no ``fd`` at all: FD is
     expressed to them as a ``can.BitTimingFd``, which needs the controller's
-    clock frequency and so cannot be guessed from a bitrate.  Passing fd=True
+    clock frequency and so cannot be guessed from a bitrate. Passing fd=True
     to one of those is swallowed by its **kwargs and the channel opens as
     classic CAN, which is worth saying out loud rather than discovering from
     the traffic.
@@ -172,7 +172,7 @@ def takes_fd(interface: str) -> bool:
 def takes_data_bitrate(interface: str) -> bool:
     """Whether the data phase rate can be set from here.
 
-    Only ixxat and vector.  socketcan takes fd=True but its data rate comes
+    Only ixxat and vector. socketcan takes fd=True but its data rate comes
     from ``ip link`` rather than from python-can.
     """
     parameters = bus_parameters(interface)
@@ -224,7 +224,7 @@ def coerce_channel(interface: str, channel: object) -> object:
 
     Only ever converts digits to an int, and only when the backend says it
     takes one: an interface that wants "can0" keeps its string, and a name
-    that is not a number is never mangled into one.  A channel that came from
+    that is not a number is never mangled into one. A channel that came from
     detection is already the right type and passes through untouched.
     """
     if not isinstance(channel, str):
@@ -241,10 +241,10 @@ def coerce_channel(interface: str, channel: object) -> object:
 def readable(value) -> str:
     """A short piece of text for a reported value, or "" if it has none.
 
-    A backend may report an object rather than a number.  Vector reports the
+    A backend may report an object rather than a number. Vector reports the
     whole VectorChannelConfig, and printing it gives a dozen lines of ctypes
     enums -- but it carries a name, "VN1610 Channel 1", which is exactly the
-    part worth showing.  So: scalars if they are short, otherwise a name if
+    part worth showing. So: scalars if they are short, otherwise a name if
     there is one, otherwise nothing.
     """
     if isinstance(value, (str, int, float, bool)):
@@ -262,7 +262,7 @@ def summarise(config: dict) -> str:
     Not everything the backend said: a serial number and a product name
     identify a device, while channel_index=0 and supports_fd=True describe one
     without distinguishing it, and the configuration object behind them is a
-    paragraph.  The full configuration still goes to can.Bus -- this is only
+    paragraph. The full configuration still goes to can.Bus -- this is only
     what to call it.
     """
     parts = []
@@ -289,7 +289,7 @@ def detect_channels(interface: str, timeout: float = DETECT_TIMEOUT_S) -> list[C
     """The channels this interface reports, best effort.
 
     Enumerating adapters is not joining a bus: nothing is transmitted and no
-    bitrate is applied.  Backends that cannot enumerate return nothing rather
+    bitrate is applied. Backends that cannot enumerate return nothing rather
     than failing, and so does this.
     """
     try:
@@ -326,7 +326,7 @@ def channel_suggestions(interface: str) -> list[Channel]:
         names = tuple(serial_ports()) or names
     # The backend's own default is the most likely right answer where we have
     # no opinion -- PCAN says PCAN_USBBUS1 in its own signature, and that will
-    # not drift.  Where there are curated names it goes after them: vcan0 is
+    # not drift. Where there are curated names it goes after them: vcan0 is
     # what the demo device and the default settings use, so for the virtual
     # bus it beats the backend's "channel-0".
     if (declared := channel_default(interface)) and declared not in names:

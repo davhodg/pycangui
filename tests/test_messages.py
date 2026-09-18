@@ -3,7 +3,7 @@
 """Message boxes that say their headline inside the box.
 
 macOS shows no title on a message box, so a question kept only there is a
-question nobody on a Mac is asked.  The first macOS run found exactly that.
+question nobody on a Mac is asked. The first macOS run found exactly that.
 """
 
 import re

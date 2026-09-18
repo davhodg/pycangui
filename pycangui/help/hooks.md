@@ -69,9 +69,9 @@ be called is reported before anything has happened:
 ```
 hooks/uds.py: security_key is not being used, because this version of
 pycangui changed it -- it does not take ctx.
-    yours:    security_key(level, seed)
+    yours: security_key(level, seed)
     pycangui: security_key(level, seed, *, ctx)
-    The built-in default is running instead.  See Hooks in the manual (Help > Documentation).
+    The built-in default is running instead. See Hooks in the manual (Help > Documentation).
 ```
 
 That is deliberately a line in the log at startup rather than a traceback

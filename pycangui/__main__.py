@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QApplication
 
 from pycangui import APP_NAME
 
-#: Imported by ``--selftest``.  These are the modules a packaged build is most
+#: Imported by ``--selftest``. These are the modules a packaged build is most
 #: likely to be missing, because they are loaded by name at run time and so no
 #: static analysis can see them.
 SELFTEST_MODULES = (
@@ -30,7 +30,7 @@ SELFTEST_MODULES = (
 
 
 def selftest() -> int:
-    """Import everything a build could plausibly be missing.  Exit code only:
+    """Import everything a build could plausibly be missing. Exit code only:
     a windowed build has nowhere to print to."""
     failures = []
     for name in SELFTEST_MODULES:
@@ -39,7 +39,7 @@ def selftest() -> int:
         except Exception as exc:
             failures.append(f"{name}: {exc}")
     # Adapter backends: ask whether the module is *present*, rather than
-    # importing it.  Importing pulls in vendor libraries that are legitimately
+    # importing it. Importing pulls in vendor libraries that are legitimately
     # absent on a machine without that adapter, and several backends have
     # optional pip extras of their own; neither says anything about the bundle.
     try:
@@ -56,7 +56,7 @@ def selftest() -> int:
         failures.append(f"can.interfaces: {exc}")
 
     # asammdf is optional for a pip installation and bundled in a frozen one,
-    # so its absence is a failure only here.  A build that lost it would turn
+    # so its absence is a failure only here. A build that lost it would turn
     # File > Import signals into a dialog saying the library cannot be
     # installed in this build -- true, and no use to anybody.
     if getattr(sys, "frozen", False):
@@ -79,7 +79,7 @@ def selftest() -> int:
     except Exception as exc:
         failures.append(f"pycangui.help: {exc}")
 
-    # Help > Licences reads these at run time from beside the executable.  A
+    # Help > Licences reads these at run time from beside the executable. A
     # build that ships them where _find cannot see them would show three empty
     # tabs, and no import check would notice.
     try:
@@ -98,7 +98,7 @@ def selftest() -> int:
     return 0
 
 
-#: Who Windows thinks the windows belong to.  Without one, a pycangui started
+#: Who Windows thinks the windows belong to. Without one, a pycangui started
 #: from source is grouped under pythonw.exe and the taskbar shows Python's
 #: icon whatever the window says -- the window icon only reaches the title bar.
 APP_USER_MODEL_ID = "davhodg.pycangui"
@@ -108,7 +108,7 @@ def set_icon(app) -> None:
     """The application icon, before any window exists.
 
     Set on the application rather than on the main window so that the notice
-    shown during start-up carries it too.  The .ico rather than the PNG:
+    shown during start-up carries it too. The .ico rather than the PNG:
     it holds each size drawn for that size, and Qt picks the nearest one.
     """
     from PySide6.QtGui import QIcon
@@ -144,10 +144,10 @@ def main() -> int:
 
         A second and a half of libraries -- Qt's plotting, python-can, canopen
         -- with nothing on screen while it happens is how a tool comes to feel
-        heavy.  Behind a dialog somebody is reading, it is free.
+        heavy. Behind a dialog somebody is reading, it is free.
 
         Imported here rather than at the top of the file for a second reason
-        as well: a library which is not installed becomes a dialog.  Started
+        as well: a library which is not installed becomes a dialog. Started
         from pycangui.cmd there is no console -- it runs pythonw -- so an
         ImportError on the way up is a window that never appears and not one
         word about why.

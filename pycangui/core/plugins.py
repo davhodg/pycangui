@@ -3,26 +3,26 @@
 """User code that adds screens, not just answers.
 
 A hook answers a question pycangui already knows to ask -- which EDS, what to
-call this node -- from a fixed list of them.  A plugin is the other half: code
+call this node -- from a fixed list of them. A plugin is the other half: code
 that adds something that was not there, a pane of its own with its own buttons
 doing something pycangui has never heard of.
 
-The contract is deliberately small.  A plugin is a folder with a ``plugin.py``
+The contract is deliberately small. A plugin is a folder with a ``plugin.py``
 in it that declares a name and a ``register(app)`` function, and everything it
-can do it does through the ``app`` it is handed.  That object is the whole API,
+can do it does through the ``app`` it is handed. That object is the whole API,
 which means the API is one thing to document, one thing to keep stable, and one
 thing to widen when a plugin needs something it has not got.
 
 **Nothing is a plugin until it is installed.**  The ones pycangui ships with
 are a catalogue rather than a load path: they sit in the package until somebody
 asks for one, at which point a copy goes into the workspace and is loaded from
-there like any other.  Anything else would put a screen nobody asked for into
+there like any other. Anything else would put a screen nobody asked for into
 every window -- and would leave the shipped ones as the one sort of plugin you
 could not edit, because editing them would mean editing the installation.
 
 An installed plugin can also be switched off without being thrown away.
 Inactive means *not loaded at all*: no pane, no menu entries, no toolbar
-buttons, and none of its code running.  That is the useful sense of off -- one
+buttons, and none of its code running. That is the useful sense of off -- one
 that leaves the window exactly as it would be if the plugin were not there,
 while keeping whatever you had edited into it.
 
@@ -35,7 +35,7 @@ at all.
 
 **Reload means reload.**  Everything a plugin adds is recorded against it, so
 loading it again removes the pane, the menu entries and the buttons the last
-version put there instead of leaving a second copy beside them.  Editing a
+version put there instead of leaving a second copy beside them. Editing a
 plugin and pressing reload is how one gets written; "please restart" is how one
 does not.
 """
@@ -52,19 +52,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-#: What ``app`` offers.  A plugin declares the version it was written against
+#: What ``app`` offers. A plugin declares the version it was written against
 #: and is refused if it is newer than this -- a plugin from the future asking
 #: for methods that do not exist yet fails in the middle of doing something,
 #: which is a worse way to find out.
 API_VERSION = 1
 
-#: The file inside a plugin folder.  A folder rather than a single file so that
-#: a plugin can bring its own modules, icons and data with it.  A single file
+#: The file inside a plugin folder. A folder rather than a single file so that
+#: a plugin can bring its own modules, icons and data with it. A single file
 #: is what it is *distributed* as -- see ``plugin_package`` -- which is a
 #: different question from what it is while it is installed.
 ENTRY = "plugin.py"
 
-#: What a plugin says about itself when it says nothing.  A version matters
+#: What a plugin says about itself when it says nothing. A version matters
 #: most for the ones that travel: the copy in your workspace is yours, and the
 #: only way to know which of ours it started life as is for it to say.
 NO_VERSION = "0"
@@ -193,7 +193,7 @@ class Loaded:
     version: str = NO_VERSION
     error: str = ""
     app: Any = None
-    #: Installed but switched off.  Listed, so that a plugin somebody turned
+    #: Installed but switched off. Listed, so that a plugin somebody turned
     #: off six months ago is findable rather than mysteriously absent, but
     #: none of its code has been run.
     active: bool = True
@@ -211,11 +211,11 @@ class Loaded:
 class Plugins:
     """Everything installed, loaded and still loaded."""
 
-    #: Where installed plugins live: one folder, in the workspace.  A plugin is
+    #: Where installed plugins live: one folder, in the workspace. A plugin is
     #: code that gives a product's objects meaning, the same as a hook, so it
     #: travels with that product.
     folder: Path | None = None
-    #: Installed and switched off, by folder name.  Held here rather than
+    #: Installed and switched off, by folder name. Held here rather than
     #: worked out from the folder, because "off" is a decision about the
     #: workspace and not a property of the files.
     disabled: set[str] = field(default_factory=set)
@@ -296,7 +296,7 @@ class Plugins:
             register(record.app)
         except Exception:
             record.error = traceback.format_exc()
-            # Half of it may have been added before it failed.  Taking that
+            # Half of it may have been added before it failed. Taking that
             # back is the difference between a broken plugin and a broken
             # window with a menu entry that raises whenever it is used.
             self._undo(record)
@@ -309,7 +309,7 @@ class Plugins:
                 record.path,
                 # Loaded as a *package* rooted at the plugin's own folder, so
                 # that ``from . import whatever`` finds the file next to this
-                # one.  Without it a plugin split across several files can only
+                # one. Without it a plugin split across several files can only
                 # reach its own modules by naming them absolutely -- which, for
                 # one installed from a package, would reach some other copy of
                 # them entirely, and editing the copy in the workspace would
@@ -336,7 +336,7 @@ class Plugins:
     def forget_modules(self) -> None:
         """Drop the imported code without taking anything back off the window.
 
-        For a window on its way out.  ``unload_all`` would remove the panes as
+        For a window on its way out. ``unload_all`` would remove the panes as
         well, and by then the window has already written down where they were:
         taking them away at that point would be undoing what was just saved.
         What does have to go is the code, because Python holds imported modules

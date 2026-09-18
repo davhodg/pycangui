@@ -6,14 +6,14 @@ A manufacturer's tool has two dozen hand-built configuration screens, and
 every one of them turns out to be made of the same small set of parts: a
 range-checked number, a code in hex, a named choice, a word of flags, a field
 packed into some bits of a larger object, an editable XY map, and a value that
-is only read.  Implement those and a user can assemble the screens rather than
+is only read. Implement those and a user can assemble the screens rather than
 somebody compiling them in.
 
 Two rules run through all of them.
 
 **A widget never invents a value.**  ``flags`` and ``bits`` write part of an
 object, and part of an object cannot be written -- three bits of a 32 bit word
-go out with the other twenty-nine.  So they read first and refuse to write
+go out with the other twenty-nine. So they read first and refuse to write
 until they have, rather than sending a word made mostly of zeroes.
 
 **What is refused is refused here.**  A number outside the limits the EDS
@@ -60,7 +60,7 @@ from pycangui.custom_panes.model import Field, display_for
 REFUSED = QColor(200, 40, 40)
 UNREAD = QColor(140, 140, 140)
 
-#: A box holding a value that has been typed and not written.  Translucent, so
+#: A box holding a value that has been typed and not written. Translucent, so
 #: it reads on a light theme and a dark one alike.
 PENDING = "QLineEdit { background-color: rgba(230, 150, 0, 70); }"
 KEYS_HINT = "Enter writes what is typed; Esc puts back the value last read."
@@ -80,7 +80,7 @@ class FieldWidget(QWidget):
     to know which sort it is holding.
     """
 
-    #: Please fetch this.  The pane forwards it to whatever source it is bound
+    #: Please fetch this. The pane forwards it to whatever source it is bound
     #: to -- a live node, a DCF, an EDS's defaults.
     read_requested = Signal(int, int)
     #: index, sub, raw value to write.
@@ -149,7 +149,7 @@ class FieldWidget(QWidget):
 
         Leaving the box used to write it too, which is how a value still being
         thought about reached a controller because somebody clicked on the
-        plot.  What is typed now stays typed -- tinted, and safe from polling --
+        plot. What is typed now stays typed -- tinted, and safe from polling --
         until it is sent or taken back.
         """
         self._typed = edit
@@ -221,7 +221,7 @@ class FieldWidget(QWidget):
 
 
 class ValueWidget(FieldWidget):
-    """Read only.  What the object says, in the terms it is understood in."""
+    """Read only. What the object says, in the terms it is understood in."""
 
     def __init__(self, item: Field, display: Display) -> None:
         super().__init__(item, display)
@@ -286,7 +286,7 @@ class _EntryWidget(FieldWidget):
             self._put_back()
             return
         if why := out_of_range(self.display, raw):
-            # Never sent.  A node may clamp silently, and a parameter that did
+            # Never sent. A node may clamp silently, and a parameter that did
             # not take is worse than one that was not sent.
             self._refuse(f"{typed} is {why}")
             self._put_back()
@@ -311,9 +311,9 @@ class NumberWidget(_EntryWidget):
         """Double or halve what is in the box, and leave it there to be sent.
 
         It sounds trivial and is not: it is how a gain is walked in on a bench,
-        a factor of two at a time, each one tried before the next.  A value the
+        a factor of two at a time, each one tried before the next. A value the
         object holds as a whole number halves towards zero, so 1 goes to 0
-        rather than to a 0.5 the object cannot store.  Limits are checked when
+        rather than to a 0.5 the object cannot store. Limits are checked when
         it is written, like anything else typed.
         """
         if not self.writable:
@@ -356,13 +356,13 @@ class NumberWidget(_EntryWidget):
 
 
 class HexWidget(_EntryWidget):
-    """The same, in hex.  For codes, masks and identifiers rather than quantities."""
+    """The same, in hex. For codes, masks and identifiers rather than quantities."""
 
     def _as_text(self, raw: Any) -> str:
         return "" if raw is None else f"0x{int(raw):X}"
 
     def _as_raw(self, typed: str) -> float | None:
-        # Bare digits are hex here, since that is what the box is showing.  A
+        # Bare digits are hex here, since that is what the box is showing. A
         # 0x prefix is accepted too rather than being called a typo.
         text = typed.strip()
         try:
@@ -396,7 +396,7 @@ class EnumWidget(FieldWidget):
             return
         at = self.box.findData(int(raw))
         if at < 0:
-            # A value the file did not name.  Shown rather than hidden: a
+            # A value the file did not name. Shown rather than hidden: a
             # dropdown that silently displays the wrong entry is worse than one
             # that admits it does not know this value.
             self.box.addItem(f"{int(raw)} (not named)", int(raw))
@@ -409,7 +409,7 @@ class EnumWidget(FieldWidget):
 
 
 class FlagsWidget(FieldWidget):
-    """One named tick per bit.  Only the named ones: a word with three
+    """One named tick per bit. Only the named ones: a word with three
     meaningful bits should not put thirty-two boxes on a form."""
 
     def __init__(self, item: Field, display: Display) -> None:
@@ -443,7 +443,7 @@ class FlagsWidget(FieldWidget):
             return
         if self._raw is None:
             # The other bits are unknown, and writing the word would clear
-            # them.  Put the tick back and say so rather than guessing.
+            # them. Put the tick back and say so rather than guessing.
             self._refuse("not read yet, so the other bits are unknown")
             self.boxes[bit].setChecked(not checked)
             self.read_requested.emit(self.field.index, self.field.sub)
@@ -546,7 +546,7 @@ class MapWidget(FieldWidget):
 
     This is what a power limit, a thermistor curve, a cutback and a steering
     profile all are, and the pair is the point: the table is how a number is
-    entered exactly and the graph is how a mistake is seen.  They show the same
+    entered exactly and the graph is how a mistake is seen. They show the same
     array, so editing either moves the other.
 
     The X values come from a second array where the pane names one, and from
@@ -702,5 +702,5 @@ BY_KIND = {
 
 
 def build(item: Field, display: Display) -> FieldWidget:
-    """The widget for one field.  An unknown kind is shown, not guessed at."""
+    """The widget for one field. An unknown kind is shown, not guessed at."""
     return BY_KIND.get(item.kind, ValueWidget)(item, display)

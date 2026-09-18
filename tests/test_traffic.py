@@ -5,7 +5,7 @@
 Every other test builds one piece at a time, which is how a change to the
 connect bar's channel widget could break the demo device -- its only caller
 asked the widget for its text, and a combo box has none -- without a single
-test noticing.  This drives the window the way a person does.
+test noticing. This drives the window the way a person does.
 """
 
 import time

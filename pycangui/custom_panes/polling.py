@@ -3,22 +3,22 @@
 """Reading the same objects over and over, no faster than they answer.
 
 An object that is not mapped to a PDO can only be read by asking for it, and
-watching one change means asking again.  That is what this does: a round of
+watching one change means asking again. That is what this does: a round of
 requests, and when the answers are all in, another round.
 
 **The requested rate is a ceiling, not a promise, and the difference is the
 point.**  An SDO read is a request and a response on the bus, through a queue,
 against a controller that answers when it feels like it; asking for twelve
 objects at 100 Hz is asking for twelve hundred round trips a second, which no
-node is going to do.  So the achieved rate is measured and shown.  A tool that
+node is going to do. So the achieved rate is measured and shown. A tool that
 displayed the number somebody typed would be reporting their hopes back to
 them, and a value read at 12 Hz that looks like it was read at 100 is the sort
 of thing people build conclusions on.
 
-The other half of that is not queueing.  Firing a timer faster than the
+The other half of that is not queueing. Firing a timer faster than the
 answers come back builds a backlog that grows until the tool is showing values
 from a minute ago, and it looks exactly like a slow bus rather than like a
-mistake.  A round is only started when the previous one has finished, so a
+mistake. A round is only started when the previous one has finished, so a
 request is never outstanding twice and the reported rate is the truth about
 what the bus is doing.
 """
@@ -30,17 +30,17 @@ from collections.abc import Iterable
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-#: Round times kept for the achieved rate.  Enough to be steady, few enough to
+#: Round times kept for the achieved rate. Enough to be steady, few enough to
 #: notice a bus that has just slowed down.
 RATE_SAMPLES = 8
 
-#: A round is abandoned after this, and the next one started.  Every request
+#: A round is abandoned after this, and the next one started. Every request
 #: normally produces exactly one answer -- an abort is an answer -- so this is
 #: for the case where something has gone wrong enough that one never arrives:
 #: without it the poller would wait for it forever and look like a hang.
 ROUND_TIMEOUT_S = 5.0
 
-#: What the box offers.  The bottom is one read a minute, for something that
+#: What the box offers. The bottom is one read a minute, for something that
 #: changes slowly and should not be hammered; the top is well past what any
 #: SDO poll will really manage, which is the point -- ask for it and the
 #: achieved figure tells you what you actually got.
@@ -52,7 +52,7 @@ DEFAULT_HZ = 2.0
 class Poller(QObject):
     """One set of objects, read over and over at up to a requested rate."""
 
-    #: Ask for this object.  Whatever the pane is bound to answers it.
+    #: Ask for this object. Whatever the pane is bound to answers it.
     read = Signal(int, int)
     #: Requested rate, and the rate actually being achieved (0 until a round
     #: has completed).
@@ -77,7 +77,7 @@ class Poller(QObject):
 
     # --- what to read, and how often --------------------------------------------------
     def set_objects(self, objects: Iterable[tuple[int, int]]) -> None:
-        """The objects to read each round.  Takes effect at the next one."""
+        """The objects to read each round. Takes effect at the next one."""
         self._objects = list(dict.fromkeys(objects))  # in order, without repeats
 
     @property
@@ -134,7 +134,7 @@ class Poller(QObject):
             self.read.emit(index, sub)
 
     def answered(self, index: int, sub: int) -> None:
-        """An answer arrived.  When they all have, the round is done."""
+        """An answer arrived. When they all have, the round is done."""
         if not self._running:
             return
         self._outstanding.discard((index, sub))
@@ -144,7 +144,7 @@ class Poller(QObject):
         self._finish_round(time.monotonic() - self._round_started)
 
     def _give_up_on_round(self) -> None:
-        """Something never answered.  Start again rather than wait forever."""
+        """Something never answered. Start again rather than wait forever."""
         if not self._running:
             return
         self._outstanding.clear()
@@ -155,7 +155,7 @@ class Poller(QObject):
         del self._rounds[:-RATE_SAMPLES]
         self._announce()
         # Whichever is longer: the rate that was asked for, or the time the bus
-        # actually needs.  Asking for more than it can do is answered by going
+        # actually needs. Asking for more than it can do is answered by going
         # as fast as it can, not by queueing up the difference.
         wait = max(0.0, (1.0 / self._hz) - took)
         self._timer.start(int(wait * 1000))
@@ -166,7 +166,7 @@ class Poller(QObject):
     # --- what it is actually managing ------------------------------------------------------
     @property
     def achieved(self) -> float:
-        """Rounds a second, over the recent ones.  0 until one has completed."""
+        """Rounds a second, over the recent ones. 0 until one has completed."""
         if not self._running or not self._rounds:
             return 0.0
         mean = sum(self._rounds) / len(self._rounds)
@@ -183,7 +183,7 @@ def rate_text(requested: float, achieved: float, running: bool) -> str:
     """What to put on screen beside the box.
 
     Says the achieved figure and nothing else while the two agree, because
-    repeating the number somebody just typed tells them nothing.  It is when
+    repeating the number somebody just typed tells them nothing. It is when
     they disagree that it matters, and then it says so plainly.
     """
     if not running:

@@ -3,9 +3,9 @@
 """A heartbeat timeout set for a node, rather than worked out.
 
 pycangui calls a node lost after three heartbeats' worth of silence, judged
-from 0x1017 or from the heartbeats it sends.  That is wrong for a node whose
+from 0x1017 or from the heartbeats it sends. That is wrong for a node whose
 producer time is not what it sends, for one that goes quiet on purpose while it
-erases, and for a bus so busy that three is too few.  Whoever sets a timeout
+erases, and for a bus so busy that three is too few. Whoever sets a timeout
 knows something the heartbeats do not say, so a set one wins, as set.
 """
 

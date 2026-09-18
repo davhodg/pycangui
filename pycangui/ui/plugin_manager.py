@@ -4,16 +4,16 @@
 
 Installing is the only thing pycangui does that runs somebody else's code on
 purpose, so it is the only place with a question in front of it that cannot be
-switched off.  Not a scare -- a plugin is the point, and most people installing
+switched off. Not a scare -- a plugin is the point, and most people installing
 one wrote it -- but the fact, said once, at the moment it is true: this is
 Python, it runs as part of the tool, and it can reach everything the tool can.
 
-The dialog behind *Manage plugins...* is deliberately two lists.  "What have I
+The dialog behind *Manage plugins...* is deliberately two lists. "What have I
 got" and "what could I have" are different questions and people arrive with one
 of them; a single list holding both, some of it real and some of it an offer,
 answers neither well.
 
-Nothing here reloads anything.  Every operation says what it changed and the
+Nothing here reloads anything. Every operation says what it changed and the
 window reloads the plugins, because a reload is what *Reload plugins* already
 does and having two ways to do it is how they come to differ.
 """
@@ -42,7 +42,7 @@ from pycangui.core.context import Context
 from pycangui.core.plugins import NO_VERSION, Plugins, supplied
 from pycangui.ui import folders, messages
 
-#: Said before every install, and not remembered.  Each one is a different
+#: Said before every install, and not remembered. Each one is a different
 #: file from a different person, so "you agreed last time" is not an answer.
 WHAT_A_PLUGIN_IS = (
     "A plugin is Python that runs as part of pycangui, with everything pycangui "
@@ -83,14 +83,14 @@ def _version(text: str) -> str:
 
 
 class PluginActions(QObject):
-    """Install, uninstall, export and switch off.  One place, two callers.
+    """Install, uninstall, export and switch off. One place, two callers.
 
     The menu and the dialog both want all of this, and an operation written
     twice is an operation that asks a different question depending on where it
     was reached from.
     """
 
-    #: Something changed on disk or in the settings: reload.  Carries the
+    #: Something changed on disk or in the settings: reload. Carries the
     #: plugin to bring forward afterwards, or "" for none -- somebody who has
     #: just installed one should be shown it rather than told where to look.
     changed = Signal(str)
@@ -245,7 +245,7 @@ class PluginActions(QObject):
 
     # --- and switching one off -----------------------------------------------------------
     def set_active(self, name: str, on: bool, quiet: bool = False) -> None:
-        """Switch a plugin on or off.  Off means not loaded at all."""
+        """Switch a plugin on or off. Off means not loaded at all."""
         if on:
             self.plugins.disabled.discard(name)
         else:
@@ -268,9 +268,9 @@ class PluginActions(QObject):
 def _older(new: str, old: str) -> bool:
     """Whether one version is behind another, for the two that look like numbers.
 
-    Deliberately shallow.  A plugin's version is whatever its author wrote, and
+    Deliberately shallow. A plugin's version is whatever its author wrote, and
     guessing an order for two strings that are not numbers would produce a
-    confident warning about nothing.  Anything this cannot compare is simply
+    confident warning about nothing. Anything this cannot compare is simply
     not remarked on.
     """
     try:
@@ -334,7 +334,7 @@ class ManagePlugins(QDialog):
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Installed in this workspace  (tick to switch on)"))
+        layout.addWidget(QLabel("Installed in this workspace (tick to switch on)"))
         layout.addWidget(self.installed, 1)
         layout.addLayout(mine)
         layout.addSpacing(8)

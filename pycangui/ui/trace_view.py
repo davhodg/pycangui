@@ -3,10 +3,10 @@
 """Trace dock: chronological list, or one row per id with the latest data.
 
 Every frame gets a *kind* label (hook ``trace.frame_kind``, default CANopen
-classifier) and a *group*.  Three things narrow what is shown, and none of
+classifier) and a *group*. Three things narrow what is shown, and none of
 them discard anything: the filter box matches text against the id, name,
 channel and data; the Filter menu hides whole protocol groups or channels; and
-Pause holds the display still while capture carries on.  All of it is done
+Pause holds the display still while capture carries on. All of it is done
 with proxy models and a pending queue, so nothing is lost and everything
 reappears when the filter is relaxed.
 """
@@ -58,7 +58,7 @@ class _TraceFilter(QSortFilterProxyModel):
     """Hides rows by protocol group, by channel, and by a text search.
 
     The text is matched against the id, the kind, the channel and the data, so
-    "185", "txpdo", "drive bus" and "de ad" all work.  Several words all have
+    "185", "txpdo", "drive bus" and "de ad" all work. Several words all have
     to match, which makes "185 tx" mean what it looks like.
     """
 
@@ -107,7 +107,7 @@ def _table(model, font: QFont, id_column: int) -> QTableView:
     header = table.horizontalHeader()
     header.setSectionResizeMode(QHeaderView.ResizeToContents)
     header.setStretchLastSection(True)
-    # Fixed at eight digits rather than fitted.  Fitting measures a sample of
+    # Fixed at eight digits rather than fitted. Fitting measures a sample of
     # rows, and on a bus that starts with 11-bit ids -- CANopen before J1939
     # has claimed an address -- it settled three digits wide and elided every
     # 29-bit id after it to "18...".
@@ -121,7 +121,7 @@ class TraceView(QWidget):
         super().__init__()
         self.hooks = hooks
         self.ctx = ctx
-        #: Where this trace's settled choices are kept.  There can be more than
+        #: Where this trace's settled choices are kept. There can be more than
         #: one trace, and the reason to open a second is that it should show
         #: something the first does not -- so the filter, the mode and the
         #: autoscroll belong to the instance rather than to traces in general.
@@ -198,7 +198,7 @@ class TraceView(QWidget):
         self._apply_filter(save=False)
 
         # Which columns, per mode: the two tables answer different questions
-        # and have nothing in common but the word column.  On a button as
+        # and have nothing in common but the word column. On a button as
         # well as on the header, because right-clicking a header is a
         # convention rather than something anybody can see.
         self._column_menus = {
@@ -219,7 +219,7 @@ class TraceView(QWidget):
         # Last of the three, and it has to stay last: restoring a saved mode
         # changes the combo box, which fires currentIndexChanged from inside
         # this constructor, so everything _on_mode_changed reaches for must
-        # already exist.  It did not, and a workspace left in Latest per ID
+        # already exist. It did not, and a workspace left in Latest per ID
         # threw on startup.
         remember(ctx, f"{key}.mode", self.mode)
         remember(ctx, f"{key}.autoscroll", self.autoscroll)
@@ -320,7 +320,7 @@ class TraceView(QWidget):
         -- DBC message names, J1939 PGNs, UDS and XCP.
 
         The id-based label wins over a database name on purpose: "TxPDO1 n5"
-        says which node sent it, which a DBC message name cannot.  The database
+        says which node sent it, which a DBC message name cannot. The database
         still names the signals in the Signals and Plot panes.
 
         The filter group always comes from the id, so a PDO stays under PDO
@@ -330,7 +330,7 @@ class TraceView(QWidget):
             if f.error:
                 # An error frame is the controller reporting a fault, not a
                 # message: its id carries error flags rather than an
-                # identifier, so none of the decoders apply to it.  Its own
+                # identifier, so none of the decoders apply to it. Its own
                 # group means the Filter menu can hide them, which matters
                 # because a bus in trouble produces them faster than anything
                 # else on the wire.

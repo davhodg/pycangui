@@ -19,7 +19,7 @@ def answers(monkeypatch):
     """Drive the confirmation dialog from a script of answers, recording them.
 
     The dialog is built rather than raised through ``QMessageBox.warning``,
-    because a static call cannot carry the "do not ask again" tick box.  What
+    because a static call cannot carry the "do not ask again" tick box. What
     is recorded is the question as the dialog shows it, not its title, which
     macOS does not show.
     """
@@ -293,7 +293,7 @@ def test_quitting_the_notice_means_it_does_not_start(app, monkeypatch):
 
 
 def test_it_cannot_be_switched_off(app, monkeypatch):
-    """The one dialog here with no "do not ask again" on it.  A notice
+    """The one dialog here with no "do not ask again" on it. A notice
     dismissed for good on the first afternoon is never seen again on that
     login, including by anyone sharing it, and it costs a keypress a session."""
     seen = []
@@ -318,7 +318,7 @@ def test_the_slow_half_of_starting_up_happens_behind_it(app, monkeypatch):
 
 
 def test_it_is_on_screen_before_the_slow_half_starts(app, monkeypatch):
-    """The whole point.  Doing the work first and showing the notice after
+    """The whole point. Doing the work first and showing the notice after
     would be the same total and none of the benefit."""
     was_visible = []
     box = {}

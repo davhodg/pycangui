@@ -8,7 +8,7 @@ body:
       label: What happened
       description: What you did, what you expected, and what happened instead.
       placeholder: |
-        Connected an IXXAT at 500 kbit/s and loaded a DBC.  Expected decoded
+        Connected an IXXAT at 500 kbit/s and loaded a DBC. Expected decoded
         signals in Signals and Plot; the trace shows frames but nothing decodes.
     validations:
       required: true
@@ -27,7 +27,7 @@ body:
     attributes:
       label: Diagnostics
       description: |
-        *Help > Diagnostics...* copies a report to the clipboard: the versions of pycangui, Python, PySide6, python-can and canopen, the platform, and each channel's adapter, state and load.  Paste it here.  An adapter's description can include its serial number; remove that if you would rather.
+        *Help > Diagnostics...* copies a report to the clipboard: the versions of pycangui, Python, PySide6, python-can and canopen, the platform, and each channel's adapter, state and load. Paste it here. An adapter's description can include its serial number; remove that if you would rather.
         If pycangui will not start at all, say so, and paste whatever it printed instead.
       render: text
 
@@ -63,5 +63,5 @@ body:
     id: event-log
     attributes:
       label: Event Log
-      description: What the Event Log said around the time -- warnings and errors especially.  A traceback is worth more than any description of one.
+      description: What the Event Log said around the time -- warnings and errors especially. A traceback is worth more than any description of one.
       render: text

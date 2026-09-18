@@ -46,7 +46,7 @@ def test_node_is_reported_lost_then_back(stack, demo_device):
     try:
         # Four heartbeats, not two: the period is the median of several gaps,
         # so that one burst from a producer catching up cannot be mistaken for
-        # the rate.  At 500 ms that is about two seconds, and this waits well
+        # the rate. At 500 ms that is about two seconds, and this waits well
         # past it rather than racing the machine for the last one.
         wait_until(lambda: manager.heartbeat_interval.get(5) is not None, timeout=8)
         # the timeout follows the observed period, not a fixed guess

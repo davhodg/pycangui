@@ -9,7 +9,7 @@ There is no "transmit onto the bus" option because the channel already says
 it: replaying onto a ``virtual`` channel puts the frames into the trace and
 the decoders and nowhere else, which is how a recording is examined with no
 hardware attached, while replaying onto a real channel is real traffic on a
-real bus.  That is also why replaying onto a real bus asks first.
+real bus. That is also why replaying onto a real bus asks first.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ class ReplayAction(QObject):
 
     def _browse(self) -> bool:
         # Its own recent list first -- that is a file, not a folder, and more
-        # specific than either.  Otherwise wherever a log was last recorded or
+        # specific than either. Otherwise wherever a log was last recorded or
         # replayed, which is usually the same place.
         if self._path is not None:
             path, _ = QFileDialog.getOpenFileName(
@@ -214,7 +214,7 @@ class ReplayAction(QObject):
             self.button,
             "No channel connected",
             "A replay needs a channel to play onto.\n\n"
-            "Connect a virtual one?  The frames then go to the trace and the "
+            "Connect a virtual one? The frames then go to the trace and the "
             "decoders without any hardware, which is what you want for looking "
             "at a recording.",
             QMessageBox.Yes | QMessageBox.Cancel,

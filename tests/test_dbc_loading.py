@@ -11,9 +11,9 @@ from pycangui.ui import messages
 from pycangui.ui.main_window import MainWindow
 from pycangui.ui.tx_view import COL_DATA, COL_NAME
 
-#: A signal with a VAL_ table *and* a start value.  cantools hands the start
+#: A signal with a VAL_ table *and* a start value. cantools hands the start
 #: value back as a NamedSignalValue -- "Run", not 1 -- which is neither a
-#: string nor formattable as a number.  Most real databases name their
+#: string nor formattable as a number. Most real databases name their
 #: enumerations, so this is not an exotic case.
 NAMED_VALUES = """VERSION ""
 NS_ :
@@ -28,7 +28,7 @@ BA_DEF_DEF_ "GenSigStartValue" 0;
 BA_ "GenSigStartValue" SG_ 100 Mode 1;
 """
 
-#: Two signals sharing bits.  cantools' strict check refuses the whole file;
+#: Two signals sharing bits. cantools' strict check refuses the whole file;
 #: the messages in it are perfectly usable.
 OVERLAPPING = """VERSION ""
 NS_ :

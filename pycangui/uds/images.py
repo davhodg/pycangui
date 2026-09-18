@@ -2,16 +2,16 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Firmware images: Intel HEX, Motorola S-record and raw binary.
 
-Reading and writing is bincopy's job.  What is here is the part bincopy
+Reading and writing is bincopy's job. What is here is the part bincopy
 cannot decide: which format a file is, what its address is, and what to do
 when it does not have one.
 
-A hex or S-record file carries the address of every byte in it.  A raw binary
+A hex or S-record file carries the address of every byte in it. A raw binary
 does not -- it is bytes and nothing else -- so the address has to be supplied
 before it can be sent anywhere, and an image loaded without one says so
 rather than guessing at zero.
 
-Gaps are left as they are found.  A file with holes in it is transferred a
+Gaps are left as they are found. A file with holes in it is transferred a
 segment at a time, each with its own RequestDownload; padding the holes would
 mean writing bytes the file never contained, over whatever the ECU had there.
 A bootloader that insists on one contiguous block should be given a
@@ -24,18 +24,18 @@ from dataclasses import dataclass
 from pathlib import Path
 
 # bincopy brings pyelftools with it and costs a third of a second, for a
-# thing that only happens when somebody picks a firmware file.  Imported in
+# thing that only happens when somebody picks a firmware file. Imported in
 # the two functions that read and write one.
 
 #: Suffixes that mean "this file has no addresses in it".
 BINARY_SUFFIXES = {".bin", ".raw", ".img", ".rom", ".dat"}
 
-#: S-record address widths, by the suffix that names them.  S19 is 16-bit
+#: S-record address widths, by the suffix that names them. S19 is 16-bit
 #: addresses, S28 24-bit, S37 32-bit; the suffix is the usual way of saying so.
 SREC_SUFFIXES = {".s19": 16, ".s28": 24, ".s37": 32, ".srec": 32, ".mot": 32, ".sre": 32}
 IHEX_SUFFIXES = {".hex", ".ihex", ".ihx", ".i32", ".a90"}
 
-#: For the file dialogs.  One "any of them" entry first, because guessing the
+#: For the file dialogs. One "any of them" entry first, because guessing the
 #: format from the contents is what the reader does anyway.
 READ_FILTER = (
     "Firmware images (*.hex *.ihex *.ihx *.s19 *.s28 *.s37 *.srec *.mot *.bin *.raw *.img);;"
@@ -116,7 +116,7 @@ def _sniff(raw: bytes) -> str | None:
 def read(path: str, address: int | None = None) -> Image:
     """Read a firmware file, whatever format it is in.
 
-    `address` is where a raw binary starts.  It is required for one, ignored
+    `address` is where a raw binary starts. It is required for one, ignored
     for a file that carries its own addresses -- there the file is right and a
     typed-in number would only be a way to get it wrong.
     """
@@ -160,7 +160,7 @@ def write(path: str, address: int, data: bytes) -> str:
     """Write bytes read back from an ECU, in the format the name asks for.
 
     Exactly what came off the bus, at the address it was asked for: nothing
-    padded, nothing cropped, nothing filled in.  Returns the format used, for
+    padded, nothing cropped, nothing filled in. Returns the format used, for
     the log.
     """
     import bincopy

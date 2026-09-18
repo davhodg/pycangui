@@ -3,17 +3,17 @@
 """File > Workspace: save as, switch to, manage, and export and import.
 
 The first three are the whole of working with workspaces, and deliberately
-so.  There is no Save and no unsaved-changes marker, because a workspace saves
+so. There is no Save and no unsaved-changes marker, because a workspace saves
 continuously -- which is what settings.json has always done, and pycangui has
-never asked anybody to save anything.  Adding a Save here would invent a
+never asked anybody to save anything. Adding a Save here would invent a
 question the tool does not have an answer to.
 
 Export and import sit below them, apart, because they are about moving a
-workspace between computers rather than working in one.  Somebody with one
+workspace between computers rather than working in one. Somebody with one
 product on one machine can ignore both.
 
 Somebody with one product should be able to work for a year without opening
-this menu.  That is why the workspace is called ``default``, why the title bar
+this menu. That is why the workspace is called ``default``, why the title bar
 says nothing while it is, and why *Switch to* shows one entry with a tick
 against it rather than an empty list inviting a decision.
 """
@@ -94,11 +94,11 @@ def _count(number: int) -> str:
 class WorkspaceMenu(QObject):
     """The File submenu, and the small dialog behind Manage."""
 
-    #: The workspace to open.  Acted on by the window, which cannot do it to
+    #: The workspace to open. Acted on by the window, which cannot do it to
     #: itself: switching is a full reload, so the window that asks is the one
     #: that goes away.
     switch_requested = Signal(str)
-    #: Write down the arrangement on screen now.  The dock layout is otherwise
+    #: Write down the arrangement on screen now. The dock layout is otherwise
     #: saved only on the way out, and an export of the workspace in use should
     #: carry the panes as they are rather than as they were at the last start.
     arrangement_wanted = Signal()
@@ -154,7 +154,7 @@ class WorkspaceMenu(QObject):
             messages.warning(self.window, "That name will not do", reason)
             return
         # Forked from the one in use, because "save as" means keep this and
-        # call it something else.  An empty new workspace would throw away the
+        # call it something else. An empty new workspace would throw away the
         # arrangement somebody was looking at when they asked.
         workspaces.create(name, copy_from=self.ctx.workspace)
         self.switch_requested.emit(workspaces.clean(name))
@@ -164,7 +164,7 @@ class WorkspaceMenu(QObject):
 
         Not on this menu, because *New* and *Save as* side by side is a
         question asked of everybody who only ever wanted to fork the one they
-        are in.  It is reached from Tools > Reset > Reset everything, where
+        are in. It is reached from Tools > Reset > Reset everything, where
         somebody is already asking for a clean slate.
         """
         name, chose = QInputDialog.getText(
@@ -196,7 +196,7 @@ class WorkspaceMenu(QObject):
 
     # --- moving one between computers ---------------------------------------------------
     def export(self, name: str = "", parent: QWidget | None = None) -> None:
-        """Write a workspace out as one zip.  The one in use unless told otherwise."""
+        """Write a workspace out as one zip. The one in use unless told otherwise."""
         owner = parent or self.window
         name = name or self.ctx.workspace
         if not self._files_travel(name, owner):
@@ -222,11 +222,11 @@ class WorkspaceMenu(QObject):
         self.ctx.events.information(f"Exported workspace {name} to {path}")
 
     def _files_travel(self, name: str, owner: QWidget) -> bool:
-        """Offer to copy in the files the workspace uses from outside it.  False is Cancel.
+        """Offer to copy in the files the workspace uses from outside it. False is Cancel.
 
         People keep databases, A2L and EDS files where they keep them, and an
         export carries only the workspace folder -- so this is where somebody
-        finds out which of theirs would not arrive, and chooses.  No exports
+        finds out which of theirs would not arrive, and chooses. No exports
         with the links as they are, which on another computer lead nowhere.
         """
         folder = workspaces.dir_for(name)
@@ -247,7 +247,7 @@ class WorkspaceMenu(QObject):
             lines.append(f"    ...and {_count(len(away) - LISTED)} more")
         lines += [
             "",
-            "Copy them into the workspace first?  No exports without them, and on "
+            "Copy them into the workspace first? No exports without them, and on "
             "another computer those links will not work.",
         ]
         answer = messages.question(
@@ -332,7 +332,7 @@ class WorkspaceMenu(QObject):
 
         Asked rather than numbered silently: someone else's "drive" arriving as
         "drive 2" is somebody's guess about which one they will want to find,
-        and they are right here to say.  The next free name is offered, so
+        and they are right here to say. The next free name is offered, so
         accepting it is one key.
         """
         name = package.name
@@ -375,7 +375,7 @@ class WorkspaceMenu(QObject):
 
 
 class ManageWorkspaces(QDialog):
-    """Rename, delete and export.  Switching is in the menu, where it is one click."""
+    """Rename, delete and export. Switching is in the menu, where it is one click."""
 
     def __init__(
         self,

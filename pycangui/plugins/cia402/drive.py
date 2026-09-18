@@ -3,8 +3,8 @@
 """The CiA 402 drive profile: the state machine, and the objects around it.
 
 CiA 402 is the one CANopen profile where reading and writing objects is not
-enough.  Everything else pycangui does is *this object holds that value*, which
-a custom pane can already show and change.  A drive is different in one
+enough. Everything else pycangui does is *this object holds that value*, which
+a custom pane can already show and change. A drive is different in one
 specific way: **it will not do anything until it has been walked through a
 state machine**, and the walk is a sequence of writes to one object whose
 meaning depends on what the drive answered to the last one.
@@ -15,17 +15,17 @@ meaning depends on what the drive answered to the last one.
                                                                   v
                                                           Operation enabled
 
-That is why this is code and not a pane full of fields.  The state is not a
+That is why this is code and not a pane full of fields. The state is not a
 value either: it is decoded from overlapping masks of the statusword, where
 "Ready to switch on" and "Switched on" differ in one bit while "Fault" is a
-different mask altogether.  A field showing 0x0637 tells nobody anything.
+different mask altogether. A field showing 0x0637 tells nobody anything.
 
-What is *not* here is anything a custom pane can already do.  The targets, the
+What is *not* here is anything a custom pane can already do. The targets, the
 actual values and the modes are ordinary objects, listed below only so that the
 pane can put a unit and a type against them without an EDS -- the profile
 defines both, so a drive that has never been given an EDS can still be driven.
 
-Nothing here touches Qt or the bus.  It is handed something that can read and
+Nothing here touches Qt or the bus. It is handed something that can read and
 write objects, which is what makes all of it testable without either.
 """
 
@@ -42,7 +42,7 @@ class Object:
     """One object of the profile, with the type CiA 402 says it has.
 
     Carried here rather than looked up in an EDS on purpose: these indices and
-    these types are the profile.  A drive with no EDS loaded is still a drive,
+    these types are the profile. A drive with no EDS loaded is still a drive,
     and refusing to talk to one until somebody finds the file would be refusing
     over a thing we already know.
     """
@@ -73,7 +73,7 @@ TARGET_VELOCITY = Object(0x60FF, 0, "Target velocity", "<i", "counts/s")
 TARGET_TORQUE = Object(0x6071, 0, "Target torque", "<h", "per mille of rated")
 PROFILE_VELOCITY = Object(0x6081, 0, "Profile velocity", "<I", "counts/s")
 
-#: Read every round.  Deliberately short: an SDO round is a round trip per
+#: Read every round. Deliberately short: an SDO round is a round trip per
 #: object, and a screen that reads twenty things at 1 Hz is worse than one that
 #: reads six at 5 Hz.
 WATCHED = (STATUSWORD, MODE_DISPLAY, POSITION_ACTUAL, VELOCITY_ACTUAL, TORQUE_ACTUAL)
@@ -82,7 +82,7 @@ WATCHED = (STATUSWORD, MODE_DISPLAY, POSITION_ACTUAL, VELOCITY_ACTUAL, TORQUE_AC
 def encode(obj: Object, value: int) -> bytes:
     """The bytes to write for a value, or a reason it will not fit.
 
-    Refused rather than truncated.  ``struct`` would happily wrap 70000 into a
+    Refused rather than truncated. ``struct`` would happily wrap 70000 into a
     16-bit target and the drive would do exactly what the wrapped number says,
     which is the sort of mistake that moves machinery.
     """
@@ -109,7 +109,7 @@ def decode(obj: Object, data: bytes) -> int:
 
 # --- the modes ----------------------------------------------------------------------------
 
-#: What CiA 402 numbers mean.  Negative numbers are the maker's own, and are
+#: What CiA 402 numbers mean. Negative numbers are the maker's own, and are
 #: shown as themselves rather than guessed at.
 MODES = {
     0: "No mode",
@@ -124,7 +124,7 @@ MODES = {
     10: "Cyclic sync torque",
 }
 
-#: Which target each mode actually uses.  A mode not in here has no target that
+#: Which target each mode actually uses. A mode not in here has no target that
 #: can be set over SDO, which is a thing to say rather than a box to offer.
 TARGET_FOR = {
     1: TARGET_POSITION,
@@ -137,7 +137,7 @@ TARGET_FOR = {
 }
 
 #: The modes whose target has to arrive every cycle, over a PDO, from something
-#: keeping time.  Writing one over SDO is not slow, it is meaningless -- the
+#: keeping time. Writing one over SDO is not slow, it is meaningless -- the
 #: drive expects the next one before the SDO would even have finished.
 CYCLIC = (8, 9, 10)
 
@@ -150,9 +150,9 @@ def mode_name(mode: int) -> str:
 
 # --- the state machine ----------------------------------------------------------------------
 
-#: Statusword mask, value and name, in the order they are tested.  The masks
+#: Statusword mask, value and name, in the order they are tested. The masks
 #: overlap and that is not a mistake: "Ready to switch on" and "Switched on"
-#: differ in one bit, while "Fault" ignores bits the others test.  This is the
+#: differ in one bit, while "Fault" ignores bits the others test. This is the
 #: table from the standard, and the reason the state cannot be a field on a
 #: form.
 STATES = (
@@ -168,7 +168,7 @@ STATES = (
 
 UNKNOWN = "Unknown"
 
-#: Controlword commands.  Bit 7 is the fault reset, and it acts on the *rising*
+#: Controlword commands. Bit 7 is the fault reset, and it acts on the *rising*
 #: edge, which is why clearing one is two writes rather than one.
 SHUTDOWN = 0x0006
 SWITCH_ON = 0x0007
@@ -181,7 +181,7 @@ FAULT_RESET = 0x0080
 #: on the rising edge of this and not before.
 NEW_SETPOINT = 0x0010
 
-#: Bit 8, and the one that matters most here.  Halt is defined in every profiled
+#: Bit 8, and the one that matters most here. Halt is defined in every profiled
 #: mode as "come to a standstill, the way 0x605D says to", which is what makes
 #: it the one command that stops a drive without needing to know what mode it is
 #: in or what its target means.
@@ -202,7 +202,7 @@ RATE_TARGETS = {
 }
 
 #: Statusword bits worth showing beside the state, since none of them is part
-#: of it.  Bit 10 means different things in different modes, so it is named for
+#: of it. Bit 10 means different things in different modes, so it is named for
 #: what the standard calls it rather than for what it implies.
 #: Bit 5 is not here: it is the quick stop, and it reads the other way up --
 #: set means *not* active -- which the state table already says plainly.
@@ -218,7 +218,7 @@ FLAGS = (
 def state_of(statusword: int) -> str:
     """Which of the eight states the drive is in, or that it is in none of them.
 
-    ``Unknown`` rather than a guess.  A statusword matching no row is a drive
+    ``Unknown`` rather than a guess. A statusword matching no row is a drive
     doing something this profile does not describe, and naming it anyway would
     put a confident word on screen with nothing behind it.
     """
@@ -250,7 +250,7 @@ class Step:
 
 
 #: States a drive leaves by itself, and which therefore cannot be commanded out
-#: of.  Writing a controlword at one of them is not refused by the drive; it is
+#: of. Writing a controlword at one of them is not refused by the drive; it is
 #: ignored, which looks exactly like the tool having done nothing.
 TRANSIENT = {
     "Not ready to switch on": (
@@ -276,10 +276,10 @@ def steps_to_enable(statusword: int) -> list[Step]:
     arrangement of boxes on a form that expresses that.
 
     A drive in Quick stop active is taken out through Switch on disabled rather
-    than straight back to Operation enabled.  The direct route exists, but only
+    than straight back to Operation enabled. The direct route exists, but only
     for drives whose quick stop option code says so, and taking it on a drive
     whose code says otherwise leaves it sitting there while the tool claims to
-    have enabled it.  The long way round works everywhere.
+    have enabled it. The long way round works everywhere.
     """
     state = state_of(statusword)
     if why := TRANSIENT.get(state):
@@ -309,7 +309,7 @@ def clear_fault() -> list[Step]:
     """Reset a fault: two writes, because bit 7 acts on its rising edge.
 
     A single write of 0x0080 works on a drive whose controlword happened to
-    have the bit clear, and does nothing at all on one where it did not.  The
+    have the bit clear, and does nothing at all on one where it did not. The
     zero first makes the edge rather than hoping for it.
     """
     return [
@@ -332,7 +332,7 @@ def steps_to_quick_stop(statusword: int) -> list[Step]:
     """Stop it the way the drive was configured to stop.
 
     Only from Operation enabled: quick stop is a command about motion, and a
-    drive that is not enabled is not moving under its own power.  Sending it
+    drive that is not enabled is not moving under its own power. Sending it
     anyway would be a button that appears to work and does nothing.
     """
     state = state_of(statusword)
@@ -347,14 +347,14 @@ def steps_to_apply_target(mode: int, statusword: int) -> list[Step]:
     """Make a profile position drive act on the target it has been given.
 
     Profile position is the mode where writing the target is not enough: the
-    drive takes it on the rising edge of bit 4 and ignores it until then.  Every
+    drive takes it on the rising edge of bit 4 and ignores it until then. Every
     other mode acts on the target as it is written, so asking for this in one of
     those would be two writes that mean nothing.
 
-    Only from Operation enabled, and that is not fussiness.  The edge is made
+    Only from Operation enabled, and that is not fussiness. The edge is made
     by writing the *enable* controlword with bit 4 added and then without it, so
     doing this to a drive that is merely switched on would enable it on the way
-    past -- which is the one thing here that gets asked about first.  A button
+    past -- which is the one thing here that gets asked about first. A button
     that quietly does the thing another button asks permission for is a hole in
     the permission.
     """
@@ -392,17 +392,17 @@ def can_set_target(mode: int) -> tuple[bool, str]:
 def stop_writes(mode: int, statusword: int, disable: bool = False) -> list[tuple[Object, int]]:
     """What to write to leave a drive at a standstill, as a screen goes away.
 
-    A demand sent over SDO does not stop when the window showing it does.  The
+    A demand sent over SDO does not stop when the window showing it does. The
     drive holds the last controlword and the last target it was given, and goes
-    on doing exactly what it was told by somebody who can no longer see it.  So
+    on doing exactly what it was told by somebody who can no longer see it. So
     a pane that has commanded motion has to take it back on its way out.
 
     Halt rather than a zero target, because halt is the one command that means
-    "stop" in every mode.  A zero is then written to the target as well, but
+    "stop" in every mode. A zero is then written to the target as well, but
     *only where the target is a rate*: a zero position is a place rather than a
     stop, and writing one would send the machine there.
 
-    ``disable`` is offered and is not the default.  Removing power is not
+    ``disable`` is offered and is not the default. Removing power is not
     obviously safer than commanding a standstill -- on a vertical axis it is the
     load that decides, and whether a brake catches it is a fact about the
     machine that pycangui has no way of knowing.

@@ -4,7 +4,7 @@
 
 Sources (DBC decoder, CANopen PDOs, SDO polling, user scripts) call
 ``push(group, name, t, value)``; consumers (Signals pane, Plot pane) read
-``series()`` / ``latest()`` and listen to ``added``.  History is kept here, so
+``series()`` / ``latest()`` and listen to ``added``. History is kept here, so
 a plot opened later still shows what happened before.
 
 GUI thread only: sources on other threads must hand over via a Qt signal
@@ -81,7 +81,7 @@ class SignalHub(QObject):
         signal is trimmed to the newest MAX_SAMPLES because the old values
         stop mattering, and an imported one trimmed the same way would lose
         its *beginning* -- which for something being analysed is the half
-        somebody is usually looking for.  A file is finite, so it is kept
+        somebody is usually looking for. A file is finite, so it is kept
         whole.
         """
         key = f"{group}/{name}"
@@ -104,7 +104,7 @@ class SignalHub(QObject):
         return list(dict.fromkeys(s.group for s in self._series.values()))
 
     def forget_group(self, group: str) -> int:
-        """Drop everything from one source.  Returns how many series went.
+        """Drop everything from one source. Returns how many series went.
 
         An imported file is a thing somebody finishes with, and a signals list
         that only ever grows is one nobody can find anything in.

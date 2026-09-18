@@ -84,7 +84,7 @@ def test_an_object_is_named_from_whichever_side_knows_it():
 # --- what counts as the same value ------------------------------------------------------------
 def test_a_number_that_survived_a_round_trip_is_not_a_change():
     """A DCF holds text a parser turned into an integer; a node hands back an
-    integer.  Reporting that as a change would flag every object in the file."""
+    integer. Reporting that as a change would flag every object in the file."""
     assert compare.same_value(1000, 1000.0)
     assert compare.same_value(0x1F80, 8064)
 

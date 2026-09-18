@@ -100,7 +100,7 @@ def test_update_stubs_appends_missing_without_touching_existing(home, hooks):
 def test_update_stubs_adds_the_imports_the_new_code_needs(home, hooks):
     """A stub pasted into a bare user file must not break it.
 
-    The default hook signatures mention Path and NodeIdentity.  Before Python
+    The default hook signatures mention Path and NodeIdentity. Before Python
     3.14 annotations are evaluated as the function is defined, so without the
     imports (and the future import) the whole file would fail to load and every
     hook in it would silently fall back to the default.
@@ -154,7 +154,7 @@ def test_a_hook_written_for_an_older_signature_is_not_called(home, log):
     """The file loads, the name is there, and the call would fail.
 
     Left to the call, that is a traceback in the middle of a flash session
-    with the default used instead.  Found at load, it is a line in the log
+    with the default used instead. Found at load, it is a line in the log
     before anything has happened.
     """
     ctx = Context(log=log.append)
@@ -317,7 +317,7 @@ def test_added_imports_never_go_above_a_future_import(opening):
 
 def test_an_older_uds_file_with_its_own_future_import_gains_the_new_hooks(home, log):
     """The file an older pycangui supplied: a docstring, then its own future
-    import.  Adding the newer hooks used to be refused as breaking it."""
+    import. Adding the newer hooks used to be refused as breaking it."""
     Hooks(Context(log=log.append))
     path = workspaces.hooks_dir() / "uds.py"
     path.write_text(

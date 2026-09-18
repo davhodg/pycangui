@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Nothing said to the user is lost because a pane was closed.
 
-The Event Log is a pane like any other and can be shut.  Until it carried a
+The Event Log is a pane like any other and can be shut. Until it carried a
 level, shutting it meant "throw away anything you were going to tell me":
 press Add from DBC with no database, or tick Cyclic with no bus, and the
 button appeared to do nothing at all.
@@ -29,7 +29,7 @@ def window(app, tmp_path, monkeypatch):
     win.show()
     # Settled, not a single turn: the pane is shown a turn of the event loop
     # after a problem, so anything the platform said while the window was
-    # being built has to land before a test starts closing things.  Otherwise
+    # being built has to land before a test starts closing things. Otherwise
     # a Qt critical from a plugin reopens the pane in the middle of a test
     # about whether notes reopen it.
     settle(app)

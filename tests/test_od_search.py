@@ -3,7 +3,7 @@
 """Finding one object in a dictionary of fifteen hundred, and keeping the ones you use.
 
 A real controller offers well over a thousand entries and any given job uses
-eight of them.  The search is how you find those eight; the watch list is how
+eight of them. The search is how you find those eight; the watch list is how
 you stop finding them again every morning.
 """
 

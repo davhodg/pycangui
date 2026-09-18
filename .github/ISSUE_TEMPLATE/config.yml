@@ -1,10 +1,10 @@
-# Blank issues are off, so every report arrives as one of the two forms.  The
+# Blank issues are off, so every report arrives as one of the two forms. The
 # links below appear in the same chooser, above them.
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
     url: https://github.com/davhodg/pycangui/security/advisories/new
-    about: Privately, please -- not as a public issue.  See SECURITY.md.
+    about: Privately, please -- not as a public issue. See SECURITY.md.
   - name: Read the manual
     url: https://github.com/davhodg/pycangui/blob/master/pycangui/help/manual.md
     about: The same manual is in the application, under Help > Documentation.

@@ -2,9 +2,9 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """User-modifiable hooks.
 
-A *hook* is a plain function the application calls at a decision point.  The
+A *hook* is a plain function the application calls at a decision point. The
 built-in defaults live in ``pycangui/hooks/<module>.py``, each marked with
-``@hook``.  On first run every defaults file is copied verbatim into the user's
+``@hook``. On first run every defaults file is copied verbatim into the user's
 ``hooks/`` folder, so the user starts from working, commented code.
 
 Call order for ``hooks.call("canopen", "eds_for_node", identity)``:
@@ -50,7 +50,7 @@ class HookSpec:
         return inspect.getdoc(self.default) or ""
 
 
-# module name -> hook name -> spec.  Filled by @hook at import of the defaults.
+# module name -> hook name -> spec. Filled by @hook at import of the defaults.
 _REGISTRY: dict[str, dict[str, HookSpec]] = {}
 
 
@@ -92,7 +92,7 @@ class _UserModule:
     path: Path
     functions: dict[str, Callable[..., Any]] = field(default_factory=dict)
     error: str | None = None
-    #: name -> what is wrong with it.  Kept out of ``functions`` so that the
+    #: name -> what is wrong with it. Kept out of ``functions`` so that the
     #: default runs instead of the call failing at the worst moment.
     mismatched: dict[str, _Mismatch] = field(default_factory=dict)
 
@@ -119,8 +119,8 @@ class Hooks:
     # --- files -------------------------------------------------------------
     def ensure_user_files(self) -> list[Path]:
         """Copy the hook files the user lacks, and bring the untouched ones up
-        to this version.  An edited one is left alone and, once per newer
-        version, mentioned.  Returns the paths newly copied."""
+        to this version. An edited one is left alone and, once per newer
+        version, mentioned. Returns the paths newly copied."""
         outcome = self.supplied.update(self.ctx.log)
         return [self.ctx.hooks_dir / name for name in outcome.copied]
 
@@ -133,7 +133,7 @@ class Hooks:
 
         An edited hook is the usual way to break things, so there has to be a
         way back -- but the file is code somebody wrote and may be the only
-        copy of it, so this renames rather than deletes.  Returns where the
+        copy of it, so this renames rather than deletes. Returns where the
         old one went.
         """
         return self.supplied.restore(f"{module}.py")
@@ -143,12 +143,12 @@ class Hooks:
 
         Keeping up with a new version of pycangui is pycangui's job, not a
         menu entry the user has to know about and remember to use after every
-        upgrade.  Nothing here rewrites a line the user wrote: the only change
+        upgrade. Nothing here rewrites a line the user wrote: the only change
         made to a file is appending hooks that did not exist when it was last
         looked at.
 
         What "last looked at" means is the signature of every hook, recorded
-        in the workspace settings.  A recorded list rather than a version
+        in the workspace settings. A recorded list rather than a version
         number because the version is no help to somebody running from a
         checkout, and because it is what says a hook is *new* rather than
         deleted on purpose -- a hook the user took out of their file stays
@@ -204,17 +204,17 @@ class Hooks:
     def update_stubs(self, only: dict[str, list[str]] | None = None) -> dict[str, list[str]]:
         """Append hooks that exist in the defaults but not in the user file.
 
-        Never touches existing user code.  Whatever the appended code needs
+        Never touches existing user code. Whatever the appended code needs
         comes with it: the imports, including ``from __future__ import
         annotations`` (from Python 3.14 annotations are evaluated lazily, but
         on 3.12 and 3.13 they are evaluated as the function is defined, so a
         pasted-in signature mentioning ``Path`` would break the whole file),
-        and the module-level tables it reads.  A hook that arrived without its
+        and the module-level tables it reads. A hook that arrived without its
         DID_NAMES would raise on every call and fall back to the built-in
         default, which is a poor way to find out.
 
         With ``only``, consider just those names per module; without it, every
-        hook the file is missing.  Returns {module: [added names]}.
+        hook the file is missing. Returns {module: [added names]}.
         """
         added: dict[str, list[str]] = {}
         for module, specs in registry().items():
@@ -433,7 +433,7 @@ def _missing_constants(module: str, text: str) -> list[tuple[str, str]]:
 def _import_lines(module: str) -> list[str]:
     """The import statements of a defaults module, one statement per line.
 
-    Parsed rather than read off the top of the file.  Reading lines took the
+    Parsed rather than read off the top of the file. Reading lines took the
     first line of a parenthesised import and left the rest behind, which put
     "from pycangui.uds.standard import (" into somebody's hook file and broke
     every hook in it.
@@ -455,7 +455,7 @@ def _with_imports_for(module: str, text: str) -> str:
     if not header:
         return text
     # Imports go at the top, where a reader expects to find them -- but under
-    # the licence header and the docstring, not above them.  Above demoted the
+    # the licence header and the docstring, not above them. Above demoted the
     # docstring to a stray string and pushed the SPDX line down the file,
     # where licence scanners do not look for it.
     at = _top_of(text)
@@ -469,7 +469,7 @@ def _top_of(text: str) -> int:
     """Where imports belong: after a leading comment block, any docstring, and
     any ``from __future__`` import.
 
-    The last of those is not a matter of taste.  Python accepts a future import
+    The last of those is not a matter of taste. Python accepts a future import
     only as a file's first statement, so a line put above one breaks the whole
     file -- which is what happened to an older uds.py, docstring then its own
     future import, the first time it was given hooks that needed new imports.

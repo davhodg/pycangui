@@ -6,12 +6,12 @@
 
 The SVGs in pycangui/resources are the source; pycangui.ico and pycangui.png
 next to them are generated from them and committed, so neither a build nor a
-running pycangui needs to rasterise anything.  Run this after editing either
+running pycangui needs to rasterise anything. Run this after editing either
 SVG.
 
 Two drawings rather than one scaled: a zigzag resistor stops being a zigzag
 somewhere below 32 px and turns into a blur, so the small sizes are drawn with
-the bar that blur was trying to be.  Each size is rendered straight from the
+the bar that blur was trying to be. Each size is rendered straight from the
 vector at that size -- not shrunk from a large bitmap -- so edges land on
 whole pixels where the geometry allows.
 
@@ -74,7 +74,7 @@ def source_for(size: int) -> Path:
 def ico(images: dict[int, bytes]) -> bytes:
     """An .ico file holding one PNG per size.
 
-    ICONDIR, then one 16-byte ICONDIRENTRY per image, then the images.  A
+    ICONDIR, then one 16-byte ICONDIRENTRY per image, then the images. A
     width or height of 0 in an entry means 256.
     """
     header = struct.pack("<HHH", 0, 1, len(images))

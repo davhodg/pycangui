@@ -3,7 +3,7 @@
 """ReadDTCInformation: every report the service offers, and only the boxes each needs.
 
 The service is twenty-odd reports wearing one number, and an ECU answers the
-wrong parameters with NRC 0x13 and nothing else.  The table in pycangui.uds.dtc
+wrong parameters with NRC 0x13 and nothing else. The table in pycangui.uds.dtc
 is what lets the pane grey out what a report has no use for, so the tests that
 matter most here are the ones checking that table against what udsoncan
 actually puts on the wire.
@@ -54,7 +54,7 @@ def test_every_report_takes_exactly_what_the_table_says(report):
     """Build the request with only the parameters listed, and see it come out.
 
     A missing entry raises; a superfluous one shows up as bytes that should
-    not be there.  This is the check that keeps the table honest, because
+    not be there. This is the check that keeps the table honest, because
     getting it wrong is invisible until an ECU answers 0x13.
     """
     params = {field: PROBE[field] for field in report.needs}

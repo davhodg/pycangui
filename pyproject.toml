@@ -7,9 +7,9 @@ name = "pycangui"
 version = "0.0.1"
 description = "Graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP, Python scripting"
 readme = "README.md"
-# Two licences, by file.  pycangui is Apache-2.0; the hook and simulated-node
+# Two licences, by file. pycangui is Apache-2.0; the hook and simulated-node
 # templates copied into a workspace are MIT-0, so the file somebody fills with
-# their own seed-key algorithm carries no conditions.  Each file says which in
+# their own seed-key algorithm carries no conditions. Each file says which in
 # its SPDX line, and tests/test_headers.py keeps it that way.
 license = "Apache-2.0 AND MIT-0"
 license-files = ["LICENSE", "NOTICE", "LICENSES/*.txt"]
@@ -22,7 +22,7 @@ dependencies = [
     "PySide6-Essentials>=6.7",
     "pyqtgraph>=0.13",
     # [serial] pulls in pyserial, which the slcan and serial backends need --
-    # the cheap USB adapters (CANable, Lawicel, USB2CAN).  It is only an
+    # the cheap USB adapters (CANable, Lawicel, USB2CAN). It is only an
     # optional extra of python-can, so without this they silently fail.
     "python-can[serial]>=4.4",
     "canopen>=2.3",
@@ -31,7 +31,7 @@ dependencies = [
     "udsoncan>=1.23",
     "can-isotp>=2.0",
     "can-j1939>=2.0",
-    # Intel HEX, Motorola S-record and raw binary, for UDS transfers.  MIT, by
+    # Intel HEX, Motorola S-record and raw binary, for UDS transfers. MIT, by
     # the author of cantools, which is already here.
     "bincopy>=20.0",
     "pywin32>=306; sys_platform == 'win32'",  # can-j1939 imports pythoncom on Windows
@@ -45,20 +45,20 @@ Issues = "https://github.com/davhodg/pycangui/issues"
 [project.optional-dependencies]
 # MDF and MF4: measurement files, holding decoded signals rather than frames.
 # Optional for a pip installation because asammdf brings pandas with it -- some
-# eighty megabytes on disc -- for a format many people never open.  Nothing
+# eighty megabytes on disc -- for a format many people never open. Nothing
 # imports it unless a file needs one, and pycangui offers to fetch it then.
 #
-# The Windows installer bundles it regardless.  A frozen build has no Python
+# The Windows installer bundles it regardless. A frozen build has no Python
 # environment to install into afterwards, so "fetch it when needed" is not on
 # offer there, and a dead end in the menu costs more than the megabytes.
 # asammdf is LGPL-3.0, the same terms as Qt and python-can, and ships on the
 # same basis: separately replaceable, and named in THIRD-PARTY-NOTICES.txt.
 mf4 = ["asammdf>=8"]
-# Pinned ruff: a new one must not break the build.  mf4 is pulled in so that
+# Pinned ruff: a new one must not break the build. mf4 is pulled in so that
 # CI actually exercises the reader -- a reader nobody tests is a reader that
 # breaks -- and so that the build environment has what the bundle needs.
 # pdoc builds the API pages for people writing hooks, nodes and plugins; see
-# build/api_docs.py.  In dev so that CI renders them and a broken docstring
+# build/api_docs.py. In dev so that CI renders them and a broken docstring
 # fails a test rather than a release.
 dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pdoc>=16", "pycangui[mf4]"]
 
@@ -70,13 +70,13 @@ include = ["pycangui*"]
 
 # Without this a wheel carries only the .py files: setuptools ships modules and
 # drops everything else, so `pip install pycangui` produced a tool whose own
-# demo walkthrough could not find demo.eds.  Nobody noticed because the
+# demo walkthrough could not find demo.eds. Nobody noticed because the
 # launchers install editable, which reads the source tree, and the frozen build
 # copies these folders explicitly in build/pycangui.spec.
 #
 # Whole folders rather than a list of extensions: resources and help exist to
 # hold files that are not code, so the next thing put in one should ship
-# without anyone having to remember this.  tests/test_packaging.py checks that
+# without anyone having to remember this. tests/test_packaging.py checks that
 # every non-Python file under pycangui/ is covered by a pattern here.
 [tool.setuptools.package-data]
 "pycangui.resources" = ["*"]

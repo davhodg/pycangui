@@ -5,7 +5,7 @@
 The protocol itself lives behind an :class:`~pycangui.xcp.engine.XcpEngine`
 chosen from the backend registry, so a different implementation (a Rust or C
 library, or another transport) can be dropped in without touching this file or
-the GUI.  Commands run on a worker thread because they block on the slave.
+the GUI. Commands run on a worker thread because they block on the slave.
 """
 
 from __future__ import annotations

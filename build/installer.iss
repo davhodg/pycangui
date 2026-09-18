@@ -1,4 +1,4 @@
-; Inno Setup script for pycangui.  Built by build.cmd after PyInstaller.
+; Inno Setup script for pycangui. Built by build.cmd after PyInstaller.
 ;
 ; Installs the one-directory PyInstaller build, so Qt and python-can stay as
 ; separate replaceable DLLs -- what the LGPL asks for -- while the user sees a
@@ -31,7 +31,7 @@ OutputBaseFilename=pycangui-{#AppVersion}-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-; The installer's own icon, and the one Settings > Apps shows for it.  The
+; The installer's own icon, and the one Settings > Apps shows for it. The
 ; shortcuts need nothing: they take theirs from pycangui.exe.
 SetupIconFile=..\pycangui\resources\pycangui.ico
 UninstallDisplayIcon={app}\{#AppExe}

@@ -3,13 +3,13 @@
 """Message boxes whose headline is in the box, not only in its title bar.
 
 macOS does not show a message box's title: Apple's guidelines leave it out and
-Qt follows them.  Everywhere pycangui used ``QMessageBox.warning`` and friends,
+Qt follows them. Everywhere pycangui used ``QMessageBox.warning`` and friends,
 whatever the title said was lost there -- "Delete this workspace?" arrived as
 an explanation with Yes and Cancel under it and no question anywhere.
 
-These are drop-in replacements with the same arguments.  The title goes in the
+These are drop-in replacements with the same arguments. The title goes in the
 title bar as before and is repeated as the box's text, which macOS shows in
-bold; what was the text becomes the informative text beneath it.  Windows and
+bold; what was the text becomes the informative text beneath it. Windows and
 Linux gain the headline inside the box too, which reads just as well there.
 
 tests/test_messages.py fails if a static ``QMessageBox`` call comes back.
@@ -30,7 +30,7 @@ def show(
     buttons: Button,
     default: Button = QMessageBox.NoButton,
 ) -> Button:
-    """Build, show and wait.  Returns the button that was pressed."""
+    """Build, show and wait. Returns the button that was pressed."""
     box = QMessageBox(icon, title, title, buttons, parent)
     box.setInformativeText(text)
     if default != QMessageBox.NoButton:

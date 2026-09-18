@@ -2,12 +2,12 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """The README's badges, checked against what they claim to describe.
 
-A badge is a fact stated somewhere nobody will think to update.  The static
+A badge is a fact stated somewhere nobody will think to update. The static
 ones -- the Python floor and the licence -- are read back from pyproject.toml
 here; the CI and release badges are fetched live from GitHub and only need to
 be present.
 
-The release badge asks for pre-releases too.  Without that, a repository with
+The release badge asks for pre-releases too. Without that, a repository with
 no releases reads "no releases or repo not found", which looks like a fault
 rather than the plain fact that nothing is tagged yet.
 """
@@ -41,7 +41,7 @@ def test_the_python_badge_is_the_floor_the_project_declares():
 
 def test_the_licence_badge_is_the_licence():
     """The badge names pycangui's licence, which is the first term of the
-    expression.  The MIT-0 after it covers the templates copied into a
+    expression. The MIT-0 after it covers the templates copied into a
     workspace -- more permissive, so leaving it off the badge understates
     nothing anybody could rely on."""
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))

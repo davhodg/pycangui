@@ -43,7 +43,7 @@ def cyclic(m, can_id, period, count, start=0.0):
 
 
 def test_a_rate_appears_as_soon_as_there_are_two_frames(app):
-    """Two arrivals are a gap, and a gap is an answer.  Waiting adds nothing."""
+    """Two arrivals are a gap, and a gap is an answer. Waiting adds nothing."""
     m = LatestModel()
     cyclic(m, 0x100, 0.1, 2)
     assert m.index(0, 7).data() == "10.0 Hz"
@@ -481,7 +481,7 @@ def test_the_resets_are_together_in_one_submenu(app, tmp_path, monkeypatch):
 
 
 def test_reset_layout_is_in_both_menus_and_works_from_either(app, tmp_path, monkeypatch):
-    """The same action in two places.  The View menu is rebuilt whenever a
+    """The same action in two places. The View menu is rebuilt whenever a
     pane comes or goes, and clear() deletes the actions a menu owns -- so an
     action belonging to that menu would be destroyed out from under the
     Tools entry still pointing at it."""
@@ -588,7 +588,7 @@ def stats(m, row=0):
 
 def test_the_statistics_describe_the_whole_run_not_the_window(app):
     """Rate and Period are deliberately recent, so a stall an hour ago has
-    gone from them.  These are the columns that still remember it."""
+    gone from them. These are the columns that still remember it."""
     m = LatestModel()
     cyclic(m, 0x100, 0.1, 20)  # 100 ms apart
     m.append([frame(0x100, b"", 1.9 + 0.5)])  # then one that was late
@@ -620,7 +620,7 @@ def test_a_perfectly_regular_message_says_zero_rather_than_nothing(app):
 
 
 def test_time_starting_over_starts_the_statistics_over(app):
-    """A replay looping, or a reconnect.  The old gaps describe a clock
+    """A replay looping, or a reconnect. The old gaps describe a clock
     that no longer runs, and one of them would be minus twenty seconds."""
     m = LatestModel()
     cyclic(m, 0x100, 0.1, 10)
@@ -672,7 +672,7 @@ def test_each_view_has_its_own_columns(app, tmp_path, monkeypatch):
 
 def test_a_trace_left_in_latest_mode_opens_again(app, tmp_path, monkeypatch):
     """Restoring the saved mode fires the mode-changed handler from inside
-    the constructor, so everything it touches has to exist by then.  It did
+    the constructor, so everything it touches has to exist by then. It did
     not, and opening a workspace left in Latest per ID threw."""
     import sys
 

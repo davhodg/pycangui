@@ -4,7 +4,7 @@
 
 Only the command/response layer needed for measurement and calibration is
 implemented: CONNECT / DISCONNECT, status, SET_MTA + UPLOAD / SHORT_UPLOAD,
-DOWNLOAD, and GET_SEED / UNLOCK (key from a hook).  Measurements are polled
+DOWNLOAD, and GET_SEED / UNLOCK (key from a hook). Measurements are polled
 with SHORT_UPLOAD into the signal hub; DAQ lists are a later addition.
 """
 

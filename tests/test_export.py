@@ -3,7 +3,7 @@
 """Decoded signals out to a spreadsheet.
 
 The shape is the whole design: a time column *per signal*, with a blank column
-between them.  A single shared time column would have to be built by
+between them. A single shared time column would have to be built by
 interpolating, or holding the last value, or inventing a grid -- and all three
 write numbers into the file that were never on the bus.
 """

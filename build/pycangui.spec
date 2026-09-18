@@ -1,19 +1,19 @@
-# PyInstaller specification for pycangui.       Build with: build.cmd
+# PyInstaller specification for pycangui. Build with: build.cmd
 #
 # Two things need care here, both because PyInstaller works by *reading the
 # source* to find imports and files:
 #
 # * python-can chooses its adapter backend from a string at run time
 #   (``can.Bus(interface="kvaser")``), so nothing imports those modules
-#   statically and PyInstaller would leave every one of them out.  They are
+#   statically and PyInstaller would leave every one of them out. They are
 #   listed as hidden imports below, taken from python-can's own table so the
 #   list cannot drift.
 # * the built-in hook templates are *copied as source* into the user's folder
-#   on first run, and the EDS / DBC / A2L samples are read as files.  They are
+#   on first run, and the EDS / DBC / A2L samples are read as files. They are
 #   collected as data, not code, so they exist on disk in the bundle.
 #
 # Qt is left as separate DLLs (a one-directory build) so it stays dynamically
-# linked and replaceable, which is what the LGPL asks for.  GPL-only Qt modules
+# linked and replaceable, which is what the LGPL asks for. GPL-only Qt modules
 # are excluded here and the build fails if any of them appear anyway.
 
 from pathlib import Path
@@ -36,7 +36,7 @@ HIDDEN = [
     "j1939",
     "udsoncan",
     "bincopy",
-    # asammdf reads MDF and MF4 measurement files.  pycangui imports it only
+    # asammdf reads MDF and MF4 measurement files. pycangui imports it only
     # when a file needs one, so nothing static points at it and PyInstaller
     # would leave it out; and its format blocks are picked by file version at
     # run time, hence sweeping the package rather than naming the entry point.
@@ -51,7 +51,7 @@ HIDDEN = [
     "win32api",
 ]
 
-# Qt modules that are GPL or commercial only.  Shipping one would change the
+# Qt modules that are GPL or commercial only. Shipping one would change the
 # licence of the whole application, so they are kept out deliberately.
 GPL_QT_MODULES = [
     "PySide6.QtCharts",
@@ -97,12 +97,12 @@ EXCLUDED = [
     "PySide6.QtWebEngineQuick",
     "PySide6.QtWebEngineWidgets",
     "PySide6.QtWebSockets",
-    # asammdf's own measurement GUI.  pycangui has its reader, not its
+    # asammdf's own measurement GUI. pycangui has its reader, not its
     # application, and that application wants the Qt addons deliberately left
     # out above -- so it would either bloat the build or half-import and fail.
     "asammdf.gui",
     "asammdf.app",
-    # Test suites that ship inside libraries.  pandas' alone is some 30 MB of
+    # Test suites that ship inside libraries. pandas' alone is some 30 MB of
     # a build nobody runs pytest in.
     "pandas.tests",
     "numpy.tests",
@@ -131,7 +131,7 @@ DATA = [
 
 #: Qt ships these as plain DLLs and plugins collected by PySide6's own
 #: PyInstaller hook, so ``excludes`` (which only filters Python modules) does
-#: not remove them.  They have to be filtered out of the collected binaries.
+#: not remove them. They have to be filtered out of the collected binaries.
 GPL_QT_BINARY_TOKENS = (
     "qt6charts",
     "qt6datavisualization",
@@ -176,7 +176,7 @@ exe = EXE(
     upx=False,  # UPX compression is a reliable way to be flagged by antivirus
     console=False,  # a GUI application: no console window
     # Explorer, the Start menu and the desktop shortcut read the icon out of
-    # the exe, not from the running window.  Regenerate with build/icon.py.
+    # the exe, not from the running window. Regenerate with build/icon.py.
     icon=str(PROJECT / "pycangui" / "resources" / "pycangui.ico"),
 )
 

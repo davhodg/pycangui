@@ -3,7 +3,7 @@
 """Setting up a message's counter and checksum.
 
 Two groups, each switched on by its own checkbox, because a message may have
-either, both or neither and the common case is neither.  A preview of the
+either, both or neither and the common case is neither. A preview of the
 next few frames sits at the bottom: a checksum is invisible from the sending
 end -- the frames go out looking fine whether or not the arithmetic is what
 the device expects -- so the one thing this dialog can usefully do is show
@@ -117,14 +117,14 @@ class TxFieldsDialog(QDialog):
         self.setWindowTitle(f"{TITLE} -- {label}" if label else TITLE)
         self.resize(560, 620)
         self._payload = payload or b"\x00" * 8
-        #: The database signals of this message, where it has any.  Naming a
+        #: The database signals of this message, where it has any. Naming a
         #: field beats counting to it, and is simpler underneath as well: the
         #: database does the bit packing, so no byte or nibble has to be
         #: worked out, and a signal that straddles a byte is not a problem
         #: anybody has to think about.
         self._signals = signals or []
         #: How to turn signal values into bytes, so the preview still works
-        #: when the fields are named rather than placed.  The preview is most
+        #: when the fields are named rather than placed. The preview is most
         #: of what this dialog is for, and losing it on the database path
         #: would be losing it exactly where the arithmetic is least visible.
         self._encode = encode
@@ -199,7 +199,7 @@ class TxFieldsDialog(QDialog):
         self.checksum_box.setLayout(checksum_form)
 
         hook_note = QLabel(
-            "Not in the list?  A maker's own arithmetic goes in the "
+            "Not in the list? A maker's own arithmetic goes in the "
             "<b>transmit.checksum</b> hook, and is written wherever you put it here."
         )
         hook_note.setWordWrap(True)
@@ -385,5 +385,5 @@ class TxFieldsDialog(QDialog):
                 return str(exc)
             except Exception as exc:  # the database refused the values
                 return f"{type(exc).__name__}: {exc}"
-            lines.append(f"{n + 1}:  " + " ".join(f"{b:02X}" for b in out))
+            lines.append(f"{n + 1}: " + " ".join(f"{b:02X}" for b in out))
         return "\n".join(lines)

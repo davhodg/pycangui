@@ -3,11 +3,11 @@
 """XCP engine interface and the built-in implementation.
 
 An engine only has to move XCP commands and responses; everything above it
-(A2L, conversions, polling, plotting, GUI) lives in ``XcpManager``.  Replace it
+(A2L, conversions, polling, plotting, GUI) lives in ``XcpManager``. Replace it
 by registering another backend of kind ``"xcp"`` -- for example one calling
 into a Rust or C library through ctypes.
 
-All methods are called from a worker thread and may block.  Raise ``XcpError``
+All methods are called from a worker thread and may block. Raise ``XcpError``
 for a slave-reported error code and ``TimeoutError`` if the slave says nothing.
 """
 
@@ -47,7 +47,7 @@ class XcpEngine(ABC):
     info: ConnectInfo | None = None
 
     def set_ids(self, cmd_id: int, res_id: int, extended: bool) -> None:
-        """Addressing for XCP on CAN.  Engines on another link may ignore it."""
+        """Addressing for XCP on CAN. Engines on another link may ignore it."""
         return None
 
     @abstractmethod

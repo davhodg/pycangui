@@ -3,7 +3,7 @@
 """Starting up: noticing a dependency that was added since .venv was built.
 
 The launchers used to set up only when .venv was missing, so adding a library
-broke every existing checkout.  Under pythonw there is no console, so what the
+broke every existing checkout. Under pythonw there is no console, so what the
 user saw was a window that never opened and no message anywhere.
 """
 

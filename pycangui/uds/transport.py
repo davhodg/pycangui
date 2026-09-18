@@ -3,7 +3,7 @@
 """ISO-TP transport interface and the built-in implementation.
 
 UDS needs one thing from the link: send a whole message, receive a whole
-message.  That is the seam, so an ISO-TP implementation in C or Rust (via
+message. That is the seam, so an ISO-TP implementation in C or Rust (via
 ctypes) can replace ``can-isotp`` by registering a backend of kind ``"isotp"``:
 
     from pycangui.core.backends import register_backend
@@ -78,7 +78,7 @@ class CanIsoTpTransport(IsoTpTransport):
                 "rx_consecutive_frame_timeout": 1000,
                 "can_fd": config.can_fd,
                 # CAN_DL: 8 on a classic bus, and one of the FD lengths -- 12,
-                # 16, 20, 24, 32, 48, 64 -- on one that opened as FD.  A long
+                # 16, 20, 24, 32, 48, 64 -- on one that opened as FD. A long
                 # frame is the whole point of running UDS over FD: 64 bytes a
                 # frame is eight times fewer flow control rounds.
                 "tx_data_length": config.tx_data_length if config.can_fd else 8,
