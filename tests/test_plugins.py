@@ -202,7 +202,7 @@ def test_a_plugin_can_name_frames_in_every_trace(app, window):
     settle(app)
     later = window.panes.view(window.panes.add("trace"))
     assert len(later.classifiers) == len(window.trace.classifiers)
-    assert len(window.trace.classifiers) == 5, "the four built in, plus the plugin's"
+    assert len(window.trace.classifiers) == 6, "the five built in, plus the plugin's"
 
 
 def test_a_plugin_can_add_a_way_to_show_an_object(app, window):
@@ -514,7 +514,7 @@ def test_switched_off_means_not_loaded_at_all(app, window):
     assert "demo:screen" not in window.panes.docks
     assert window.plugins.working() == []
     assert "Demo screen" not in [a.text() for a in window.view_menu.actions()]
-    assert len(window.trace.classifiers) == 4, "and its trace labeller went too"
+    assert len(window.trace.classifiers) == 5, "and its trace labeller went too"
 
 
 def test_one_switched_off_is_still_listed(app, window):

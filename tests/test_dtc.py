@@ -13,11 +13,12 @@ import pytest
 from PySide6.QtCore import QSettings
 from udsoncan.services import ReadDTCInformation as Service
 
-from pycangui.core.bus import BusManager
+from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.uds import dtc
+from pycangui.uds import NO_ID, dtc
 from pycangui.uds.manager import UdsManager
+from pycangui.ui.main_window import MainWindow
 from pycangui.ui.uds_view import UdsView
 
 #: Distinct values, so which one landed in which byte of the request is
@@ -274,3 +275,43 @@ def test_a_greyed_box_takes_its_label_with_it(view):
 def test_the_dtc_box_starts_at_all_of_them(view):
     """FFFFFF is how most ECUs are asked for every fault they hold."""
     assert view.dtc_number.text() == "FFFFFF"
+
+
+# --- what the trace is told is UDS ------------------------------------------------------
+def test_only_the_configured_addresses_are_called_uds(app, tmp_path, monkeypatch):
+    """The whole 0x7E0 to 0x7EF range used to be read as UDS wherever it
+    turned up, which is a guess on a bus using those ids for something else."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    uds = window.uds
+
+    def named(can_id):
+        return uds.classify(Frame(0.0, "CAN", can_id, False, False, True, b"\x00"))
+
+    assert named(0x7E0) == "UDS req", "the default addresses are the standard ones"
+    assert named(0x7E8) == "UDS resp"
+    assert named(0x7DF) == "UDS func"
+    assert named(0x7E1) is None, "another ECU's addresses are not this one's"
+
+    uds.config.tx_id = NO_ID
+    uds.config.rx_id = NO_ID
+    uds.config.functional_id = NO_ID
+    assert named(0x7E0) is None, "cleared means this bus has no UDS on it"
+    window.close()
+
+
+def test_the_uds_pane_waits_for_addresses_before_opening(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+
+    assert view.open_btn.isEnabled(), "the standard addresses are filled in to start with"
+    assert view.functional_id.text() == "7DF", "and functional addressing has a box of its own"
+
+    view.tx_id.setText("")
+    assert not view.open_btn.isEnabled(), "nothing to open a session with"
+    view.tx_id.setText("7E0")
+    assert view.open_btn.isEnabled()
+    window.close()

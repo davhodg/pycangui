@@ -9,6 +9,25 @@ the **Filter** menu hides whole protocol groups or channels, and **Pause**
 holds the display still while capture and recording carry on. The row count
 next to the buttons reads *shown of captured*.
 
+## What names a frame
+
+The **Kind** column says what a frame is, and nothing is named on the strength
+of its identifier alone. In order: a [`trace.frame_kind` hook](hooks.md), which
+is this workspace's own answer; then the [CAN databases](signals.md) you have
+loaded, which name what they were written to name; then each protocol, and only
+where it has been told what it is looking at -- the nodes
+[CANopen](canopen.md) has heard from or you have added by hand, the addresses
+in the [UDS](uds.md) pane, the identifiers in the [XCP](xcp.md) pane.
+
+That last point is the whole of it. CANopen's predefined connection set claims
+0x180 to 0x67F, so reading every identifier that way labels an ordinary CAN bus
+as a CANopen one, and hides the names from a database somebody loaded on
+purpose. Until a node is known, those ids are just ids. Where an EDS says a
+node's PDOs are somewhere other than the predefined places, the EDS is what is
+used.
+
+A frame nothing can account for keeps its identifier and sits under *Other*.
+
 The **Filter** menu lists the protocol groups -- NMT, SYNC/TIME, EMCY, PDO,
 SDO, Heartbeat, LSS, UDS, J1939, XCP, Bus errors and Other -- and every
 channel that has been seen, with *Show all* to bring everything back.

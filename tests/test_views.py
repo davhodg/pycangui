@@ -179,6 +179,9 @@ def test_trace_view_kind_column_and_filter(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     view = TraceView(Hooks(ctx), ctx)
+    # Standing in for the CANopen manager, which names these only for
+    # nodes it knows are on the bus.
+    view.classifiers.append(lambda f: {0x185: "TxPDO1 n5", 0x705: "Heartbeat n5"}.get(f.can_id))
     view.on_frames([frame(0x185, b"", 0.0), frame(0x705, b"", 0.1), frame(0x123, b"", 0.2)])
     kinds = [view.model.index(r, 4).data() for r in range(3)]
     assert kinds == ["TxPDO1 n5", "Heartbeat n5", ""]
@@ -218,24 +221,26 @@ def test_trace_columns_show_the_channel_and_fd(app, tmp_path, monkeypatch):
     assert view.latest.index(1, 4).data() == "12 FD"
 
 
-def test_canopen_label_beats_a_dbc_message_name(app, tmp_path, monkeypatch):
-    """A DBC that names 0x185 must not hide which node sent it."""
+def test_a_database_name_beats_a_guess_from_the_id(app, tmp_path, monkeypatch):
+    """A database somebody loaded names what it was written to name. The
+    predefined connection set claims 0x180 to 0x67F, so reading ids that way
+    first left those names with nothing to say."""
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     view = TraceView(Hooks(ctx), ctx)
     dbc = DbcDecoder()
     dbc.load(resources.path("demo.dbc"))  # names 0x185 DriveStatus, 0x705 DriveHeartbeat
     view.classifiers.append(dbc.message_name)
+    view.classifiers.append(lambda f: "TxPDO1 n5" if f.can_id == 0x185 else None)
 
     view.on_frames(
         [
-            frame(0x185, b"\x00" * 8, 0.0),  # a CANopen TPDO the DBC also names
-            frame(0x705, b"\x05", 0.1),  # a heartbeat the DBC also names
-            frame(0x123, b"\x00" * 4, 0.2),  # not CANopen: the DBC name stands
+            frame(0x185, b"\x00" * 8, 0.0),  # named by the database and by the id
+            frame(0x123, b"\x00" * 4, 0.2),  # named by the database alone
         ]
     )
-    kinds = [view.model.index(r, 4).data() for r in range(3)]
-    assert kinds == ["TxPDO1 n5", "Heartbeat n5", "PumpCommand"]
+    kinds = [view.model.index(r, 4).data() for r in range(2)]
+    assert kinds == ["DriveStatus", "PumpCommand"]
 
 
 def make_view(tmp_path, monkeypatch):
@@ -246,6 +251,9 @@ def make_view(tmp_path, monkeypatch):
 
 def test_filter_box_matches_id_name_channel_and_data(app, tmp_path, monkeypatch):
     view, _ctx = make_view(tmp_path, monkeypatch)
+    # Something has to have named a frame for the name to be searchable,
+    # and naming is a protocol's job now rather than a guess from the id.
+    view.classifiers.append(lambda f: "Heartbeat n5" if f.can_id == 0x705 else None)
     view.on_frames(
         [
             Frame(0.0, "CAN 1", 0x185, False, False, True, b"\xde\xad"),

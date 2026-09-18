@@ -24,7 +24,7 @@ from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
-from pycangui.uds import UdsConfig
+from pycangui.uds import NO_ID, UdsConfig
 from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD
 from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
@@ -203,13 +203,22 @@ class UdsManager(QObject):
 
     # --- trace labelling -------------------------------------------------------
     def classify(self, frame: Frame) -> str | None:
-        """Kind labels for the configured ids (the standard 0x7Ex range is in core.classify)."""
-        if self.client is None:
-            return None
-        if frame.can_id == self.config.tx_id:
-            return "UDS req"
-        if frame.can_id == self.config.rx_id:
-            return "UDS resp"
+        """Name the frames at the addresses this pane is set to.
+
+        Whether or not a session is open: the addresses are a statement
+        about what is on this bus, and a request sent before anybody pressed
+        Connect is still a UDS request. Only those addresses, though -- the
+        whole 0x7E0 to 0x7EF range used to be read as UDS wherever it
+        appeared, which is a guess on a bus that happens to use those ids
+        for something else.
+        """
+        for can_id, label in (
+            (self.config.functional_id, "UDS func"),
+            (self.config.tx_id, "UDS req"),
+            (self.config.rx_id, "UDS resp"),
+        ):
+            if can_id != NO_ID and frame.can_id == can_id:
+                return label
         return None
 
     # --- hooks ---------------------------------------------------------------------

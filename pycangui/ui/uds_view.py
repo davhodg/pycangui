@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
-from pycangui.uds import CAN_DL, UdsConfig, images
+from pycangui.uds import CAN_DL, NO_ID, UdsConfig, images
 from pycangui.uds.dtc import (
     DEFAULT_STANDARD,
     DTC,
@@ -58,6 +58,28 @@ from pycangui.ui.persist import remember
 #: Operations that change what is on the ECU, and so are worth a question
 #: before the first one of a session.
 DESTRUCTIVE = ("download", 1, 2, 3, 6)
+
+
+ADDRESS_TIP = (
+    "The identifier the tester sends on, and the one the ECU answers\n"
+    "with. ISO 15765-4 says 7E0 and 7E8 for the first ECU; a maker\n"
+    "may use others. Empty means this bus has none: nothing is sent\n"
+    "and nothing in the trace is called UDS."
+)
+FUNCTIONAL_TIP = (
+    "The address every ECU listens to, for a request meant for all of\n"
+    "them. 7DF by the standard. Empty if this bus does not use one."
+)
+OPEN_TIP = (
+    "Open an ISO-TP session with the ECU at the addresses above.\n"
+    "Nothing else on this pane works until it is open."
+)
+NO_ADDRESS_TIP = "Fill in the Tx and Rx identifiers first."
+
+
+def _id_text(value: int) -> str:
+    """An address as it is typed, and empty for one that is not set."""
+    return "" if value == NO_ID else f"{value:X}"
 
 
 def _hex_edit(text: str, width: int = 70) -> QLineEdit:
@@ -110,8 +132,19 @@ class UdsView(QWidget):
         # --- addressing ----------------------------------------------------
         addr = QGroupBox("ECU")
         g = QGridLayout(addr)
-        self.tx_id = _hex_edit(f"{cfg.tx_id:X}")
-        self.rx_id = _hex_edit(f"{cfg.rx_id:X}")
+        self.tx_id = _hex_edit(_id_text(cfg.tx_id))
+        self.tx_id.setToolTip(ADDRESS_TIP)
+        self.rx_id = _hex_edit(_id_text(cfg.rx_id))
+        self.rx_id.setToolTip(ADDRESS_TIP)
+        # Functional addressing has its own box now. It was a setting with
+        # nowhere to set it: 0x7DF went out on Send functionally and was
+        # named in the trace, and a bus using that id for something else had
+        # no way to say so.
+        self.functional_id = _hex_edit(_id_text(cfg.functional_id))
+        self.functional_id.setToolTip(FUNCTIONAL_TIP)
+        for box in (self.tx_id, self.rx_id, self.functional_id):
+            box.setPlaceholderText("none")
+            box.textChanged.connect(lambda _t: self._addresses_changed())
         self.ext = QCheckBox("29-bit")
         self.ext.setToolTip("Address the ECU with 29-bit identifiers rather than 11-bit")
         self.ext.setChecked(cfg.extended_id)
@@ -150,14 +183,16 @@ class UdsView(QWidget):
         )
         self.brs.setChecked(cfg.bitrate_switch)
         self.open_btn = QPushButton("Open")
-        self.open_btn.setToolTip(
-            "Open an ISO-TP connection on the addresses above.\n"
-            "Nothing else on this pane works until it is open."
-        )
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
         for col, (label, w) in enumerate(
-            (("Tx ID", self.tx_id), ("Rx ID", self.rx_id), ("", self.ext), ("", self.padding))
+            (
+                ("Tx ID", self.tx_id),
+                ("Rx ID", self.rx_id),
+                ("Func ID", self.functional_id),
+                ("", self.ext),
+                ("", self.padding),
+            )
         ):
             if label:
                 g.addWidget(QLabel(label), 0, col * 2)
@@ -168,6 +203,7 @@ class UdsView(QWidget):
         g.addWidget(self.can_dl, 0, 12)
         g.addWidget(self.brs, 0, 13)
         g.addWidget(self.open_btn, 0, 14)
+        self._addresses_changed()
 
         # --- session / security ----------------------------------------------
         sess = QGroupBox("Session and security")
@@ -616,12 +652,26 @@ class UdsView(QWidget):
     # --- helpers ----------------------------------------------------------------------
     @staticmethod
     def _int(edit: QLineEdit) -> int:
-        return int(edit.text().strip() or "0", 16)
+        """What is typed, as a number, or NO_ID for a box left empty."""
+        text = edit.text().strip()
+        if not text:
+            return NO_ID
+        try:
+            return int(text, 16)
+        except ValueError:
+            return NO_ID
+
+    def _addresses_changed(self) -> None:
+        """Open is offered once there is an ECU to open a session with."""
+        ready = self._int(self.tx_id) != NO_ID and self._int(self.rx_id) != NO_ID
+        self.open_btn.setEnabled(ready or self.manager.is_open)
+        self.open_btn.setToolTip(OPEN_TIP if ready else NO_ADDRESS_TIP)
 
     def _config(self) -> UdsConfig:
         cfg = UdsConfig(
             tx_id=self._int(self.tx_id),
             rx_id=self._int(self.rx_id),
+            functional_id=self._int(self.functional_id),
             extended_id=self.ext.isChecked(),
             padding=0xCC if self.padding.isChecked() else None,
             can_fd=self.manager.bus.fd,

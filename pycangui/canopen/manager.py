@@ -33,6 +33,7 @@ from pycangui.canopen.dcf import values_from, write_dcf
 from pycangui.canopen.display import Display, from_variable, with_overrides
 from pycangui.canopen.emcy import Emcy
 from pycangui.core.bus import BusManager
+from pycangui.core.classify import predefined_labels
 from pycangui.core.worker import Worker
 
 DATATYPE_NAMES: dict[int, str] = {
@@ -150,6 +151,11 @@ class CanopenManager(QObject):
         #: node -> (request, response) COB-IDs, for the nodes whose SDO server
         #: is not on the predefined channel. See set_sdo_channels.
         self.sdo_channels: dict[int, tuple[int, int]] = {}
+        #: Which id means what, worked out from the nodes that are known and
+        #: thrown away whenever that changes. Built on demand rather than
+        #: kept up to date, because it is read once per frame and written
+        #: only when somebody finds a node or loads an EDS.
+        self._labels: dict[int, str] | None = None
         self._sync_on = False
         self._worker = Worker()  # starts itself the first time it is used
         bus.connected.connect(self._on_bus_connected)
@@ -224,6 +230,7 @@ class CanopenManager(QObject):
         self._heartbeat_stamp[node_id] = arrived
         self.last_heartbeat[node_id] = now
         state = NMT_STATES.get(data[0] & 0x7F, f"0x{data[0]:02X}")
+        self.forget_labels()  # a node nobody knew of accounts for ids now
         self.node_seen.emit(node_id, state)
 
     def _on_pdo(self, node_id: int, pdo_map: canopen.pdo.base.PdoMap) -> None:
@@ -307,6 +314,7 @@ class CanopenManager(QObject):
             self.message.emit(f"{node_id} is not a node id (1 to 127)")
             return False
         self._ensure_node(node_id)
+        self.forget_labels()
         self.node_seen.emit(node_id, ADDED_BY_HAND)
         return True
 
@@ -412,6 +420,51 @@ class CanopenManager(QObject):
     def clear_emcy_history(self) -> None:
         self.emcy_history.clear()
 
+    # --- naming frames in the trace --------------------------------------------
+    def classify(self, frame) -> str | None:
+        """Name a frame, but only where there is a reason to think it CANopen.
+
+        The predefined connection set claims most of the 11-bit range --
+        0x180 to 0x57F is PDO, 0x580 to 0x67F is SDO -- so reading every id
+        that way labels an ordinary CAN bus as a CANopen one it is not. The
+        way out is to name only what belongs to a node that is actually
+        known: heard from, or put in the list by hand. Until then the ids
+        are just ids, and a database's own names have the field to
+        themselves.
+
+        Where an EDS says a node's PDOs are somewhere other than the
+        predefined places, that is what is used: the file is a better
+        authority about that node than CiA 301's defaults are.
+        """
+        if frame.extended or not self.nodes():
+            return None
+        if self._labels is None:
+            self._labels = self._build_labels()
+        return self._labels.get(frame.can_id)
+
+    def forget_labels(self) -> None:
+        """The names are out of date: a node, its SDO channel or its PDOs changed."""
+        self._labels = None
+
+    def _build_labels(self) -> dict[int, str]:
+        """Every id this bus's known nodes account for, and what to call it."""
+        labels: dict[int, str] = {
+            0x000: "NMT",
+            0x080: "SYNC",
+            0x100: "TIME",
+            0x7E4: "LSS",
+            0x7E5: "LSS",
+        }
+        for node_id in self.nodes():
+            labels.update(predefined_labels(node_id))
+            request, response = self.sdo_channel(node_id)
+            labels[request] = f"SDO-R n{node_id}"
+            labels[response] = f"SDO-T n{node_id}"
+            # An EDS or a node that has been read: where its PDOs really are.
+            for pdo in self.pdo_configs(node_id):
+                labels[pdo.cob_id] = f"{pdo.direction}{pdo.number} n{node_id}"
+        return labels
+
     # --- nodes ---------------------------------------------------------------
     def node(self, node_id: int) -> canopen.RemoteNode | None:
         if self.network is None:
@@ -451,6 +504,7 @@ class CanopenManager(QObject):
         Every node not listed goes back to 0x600 + id and 0x580 + id, so taking a
         node off the list is how its override is undone.
         """
+        self.forget_labels()
         self.sdo_channels = {
             int(node_id): (int(request), int(response))
             for node_id, (request, response) in channels.items()
@@ -699,6 +753,7 @@ class CanopenManager(QObject):
                 self.message.emit(f"Node {node_id}: PDO configuration read failed ({error})")
                 return
             self.message.emit(f"Node {node_id}: {count} PDO(s) configured")
+            self.forget_labels()
             self.pdo_config.emit(node_id)
             self.rpdos_read.emit(node_id)
 
@@ -741,6 +796,7 @@ class CanopenManager(QObject):
                 self.message.emit(f"Node {config.node_id}: PDO write failed ({error})")
             else:
                 self.message.emit(f"Node {config.node_id}: {text}")
+                self.forget_labels()
                 self.pdo_config.emit(config.node_id)
 
         self._worker.submit(job, done)
@@ -1109,6 +1165,7 @@ class CanopenManager(QObject):
         except Exception as exc:  # an EDS without PDO objects, or an odd one
             self.message.emit(f"Node {node_id}: no PDO mapping in the EDS ({exc})")
             return
+        self.forget_labels()
         self.pdo_config.emit(node_id)
         count = len(self.rpdos(node_id))
         if count:
