@@ -83,7 +83,7 @@ def _ensure() -> None:
     """Make sure there is somewhere to work, migrating an older setup if there is one."""
     if not root().exists():
         migrate()
-    dir_for(DEFAULT).mkdir(parents=True, exist_ok=True)
+    paths.made(dir_for(DEFAULT))
 
 
 def names() -> list[str]:
@@ -159,8 +159,7 @@ def layout_path() -> Path:
 
 
 def _made(path: Path) -> Path:
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return paths.made(path)
 
 
 # --- naming one -------------------------------------------------------------------------
