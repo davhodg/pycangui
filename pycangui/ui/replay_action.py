@@ -93,11 +93,15 @@ class ReplayAction(QObject):
         # specific than either. Otherwise wherever a log was last recorded or
         # replayed, which is usually the same place.
         if self._path is not None:
-            path, _ = QFileDialog.getOpenFileName(
-                self.button, "Replay a log", str(self._path.parent), READ_FILTER
+            path, chosen_type = QFileDialog.getOpenFileName(
+                self.button,
+                "Replay a log",
+                str(self._path.parent),
+                READ_FILTER,
+                folders.remembered_type(self.ctx, folders.LOG, READ_FILTER),
             )
             if path:
-                folders.remember(self.ctx, folders.LOG, path)
+                folders.remember(self.ctx, folders.LOG, path, chosen_type)
         else:
             path = folders.open_file(
                 self.button,

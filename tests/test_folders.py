@@ -28,31 +28,41 @@ def ctx(home):
     return Context(log=print)
 
 
+class Dialogs:
+    """What the dialogs were told to show, and what they answer with."""
+
+    def __init__(self):
+        self.opened: list[str] = []  # the folder each dialog started in
+        self.started_on: list[str] = []  # the type each dialog started on
+        self.answer: list[str] = [""]  # the file it comes back with
+        self.answer_type: list[str] = [""]  # and the type chosen with it
+
+
 @pytest.fixture
 def picked(monkeypatch):
-    """Answer every dialog with a chosen file, and record where it opened."""
-    opened: list[str] = []
-    answer: list[str] = [""]
+    """Answer every dialog with a chosen file, and record how it opened."""
+    seen = Dialogs()
 
-    def fake(_parent, _caption, directory, _filter=""):
-        opened.append(directory)
-        return (answer[0], "")
+    def fake(_parent, _caption, directory, _filter="", selected=""):
+        seen.opened.append(directory)
+        seen.started_on.append(selected)
+        return (seen.answer[0], seen.answer_type[0])
 
     monkeypatch.setattr(QFileDialog, "getOpenFileName", fake)
     monkeypatch.setattr(QFileDialog, "getSaveFileName", fake)
-    return opened, answer
+    return seen
 
 
 # --- one folder per sort of file -----------------------------------------------------
 def test_the_first_time_it_opens_where_it_is_told(app, ctx, picked, tmp_path):
-    opened, answer = picked
+    opened, answer = picked.opened, picked.answer
     answer[0] = ""
     folders.open_file(None, ctx, folders.EDS, "EDS", "*.eds", ctx.eds_dir)
     assert opened == [str(ctx.eds_dir)]
 
 
 def test_the_next_time_it_opens_where_the_last_one_was_found(app, ctx, picked, tmp_path):
-    opened, answer = picked
+    opened, answer = picked.opened, picked.answer
     elsewhere = tmp_path / "customer drop"
     elsewhere.mkdir()
     answer[0] = str(elsewhere / "drive.eds")
@@ -64,7 +74,7 @@ def test_the_next_time_it_opens_where_the_last_one_was_found(app, ctx, picked, t
 
 def test_one_sort_of_file_does_not_move_another(app, ctx, picked, tmp_path):
     """The whole point: an EDS and a firmware image live in different places."""
-    opened, answer = picked
+    opened, answer = picked.opened, picked.answer
     eds_folder = tmp_path / "eds here"
     eds_folder.mkdir()
     answer[0] = str(eds_folder / "drive.eds")
@@ -77,7 +87,7 @@ def test_one_sort_of_file_does_not_move_another(app, ctx, picked, tmp_path):
 
 def test_a_file_that_was_not_chosen_moves_nothing(app, ctx, picked):
     """Cancelling is not a choice about anything."""
-    _opened, answer = picked
+    answer = picked.answer
     answer[0] = ""
     folders.open_file(None, ctx, folders.EDS, "EDS", "*.eds", ctx.eds_dir)
     assert folders.remembered(ctx, folders.EDS) is None
@@ -85,7 +95,7 @@ def test_a_file_that_was_not_chosen_moves_nothing(app, ctx, picked):
 
 def test_saving_remembers_too_and_shares_with_opening(app, ctx, picked, tmp_path):
     """A DCF saved next to its EDS should be found next to it as well."""
-    opened, answer = picked
+    opened, answer = picked.opened, picked.answer
     where = tmp_path / "configs"
     where.mkdir()
     answer[0] = str(where / "node5.dcf")
@@ -97,7 +107,7 @@ def test_saving_remembers_too_and_shares_with_opening(app, ctx, picked, tmp_path
 
 
 def test_a_save_dialog_still_suggests_a_name(app, ctx, picked, tmp_path):
-    opened, answer = picked
+    opened, answer = picked.opened, picked.answer
     answer[0] = ""
     folders.save_file(None, ctx, folders.LOG, "Record", "*.blf", tmp_path, suggested="capture.blf")
     assert opened[0].endswith("capture.blf")
@@ -106,7 +116,7 @@ def test_a_save_dialog_still_suggests_a_name(app, ctx, picked, tmp_path):
 # --- and back to the default ------------------------------------------------------------
 def test_a_folder_that_is_no_longer_there_is_ignored(app, ctx, picked, tmp_path):
     """A memory stick that has been unplugged, or a folder somebody deleted."""
-    opened, answer = picked
+    opened, answer = picked.opened, picked.answer
     gone = tmp_path / "gone"
     gone.mkdir()
     answer[0] = str(gone / "drive.eds")
@@ -119,7 +129,7 @@ def test_a_folder_that_is_no_longer_there_is_ignored(app, ctx, picked, tmp_path)
 
 
 def test_forgetting_puts_every_dialog_back(app, ctx, picked, tmp_path):
-    opened, answer = picked
+    opened, answer = picked.opened, picked.answer
     for kind in (folders.EDS, folders.IMAGE):
         where = tmp_path / kind
         where.mkdir()
@@ -133,7 +143,7 @@ def test_forgetting_puts_every_dialog_back(app, ctx, picked, tmp_path):
 
 
 def test_forgetting_leaves_the_rest_of_the_settings_alone(app, ctx, picked, tmp_path):
-    _opened, answer = picked
+    answer = picked.answer
     ctx.settings.set("dbc.paths", ["mine.dbc"])
     answer[0] = str(tmp_path / "a.eds")
     folders.open_file(None, ctx, folders.EDS, "EDS", "*.eds", ctx.eds_dir)
@@ -148,7 +158,7 @@ def test_forgetting_nothing_is_not_an_error(app, ctx):
 
 # --- it belongs to the workspace -----------------------------------------------------------
 def test_another_product_has_its_files_somewhere_else(app, home, picked, tmp_path):
-    opened, answer = picked
+    opened, answer = picked.opened, picked.answer
     first = Context(log=print)
     where = tmp_path / "product one"
     where.mkdir()
@@ -178,7 +188,7 @@ def test_a_dialog_in_the_window_goes_through_the_same_memory(
     # The file does not exist, so cantools refuses it and the window offers to
     # load it unchecked. Say no: this test is about the folder, not the file.
     monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Cancel)
-    _opened, answer = picked
+    answer = picked.answer
     where = tmp_path / "somewhere else"
     where.mkdir()
     answer[0] = str(where / "a.dbc")
@@ -212,3 +222,68 @@ def test_the_window_says_when_there_was_nothing_to_forget(app, home):
     window._forget_folders()
     assert window.log.toPlainText() != before
     window.close()
+
+
+# --- one file type per sort of file ----------------------------------------------------
+IMAGES = "Intel HEX (*.hex);;S-record (*.s19);;Raw binary (*.bin);;All files (*)"
+
+
+def test_the_first_time_it_opens_on_whatever_is_first(app, ctx, picked, tmp_path):
+    picked.answer[0] = ""
+    folders.open_file(None, ctx, folders.IMAGE, "Firmware", IMAGES, tmp_path)
+    assert picked.started_on == [""], "nothing chosen yet, so Qt's own default"
+
+
+def test_the_type_last_chosen_is_the_one_it_opens_on(app, ctx, picked, tmp_path):
+    picked.answer[0] = str(tmp_path / "app.bin")
+    picked.answer_type[0] = "Raw binary (*.bin)"
+    folders.open_file(None, ctx, folders.IMAGE, "Firmware", IMAGES, tmp_path)
+
+    folders.open_file(None, ctx, folders.IMAGE, "Firmware", IMAGES, tmp_path)
+
+    assert picked.started_on[-1] == "Raw binary (*.bin)"
+
+
+def test_one_sort_of_file_does_not_move_another_type(app, ctx, picked, tmp_path):
+    picked.answer[0] = str(tmp_path / "app.bin")
+    picked.answer_type[0] = "Raw binary (*.bin)"
+    folders.open_file(None, ctx, folders.IMAGE, "Firmware", IMAGES, tmp_path)
+
+    folders.open_file(None, ctx, folders.LOG, "Log", "BLF (*.blf);;ASC (*.asc)", tmp_path)
+
+    assert picked.started_on[-1] == "", "a log has its own memory, and has none yet"
+
+
+def test_a_type_no_longer_offered_is_ignored(app, ctx, picked, tmp_path):
+    """A dialog reopened on a type that is not in its list shows nothing at
+    all, so a renamed or dropped type has to fall back."""
+    picked.answer[0] = str(tmp_path / "app.bin")
+    picked.answer_type[0] = "Raw binary (*.bin)"
+    folders.open_file(None, ctx, folders.IMAGE, "Firmware", IMAGES, tmp_path)
+
+    folders.open_file(
+        None, ctx, folders.IMAGE, "Firmware", "Intel HEX (*.hex);;All files (*)", tmp_path
+    )
+
+    assert picked.started_on[-1] == ""
+
+
+def test_saving_remembers_the_type_too(app, ctx, picked, tmp_path):
+    picked.answer[0] = str(tmp_path / "trace.asc")
+    picked.answer_type[0] = "ASC (*.asc)"
+    folders.save_file(None, ctx, folders.LOG, "Save log", "BLF (*.blf);;ASC (*.asc)", tmp_path)
+
+    folders.save_file(None, ctx, folders.LOG, "Save log", "BLF (*.blf);;ASC (*.asc)", tmp_path)
+
+    assert picked.started_on[-1] == "ASC (*.asc)"
+
+
+def test_forgetting_puts_the_types_back_as_well(app, ctx, picked, tmp_path):
+    picked.answer[0] = str(tmp_path / "app.bin")
+    picked.answer_type[0] = "Raw binary (*.bin)"
+    folders.open_file(None, ctx, folders.IMAGE, "Firmware", IMAGES, tmp_path)
+
+    folders.forget_all(ctx)
+
+    folders.open_file(None, ctx, folders.IMAGE, "Firmware", IMAGES, tmp_path)
+    assert picked.started_on[-1] == "", "the folder and the type are one memory"
