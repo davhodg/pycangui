@@ -176,6 +176,11 @@ def main() -> int:
     # first connection is a notice that was too late.
     if not accept_notice(while_shown=load):
         return 0
+    # Its own line, because the libraries load behind the notice and the
+    # window is built after it: without this, every step between the two
+    # carries however long somebody took to read the notice and press
+    # Continue, and the report blames the first thing the window does.
+    timing.mark("waiting for the notice to be answered")
     if not loaded:  # nothing ran it, so do it here rather than not at all
         load()
     if (missing := loaded.get("error")) is not None:

@@ -4,6 +4,11 @@
 #
 # The setup deliberately is not quiet: it downloads a couple of hundred
 # megabytes, mostly Qt, and a silent several-minute pause looks like a hang.
+
+# Stamped first, so --timing can say what this script cost before Python was
+# reached; the dependency check below is a Python start of its own.
+export PYCANGUI_LAUNCH_AT=$(date +%s.%N 2>/dev/null || date +%s)
+
 cd "$(dirname "$0")" || exit 1
 
 if [ ! -x .venv/bin/python ]; then

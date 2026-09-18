@@ -28,6 +28,14 @@ from pathlib import Path
 
 FLAG = "--timing"
 ENV = "PYCANGUI_TIMING"
+#: Stamped by the launchers before they do anything, so the report can say
+#: what happened before Python: the dependency check, and the interpreter
+#: starting. A shell writes epoch seconds; cmd writes %TIME%, which is
+#: HH:MM:SS.ss in whatever the machine's separators are.
+LAUNCH_ENV = "PYCANGUI_LAUNCH_AT"
+#: Longer than this and the stamp is from an earlier run left in the
+#: environment, not from the launch that is starting now.
+SANE_LAUNCH_S = 600.0
 REPORT_NAME = "startup-timing.txt"
 
 #: The clock starts when this module is imported, which ``__main__`` does
@@ -109,6 +117,28 @@ def import_lines(most: int = 8) -> list[str]:
     return lines
 
 
+def launcher_seconds() -> float | None:
+    """How long the launcher took before Python, if it said when it started."""
+    stamp = os.environ.get(LAUNCH_ENV, "").strip()
+    if not stamp:
+        return None
+    try:
+        if ":" in stamp:  # cmd's %TIME%, which is a time of day
+            hours, minutes, seconds = stamp.split(":")
+            began = int(hours) * 3600 + int(minutes) * 60 + float(seconds.replace(",", "."))
+            now = time.localtime()
+            since_midnight = now.tm_hour * 3600 + now.tm_min * 60 + now.tm_sec
+            since_midnight += time.time() % 1
+            took = since_midnight - began
+            if took < 0:  # started before midnight, running after it
+                took += 86400
+        else:
+            took = time.time() - float(stamp.replace(",", "."))
+    except (ValueError, TypeError):
+        return None
+    return took if 0 <= took <= SANE_LAUNCH_S else None
+
+
 def mark(label: str) -> None:
     """Note that this step has just finished."""
     if _on:
@@ -124,7 +154,14 @@ def report_lines() -> list[str]:
     for label, at in _marks:
         steps.append((label, at - previous))
         previous = at
-    lines = ["startup timing (seconds), from the first import in __main__:"]
+    lines = [
+        "startup timing (seconds), from the first import in __main__",
+        "(the notice line is how long it waited for you, not work):",
+    ]
+    if (launcher := launcher_seconds()) is not None:
+        # Before the clock above started: the launcher's dependency check and
+        # the interpreter itself, which is where a slow start often hides.
+        lines.append(f"  {launcher:6.3f}  the launcher and starting Python (before the rest)")
     lines += [f"  {took:6.3f}  {label}" for label, took in steps]
     lines.append(f"  {_marks[-1][1] - _STARTED:6.3f}  total")
     label, took = max(steps, key=lambda step: step[1])
