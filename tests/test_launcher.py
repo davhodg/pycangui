@@ -235,11 +235,12 @@ def test_the_report_says_the_notice_line_is_a_person_waiting(monkeypatch):
     monkeypatch.setattr("sys.argv", ["pycangui", timing.FLAG])
     fresh = importlib.reload(timing)
     fresh.mark("libraries imported")
-    fresh.mark("waiting for the notice to be answered")
+    fresh.mark(fresh.NOTICE_STEP)
     fresh.mark("panes built")
 
     lines = fresh.report_lines()
-    assert any("waited for you" in line for line in lines), "it says which line is not work"
+    assert any(fresh.NOTICE_STEP in line for line in lines), "the wait is shown"
+    assert any("not counting the wait" in line for line in lines), "and kept out of the total"
 
 
 def test_the_launcher_stamp_is_read_in_both_shapes(monkeypatch):
@@ -315,3 +316,22 @@ def test_the_launcher_is_not_charged_with_what_came_after_it(monkeypatch):
 
     assert first is not None and second is not None
     assert abs(second - first) < 0.05, "asking later must not make the answer bigger"
+
+
+def test_the_total_leaves_out_the_time_spent_waiting_for_a_person(monkeypatch):
+    """A total that grows because somebody read the notice slowly is a total
+    nobody can compare against the last run."""
+    import importlib
+    import time as clock
+
+    from pycangui.core import timing
+
+    monkeypatch.setattr("sys.argv", ["pycangui", timing.FLAG])
+    fresh = importlib.reload(timing)
+    fresh.mark("libraries imported")
+    clock.sleep(0.2)  # as if somebody were reading
+    fresh.mark(fresh.NOTICE_STEP)
+    fresh.mark("window on screen")
+
+    total = next(line for line in fresh.report_lines() if "not counting the wait" in line)
+    assert float(total.split()[0]) < 0.15, "the reading time is not part of it"
