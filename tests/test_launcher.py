@@ -245,12 +245,14 @@ def test_the_report_says_the_notice_line_is_a_person_waiting(monkeypatch):
 def test_the_launcher_stamp_is_read_in_both_shapes(monkeypatch):
     """A shell stamps epoch seconds, cmd stamps %TIME%, which is a clock
     reading; the report wants seconds either way."""
+    import importlib
     import time as clock
 
     from pycangui.core import timing
 
     monkeypatch.delenv(timing.PYTHON_ENV, raising=False)
     monkeypatch.setenv(timing.LAUNCH_ENV, f"{clock.time() - 2.0:.3f}")
+    timing = importlib.reload(timing)  # its clock is taken as it is imported
     took, _starting = timing.launcher_seconds()
     assert took is not None and 1.5 <= took <= 4.0
 
@@ -264,10 +266,12 @@ def test_the_launcher_stamp_is_read_in_both_shapes(monkeypatch):
 
 
 def test_a_stamp_from_an_older_run_is_ignored(monkeypatch):
+    import importlib
     import time as clock
 
     from pycangui.core import timing
 
+    timing = importlib.reload(timing)
     monkeypatch.delenv(timing.PYTHON_ENV, raising=False)
     monkeypatch.setenv(timing.LAUNCH_ENV, f"{clock.time() - 3600:.3f}")
     assert timing.launcher_seconds() == (None, None), "an hour is somebody else's launch"
@@ -280,6 +284,7 @@ def test_a_stamp_from_an_older_run_is_ignored(monkeypatch):
 def test_the_script_and_the_interpreter_are_counted_apart(monkeypatch):
     """Doing less in the script and starting Python faster are different
     problems, so one number for both would not say which to work on."""
+    import importlib
     import time as clock
 
     from pycangui.core import timing
@@ -287,6 +292,26 @@ def test_the_script_and_the_interpreter_are_counted_apart(monkeypatch):
     now = clock.time()
     monkeypatch.setenv(timing.LAUNCH_ENV, f"{now - 3.0:.3f}")  # script began
     monkeypatch.setenv(timing.PYTHON_ENV, f"{now - 1.0:.3f}")  # python started
-    script, interpreter = timing.launcher_seconds()
+    script, interpreter = importlib.reload(timing).launcher_seconds()
     assert script is not None and 1.5 <= script <= 2.5, "the script's own two seconds"
     assert interpreter is not None and 0.5 <= interpreter <= 1.5
+
+
+def test_the_launcher_is_not_charged_with_what_came_after_it(monkeypatch):
+    """It measures to the moment timing was imported, not to the moment the
+    report is written: the report comes after Qt, the libraries and the
+    window, and charging those to the launcher made a fast start look slow."""
+    import importlib
+    import time as clock
+
+    from pycangui.core import timing
+
+    monkeypatch.setenv(timing.LAUNCH_ENV, f"{clock.time() - 0.5:.3f}")
+    monkeypatch.delenv(timing.PYTHON_ENV, raising=False)
+    fresh = importlib.reload(timing)
+    first, _ = fresh.launcher_seconds()
+    clock.sleep(0.3)  # as if the window were being built
+    second, _ = fresh.launcher_seconds()
+
+    assert first is not None and second is not None
+    assert abs(second - first) < 0.05, "asking later must not make the answer bigger"
