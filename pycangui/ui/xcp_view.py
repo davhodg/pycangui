@@ -32,10 +32,33 @@ from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
 ROLE_NAME = Qt.UserRole
+#: Everything a row can be found by, worked out once when it is built.
+ROLE_SEARCH = Qt.UserRole + 1
 
 
 def _specs(kind: str):
     return BACKENDS.specs(kind)
+
+
+def _searchable(param) -> str:
+    """What a row can be found by: name, kind, type, unit and address.
+
+    The address in both shapes somebody might have it in -- a map file says
+    0x1234, a spreadsheet says 4660 -- so neither has to be converted before
+    it can be looked for.
+    """
+    return " ".join(
+        str(part)
+        for part in (
+            param.name,
+            param.kind,
+            param.datatype,
+            param.unit,
+            param.description,
+            f"0x{param.address:x}",
+            param.address,
+        )
+    ).lower()
 
 
 class XcpView(QWidget):
@@ -115,6 +138,25 @@ class XcpView(QWidget):
             "them into the signal hub, where they can be plotted."
         )
         read_btn.clicked.connect(self._read_selected)
+        # An A2L from a real ECU runs to hundreds of parameters, and the one
+        # wanted is known by name or by address. Same shape as the CANopen
+        # pane's object filter, because it is the same problem.
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("filter parameters...")
+        self.search.setToolTip(
+            "Match on the name, the address, the type or the unit; several\n"
+            "words must all match, and MEASUREMENT or CHARACTERISTIC narrows\n"
+            "it to one kind. Nothing is discarded -- clearing the box brings\n"
+            "the rest back."
+        )
+        self.search.textChanged.connect(lambda _t: self._apply_filter())
+        self.plotted_only = QPushButton("Plotted")
+        self.plotted_only.setCheckable(True)
+        self.plotted_only.setToolTip(
+            "Show only the parameters ticked for the plot, which is what a\n"
+            "filter would otherwise hide while they went on being polled."
+        )
+        self.plotted_only.toggled.connect(lambda _on: self._apply_filter())
         # Which A2L the names came from, and the way to be rid of it. Without
         # this the file is remembered for ever with nothing on screen saying
         # which one it is, and a file that has moved can only be replaced.
@@ -128,7 +170,8 @@ class XcpView(QWidget):
         row = QHBoxLayout()
         row.addWidget(self.a2l_label)
         row.addWidget(self.remove_a2l_btn)
-        row.addStretch()
+        row.addWidget(self.search, 1)
+        row.addWidget(self.plotted_only)
         row.addWidget(read_btn)
 
         self.output = QPlainTextEdit()
@@ -237,6 +280,7 @@ class XcpView(QWidget):
                     [param.name, param.kind[:4], param.datatype, "", param.unit, ""]
                 )
                 item.setData(0, ROLE_NAME, param.name)
+                item.setData(0, ROLE_SEARCH, _searchable(param))
                 if param.writable:
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -244,6 +288,19 @@ class XcpView(QWidget):
                 self.tree.addTopLevelItem(item)
                 self._items[param.name] = item
         self._updating = False
+        self._apply_filter()  # a new A2L arrives into whatever filter is set
+
+    def _apply_filter(self) -> None:
+        """Hide what does not match. Nothing is unloaded and nothing is read."""
+        needles = self.search.text().lower().split()
+        polled_only = self.plotted_only.isChecked()
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            if polled_only and item.checkState(5) != Qt.Checked:
+                item.setHidden(True)
+                continue
+            haystack = item.data(0, ROLE_SEARCH) or ""
+            item.setHidden(not all(needle in haystack for needle in needles))
 
     def _on_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         if column != 3:
@@ -257,6 +314,8 @@ class XcpView(QWidget):
             self.manager.write(name, item.text(3))
         elif column == 5:
             self.manager.set_polled(name, item.checkState(5) == Qt.Checked)
+            if self.plotted_only.isChecked():
+                self._apply_filter()  # unticking one while showing only those
 
     def _read_selected(self) -> None:
         for item in self.tree.selectedItems():
