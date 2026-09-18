@@ -165,7 +165,7 @@ class MainWindow(QMainWindow):
         #: Qt slot would otherwise go nowhere at all -- see the module.
         self.exceptions = ExceptionLogger(self.events.post)
         self.exceptions.install()
-        timing.mark("workspace settings")
+        timing.mark("log bridge")
         self.hooks = Hooks(self.ctx)
         timing.mark("hook files")
         #: Shared so that agreeing once covers connecting, transmitting and

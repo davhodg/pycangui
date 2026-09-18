@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from pycangui.core import paths, workspaces
+from pycangui.core import paths, timing, workspaces
 from pycangui.core.events import ERROR, INFORMATION, WARNING, EventLog
 from pycangui.core.layout import Layout
 from pycangui.core.settings import Settings
@@ -23,20 +23,27 @@ class Context:
         log: Callable[[str], None] | None = None,
         events: EventLog | None = None,
     ) -> None:
+        # Marked in three because the whole of it is folders being made and
+        # two files being read, which costs nothing on a local disc and a
+        # surprising amount on a profile that is redirected to a network
+        # share or watched by a scanner.
         self.user_dir: Path = paths.user_dir()
         #: The back ends are about this machine's ability to talk to a bus at
         #: all, so they are shared by every workspace rather than owned by one.
         self.backends_dir: Path = paths.backends_dir()
+        timing.mark("user folder")
         #: Which product is being worked on. Everything below belongs to it.
         self.workspace: str = workspaces.active()
         self.workspace_dir: Path = workspaces.active_dir()
         self.hooks_dir: Path = workspaces.hooks_dir()
         self.nodes_dir: Path = workspaces.nodes_dir()
         self.eds_dir: Path = workspaces.eds_dir()
+        timing.mark("workspace folders")
         self.settings = Settings(workspaces.settings_path())
         #: The dock arrangement, in the workspace folder rather than in
         #: QSettings, so that the workspace is one thing that can be copied.
         self.layout = Layout(workspaces.layout_path())
+        timing.mark("settings and layout files")
         #: Everything said to the user goes through here, with a level.
         self.events = events if events is not None else EventLog()
         if events is None:
