@@ -40,6 +40,11 @@ class XcpError(Exception):
         self.code = code
 
 
+#: Stands for "nobody has said yet", and cannot collide with a real
+#: identifier because no CAN id is negative.
+NO_ID = -1
+
+
 class XcpEngine(ABC):
     """What the XCP pane needs from an XCP implementation."""
 
@@ -90,8 +95,12 @@ class NativeCanEngine(XcpEngine):
     def __init__(self, bus: BusManager, ctx=None) -> None:
         self._bus = bus
         self._responses: queue.Queue = queue.Queue()
-        self.cmd_id = 0x7A0
-        self.res_id = 0x7A1
+        # No identifiers until somebody gives them. XCP on CAN standardises
+        # none, so a default pair would send commands to whatever happened
+        # to answer on it, and would label frames in the trace as XCP that
+        # have nothing to do with XCP.
+        self.cmd_id = NO_ID
+        self.res_id = NO_ID
         self.extended = False
         self.info: ConnectInfo | None = None
         bus.frames.connect(self._on_frames)
@@ -106,7 +115,7 @@ class NativeCanEngine(XcpEngine):
         self.cmd_id, self.res_id, self.extended = cmd_id, res_id, extended
 
     def owns_frame(self, frame: Frame) -> str | None:
-        if frame.extended != self.extended:
+        if self.cmd_id == NO_ID or frame.extended != self.extended:
             return None
         if frame.can_id == self.cmd_id:
             return "XCP cmd"
@@ -115,6 +124,8 @@ class NativeCanEngine(XcpEngine):
         return None
 
     def command(self, pid: int, payload: bytes = b"", timeout: float = 1.0) -> bytes:
+        if self.cmd_id == NO_ID:
+            raise XcpError(0x31)  # nothing has said where the slave is
         while not self._responses.empty():  # drop stale responses
             self._responses.get_nowait()
         self._bus.send(self.cmd_id, bytes([pid]) + payload, extended=self.extended)
