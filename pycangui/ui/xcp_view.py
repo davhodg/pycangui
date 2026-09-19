@@ -42,8 +42,16 @@ NO_IDS_TIP = "Fill in the command and response identifiers first."
 #: comes from.
 ID_TIP = (
     "The identifier the slave listens on, and the one it answers with.\n"
-    "XCP on CAN has no standard pair: they come from the A2L's IF_DATA\n"
-    "XCP section, or from the supplier. The demo device uses 7A0 and 7A1."
+    "XCP calls them the command and response identifiers, CCP the CRO\n"
+    "and the DTO. Neither protocol standardises a pair: they come from\n"
+    "the A2L or from the supplier. The demo devices use 7A0/7A1 for XCP\n"
+    "and 7B0/7B1 for CCP."
+)
+STATION_TIP = (
+    "Which controller on these identifiers is being talked to. CCP\n"
+    "addresses a station as well as a pair of ids, so several can share\n"
+    "one pair and answer in turn. XCP has no such thing, so the box is\n"
+    "only shown for a CCP engine."
 )
 #: Everything a row can be found by, worked out once when it is built.
 ROLE_SEARCH = Qt.UserRole + 1
@@ -99,6 +107,11 @@ class XcpView(QWidget):
         self.res_id.setFont(mono)
         self.res_id.setFixedWidth(70)
         self.res_id.textChanged.connect(lambda _t: self._ids_changed())
+        self.station = QLineEdit(str(cfg.get("station", "1")))
+        self.station.setFixedWidth(70)
+        self.station.setToolTip(STATION_TIP)
+        self.station.setFont(mono)
+        self.station_label = QLabel("Station")
         self.ext = QCheckBox("29-bit")
         self.ext.setToolTip("Address the slave with 29-bit identifiers rather than 11-bit")
         self.ext.setChecked(cfg.get("ext", False))
@@ -130,10 +143,12 @@ class XcpView(QWidget):
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Engine"))
         bar.addWidget(self.backend)
-        bar.addWidget(QLabel("Cmd ID"))
+        bar.addWidget(QLabel("Tx ID"))
         bar.addWidget(self.cmd_id)
-        bar.addWidget(QLabel("Resp ID"))
+        bar.addWidget(QLabel("Rx ID"))
         bar.addWidget(self.res_id)
+        bar.addWidget(self.station_label)
+        bar.addWidget(self.station)
         bar.addWidget(self.ext)
         bar.addWidget(self.connect_btn)
         bar.addWidget(unlock)
@@ -211,12 +226,25 @@ class XcpView(QWidget):
         manager.a2l_loaded.connect(lambda _n: self._show_a2l())
         manager.value.connect(self._on_value)
         manager.connected.connect(lambda _on: self._ids_changed())
+        self.backend.currentTextChanged.connect(lambda _n: self._engine_changed())
         if manager.a2l is not None:
             self._populate()
         self._show_a2l()
         self._ids_changed()
+        self._engine_changed()
 
     # --- connection -------------------------------------------------------------
+    def _engine_changed(self) -> None:
+        """Show what this engine needs and hide what it does not.
+
+        A station box on an XCP pane is a box nobody can answer, and its
+        absence on a CCP pane is a controller nobody can reach. The engine
+        says which it is; the pane does not know the protocols.
+        """
+        wanted = self.manager.needs_station
+        self.station.setVisible(wanted)
+        self.station_label.setVisible(wanted)
+
     def _ids_changed(self) -> None:
         """Connect is offered only once there is somewhere to connect to.
 
@@ -241,12 +269,14 @@ class XcpView(QWidget):
         self.manager.set_ids(
             int(self.cmd_id.text(), 16), int(self.res_id.text(), 16), self.ext.isChecked()
         )
+        self.manager.set_station(int(self.station.text().strip() or "0", 16))
         self.ctx.settings.set(
             "xcp.config",
             {
                 "cmd_id": self.cmd_id.text(),
                 "res_id": self.res_id.text(),
                 "ext": self.ext.isChecked(),
+                "station": self.station.text(),
             },
         )
 

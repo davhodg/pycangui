@@ -46,7 +46,20 @@ NO_ID = -1
 
 
 class XcpEngine(ABC):
-    """What the XCP pane needs from an XCP implementation."""
+    """What the calibration pane needs from an implementation.
+
+    Named for XCP because that is what it was written for, and kept that
+    way because CCP fits it unchanged -- which says more for the interface
+    than renaming it would. What an engine speaks is its own business; the
+    pane asks for an address and gets bytes back.
+    """
+
+    #: What to call this in the log, since a pane that says XCP while
+    #: speaking CCP is a pane that will waste somebody's morning.
+    protocol = "XCP"
+    #: True for an engine that needs a station address as well as a pair of
+    #: identifiers, which the pane then shows a box for.
+    needs_station = False
 
     #: Filled in by connect(); the manager reads byte order and limits from it.
     info: ConnectInfo | None = None
