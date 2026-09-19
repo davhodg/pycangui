@@ -108,6 +108,10 @@ class CanopenView(QWidget):
         self._od_node: int | None = None
         self._updating = False  # guard against itemChanged during programmatic edits
         self._pdo_items: dict[tuple[str, str], QTreeWidgetItem] = {}
+        #: Nodes whose heartbeat has stopped arriving. Still in the list,
+        #: because they were there a moment ago and which one went is the
+        #: news, but nothing can be asked of them until they are back.
+        self._lost: set[int] = set()
         mono = QFont("Consolas", 9)
 
         # --- nodes ---------------------------------------------------------
@@ -117,7 +121,7 @@ class CanopenView(QWidget):
         self.nodes.currentItemChanged.connect(self._on_node_selected)
         self.nodes.setContextMenuPolicy(Qt.CustomContextMenu)
         self.nodes.customContextMenuRequested.connect(self._node_menu)
-        # Under the list, because each is about a node in it.
+        # Under the list, because each is about the node highlighted in it.
         node_bar = QHBoxLayout()
         add_node = QPushButton("Add node...")
         add_node.setToolTip(
@@ -138,12 +142,33 @@ class CanopenView(QWidget):
             "hooks/canopen.py::current_level."
         )
         read_level.clicked.connect(self._read_level)
-        for b in (add_node, login, read_level):
+        load_btn = QPushButton("Load EDS...")
+        load_btn.setToolTip(
+            "Choose the EDS for the selected node by hand. Normally one is\n"
+            "found by itself from the node's identity, or by\n"
+            "hooks/canopen.py::eds_for_node."
+        )
+        load_btn.clicked.connect(self._load_eds_clicked)
+        # Being allowed to talk to the node, and what says what its objects
+        # are. Login and Read access level are two halves of one question,
+        # so they sit together. Add node is not here: it acts on the list
+        # rather than on a row of it, which puts it above with the network.
+        for b in (login, read_level, load_btn):
             node_bar.addWidget(b)
         node_bar.addStretch()
-        # Two rows: commands on top, file / persistence actions below, so the
-        # bar stays narrow enough for a docked pane.
+        #: Everything under the list acts on the node highlighted in it, so
+        #: with nothing highlighted there is nothing for them to act on. A
+        #: button that looks pressable and then says "no node selected" is a
+        #: worse way to find that out than a button that is plainly not.
+        self._node_buttons = [login, read_level, load_btn]
+        # Above the list: the network, and what changes who is on it. NMT and
+        # SYNC are not about whichever row happens to be highlighted -- they
+        # are services the whole bus hears, and NMT with no node selected
+        # goes to every node on it. Add node is up here for the same reason:
+        # it acts on the list rather than on a row of it.
         nmt_bar = QHBoxLayout()
+        nmt_bar.addWidget(add_node)
+        nmt_bar.addSpacing(16)
         nmt_bar.addWidget(QLabel("NMT command:"))
         self.nmt_command = QComboBox()
         for label, command in NMT_COMMANDS_UI:
@@ -154,7 +179,9 @@ class CanopenView(QWidget):
         # it and several more below, and a bare Send does not say which of
         # them it belongs to.
         send_nmt = QPushButton("Send NMT")
-        send_nmt.setToolTip("Send this NMT command to the selected node")
+        send_nmt.setToolTip(
+            "Send this NMT command to the selected node, or to every node when none is selected."
+        )
         send_nmt.clicked.connect(self._send_nmt)
         nmt_bar.addWidget(send_nmt)
         nmt_bar.addSpacing(16)
@@ -178,6 +205,9 @@ class CanopenView(QWidget):
         # Whatever the workspace holds, before anything is asked of a node.
         canopen_settings.apply(manager, canopen_settings.load(ctx))
 
+        # The node's own parameters: what it is set to now, and the files
+        # that carry those values. A second row rather than one long one,
+        # because eight buttons on a line is wider than a docked pane.
         file_bar = QHBoxLayout()
         store_btn = QPushButton("Store")
         store_btn.setToolTip("Save the node's parameters to non-volatile memory (0x1010)")
@@ -191,13 +221,6 @@ class CanopenView(QWidget):
         apply_dcf = QPushButton("Apply DCF...")
         apply_dcf.setToolTip("Write the parameter values from a .dcf file into the node")
         apply_dcf.clicked.connect(self._apply_dcf)
-        load_btn = QPushButton("Load EDS...")
-        load_btn.setToolTip(
-            "Choose the EDS for the selected node by hand. Normally one is\n"
-            "found by itself from the node's identity, or by\n"
-            "hooks/canopen.py::eds_for_node."
-        )
-        load_btn.clicked.connect(self._load_eds_clicked)
         self.read_rpdos_btn = QPushButton("Read RPDO config")
         self.read_rpdos_btn.setToolTip(
             "Read the selected node's RPDO mapping from the node itself.\n"
@@ -205,9 +228,11 @@ class CanopenView(QWidget):
             "CAN Transmit offers the RPDOs a remapped node actually receives."
         )
         self.read_rpdos_btn.clicked.connect(self._read_rpdos)
-        for b in (store_btn, restore_btn, save_dcf, apply_dcf, load_btn, self.read_rpdos_btn):
+        for b in (self.read_rpdos_btn, store_btn, restore_btn, save_dcf, apply_dcf):
             file_bar.addWidget(b)
+            self._node_buttons.append(b)
         file_bar.addStretch()
+        self._offer_node_buttons()
 
         # --- object dictionary ---------------------------------------------
         self.od = QTreeWidget()
@@ -267,10 +292,15 @@ class CanopenView(QWidget):
         top = QWidget()
         top_l = QVBoxLayout(top)
         top_l.setContentsMargins(0, 0, 0, 0)
+        # The list is the dividing line. Above it, what is done to the
+        # network: NMT and SYNC are services the whole bus hears, and
+        # Settings belongs with them. Below it, everything that acts on the
+        # node highlighted in it -- two rows of those, because nine buttons
+        # on one line is wider than a docked pane.
         top_l.addLayout(nmt_bar)
-        top_l.addLayout(file_bar)
         top_l.addWidget(self.nodes)
         top_l.addLayout(node_bar)
+        top_l.addLayout(file_bar)
         objects = QWidget()
         objects_l = QVBoxLayout(objects)
         objects_l.setContentsMargins(0, 0, 0, 0)
@@ -363,12 +393,36 @@ class CanopenView(QWidget):
 
     # --- a node by hand, and its access level --------------------------------------
     def _node_menu(self, at) -> None:
+        """Everything the buttons under the list do, on the node clicked.
+
+        Right-clicking a node and finding three of the eight things that can
+        be done to it is worse than finding none: it reads as a list of what
+        is possible here. The separators are the same grouping as the rows
+        below -- getting at the node, then its parameters.
+        """
+        item = self.nodes.itemAt(at)
+        node_id = None if item is None else item.data(0, ROLE_INDEX)
+        self.node_menu(node_id).exec(self.nodes.viewport().mapToGlobal(at))
+
+    def node_menu(self, node_id: int | None) -> QMenu:
+        """Built apart from being shown, so what it offers can be looked at."""
         menu = QMenu(self.nodes)
         menu.addAction("Add node...", self._add_node)
-        on_a_node = self.nodes.itemAt(at) is not None
-        for text, slot in (("Login...", self._login), ("Read access level", self._read_level)):
-            menu.addAction(text, slot).setEnabled(on_a_node)
-        menu.exec(self.nodes.viewport().mapToGlobal(at))
+        on_a_node = self._can_act_on(node_id)
+        for group in (
+            (("Login...", self._login), ("Read access level", self._read_level)),
+            (("Load EDS...", self._load_eds_clicked), ("Read RPDO config", self._read_rpdos)),
+            (
+                ("Store", self._store),
+                ("Restore defaults", self._restore),
+                ("Save DCF...", self._save_dcf),
+                ("Apply DCF...", self._apply_dcf),
+            ),
+        ):
+            menu.addSeparator()
+            for text, slot in group:
+                menu.addAction(text, slot).setEnabled(on_a_node)
+        return menu
 
     def _add_node(self) -> None:
         node_id, chose = QInputDialog.getInt(
@@ -445,6 +499,8 @@ class CanopenView(QWidget):
 
     @Slot(int)
     def on_node_lost(self, node_id: int) -> None:
+        self._lost.add(node_id)
+        self._offer_node_buttons()  # nothing can be asked of it now
         item = self._node_item(node_id)
         if item is not None:
             item.setText(2, f"lost ({item.text(2)})")
@@ -453,6 +509,8 @@ class CanopenView(QWidget):
 
     @Slot(int)
     def on_node_back(self, node_id: int) -> None:
+        self._lost.discard(node_id)
+        self._offer_node_buttons()
         item = self._node_item(node_id)
         if item is not None:
             for column in range(item.columnCount()):
@@ -632,8 +690,10 @@ class CanopenView(QWidget):
         self.clear_emergencies()
         self._identities.clear()
         self._asked.clear()
+        self._lost.clear()
         self.pdo_config.set_node(None)
         self.sync_btn.setChecked(False)
+        self._offer_node_buttons()  # nothing in the list, so nothing selected
 
     # --- emergencies ----------------------------------------------------------------
     @Slot(object)
@@ -665,7 +725,23 @@ class CanopenView(QWidget):
         self.manager.clear_emcy_history()
 
     # --- object dictionary -------------------------------------------------------
+    def _can_act_on(self, node_id: int | None) -> bool:
+        """Whether there is a node there to be asked anything.
+
+        A lost node is one whose heartbeat has stopped: it is still in the
+        list, and every request to it would sit there until the SDO timeout
+        gave up.
+        """
+        return node_id is not None and node_id not in self._lost
+
+    def _offer_node_buttons(self) -> None:
+        """Only with a node to act on. See _node_buttons."""
+        on_a_node = self._can_act_on(self.selected_node())
+        for button in self._node_buttons:
+            button.setEnabled(on_a_node)
+
     def _on_node_selected(self, current: QTreeWidgetItem | None, _previous) -> None:
+        self._offer_node_buttons()
         self.clear_live_pdos()
         self.pdo_config.set_node(None if current is None else current.data(0, ROLE_INDEX))
         self._populate_od(None if current is None else current.data(0, ROLE_INDEX))

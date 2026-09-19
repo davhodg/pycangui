@@ -248,3 +248,79 @@ def test_the_password_is_not_shown_as_it_is_typed(app):
 def test_a_remembered_level_that_is_nonsense_is_not_used(app):
     assert canopen_login.remembered_level({"canopen.login_level": "high"}) == 1
     assert canopen_login.remembered_level({"canopen.login_level": 900}) == 255
+
+
+# --- what needs a node, and what does not -------------------------------------------
+def test_the_node_commands_wait_for_a_node_to_be_selected(app, window):
+    """A button that looks pressable and then says "no node selected" is a
+    worse way to find that out than one that is plainly not."""
+    view = window.canopen_view
+    assert view.selected_node() is None
+    assert not any(b.isEnabled() for b in view._node_buttons)
+
+    seen_by_hand(window, 7)
+    view.nodes.setCurrentItem(view._node_item(7))
+    assert all(b.isEnabled() for b in view._node_buttons)
+
+    view.clear()
+    assert not any(b.isEnabled() for b in view._node_buttons)
+
+
+def test_the_network_commands_do_not_wait_for_one(app, window):
+    """NMT with no node selected goes to every node, and SYNC is not about
+    a node at all."""
+    view = window.canopen_view
+    assert view.selected_node() is None
+    assert view.nmt_command.isEnabled()
+    assert view.sync_btn.isEnabled()
+
+
+def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
+    """Three of the eight reads as a list of what can be done to a node."""
+    view = window.canopen_view
+    seen_by_hand(window, 7)
+    view.nodes.setCurrentItem(view._node_item(7))
+
+    offered = {a.text() for a in view.node_menu(7).actions() if not a.isSeparator()}
+    assert offered == {
+        "Add node...",
+        "Login...",
+        "Read access level",
+        "Load EDS...",
+        "Read RPDO config",
+        "Store",
+        "Restore defaults",
+        "Save DCF...",
+        "Apply DCF...",
+    }
+    assert offered - {"Add node..."} == {b.text() for b in view._node_buttons}
+
+
+def test_the_menu_greys_out_what_needs_a_node_when_none_was_clicked(app, window):
+    view = window.canopen_view
+    menu = view.node_menu(None)  # right-clicked empty space
+    live = {a.text() for a in menu.actions() if a.isEnabled() and not a.isSeparator()}
+    assert live == {"Add node..."}, "the only one that does not need a node"
+
+
+def test_the_menu_greys_out_what_a_lost_node_cannot_answer(app, window):
+    window.canopen.node_lost.emit(7)
+    menu = window.canopen_view.node_menu(7)
+    live = {a.text() for a in menu.actions() if a.isEnabled() and not a.isSeparator()}
+    assert live == {"Add node..."}
+
+
+def test_a_lost_node_can_no_longer_be_asked_anything(app, window):
+    """It is still in the list -- which one went is the news -- but its
+    heartbeat has stopped, so every request would sit there until the SDO
+    timeout gave up."""
+    view = window.canopen_view
+    seen_by_hand(window, 7)
+    view.nodes.setCurrentItem(view._node_item(7))
+    assert all(b.isEnabled() for b in view._node_buttons)
+
+    window.canopen.node_lost.emit(7)
+    assert not any(b.isEnabled() for b in view._node_buttons)
+
+    window.canopen.node_back.emit(7)
+    assert all(b.isEnabled() for b in view._node_buttons)

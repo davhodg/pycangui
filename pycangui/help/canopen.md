@@ -14,12 +14,17 @@ Stop, Reset node or Reset communication to the selected node, or to every node
 when none is selected.
 **SYNC producer** transmits SYNC (0x080) for as long as it is ticked, so
 synchronous PDOs are exchanged; how often is under *Settings...*, since a rate
-is a fact about the bus rather than a decision to take each time. **Read RPDO config** reads the selected node's
-RPDO mapping from the node itself, so [CAN Transmit](transmit.md) offers the
-RPDOs a remapped node actually receives rather than the ones its EDS started
-with.
+is a fact about the bus rather than a decision to take each time.
 
-**Add node...**, under the list, puts in a node that has not been heard from:
+The list is the dividing line. What is above it acts on the network -- NMT
+and SYNC are services the whole bus hears, and **Add node...** puts a row in
+the list rather than doing anything to one. Everything below it acts on the
+node highlighted in it, and is switched off while no node is highlighted, or
+while the highlighted one is lost: a button that looks pressable and then says
+"no node selected" is a worse way to find that out than one that is plainly
+not.
+
+**Add node...** puts in a node that has not been heard from:
 one with its heartbeat switched off, held in pre-operational, or sitting in its
 bootloader. It is identified straight away. **Login...** asks the selected
 node for an access level, with a password if the device wants one, and **Read
@@ -27,8 +32,19 @@ access level** asks which level is held; the **Access** column shows the
 answer.
 CANopen has no standard way to log in, so both are done by `login` and
 `current_level` in [`hooks/canopen.py`](hooks.md), written for your device.
-The password is passed to the hook and is neither logged nor kept. All three
-are on the right-click menu of the list too.
+The password is passed to the hook and is neither logged nor kept.
+
+The second row under the list is what the node holds. **Load EDS...** chooses
+its description by hand, and **Read RPDO config** reads the selected node's
+RPDO mapping from the node itself, so [CAN Transmit](transmit.md) offers the
+RPDOs a remapped node actually receives rather than the ones its EDS started
+with. **Store** and **Restore defaults** are 0x1010 and 0x1011, and **Save
+DCF...** and **Apply DCF...** read every parameter out to a file and write one
+back in.
+
+Everything under the list is on the right-click menu of a node as well, so a
+node can be worked on where it is rather than by selecting it and then
+reaching for a row of buttons.
 
 **Settings...** holds what is set once rather than done, and is kept in the
 workspace:

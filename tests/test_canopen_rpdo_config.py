@@ -34,6 +34,7 @@ def test_it_reads_the_selected_node(view, monkeypatch):
     asked = []
     monkeypatch.setattr(view.manager, "read_rpdo_config", asked.append)
     monkeypatch.setattr(view, "selected_node", lambda: 5)
+    view._offer_node_buttons()  # the row follows the selection, so say there is one
     view.read_rpdos_btn.click()
     assert asked == [5]
 
