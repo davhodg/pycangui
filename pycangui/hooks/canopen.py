@@ -212,7 +212,7 @@ def login(node, level: int, password: str, *, ctx) -> bool | None:
 def current_level(node, *, ctx) -> int | None:
     """The access level a node says is held now, for the Access column.
 
-    Asked after a login is granted and by Read level. Return the level, or
+    Asked after a login is granted and by Read access level. Return the level, or
     None when the device has no way of saying, which is the default: the
     column then shows the level the login was granted.
 

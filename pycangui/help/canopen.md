@@ -9,9 +9,10 @@ state and the EDS matched to them. The EDS is found from the node's identity,
 by [`hooks/canopen.py::eds_for_node`](hooks.md), or by **Load EDS...**, which
 chooses one by hand for the selected node.
 
-**NMT command** sends Start, Pre-operational, Stop, Reset node or Reset
-communication to the selected node, or to every node when none is selected.
-**SYNC** transmits SYNC (0x080) for as long as it is pressed in, so
+**NMT command**, with **Send NMT** beside it, sends Start, Pre-operational,
+Stop, Reset node or Reset communication to the selected node, or to every node
+when none is selected.
+**SYNC producer** transmits SYNC (0x080) for as long as it is ticked, so
 synchronous PDOs are exchanged; how often is under *Settings...*, since a rate
 is a fact about the bus rather than a decision to take each time. **Read RPDO config** reads the selected node's
 RPDO mapping from the node itself, so [CAN Transmit](transmit.md) offers the
@@ -22,7 +23,8 @@ with.
 one with its heartbeat switched off, held in pre-operational, or sitting in its
 bootloader. It is identified straight away. **Login...** asks the selected
 node for an access level, with a password if the device wants one, and **Read
-level** asks which level is held; the **Access** column shows the answer.
+access level** asks which level is held; the **Access** column shows the
+answer.
 CANopen has no standard way to log in, so both are done by `login` and
 `current_level` in [`hooks/canopen.py`](hooks.md), written for your device.
 The password is passed to the hook and is neither logged nor kept. All three
