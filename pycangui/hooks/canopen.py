@@ -19,6 +19,12 @@ file when that version first runs; what you have written is left alone.
     ctx.eds_dir              Path of your EDS folder
     ctx.user_dir             Path of the pycangui user folder
     ctx.settings.get(key)    values pycangui remembers (see settings.json)
+    ctx.canopen              the CANopen manager: nodes, SDO, PDO, NMT
+    ctx.uds, ctx.j1939, ctx.xcp   the other protocol managers
+    ctx.channels, ctx.bus    the channels, and the selected one
+The managers are the same objects the Python Console has under the same
+names, and they are None until the window exists -- in a script that has
+built a Context of its own, there is nothing for them to point at.
 """
 
 from __future__ import annotations

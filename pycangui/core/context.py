@@ -44,6 +44,17 @@ class Context:
         #: QSettings, so that the workspace is one thing that can be copied.
         self.layout = Layout(workspaces.layout_path())
         timing.mark("settings and layout files")
+        #: The protocol managers and the channels, attached by the main
+        #: window once they exist -- the same objects the Python Console
+        #: has under the same names, and the ones the shipped hook files
+        #: use in their examples. None until then, and in a script or a
+        #: test with no window.
+        self.bus = None
+        self.channels = None
+        self.canopen = None
+        self.uds = None
+        self.j1939 = None
+        self.xcp = None
         #: Everything said to the user goes through here, with a level.
         self.events = events if events is not None else EventLog()
         if events is None:

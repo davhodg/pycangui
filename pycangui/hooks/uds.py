@@ -12,7 +12,10 @@ picks up changes without a restart.
 
 ``ctx`` is the pycangui context: ctx.log("text"), ctx.settings.get(key), ...
 ctx.warn("text") says the same thing but opens the Event Log if it has been
-closed, which is what to use when somebody is waiting on an answer.
+closed, which is what to use when somebody is waiting on an answer. It also
+carries the protocol managers -- ctx.uds, ctx.canopen, ctx.j1939, ctx.xcp,
+ctx.channels and ctx.bus -- which are the same objects the Python Console
+has under the same names, and are None until the window exists.
 
 Where a standard answer exists, the call that fetches it is *in this file*:
 your own table is consulted first, and the library is the fallback. The

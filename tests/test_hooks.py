@@ -348,3 +348,30 @@ def test_an_untouched_file_is_not_offered_as_edited(home, log):
     assert hooks.edited() == []
     write_user(home, "def node_name(identity, *, ctx):\n    return 'mine'\n")
     assert hooks.edited() == ["canopen"]
+
+
+# --- what ctx carries --------------------------------------------------------------------
+def test_ctx_carries_the_managers_the_shipped_examples_use(app, home):
+    """A hook is handed ctx and nothing else, so an example that reaches
+    for ctx.canopen has to find it there. The shipped files show exactly
+    that, and it was not true until the window put them on."""
+    from pycangui.ui.main_window import MainWindow
+
+    window = MainWindow()
+    try:
+        assert window.ctx.canopen is window.canopen
+        assert window.ctx.uds is window.uds
+        assert window.ctx.j1939 is window.j1939
+        assert window.ctx.xcp is window.xcp
+        assert window.ctx.channels is window.channels
+        assert window.ctx.bus is window.bus
+    finally:
+        window.close()
+
+
+def test_a_context_without_a_window_says_so_rather_than_missing_the_name(app, home):
+    """A script or a test builds its own Context, and there is nothing for
+    these to point at: None is an answer, AttributeError is a traceback."""
+    ctx = Context(log=print)
+    assert ctx.canopen is None
+    assert (ctx.uds, ctx.j1939, ctx.xcp, ctx.channels, ctx.bus) == (None,) * 5
