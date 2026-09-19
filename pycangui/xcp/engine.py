@@ -101,7 +101,7 @@ class XcpEngine(ABC):
         return None
 
 
-@register_backend("xcp", "native", "XCP on CAN implemented in pycangui")
+@register_backend("xcp", "xcp-builtin", "XCP on CAN, implemented in pycangui")
 class NativeCanEngine(XcpEngine):
     """XCP on CAN over the shared python-can bus."""
 

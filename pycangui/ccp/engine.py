@@ -45,7 +45,7 @@ class CcpError(Exception):
         self.code = code
 
 
-@register_backend("xcp", "ccp", "CCP on CAN (the protocol XCP replaced)")
+@register_backend("xcp", "ccp-builtin", "CCP on CAN, implemented in pycangui")
 class CanCcpEngine(XcpEngine):
     """CCP on CAN over the shared python-can bus.
 

@@ -83,7 +83,7 @@ def test_xcp_against_demo_slave(stack):
     manager.set_ids(0x7A0, 0x7A1, False)
     n = len(lines)
     manager.connect_slave()
-    assert "resources CAL" in last_after(n) and "(native)" in lines[-1]
+    assert "resources CAL" in last_after(n) and "(xcp-builtin)" in lines[-1]
     assert manager.is_connected
     n += 1
 
