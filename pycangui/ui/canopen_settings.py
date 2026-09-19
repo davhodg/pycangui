@@ -46,6 +46,14 @@ TIMEOUT_KEY = "canopen.sdo_timeout_ms"
 RETRIES_KEY = "canopen.sdo_retries"
 CHANNELS_KEY = "canopen.sdo_channels"
 HEARTBEATS_KEY = "canopen.heartbeat_timeouts"
+SYNC_KEY = "canopen.sync_period_ms"
+
+#: How often SYNC goes out while it is switched on. A rate, which is a
+#: settled choice about a bus, rather than something to decide each time
+#: the button is pressed.
+DEFAULT_SYNC_MS = 100
+MIN_SYNC_MS = 1
+MAX_SYNC_MS = 60000
 
 MIN_TIMEOUT_MS = 10
 MAX_TIMEOUT_MS = 60000
@@ -60,6 +68,12 @@ MAX_HEARTBEAT_MS = 3_600_000
 NODE, REQUEST, RESPONSE, HEARTBEAT = range(4)
 COLUMNS = ("Node", "SDO request", "SDO response", "Heartbeat timeout")
 
+SYNC_TIP = (
+    "How often SYNC (0x080) goes out while the button on the pane is on.\n"
+    "It belongs here rather than beside the button: it is a fact about the\n"
+    "bus, agreed once, not a decision to take every time synchronous PDOs\n"
+    "are wanted."
+)
 TIMEOUT_TIP = (
     "How long to wait for a node to answer each SDO request, for every SDO\n"
     "pycangui sends. 300 ms is the canopen library's own default."
@@ -90,6 +104,7 @@ class CanopenSettings:
     channels: dict[int, tuple[int, int]] = field(default_factory=dict)
     #: node -> milliseconds, for the nodes whose timeout is not worked out.
     heartbeat_timeouts: dict[int, float] = field(default_factory=dict)
+    sync_period_ms: float = DEFAULT_SYNC_MS
 
 
 def why_not(node_id: int, request: int, response: int) -> str:
@@ -150,6 +165,8 @@ def load(ctx: Context) -> CanopenSettings:
         out.timeout_ms = min(max(timeout, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS)
     if (retries := _integer(ctx.settings.get(RETRIES_KEY))) is not None:
         out.retries = min(max(retries, 0), MAX_RETRIES)
+    if (sync := _milliseconds(ctx.settings.get(SYNC_KEY))) is not None:
+        out.sync_period_ms = min(max(sync, MIN_SYNC_MS), MAX_SYNC_MS)
     saved = ctx.settings.get(CHANNELS_KEY, {})
     if isinstance(saved, dict):
         for node, pair in saved.items():
@@ -173,6 +190,7 @@ def load(ctx: Context) -> CanopenSettings:
 def save(ctx: Context, settings: CanopenSettings) -> None:
     ctx.settings.set(TIMEOUT_KEY, settings.timeout_ms)
     ctx.settings.set(RETRIES_KEY, settings.retries)
+    ctx.settings.set(SYNC_KEY, settings.sync_period_ms)
     # In hex, the way a COB-ID is spoken, so the file reads as the dialog does.
     ctx.settings.set(
         CHANNELS_KEY,
@@ -228,10 +246,18 @@ class CanopenSettingsDialog(QDialog):
         self.retries.setRange(0, MAX_RETRIES)
         self.retries.setValue(settings.retries)
         self.retries.setToolTip(RETRIES_TIP)
+        self.sync_period = QDoubleSpinBox()
+        self.sync_period.setRange(MIN_SYNC_MS, MAX_SYNC_MS)
+        self.sync_period.setDecimals(0)
+        self.sync_period.setSingleStep(10)
+        self.sync_period.setSuffix(" ms")
+        self.sync_period.setValue(settings.sync_period_ms)
+        self.sync_period.setToolTip(SYNC_TIP)
         every = QGroupBox("SDO, every node")
         form = QFormLayout(every)
         form.addRow("Timeout:", self.timeout)
         form.addRow("Retries:", self.retries)
+        form.addRow("SYNC period:", self.sync_period)
 
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
@@ -359,6 +385,7 @@ class CanopenSettingsDialog(QDialog):
         return CanopenSettings(
             timeout_ms=self.timeout.value(),
             retries=self.retries.value(),
+            sync_period_ms=self.sync_period.value(),
             channels={
                 row.node_id: (row.request, row.response)
                 for row in rows

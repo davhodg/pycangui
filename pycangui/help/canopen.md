@@ -11,8 +11,9 @@ chooses one by hand for the selected node.
 
 **NMT command** sends Start, Pre-operational, Stop, Reset node or Reset
 communication to the selected node, or to every node when none is selected.
-**SYNC producer** transmits SYNC (0x080) at the period beside it, so
-synchronous PDOs are exchanged. **Read RPDO config** reads the selected node's
+**SYNC** transmits SYNC (0x080) for as long as it is pressed in, so
+synchronous PDOs are exchanged; how often is under *Settings...*, since a rate
+is a fact about the bus rather than a decision to take each time. **Read RPDO config** reads the selected node's
 RPDO mapping from the node itself, so [CAN Transmit](transmit.md) offers the
 RPDOs a remapped node actually receives rather than the ones its EDS started
 with.
@@ -62,7 +63,11 @@ entries and right-click to add them to a [custom pane](custom-panes.md).
 
 ## PDOs, emergencies and DCFs
 
-The **CANopen** pane configures a node: the *PDO configuration* tab shows
+The lower half of the pane is a row of tabs, the **Object dictionary** first:
+it, the live PDOs and LSS each want the whole height, and sharing it between
+them left every one too short to read.
+
+The *PDO configuration* tab shows
 every TPDO and RPDO with its COB-ID, transmission type, inhibit time, event
 timer and mapped objects. **Read from node** reads what the node is actually
 configured to send and receive, rather than what its EDS says it was built
@@ -72,8 +77,7 @@ PDO with its receive count and rate, and the *Emergencies* tab decodes EMCY
 objects: the CiA 301 error code, the error register bit by bit, and the five
 manufacturer-specific bytes as decoded by
 [`hooks/canopen.py::emcy_manufacturer`](hooks.md) (only the device maker knows what those
-mean, so that is a hook). The **SYNC producer** transmits sync
-messages so synchronous PDOs are exchanged, **Store** / **Restore
+mean, so that is a hook). **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
 node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is the [CANopen DCF compare](compare.md) plugin.

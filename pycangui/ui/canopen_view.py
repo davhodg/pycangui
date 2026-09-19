@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
@@ -81,6 +80,13 @@ NMT_COMMANDS_UI = (
     ("Stop", "STOPPED"),
     ("Reset node", "RESET"),
     ("Reset communication", "RESET COMMUNICATION"),
+)
+
+
+SYNC_TIP = (
+    "Transmit SYNC (0x080), so synchronous PDOs are exchanged. How often\n"
+    "is in Settings: a rate is a fact about the bus, agreed once, rather\n"
+    "than a decision to take every time this is pressed."
 )
 
 
@@ -149,16 +155,10 @@ class CanopenView(QWidget):
         nmt_bar.addWidget(send_nmt)
         nmt_bar.addSpacing(16)
         nmt_bar.addWidget(QLabel("SYNC producer:"))
-        self.sync_period = QDoubleSpinBox()
-        self.sync_period.setRange(1, 10000)
-        self.sync_period.setValue(100)
-        self.sync_period.setSuffix(" ms")
-        self.sync_period.setToolTip("SYNC period")
-        self.sync_btn = QPushButton("Start")
+        self.sync_btn = QPushButton("SYNC")
         self.sync_btn.setCheckable(True)
-        self.sync_btn.setToolTip("Transmit SYNC (0x080) so synchronous PDOs are exchanged")
+        self.sync_btn.setToolTip(SYNC_TIP)
         self.sync_btn.toggled.connect(self._toggle_sync)
-        nmt_bar.addWidget(self.sync_period)
         nmt_bar.addWidget(self.sync_btn)
         nmt_bar.addStretch()
         # What is set once rather than done lives on a dialog of its own: the
@@ -266,13 +266,17 @@ class CanopenView(QWidget):
         top_l.addLayout(file_bar)
         top_l.addWidget(self.nodes)
         top_l.addLayout(node_bar)
-        mid = QWidget()
-        mid_l = QVBoxLayout(mid)
-        mid_l.setContentsMargins(0, 0, 0, 0)
-        mid_l.addLayout(od_bar)
-        mid_l.addWidget(self.od)
+        objects = QWidget()
+        objects_l = QVBoxLayout(objects)
+        objects_l.setContentsMargins(0, 0, 0, 0)
+        objects_l.addLayout(od_bar)
+        objects_l.addWidget(self.od)
         self.pdo_config = PdoConfigView(manager, ctx)
+        # One tab each, rather than the dictionary above a strip of tabs.
+        # The dictionary, the live PDOs and LSS all want the height, and
+        # sharing it between them left every one of them too short to read.
         bottom = QTabWidget()
+        bottom.addTab(objects, "Object dictionary")
         live = QWidget()
         live_l = QVBoxLayout(live)
         live_l.setContentsMargins(0, 0, 0, 0)
@@ -319,7 +323,7 @@ class CanopenView(QWidget):
         bottom.addTab(self.lss, "LSS")
         self.bottom_tabs = bottom
         splitter = QSplitter(Qt.Vertical)
-        for w, stretch in ((top, 1), (mid, 3), (bottom, 1)):
+        for w, stretch in ((top, 1), (bottom, 4)):
             splitter.addWidget(w)
             splitter.setStretchFactor(splitter.count() - 1, stretch)
         layout = QVBoxLayout(self)
@@ -605,10 +609,11 @@ class CanopenView(QWidget):
 
     @Slot(bool)
     def _toggle_sync(self, on: bool) -> None:
-        self.sync_btn.setText("Stop" if on else "Start")
-        self.sync_period.setEnabled(not on)
+        self.sync_btn.setText("SYNC on" if on else "SYNC")
         if on:
-            self.manager.start_sync(self.sync_period.value() / 1000)
+            # The rate comes from the settings rather than a box beside the
+            # button: it is a fact about the bus, agreed once.
+            self.manager.start_sync(canopen_settings.load(self.ctx).sync_period_ms / 1000)
         else:
             self.manager.stop_sync()
 

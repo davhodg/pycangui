@@ -142,3 +142,52 @@ def test_store_restore_and_sync(stack):
     manager.stop_sync()
     assert not manager.sync_running
     wait_until(lambda: any("SYNC stopped" in m for m in messages))
+
+
+# --- where things sit in the pane -------------------------------------------------------
+def test_the_object_dictionary_is_the_first_tab(app, tmp_path, monkeypatch):
+    """The dictionary, the live PDOs and LSS all want the height, and
+    sharing it left every one of them too short to read."""
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    tabs = window.canopen_view.bottom_tabs
+
+    assert tabs.tabText(0) == "Object dictionary"
+    assert [tabs.tabText(i) for i in range(tabs.count())] == [
+        "Object dictionary",
+        "Live PDOs",
+        "PDO configuration",
+        "Emergencies",
+        "LSS",
+    ]
+    window.close()
+
+
+def test_the_sync_rate_lives_in_the_settings(app, tmp_path, monkeypatch):
+    """A rate is a fact about the bus, agreed once, not a decision to take
+    each time synchronous PDOs are wanted."""
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui import canopen_settings
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.canopen_view
+
+    assert not hasattr(view, "sync_period"), "no box beside the button any more"
+    assert view.sync_btn.isCheckable()
+
+    window.ctx.settings.set(canopen_settings.SYNC_KEY, 250)
+    started: list[float] = []
+    monkeypatch.setattr(window.canopen, "start_sync", started.append)
+    view.sync_btn.setChecked(True)
+
+    assert started == [0.25], "the period comes from the settings"
+    window.close()
