@@ -221,9 +221,15 @@ class CompareView(QWidget):
         layout.addWidget(self.table, 1)
 
         self.fill_nodes()
-        canopen_manager.node_seen.connect(lambda *_a: self.fill_nodes())
+        # A bound method, not a lambda: the manager outlives this pane, and
+        # Qt drops a bound method of a widget when the widget is destroyed
+        # while it keeps a lambda alive to reach for widgets that have gone.
+        canopen_manager.node_seen.connect(self._on_node_seen)
         canopen_manager.dcf_progress.connect(self._on_progress)
         self.restore()
+
+    def _on_node_seen(self, _node_id: int, _state: str) -> None:
+        self.fill_nodes()
 
     def fill_nodes(self) -> None:
         self.left.fill_nodes()

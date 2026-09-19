@@ -195,7 +195,11 @@ class CustomPaneView(QWidget):
         self.rebuild()
         self._apply_file_controls()
         if manager is not None:
-            manager.node_seen.connect(lambda *_a: self._fill_sources())
+            # A bound method, not a lambda: the manager outlives this pane,
+            # and Qt drops a bound method of a widget when the widget is
+            # destroyed while it keeps a lambda alive to reach for widgets
+            # that have gone.
+            manager.node_seen.connect(self._on_node_seen)
 
     # --- the form ------------------------------------------------------------------
     def rebuild(self) -> None:
@@ -229,6 +233,9 @@ class CustomPaneView(QWidget):
             widget.refresh()
 
     # --- where the values come from ----------------------------------------------------
+    def _on_node_seen(self, _node_id: int, _state: str) -> None:
+        self._fill_sources()
+
     def _fill_sources(self) -> None:
         """The nodes on the bus, plus a way to open a file."""
         current = self._key_of(self.source)

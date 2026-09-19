@@ -259,9 +259,15 @@ class FirmwareView(QWidget):
         layout.addStretch()
 
         self._fill_nodes()
-        app.canopen.node_seen.connect(lambda *_a: self._fill_nodes())
+        # A bound method, not a lambda: the manager outlives this pane, and
+        # Qt drops a bound method of a widget when the widget is destroyed
+        # while it keeps a lambda alive to reach for widgets that have gone.
+        app.canopen.node_seen.connect(self._on_node_seen)
 
     # --- what to program, and what with ------------------------------------------------
+    def _on_node_seen(self, _node_id: int, _state: str) -> None:
+        self._fill_nodes()
+
     def _fill_nodes(self) -> None:
         chosen = self.node.currentData()
         self.node.clear()
