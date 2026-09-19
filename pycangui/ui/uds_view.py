@@ -71,6 +71,24 @@ FUNCTIONAL_TIP = (
     "The address every ECU listens to, for a request meant for all of\n"
     "them. 7DF by the standard. Empty if this bus does not use one."
 )
+#: What the identifier boxes say once they are worked out rather than
+#: typed. A tooltip telling somebody to type into a box they cannot type
+#: into is worse than none, and this is the place to say which part of
+#: the identifier is which.
+FIXED_TX_TIP = (
+    "Worked out from the addresses on the left: 18 DA <ecu> <tester>.\n"
+    "Priority 6, then ISO 15765-2's physical PDU format, then who it is\n"
+    "for and who it is from. Change the ECU or tester address to change it."
+)
+FIXED_RX_TIP = (
+    "Worked out: 18 DA <tester> <ecu> -- the same pair the other way\n"
+    "round, because the ECU is the one sending. Nothing to fill in."
+)
+FIXED_FUNC_TIP = (
+    "Worked out: 18 DB <target> <tester>. DB is the functional PDU\n"
+    "format, and the target is Func TA -- 33 for OBD, or whatever a\n"
+    "manufacturer's own diagnostics use."
+)
 ADDRESSING_TIP = (
     "How the identifiers are arrived at. Identifiers: type them, which is\n"
     "what an 11-bit bus wants. J1939 addresses: give the ECU's 8-bit\n"
@@ -735,8 +753,13 @@ class UdsView(QWidget):
         for widget in (self.ecu_address, self.tester_address, self.functional_target):
             widget.setVisible(fixed)
             self.address_labels[widget].setVisible(fixed)
-        for widget in (self.tx_id, self.rx_id, self.functional_id):
+        for widget, typed, worked_out in (
+            (self.tx_id, ADDRESS_TIP, FIXED_TX_TIP),
+            (self.rx_id, ADDRESS_TIP, FIXED_RX_TIP),
+            (self.functional_id, FUNCTIONAL_TIP, FIXED_FUNC_TIP),
+        ):
             widget.setReadOnly(fixed)
+            widget.setToolTip(worked_out if fixed else typed)
         self._apply_addresses()
 
     @Slot(int)
