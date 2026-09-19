@@ -253,10 +253,14 @@ class CanopenSettingsDialog(QDialog):
         self.sync_period.setSuffix(" ms")
         self.sync_period.setValue(settings.sync_period_ms)
         self.sync_period.setToolTip(SYNC_TIP)
-        every = QGroupBox("SDO, every node")
+        # "Every node" rather than "SDO, every node": the SYNC period is
+        # not an SDO setting, and it moved in here the moment the rate
+        # stopped being a box beside the button. What each row is about is
+        # said by the row.
+        every = QGroupBox("Every node")
         form = QFormLayout(every)
-        form.addRow("Timeout:", self.timeout)
-        form.addRow("Retries:", self.retries)
+        form.addRow("SDO timeout:", self.timeout)
+        form.addRow("SDO retries:", self.retries)
         form.addRow("SYNC period:", self.sync_period)
 
         self.table = QTableWidget(0, len(COLUMNS))
