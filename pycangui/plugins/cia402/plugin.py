@@ -101,6 +101,26 @@ UNITS_NOTE = (
 )
 
 
+WRITE_LIMITS_TIP = (
+    "Write all three to the drive. A limit is what the machine cannot\n"
+    "exceed, so raising one lets it do more than it could a moment ago."
+)
+MISSING_TIP = "This drive's EDS does not have this object, so there is nothing to write to."
+MODE_TIP = "Written to 0x6060. What the drive is actually in is beside it."
+MODE_SUPPORTED_TIP = (
+    "Written to 0x6060. Only the modes 0x6502 says this drive has are\n"
+    "listed, and No mode, which is how a drive is told to be in none of\n"
+    "them."
+)
+LIMITS_TITLE = "Change the drive's limits?"
+LIMITS_WARNING = (
+    "These are the limits the drive holds itself to in every mode: the\n"
+    "most torque it will apply, and the fastest it will go. Raising one\n"
+    "lets the machine do more than it could before, whatever is asking.\n\n"
+    "Write them?"
+)
+
+
 class NodeDrive(Drive):
     """A live node, read and written by index rather than through its EDS.
 
@@ -131,6 +151,9 @@ class MotorView(QWidget):
         #: Nothing has been read yet, so the state is not "Not ready to switch
         #: on" -- it is unknown, and saying the first would be inventing news.
         self._read_something = False
+        #: What the node list holds, so a heartbeat that says nothing new
+        #: does not rebuild it. See _fill_nodes.
+        self._nodes_listed: list[int] = []
 
         self.node = QComboBox()
         self.node.setToolTip("Which drive.")
@@ -181,7 +204,7 @@ class MotorView(QWidget):
         self.mode_box = QComboBox()
         for number, name in sorted(cia402.MODES.items()):
             self.mode_box.addItem(f"{number}  {name}", number)
-        self.mode_box.setToolTip("Written to 0x6060. What the drive is actually in is beside it.")
+        self.mode_box.setToolTip(MODE_TIP)
         set_mode = QPushButton("Set mode")
         set_mode.clicked.connect(self._set_mode)
         self.mode_now = QLabel("")
@@ -204,6 +227,31 @@ class MotorView(QWidget):
         self.target_note.setWordWrap(True)
         self.target_note.setEnabled(False)
 
+        # --- limits -------------------------------------------------------------------
+        # Not targets: a drive in any mode is held to its maximum torque, and
+        # the speed limits cap whatever a profile or a controller asks for.
+        # Read when a drive is chosen, written when somebody asks.
+        self.limits: dict[tuple[int, int], QSpinBox] = {}
+        limits_row = QHBoxLayout()
+        for obj in cia402.LIMITS:
+            box = QSpinBox()
+            box.setRange(0, 2_000_000_000)
+            box.setGroupSeparatorShown(True)
+            box.setToolTip(f"0x{obj.index:04X}: {obj.name}, in {obj.unit}.")
+            self.limits[obj.where] = box
+            limits_row.addWidget(QLabel(f"{obj.name}:"))
+            limits_row.addWidget(box)
+            limits_row.addWidget(QLabel(obj.unit))
+        self.read_limits_btn = QPushButton("Read limits")
+        self.read_limits_btn.setToolTip("Read all three from the drive.")
+        self.read_limits_btn.clicked.connect(self._read_limits)
+        self.write_limits_btn = QPushButton("Write limits")
+        self.write_limits_btn.setToolTip(WRITE_LIMITS_TIP)
+        self.write_limits_btn.clicked.connect(self._write_limits)
+        limits_row.addStretch()
+        limits_row.addWidget(self.read_limits_btn)
+        limits_row.addWidget(self.write_limits_btn)
+
         settings = QGridLayout()
         settings.addWidget(QLabel("Mode:"), 0, 0)
         settings.addWidget(self.mode_box, 0, 1)
@@ -214,6 +262,7 @@ class MotorView(QWidget):
         settings.addWidget(self.set_target, 1, 2)
         settings.addWidget(self.apply_target, 1, 3)
         settings.setColumnStretch(4, 1)
+        settings.addLayout(limits_row, 2, 0, 1, 5)
 
         # --- what it is doing -----------------------------------------------------------
         self.actuals: dict[tuple[int, int], QLabel] = {}
@@ -306,12 +355,27 @@ class MotorView(QWidget):
 
     # --- which drive ---------------------------------------------------------------------
     def _fill_nodes(self) -> None:
+        """Rebuild the list, but only when the list has actually changed.
+
+        This is called on node_seen, which arrives with every heartbeat --
+        once a second on a quiet bus. Rebuilding then cleared the combo,
+        which changed the current index, which forgot everything read so
+        far: the values appeared and blanked, appeared and blanked.
+        """
+        nodes = self.app.canopen.nodes()
+        if nodes == self._nodes_listed:
+            return
+        self._nodes_listed = nodes
         chosen = self.node.currentData()
+        self.node.blockSignals(True)  # rebuilding is not somebody choosing
         self.node.clear()
-        for node_id in self.app.canopen.nodes():
+        for node_id in nodes:
             self.node.addItem(f"Node {node_id}", node_id)
         at = self.node.findData(chosen)
         self.node.setCurrentIndex(max(at, 0))
+        self.node.blockSignals(False)
+        if self.node.currentData() != chosen:
+            self._forget()
 
     def _forget(self) -> None:
         """A different drive knows nothing about the last one's state.
@@ -327,6 +391,118 @@ class MotorView(QWidget):
             value.setText("--")
         self._show_state()
         self._show_target()
+        # What this drive has is this drive's business: its EDS says which
+        # objects exist, and 0x6502 which modes it implements.
+        self._fit_to_drive()
+
+    # --- what this drive actually has ---------------------------------------------------
+    def _object_dictionary(self):
+        """The selected node's EDS, if it has one loaded."""
+        node_id = self.node.currentData()
+        node = self.app.canopen.node(node_id) if node_id is not None else None
+        od = getattr(node, "object_dictionary", None)
+        return od if od else None  # an empty one is "no EDS", not "no objects"
+
+    def _has(self, obj: Object) -> bool:
+        """Whether this drive has an object, as far as anything here knows.
+
+        With no EDS the answer is yes: the profile says these exist, most
+        drives have them, and grey controls because pycangui was never
+        given a file would be worse than an SDO that comes back refused.
+        With an EDS, the file is believed -- that is what it is for.
+        """
+        od = self._object_dictionary()
+        return True if od is None else obj.index in od
+
+    def _fit_to_drive(self) -> None:
+        """Offer what this drive has, and no more.
+
+        Two sources, answering different questions. The EDS says which
+        objects exist, so a control for one that does not is switched off
+        rather than left to fail with an abort code nobody reads. 0x6502
+        says which modes the drive implements, which an EDS cannot: every
+        drive's EDS lists 0x6060, and none of them says that this one
+        cannot do torque.
+        """
+        for where, box in self.limits.items():
+            has = self._has(next(o for o in cia402.LIMITS if o.where == where))
+            box.setEnabled(has)
+            box.setToolTip("" if has else MISSING_TIP)
+        for where, label in self.actuals.items():
+            if not self._has(next(o for o in cia402.WATCHED if o.where == where)):
+                label.setText("not in the EDS")
+        self._read_supported_modes()
+
+    def _read_supported_modes(self) -> None:
+        """Ask 0x6502 which modes this drive has, and offer only those."""
+        self._show_modes(None)  # until it answers, offer them all
+        drive = self._quietly()
+        if drive is None or not self._has(cia402.SUPPORTED_MODES):
+            return
+
+        def done(value, error) -> None:
+            if error is None:
+                self._show_modes(cia402.modes_in(int(value)))
+
+        self.app.run_in_background(lambda: drive.read(cia402.SUPPORTED_MODES), done)
+
+    def _show_modes(self, supported: set[int] | None) -> None:
+        """Rebuild the mode list, keeping what was chosen if it survives."""
+        chosen = self.mode_box.currentData()
+        self.mode_box.blockSignals(True)
+        self.mode_box.clear()
+        for number, name in sorted(cia402.MODES.items()):
+            # No mode is always offered: writing 0 is how a drive is told
+            # to be in none of them, which is not something 0x6502 lists.
+            if supported is None or number == 0 or number in supported:
+                self.mode_box.addItem(f"{number}  {name}", number)
+        at = self.mode_box.findData(chosen)
+        self.mode_box.setCurrentIndex(max(at, 0))
+        self.mode_box.blockSignals(False)
+        self.mode_box.setToolTip(MODE_TIP if supported is None else MODE_SUPPORTED_TIP)
+
+    # --- limits ----------------------------------------------------------------------
+    def _read_limits(self) -> None:
+        """Read all three, so the boxes show what the drive is actually held to."""
+        drive = self._drive()
+        if drive is None:
+            return
+        for obj in cia402.LIMITS:
+            if not self._has(obj):
+                continue
+
+            def done(value, error, obj=obj) -> None:
+                if error is None:
+                    self.limits[obj.where].setValue(int(value))
+                else:
+                    self.app.warn(f"{obj.name}: {error}")
+
+            self.app.run_in_background(lambda o=obj: drive.read(o), done)
+
+    def _write_limits(self) -> None:
+        """Write all three. A question first, because a limit is a promise
+        about what the machine cannot do, and raising one lets it do more."""
+        drive = self._drive()
+        if drive is None:
+            return
+        node_id = self.node.currentData()
+        if not self.app.confirm.ask(self, f"cia402.limits.{node_id}", LIMITS_TITLE, LIMITS_WARNING):
+            return
+        for obj in cia402.LIMITS:
+            if not self._has(obj):
+                continue
+            self._write_limit(drive, obj, self.limits[obj.where].value())
+
+    def _write_limit(self, drive: NodeDrive, obj: Object, value: int) -> None:
+        """One limit, with the value bound rather than read again later."""
+
+        def done(_result, error) -> None:
+            if error:
+                self.app.warn(f"{obj.name}: {error}")
+            else:
+                self.app.log(f"{obj.name} <- {value:,}")
+
+        self.app.run_in_background(lambda: drive.write(obj, value), done)
 
     def _drive(self) -> NodeDrive | None:
         node_id = self.node.currentData()
