@@ -25,7 +25,14 @@ from pycangui.xcp import DATATYPES, decode_value, encode_value
 from pycangui.xcp.a2l import A2l, Parameter
 from pycangui.xcp.engine import XcpEngine, XcpError
 
-DEFAULT_BACKEND = "native"
+DEFAULT_BACKEND = "xcp-builtin"
+#: An engine is named "<protocol>-<implementation>", so that the list says
+#: both things it has to: which protocol it speaks, and whose code speaks
+#: it. "native" said only the second, which was enough while there was one
+#: engine and stopped being enough the moment there were two; an engine
+#: calling into somebody's Rust library would be "xcp-rust" beside
+#: "xcp-builtin". A workspace remembering an older name still opens.
+RENAMED = {"native": "xcp-builtin", "xcp": "xcp-builtin", "ccp": "ccp-builtin"}
 
 
 class XcpManager(QObject):
@@ -42,7 +49,8 @@ class XcpManager(QObject):
         self._ctx = ctx
         self.a2l: A2l | None = None
         self.engine: XcpEngine | None = None
-        self.backend_name = ctx.settings.get("backends.xcp", DEFAULT_BACKEND)
+        remembered = str(ctx.settings.get("backends.xcp", DEFAULT_BACKEND))
+        self.backend_name = RENAMED.get(remembered, remembered)
         self._connected = False
         self._polled: dict[str, Parameter] = {}
         self._jobs: queue.Queue = queue.Queue()

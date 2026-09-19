@@ -10,7 +10,7 @@ different Python package -- without touching pycangui:
 
 | Kind | Interface | Built in |
 |------|-----------|----------|
-| `xcp` | `pycangui.xcp.engine.XcpEngine` (connect, seed/unlock, read, write) | `native` -- XCP on CAN in pycangui |
+| `xcp` | `pycangui.xcp.engine.XcpEngine` (connect, seed/unlock, read, write) | `xcp-builtin` -- XCP on CAN; `ccp-builtin` -- CCP on CAN |
 | `isotp` | `pycangui.uds.transport.IsoTpTransport` (open, send, recv) -- everything UDS needs from the link | `can-isotp` |
 
 Put a module in the `backends` folder -- `%APPDATA%\pycangui\backends\` on

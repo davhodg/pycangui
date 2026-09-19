@@ -3,9 +3,10 @@
 # XCP / CCP
 
 The **XCP / CCP** pane reads and writes a controller's memory by address, in
-either protocol. **Engine** chooses which: *native* for XCP on CAN, *ccp* for
-CCP, the protocol XCP replaced and which plenty of controllers in service
-still speak. Everything else on the pane is the same either way -- the A2L,
+either protocol. **Engine** chooses which: *xcp-builtin*, or *ccp-builtin* for the protocol
+XCP replaced, which plenty of controllers in service still speak. An engine
+is named for the protocol it speaks and whose code speaks it, so one calling
+into a library of your own would sit beside these as, say, *xcp-rust*. Everything else on the pane is the same either way -- the A2L,
 the list, the reading and writing, the plot -- because the two differ in how
 the bytes travel and not in what is being asked for.
 

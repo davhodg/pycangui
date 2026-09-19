@@ -33,7 +33,7 @@ def test_builtin_backends_registered():
     # importing the modules is what registers them
     importlib.import_module("pycangui.uds.transport")
     importlib.import_module("pycangui.xcp.engine")
-    assert "native" in BACKENDS.names("xcp")
+    assert "xcp-builtin" in BACKENDS.names("xcp")
     assert "can-isotp" in BACKENDS.names("isotp")
 
 
@@ -106,8 +106,8 @@ def test_user_backend_replaces_builtin(app, tmp_path, monkeypatch):
     wait_until(lambda: len(lines) > n)
     assert lines[-1] == "BatteryVoltage = 9.99 V"
 
-    manager.set_backend("native")  # switching back works and is remembered
-    assert ctx.settings.get("backends.xcp") == "native"
+    manager.set_backend("xcp-builtin")  # switching back works and is remembered
+    assert ctx.settings.get("backends.xcp") == "xcp-builtin"
     manager.shutdown()
 
 
@@ -119,4 +119,22 @@ def test_broken_user_backend_is_isolated(app, tmp_path, monkeypatch):
     BACKENDS.load_user_backends(ctx.backends_dir, logged.append)
     assert len(BACKENDS.errors) == 1
     assert any("failed to load" in line for line in logged)
-    assert "native" in BACKENDS.names("xcp")  # built-in still usable
+    assert "xcp-builtin" in BACKENDS.names("xcp")  # built-in still usable
+
+
+def test_an_older_name_for_an_engine_still_opens(app, tmp_path, monkeypatch):
+    """A workspace that remembers "native" was written when that was the
+    only engine there was, and must not open on the wrong one."""
+    from pycangui.core.context import Context
+    from pycangui.core.hooks import Hooks
+    from pycangui.core.signals import SignalHub
+    from pycangui.xcp.manager import XcpManager
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    ctx.settings.set("backends.xcp", "native")
+    manager = XcpManager(BusManager(), Hooks(ctx), SignalHub(), ctx)
+
+    assert manager.backend_name == "xcp-builtin"
+    assert manager.protocol == "XCP"
+    manager.shutdown()
