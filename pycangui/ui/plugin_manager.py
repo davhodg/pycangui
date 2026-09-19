@@ -64,6 +64,20 @@ WHAT_IT_STAYS = (
     "workspace and stays until you remove it or switch it off."
 )
 
+UPDATE_TIP = "This one is the same version as the one pycangui ships."
+UPDATE_TO = (
+    "Install version {version}, the one this pycangui ships, over the one\n"
+    "in this workspace. Anything edited into the copy here is lost."
+)
+#: Said once a session, when a plugin in this workspace is behind the one
+#: pycangui now ships. A workspace copy does not change when pycangui is
+#: updated -- that is the point of it being a copy -- so nothing would
+#: otherwise say that the drive pane gained anything.
+BEHIND = (
+    "Plugin {label} {installed} is installed here; this pycangui ships "
+    "{supplied}. Tools > Plugins to update it."
+)
+
 UNINSTALL = (
     "Remove {label} from this workspace?\n\n"
     "Its folder is deleted, and anything you have edited into it goes with it. "
@@ -264,6 +278,23 @@ class PluginActions(QObject):
         here = set(self.plugins.found())
         return [s for s in supplied() if s.name not in here]
 
+    def out_of_date(self) -> dict[str, tuple[str, str]]:
+        """name -> (installed version, the version pycangui now ships).
+
+        A plugin is installed into a workspace, which is a copy: pulling a
+        newer pycangui leaves that copy exactly as it was, and nothing said
+        so. Reported rather than acted on -- the copy may be one somebody
+        has edited, and replacing it is what the install question is for.
+        """
+        out = {}
+        for entry in supplied():
+            record = self.plugins.loaded.get(entry.name)
+            if record is None:
+                continue
+            if _older(record.version, entry.info.version):
+                out[entry.name] = (record.version, entry.info.version)
+        return out
+
 
 def _older(new: str, old: str) -> bool:
     """Whether one version is behind another, for the two that look like numbers.
@@ -308,10 +339,14 @@ class ManagePlugins(QDialog):
         self.remove_button = QPushButton("Remove...")
         self.remove_button.setToolTip("Delete it from this workspace, edits and all.")
         self.remove_button.clicked.connect(self._uninstall)
+        self.update_button = QPushButton("Update...")
+        self.update_button.setToolTip(UPDATE_TIP)
+        self.update_button.clicked.connect(self._update)
 
         mine = QHBoxLayout()
         mine.addWidget(install_file)
         mine.addStretch()
+        mine.addWidget(self.update_button)
         mine.addWidget(self.export_button)
         mine.addWidget(self.remove_button)
 
@@ -350,10 +385,13 @@ class ManagePlugins(QDialog):
     def refresh(self) -> None:
         self._filling = True
         self.installed.clear()
+        behind = self.actions.out_of_date()
         for record in sorted(self.actions.plugins.loaded.values(), key=lambda r: r.label.lower()):
             text = record.label + PluginActions._label_version(record.version)
             if not record.ok:
                 text += "  (failed to load -- why is in the Event Log)"
+            if (newer := behind.get(record.name)) is not None:
+                text += f"  --  {newer[1]} supplied with this pycangui"
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, record.name)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -385,9 +423,16 @@ class ManagePlugins(QDialog):
         return str(item.data(Qt.UserRole) or "") if item is not None else ""
 
     def _enable_buttons(self) -> None:
-        mine = bool(self._chosen(self.installed))
-        self.export_button.setEnabled(mine)
-        self.remove_button.setEnabled(mine)
+        mine = self._chosen(self.installed)
+        self.export_button.setEnabled(bool(mine))
+        self.remove_button.setEnabled(bool(mine))
+        # Only where there is something newer to install: an Update button
+        # that is always live invites pressing it to find out.
+        behind = self.actions.out_of_date()
+        self.update_button.setEnabled(mine in behind)
+        self.update_button.setToolTip(
+            UPDATE_TO.format(version=behind[mine][1]) if mine in behind else UPDATE_TIP
+        )
         self.add_button.setEnabled(bool(self._chosen(self.offered)))
 
     # --- and what it does -------------------------------------------------------------
@@ -402,6 +447,16 @@ class ManagePlugins(QDialog):
     def _install_file(self) -> None:
         self.actions.install_file(self)
         self.refresh()
+
+    def _update(self) -> None:
+        """Install the supplied copy over the one in this workspace.
+
+        The same question as any other install, warning that edits are
+        lost: this is a replacement, not a merge, and the copy here may be
+        one somebody has changed on purpose.
+        """
+        if name := self._chosen(self.installed):
+            self.actions.install_supplied(name, self)
 
     def _install_supplied(self) -> None:
         if name := self._chosen(self.offered):

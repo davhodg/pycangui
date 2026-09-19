@@ -52,7 +52,7 @@ from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.plugin_app import PluginApp
-from pycangui.ui.plugin_manager import INACTIVE_TIP, ManagePlugins, PluginActions
+from pycangui.ui.plugin_manager import BEHIND, INACTIVE_TIP, ManagePlugins, PluginActions
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.restore_supplied import RestoreSupplied
 from pycangui.ui.scope_view import ScopeView
@@ -461,6 +461,15 @@ class MainWindow(QMainWindow):
         self.plugin_actions = PluginActions(self, self.ctx, self.plugins)
         self.plugin_actions.changed.connect(self._plugins_changed)
         self.plugins.load_all()
+        # A plugin lives in the workspace as a copy, so pulling a newer
+        # pycangui leaves it exactly as it was and nothing said so.
+        for name, (here, shipped) in self.plugin_actions.out_of_date().items():
+            record = self.plugins.loaded.get(name)
+            self.events.information(
+                BEHIND.format(
+                    label=record.label if record else name, installed=here, supplied=shipped
+                )
+            )
         timing.mark("plugins")
         self._build_plugins_menu()
         self.panes.restore_instances()
