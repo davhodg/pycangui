@@ -479,3 +479,23 @@ def test_the_tester_address_follows_the_one_j1939_claimed(app, tmp_path, monkeyp
     window.j1939.claimed.emit(0xFE)  # lost it
     assert view.tester_address.text() == "80", "which is not an address to send from"
     window.close()
+
+
+def test_the_identifier_tooltips_follow_the_addressing(app, tmp_path, monkeypatch):
+    """A tooltip telling somebody to type into a box they cannot type into
+    is worse than none."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+    typed = view.tx_id.toolTip()
+
+    view.addressing.setCurrentIndex(1)  # J1939 addresses
+
+    assert view.tx_id.toolTip() != typed, "it says how it is worked out now"
+    assert "18" in view.tx_id.toolTip() and "DA" in view.tx_id.toolTip()
+    assert "DB" in view.functional_id.toolTip(), "the functional one has its own format"
+
+    view.addressing.setCurrentIndex(0)
+    assert view.tx_id.toolTip() == typed, "and back to how to type one"
+    window.close()
