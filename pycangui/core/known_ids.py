@@ -51,7 +51,7 @@ def from_databases(dbc) -> list[Known]:
                 can_id=message.frame_id,
                 extended=bool(message.is_extended_frame),
                 name=message.name,
-                source="Database",
+                source="DBC",
             )
         )
     return out
@@ -100,11 +100,12 @@ def from_xcp(xcp) -> list[Known]:
 
 
 def collect(dbc=None, canopen=None, uds=None, xcp=None) -> list[Known]:
-    """Everything that would be named, in the order the trace asks them.
+    """Everything that would be named, in numerical order.
 
-    Sorted by id within each source rather than overall: two sources can
-    name the same id, and seeing both is the point -- that is a clash to
-    know about, not something to hide by keeping one of them.
+    By id rather than grouped by where the name comes from: somebody
+    reading this has an id in front of them, on a trace or in a document,
+    and wants to know what it is. That order also puts two sources naming
+    the same id next to each other, which is where they are worth seeing.
     """
     out: list[Known] = []
     for collector, thing in (
@@ -114,8 +115,8 @@ def collect(dbc=None, canopen=None, uds=None, xcp=None) -> list[Known]:
         (from_xcp, xcp),
     ):
         if thing is not None:
-            out.extend(sorted(collector(thing), key=lambda known: known.can_id))
-    return out
+            out.extend(collector(thing))
+    return sorted(out, key=lambda known: (known.extended, known.can_id, known.source))
 
 
 def clashes(known: list[Known]) -> set[int]:
