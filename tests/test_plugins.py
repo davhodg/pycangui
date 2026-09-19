@@ -664,3 +664,67 @@ def test_reloading_picks_up_an_edit_to_the_second_file_too(app, window):
     window._reload_plugins()
     settle(app)
     assert window.panes.view("split:screen").text() == "second"
+
+
+# --- a workspace copy left behind by an update -------------------------------------------
+def test_a_plugin_behind_the_supplied_one_is_reported(app, window):
+    """A plugin lives in the workspace as a copy, so pulling a newer
+    pycangui leaves it exactly as it was -- and nothing said so."""
+    from pycangui.core.plugins import Loaded, supplied
+
+    assert window.plugin_actions.out_of_date() == {}, "nothing installed, nothing to say"
+
+    entry = supplied()[0]
+    window.plugins.loaded[entry.name] = Loaded(
+        name=entry.name,
+        path=window.ctx.workspace_dir / "plugins" / entry.name,
+        title=entry.label,
+        version="0.1",  # as an older copy in this workspace would be
+    )
+
+    behind = window.plugin_actions.out_of_date()
+
+    assert behind[entry.name] == ("0.1", entry.info.version)
+
+
+def test_a_copy_level_with_the_supplied_one_is_not_remarked_on(app, window):
+    from pycangui.core.plugins import Loaded, supplied
+
+    entry = supplied()[0]
+    window.plugins.loaded[entry.name] = Loaded(
+        name=entry.name,
+        path=window.ctx.workspace_dir / "plugins" / entry.name,
+        version=entry.info.version,
+    )
+
+    assert window.plugin_actions.out_of_date() == {}
+
+
+def test_the_versions_are_compared_not_the_names(app):
+    from pycangui.ui.plugin_manager import _older
+
+    assert _older("1.0", "1.1"), "installed 1.0, shipped 1.1"
+    assert not _older("1.1", "1.0")
+    assert not _older("1.0", "1.0")
+    assert not _older("dated", "dated-2"), "and what cannot be compared is not remarked on"
+
+
+def test_the_update_button_is_live_only_where_there_is_one(app, window):
+    from pycangui.core.plugins import Loaded, supplied
+    from pycangui.ui.plugin_manager import ManagePlugins
+
+    entry = supplied()[0]
+    window.plugins.loaded[entry.name] = Loaded(
+        name=entry.name,
+        path=window.ctx.workspace_dir / "plugins" / entry.name,
+        title=entry.label,
+        version="0.1",
+    )
+    dialog = ManagePlugins(window, window.plugin_actions)
+
+    dialog.installed.setCurrentRow(0)
+
+    assert dialog.update_button.isEnabled()
+    assert entry.info.version in dialog.update_button.toolTip()
+    assert entry.info.version in dialog.installed.item(0).text(), "and the row says so too"
+    dialog.close()
