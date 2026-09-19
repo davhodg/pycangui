@@ -512,6 +512,35 @@ def test_a_heartbeat_does_not_wipe_the_values(app, window, view):
     assert view.state.text() == "Operation enabled", "and the state is still known"
 
 
+def test_a_heartbeat_after_the_pane_has_gone_does_not_reach_for_it(app, window, view, monkeypatch):
+    """The manager outlives the pane, so the connection has to go when the
+    pane does. Connected through a lambda it did not: the next heartbeat
+    called into a pane whose widgets Qt had already destroyed, and the tool
+    reported a bug in itself once a second.
+
+    Through the excepthook, because PySide sends an exception raised inside a
+    slot there rather than back to whoever emitted the signal.
+    """
+    import sys
+
+    from PySide6.QtCore import QEvent
+
+    assert view is not None
+    window._reload_plugins()  # what updating a plugin does: unload, load again
+    app.processEvents()
+    app.sendPostedEvents(None, QEvent.DeferredDelete)  # the old pane, destroyed
+
+    blew_up: list = []
+    monkeypatch.setattr(sys, "excepthook", lambda *what: blew_up.append(what))
+    # A node the old pane had never listed, so anything still connected to
+    # the manager gets as far as its widgets rather than stopping at "the
+    # list has not changed".
+    monkeypatch.setattr(window.canopen, "nodes", lambda: [5])
+    window.canopen.node_seen.emit(5, "operational")
+    app.processEvents()
+    assert not blew_up, blew_up
+
+
 # --- limits ------------------------------------------------------------------------------
 def test_the_limits_are_there_to_be_read_and_written(app, view):
     """Not targets: a drive in any mode is held to these."""

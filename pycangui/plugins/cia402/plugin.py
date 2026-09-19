@@ -49,7 +49,7 @@ from .drive import Drive, Object
 
 API_VERSION = 1
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.1"
+VERSION = "1.2"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -230,27 +230,32 @@ class MotorView(QWidget):
         # --- limits -------------------------------------------------------------------
         # Not targets: a drive in any mode is held to its maximum torque, and
         # the speed limits cap whatever a profile or a controller asks for.
-        # Read when a drive is chosen, written when somebody asks.
+        # Read when a drive is chosen, written when somebody asks. A box of
+        # their own, one to a line: three limits along a single row read as
+        # one setting, and they are three separate promises about a machine.
         self.limits: dict[tuple[int, int], QSpinBox] = {}
-        limits_row = QHBoxLayout()
-        for obj in cia402.LIMITS:
+        limits_grid = QGridLayout()
+        for row, obj in enumerate(cia402.LIMITS):
             box = QSpinBox()
             box.setRange(0, 2_000_000_000)
             box.setGroupSeparatorShown(True)
             box.setToolTip(f"0x{obj.index:04X}: {obj.name}, in {obj.unit}.")
             self.limits[obj.where] = box
-            limits_row.addWidget(QLabel(f"{obj.name}:"))
-            limits_row.addWidget(box)
-            limits_row.addWidget(QLabel(obj.unit))
+            limits_grid.addWidget(QLabel(f"{obj.name}:"), row, 0)
+            limits_grid.addWidget(box, row, 1)
+            limits_grid.addWidget(QLabel(obj.unit), row, 2)
+        limits_grid.setColumnStretch(3, 1)
+
         self.read_limits_btn = QPushButton("Read limits")
         self.read_limits_btn.setToolTip("Read all three from the drive.")
         self.read_limits_btn.clicked.connect(self._read_limits)
         self.write_limits_btn = QPushButton("Write limits")
         self.write_limits_btn.setToolTip(WRITE_LIMITS_TIP)
         self.write_limits_btn.clicked.connect(self._write_limits)
-        limits_row.addStretch()
-        limits_row.addWidget(self.read_limits_btn)
-        limits_row.addWidget(self.write_limits_btn)
+        limits_buttons = QHBoxLayout()
+        limits_buttons.addStretch()
+        limits_buttons.addWidget(self.read_limits_btn)
+        limits_buttons.addWidget(self.write_limits_btn)
 
         settings = QGridLayout()
         settings.addWidget(QLabel("Mode:"), 0, 0)
@@ -262,7 +267,6 @@ class MotorView(QWidget):
         settings.addWidget(self.set_target, 1, 2)
         settings.addWidget(self.apply_target, 1, 3)
         settings.setColumnStretch(4, 1)
-        settings.addLayout(limits_row, 2, 0, 1, 5)
 
         # --- what it is doing -----------------------------------------------------------
         self.actuals: dict[tuple[int, int], QLabel] = {}
@@ -324,6 +328,11 @@ class MotorView(QWidget):
         run_inside.addWidget(self.target_note)
         run_inside.addWidget(self.disable_too)
 
+        limits_box = QGroupBox("Limits")
+        limits_inside = QVBoxLayout(limits_box)
+        limits_inside.addLayout(limits_grid)
+        limits_inside.addLayout(limits_buttons)
+
         watch_box = QGroupBox("What it is doing")
         watch_inside = QVBoxLayout(watch_box)
         watch_inside.addLayout(watched)
@@ -337,6 +346,7 @@ class MotorView(QWidget):
         layout.addLayout(where)
         layout.addWidget(status_box)
         layout.addWidget(run_box)
+        layout.addWidget(limits_box)
         layout.addWidget(watch_box)
         layout.addWidget(units)
         layout.addStretch()
@@ -348,12 +358,21 @@ class MotorView(QWidget):
         self.poller.set_rate(self.hz.value())
 
         self._fill_nodes()
-        app.canopen.node_seen.connect(lambda *_a: self._fill_nodes())
+        # A bound method rather than a lambda, and that is not a style choice.
+        # The manager outlives this pane, so a connection to it has to end
+        # when the pane does: Qt drops a bound method of a widget as the
+        # widget is destroyed, and holds on to a lambda for ever. The lambda
+        # was still being called after the pane closed, reaching for a combo
+        # box whose C++ half had already gone.
+        app.canopen.node_seen.connect(self._on_node_seen)
         app.bus.disconnected.connect(self._on_bus_lost)
         self._show_state()
         self._show_target()
 
     # --- which drive ---------------------------------------------------------------------
+    def _on_node_seen(self, _node_id: int, _state: str) -> None:
+        self._fill_nodes()
+
     def _fill_nodes(self) -> None:
         """Rebuild the list, but only when the list has actually changed.
 
