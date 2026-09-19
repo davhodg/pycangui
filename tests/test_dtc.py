@@ -315,3 +315,41 @@ def test_the_uds_pane_waits_for_addresses_before_opening(app, tmp_path, monkeypa
     view.tx_id.setText("7E0")
     assert view.open_btn.isEnabled()
     window.close()
+
+
+def test_clearing_an_address_stops_it_being_called_uds_at_once(app, tmp_path, monkeypatch):
+    """It used to take a restart: the boxes only reached the manager when
+    Open was pressed, so Known CAN ids went on listing the old ones."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+
+    def named(can_id):
+        return window.uds.classify(Frame(0.0, "CAN", can_id, False, False, True, b"\x00"))
+
+    assert named(0x7DF) == "UDS func"
+
+    view.functional_id.setText("")
+
+    assert named(0x7DF) is None, "no restart, no Open: it stops straight away"
+    assert window.uds.config.functional_id == NO_ID
+
+    view.functional_id.setText("7DF")
+    assert named(0x7DF) == "UDS func", "and typing one back is the same"
+    window.close()
+
+
+def test_the_addresses_do_not_move_under_an_open_session(app, tmp_path, monkeypatch):
+    """Halfway through a session is the wrong moment to start talking to a
+    different address."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+    monkeypatch.setattr(type(window.uds), "is_open", property(lambda _self: True))
+
+    view.tx_id.setText("700")
+
+    assert window.uds.config.tx_id == 0x7E0, "what the session was opened with"
+    window.close()
