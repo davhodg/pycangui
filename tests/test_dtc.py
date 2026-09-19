@@ -331,11 +331,13 @@ def test_clearing_an_address_stops_it_being_called_uds_at_once(app, tmp_path, mo
     assert named(0x7DF) == "UDS func"
 
     view.functional_id.setText("")
+    view.functional_id.editingFinished.emit()  # as leaving the box does
 
     assert named(0x7DF) is None, "no restart, no Open: it stops straight away"
     assert window.uds.config.functional_id == NO_ID
 
     view.functional_id.setText("7DF")
+    view.functional_id.editingFinished.emit()
     assert named(0x7DF) == "UDS func", "and typing one back is the same"
     window.close()
 
@@ -350,6 +352,44 @@ def test_the_addresses_do_not_move_under_an_open_session(app, tmp_path, monkeypa
     monkeypatch.setattr(type(window.uds), "is_open", property(lambda _self: True))
 
     view.tx_id.setText("700")
+    view.tx_id.editingFinished.emit()
 
     assert window.uds.config.tx_id == 0x7E0, "what the session was opened with"
+    window.close()
+
+
+def test_half_a_typed_address_is_not_claimed(app, tmp_path, monkeypatch):
+    """Typing 7E0 passes through 7 and 7E, and neither of those is an
+    address anybody meant."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+    view.tx_id.setText("")
+    view.tx_id.editingFinished.emit()
+
+    for partial in ("7", "7E", "7E0"):
+        view.tx_id.setText(partial)
+
+    assert window.uds.config.tx_id == NO_ID, "nothing until the box is finished with"
+    view.tx_id.editingFinished.emit()
+    assert window.uds.config.tx_id == 0x7E0
+    window.close()
+
+
+def test_an_address_not_yet_applied_is_tinted(app, tmp_path, monkeypatch):
+    """The same amber a typed value wears elsewhere: it says this is not in
+    use yet, without a message to read."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+    assert view.tx_id.styleSheet() == "", "what is in the box is what is in use"
+
+    view.tx_id.setText("700")
+    assert view.tx_id.styleSheet() != "", "typed and not applied"
+
+    view.tx_id.editingFinished.emit()
+    assert view.tx_id.styleSheet() == "", "and settled once it is"
+    assert window.uds.config.tx_id == 0x700
     window.close()
