@@ -33,18 +33,30 @@ def enable(on: bool, can_id: int, extended: bool, *, ctx) -> bool | None:
     ``can_id`` and ``extended`` are the stream the pane is reading, which
     is usually what identifies the device to ask.
 
+    This runs on the window's own thread, so anything that waits for the
+    device holds the window still while it waits. An SDO write is the one
+    to watch: it blocks until the node answers, or for the whole SDO
+    timeout if it does not. A plain frame cannot wait, having nothing to
+    wait for.
+
     Examples:
 
-        # A command on the device's own id, and a different byte to stop
+        # A command on the device's own id, and a different byte to stop.
+        # Sent and forgotten, so the window never waits.
         # ctx.channels.active_bus().send(0x600, b"\\x01" if on else b"\\x00")
         # return True
 
-        # Through CANopen: a manufacturer object that turns printing on
+        # Through CANopen: a manufacturer object that turns printing on.
+        # This waits for the node to answer -- fine for a button press,
+        # and not something to do in a hook that is called often.
         # node = ctx.canopen.node(5)
         # node.sdo[0x2100].raw = 1 if on else 0
         # return True
 
-        # Over UDS: a routine that starts and stops the trace output
+        # Over UDS: a routine that starts and stops the trace output.
+        # The manager's own calls queue the work and report to the Event
+        # Log rather than waiting, so this returns before the ECU has
+        # answered -- True here means "asked", not "done".
         # ctx.uds.routine(1 if on else 2, 0x0210, b"")
         # return True
     """
