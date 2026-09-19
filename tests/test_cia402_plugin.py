@@ -595,3 +595,59 @@ def test_without_an_eds_everything_is_offered(app, view, monkeypatch):
     view._fit_to_drive()
 
     assert view.limits[cia402.MAX_TORQUE.where].isEnabled()
+
+
+# --- which object is behind each control ---------------------------------------------------
+def test_every_value_says_which_object_it_is(app, view):
+    """The first thing anybody comparing this screen with a drive manual
+    needs, and the spin boxes are not obviously 0x6072 rather than 0x6080."""
+    for obj in cia402.LIMITS:
+        assert f"0x{obj.index:04X}" in view.limits[obj.where].toolTip()
+    for obj in (cia402.POSITION_ACTUAL, cia402.VELOCITY_ACTUAL, cia402.TORQUE_ACTUAL):
+        assert f"0x{obj.index:04X}" in view.actuals[obj.where].toolTip()
+    for obj in cia402.WATCHED:
+        assert f"0x{obj.index:04X}" in view.poll.toolTip(), "Poll says what it is reading"
+
+
+def test_the_object_is_still_named_once_an_eds_has_been_looked_at(app, view, monkeypatch):
+    """Fitting the pane to a drive replaced the tooltip rather than adding
+    to it, so having an EDS was the one case where the pane stopped saying
+    what it was writing to."""
+    monkeypatch.setattr(
+        view, "_object_dictionary", lambda: {obj.index: object() for obj in cia402.LIMITS}
+    )
+
+    view._fit_to_drive()
+
+    tip = view.limits[cia402.MAX_TORQUE.where].toolTip()
+    assert f"0x{cia402.MAX_TORQUE.index:04X}" in tip
+    assert view.limits[cia402.MAX_TORQUE.where].isEnabled()
+
+
+def test_an_eds_loaded_after_the_pane_is_open_still_decides_what_is_offered(
+    app, window, view, monkeypatch
+):
+    """Otherwise nothing changed until the drive was picked again, and the
+    controls stayed live for objects the file says are not there."""
+    monkeypatch.setattr(view, "_object_dictionary", lambda: {0x6040: object(), 0x6041: object()})
+    monkeypatch.setattr(view.node, "currentData", lambda: 5)
+    assert view.limits[cia402.MAX_TORQUE.where].isEnabled(), "nothing has said otherwise yet"
+
+    window.canopen.eds_loaded.emit(5, "drive.eds", "A drive")
+
+    assert not view.limits[cia402.MAX_TORQUE.where].isEnabled()
+
+
+def test_an_object_the_eds_does_not_have_is_not_polled_for(app, view, monkeypatch):
+    """Asking anyway is an abort code many times a second, and the line on
+    screen already says the file has no such object."""
+    monkeypatch.setattr(view, "_object_dictionary", lambda: {0x6041: object()})
+    asked: list = []
+    monkeypatch.setattr(view.app, "run_in_background", lambda job, done: asked.append(job))
+    monkeypatch.setattr(view, "_quietly", lambda: object())
+
+    view._read_one(*cia402.POSITION_ACTUAL.where)
+    assert not asked
+
+    view._read_one(*cia402.STATUSWORD.where)
+    assert asked, "0x6041 is in this EDS, so it is read"

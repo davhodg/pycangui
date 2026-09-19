@@ -49,7 +49,7 @@ from .drive import Drive, Object
 
 API_VERSION = 1
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.2"
+VERSION = "1.3"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -99,6 +99,17 @@ UNITS_NOTE = (
     "profile defines. Turning those into millimetres or amps needs the gearing "
     "and the motor rating, which are the drive's business and not pycangui's."
 )
+
+
+def about(obj: Object) -> str:
+    """Which object a control reads or writes, for its tooltip.
+
+    Every number on this pane is an index in somebody's object dictionary,
+    and which one is the first thing anybody comparing this screen with a
+    drive manual needs. It was only on the limits, and not even there once
+    an EDS had been looked at.
+    """
+    return f"0x{obj.index:04X} sub {obj.sub}: {obj.name}, in {obj.unit}."
 
 
 WRITE_LIMITS_TIP = (
@@ -239,11 +250,14 @@ class MotorView(QWidget):
             box = QSpinBox()
             box.setRange(0, 2_000_000_000)
             box.setGroupSeparatorShown(True)
-            box.setToolTip(f"0x{obj.index:04X}: {obj.name}, in {obj.unit}.")
             self.limits[obj.where] = box
-            limits_grid.addWidget(QLabel(f"{obj.name}:"), row, 0)
+            name = QLabel(f"{obj.name}:")
+            unit = QLabel(obj.unit)
+            for widget in (name, box, unit):
+                widget.setToolTip(about(obj))
+            limits_grid.addWidget(name, row, 0)
             limits_grid.addWidget(box, row, 1)
-            limits_grid.addWidget(QLabel(obj.unit), row, 2)
+            limits_grid.addWidget(unit, row, 2)
         limits_grid.setColumnStretch(3, 1)
 
         self.read_limits_btn = QPushButton("Read limits")
@@ -278,9 +292,13 @@ class MotorView(QWidget):
             value.setFont(QFont("Consolas", 9))
             value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.actuals[obj.where] = value
-            watched.addWidget(QLabel(f"{obj.name}:"), row, 0)
+            name = QLabel(f"{obj.name}:")
+            unit = QLabel(obj.unit)
+            for widget in (name, value, unit):
+                widget.setToolTip(about(obj))
+            watched.addWidget(name, row, 0)
             watched.addWidget(value, row, 1)
-            watched.addWidget(QLabel(obj.unit), row, 2)
+            watched.addWidget(unit, row, 2)
         watched.setColumnStretch(3, 1)
 
         self.banner = QLabel("")
@@ -293,7 +311,10 @@ class MotorView(QWidget):
 
         self.poll = QPushButton("Poll")
         self.poll.setCheckable(True)
-        self.poll.setToolTip("Read the statusword, the mode and the actual values, over and over.")
+        self.poll.setToolTip(
+            "Read these, over and over:\n"
+            + "\n".join(f"    {about(obj)}" for obj in cia402.WATCHED)
+        )
         self.poll.toggled.connect(self._set_polling)
         self.hz = QDoubleSpinBox()
         self.hz.setRange(MIN_HZ, MAX_HZ)
@@ -365,6 +386,7 @@ class MotorView(QWidget):
         # was still being called after the pane closed, reaching for a combo
         # box whose C++ half had already gone.
         app.canopen.node_seen.connect(self._on_node_seen)
+        app.canopen.eds_loaded.connect(self._on_eds_loaded)
         app.bus.disconnected.connect(self._on_bus_lost)
         self._show_state()
         self._show_target()
@@ -395,6 +417,16 @@ class MotorView(QWidget):
         self.node.blockSignals(False)
         if self.node.currentData() != chosen:
             self._forget()
+
+    def _on_eds_loaded(self, node_id: int, _path: str, _product: str) -> None:
+        """An EDS says which objects a drive has, so it decides what is offered.
+
+        Loaded after the pane was opened it would otherwise change nothing
+        until the drive was picked again: the controls stayed live for
+        objects the file says are not there.
+        """
+        if node_id == self.node.currentData():
+            self._fit_to_drive()
 
     def _forget(self) -> None:
         """A different drive knows nothing about the last one's state.
@@ -444,12 +476,18 @@ class MotorView(QWidget):
         cannot do torque.
         """
         for where, box in self.limits.items():
-            has = self._has(next(o for o in cia402.LIMITS if o.where == where))
+            obj = next(o for o in cia402.LIMITS if o.where == where)
+            has = self._has(obj)
             box.setEnabled(has)
-            box.setToolTip("" if has else MISSING_TIP)
+            # Which object it is stays in the tooltip either way. It used to
+            # be replaced by the note, so looking at a drive with an EDS was
+            # the one time the pane stopped saying what it was writing to.
+            box.setToolTip(about(obj) if has else f"{about(obj)}\n{MISSING_TIP}")
         for where, label in self.actuals.items():
             if not self._has(next(o for o in cia402.WATCHED if o.where == where)):
                 label.setText("not in the EDS")
+            elif label.text() == "not in the EDS":
+                label.setText("--")  # a different drive, or an EDS since loaded
         self._read_supported_modes()
 
     def _read_supported_modes(self) -> None:
@@ -547,7 +585,10 @@ class MotorView(QWidget):
     def _read_one(self, index: int, sub: int) -> None:
         drive = self._quietly()
         obj = next((o for o in cia402.WATCHED if o.where == (index, sub)), None)
-        if drive is None or obj is None:
+        # An object this drive's EDS does not list is not asked for: the
+        # answer would be an abort code, many times a second, and the line
+        # on screen already says the file has no such object.
+        if drive is None or obj is None or not self._has(obj):
             self.poller.answered(index, sub)
             return
 
