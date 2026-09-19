@@ -146,3 +146,25 @@ def test_29_bit_ids_come_after_the_11_bit_ones():
     ]
     ordered = sorted(entries, key=lambda k: (k.extended, k.can_id, k.source))
     assert [e.name for e in ordered] == ["narrow", "wide"], "0x700 is not larger than 0x18DAF110"
+
+
+def test_copy_puts_the_list_somewhere_it_can_be_pasted(app, tmp_path, monkeypatch):
+    """The columns line up on screen and nowhere else, so the list is only
+    useful outside the window if it leaves in a shape that travels."""
+    from PySide6.QtGui import QGuiApplication
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    entries = known_ids.collect(window.dbc, window.canopen, window.uds, window.xcp)
+    dialog = KnownIdsDialog(window, entries)
+
+    dialog.copy_to_clipboard()
+
+    text = QGuiApplication.clipboard().text()
+    lines = text.splitlines()
+    assert lines[0].split("\t") == list(dialog.COLUMNS), "a heading row, as a spreadsheet wants"
+    assert len(lines) == len(entries) + 1
+    assert all(len(line.split("\t")) == 3 for line in lines), "one row per id, tab separated"
+    dialog.close()
+    window.close()

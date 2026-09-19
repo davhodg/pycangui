@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui import help as help_pages
-from pycangui.core import known_ids
+from pycangui.core import known_ids, timing
 from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Release, latest_release
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
@@ -307,11 +307,28 @@ class KnownIdsDialog(QDialog):
                 self.table.setItem(row, column, item)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.entries = entries
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        # Tab separated, which is what a spreadsheet and an email both want.
+        # The columns line up on screen and would not survive being pasted
+        # anywhere else, so the list is only useful outside this window if
+        # something offers it in a shape that travels.
+        copy = buttons.addButton("Copy", QDialogButtonBox.ActionRole)
+        copy.setToolTip("Put the whole list on the clipboard, one row per line.")
+        copy.clicked.connect(self.copy_to_clipboard)
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
         for widget in (heading, self.table, buttons):
             layout.addWidget(widget)
+
+    def as_text(self) -> str:
+        """The list as it pastes: a heading row, then one row per id."""
+        rows = ["\t".join(self.COLUMNS)]
+        rows += ["\t".join((e.shown, e.name, e.source)) for e in self.entries]
+        return "\n".join(rows)
+
+    def copy_to_clipboard(self) -> None:
+        QGuiApplication.clipboard().setText(self.as_text())
 
 
 class AboutDialog(QDialog):
@@ -414,6 +431,11 @@ def diagnostics(window) -> str:
         lines.append("  >> frames ARE arriving and the filter is hiding all of them")
     elif not trace.model.rowCount():
         lines.append("  >> no frames have reached the trace at all")
+    # Starting is measured on every run, so a report can say how long it took
+    # without anybody having thought to ask beforehand -- which is the whole
+    # difficulty with "it has got slow to start".
+    if steps := timing.report_lines():
+        lines += ["", *steps]
     return "\n".join(lines)
 
 

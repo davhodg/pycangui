@@ -336,3 +336,25 @@ def test_the_total_leaves_out_the_time_spent_waiting_for_a_person(monkeypatch):
 
     total = next(line for line in fresh.report_lines() if "not counting the wait" in line)
     assert float(total.split()[0]) < 0.15, "the reading time is not part of it"
+
+
+def test_the_diagnostics_report_says_how_long_starting_took(app, tmp_path, monkeypatch):
+    """Always, without the flag: nobody thinks to ask for timing before the
+    start they wanted to measure, and a report from a slow machine is where
+    the question actually arrives."""
+    from PySide6.QtCore import QSettings
+
+    from pycangui.core import timing
+    from pycangui.ui.help_menu import diagnostics
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    timing.mark("a step of some kind")
+    window = MainWindow()
+
+    report = diagnostics(window)
+
+    assert "startup timing" in report
+    assert "total, not counting the wait" in report
+    window.close()
