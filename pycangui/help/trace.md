@@ -23,8 +23,12 @@ That last point is the whole of it. CANopen's predefined connection set claims
 0x180 to 0x67F, so reading every identifier that way labels an ordinary CAN bus
 as a CANopen one, and hides the names from a database somebody loaded on
 purpose. Until a node is known, those ids are just ids. Where an EDS says a
-node's PDOs are somewhere other than the predefined places, the EDS is what is
-used.
+node's PDOs are somewhere other than the predefined places, that is what is
+used -- which in practice means a DCF, since it carries the identifiers a node
+was configured with, where an EDS often declares the objects and leaves the
+values to `$NODEID` or to nothing at all. A PDO switched off in the
+configuration is left at its predefined place, since it is not on the wire to
+be named.
 
 A frame nothing can account for keeps its identifier and sits under *Other*.
 

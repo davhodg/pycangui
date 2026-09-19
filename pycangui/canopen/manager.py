@@ -58,6 +58,11 @@ DEFAULT_SDO_TIMEOUT_S = 0.3
 DEFAULT_SDO_RETRIES = 0
 #: The SDO channel CiA 301 predefines: requests to 0x600 + node, answers on
 #: 0x580 + node. A node configured otherwise is given its own pair.
+#: The largest 11-bit identifier. A PDO configured for 29-bit frames has
+#: bit 29 set in its stored word, which the library leaves in the id: such
+#: an id cannot name an 11-bit frame, so it is left out of this map.
+MAX_11_BIT = 0x7FF
+
 SDO_REQUEST_BASE = 0x600
 SDO_RESPONSE_BASE = 0x580
 
@@ -448,21 +453,29 @@ class CanopenManager(QObject):
 
     def _build_labels(self) -> dict[int, str]:
         """Every id this bus's known nodes account for, and what to call it."""
-        labels: dict[int, str] = {
-            0x000: "NMT",
-            0x080: "SYNC",
-            0x100: "TIME",
-            0x7E4: "LSS",
-            0x7E5: "LSS",
-        }
+        labels: dict[int, str] = {}
         for node_id in self.nodes():
             labels.update(predefined_labels(node_id))
             request, response = self.sdo_channel(node_id)
             labels[request] = f"SDO-R n{node_id}"
             labels[response] = f"SDO-T n{node_id}"
-            # An EDS or a node that has been read: where its PDOs really are.
             for pdo in self.pdo_configs(node_id):
-                labels[pdo.cob_id] = f"{pdo.direction}{pdo.number} n{node_id}"
+                # Where this node's PDOs actually are, which is worth having
+                # over the predefined places -- but only when it is a real
+                # answer. A DCF carries the configured identifier; an EDS may
+                # declare the communication object and leave the value out,
+                # or give it as $NODEID plus an offset, and an object with no
+                # value reads as zero. Zero is the NMT id, and a PDO at
+                # 0x000 is a missing value rather than a fact about the node.
+                # Bit 31 of the stored word says the PDO is not in use, which
+                # the library has already taken off the id; a disabled one is
+                # not on the wire to be named.
+                if pdo.enabled and 0 < pdo.cob_id <= MAX_11_BIT:
+                    labels[pdo.cob_id] = f"{pdo.direction}{pdo.number} n{node_id}"
+        # Last, because these are fixed by the standard: a node claiming one
+        # of them is misconfigured, and calling the frame SYNC says more
+        # about what is on the wire than calling it that node's PDO.
+        labels.update({0x000: "NMT", 0x080: "SYNC", 0x100: "TIME", 0x7E4: "LSS", 0x7E5: "LSS"})
         return labels
 
     # --- nodes ---------------------------------------------------------------
