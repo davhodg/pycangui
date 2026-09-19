@@ -4,6 +4,8 @@
 
 **Help > Documentation** opens this manual. It ships inside pycangui; *Back* and *Contents* get you around it.
 
+**Help > Known CAN ids...** lists every identifier pycangui would put a name to -- the messages in the [databases](signals.md) loaded, the [CANopen](canopen.md) nodes it knows of, the [UDS](uds.md) addresses and the [XCP](xcp.md) identifiers -- with where each name comes from, and marks any id two sources both claim. J1939 is not in the list: 29-bit frames are named from the PGN in the identifier rather than from a list.
+
 **Help > Diagnostics...** writes a report of the versions, each channel's adapter, state, load and error count, and any panes out on their own, to the [Event Log](event-log.md) and copies it to the clipboard -- ready to paste into a bug report.
 
 **Help > Check for updates...** asks GitHub whether there is a newer release. If there is one, it offers to open the releases page.

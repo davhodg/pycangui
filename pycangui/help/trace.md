@@ -31,6 +31,9 @@ configuration is left at its predefined place, since it is not on the wire to
 be named.
 
 A frame nothing can account for keeps its identifier and sits under *Other*.
+*Help > Known CAN ids...* lists everything that would be named and where each
+name comes from, which is the difference between "nothing was told about this
+id" and "this id is not where it was expected".
 
 The **Filter** menu lists the protocol groups -- NMT, SYNC/TIME, EMCY, PDO,
 SDO, Heartbeat, LSS, UDS, J1939, XCP, Bus errors and Other -- and every
