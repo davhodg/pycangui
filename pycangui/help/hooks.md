@@ -100,6 +100,23 @@ Every hook is handed `ctx`, which carries `ctx.log(text)`, `ctx.warn(text)` and
 `ctx.error(text)`: the same three levels the rest of the tool reports at, so
 anything a hook wants to say arrives where everything else does.
 
+It carries the protocol managers too -- `ctx.canopen`, `ctx.uds`, `ctx.j1939`,
+`ctx.xcp`, `ctx.channels` and `ctx.bus` -- which are the same objects the
+[Python Console](console.md) has under the same names, so anything you can try
+there works in a hook unchanged. A hook is handed `ctx` and nothing else, so
+that is where reaching a bus or a node has to come from.
+
+Two shapes, and the difference matters. The managers' own calls --
+`ctx.uds.read_did(0xF190)`, `ctx.canopen.sdo_read(...)`, `ctx.uds.routine(...)`
+-- queue the work on a background thread and report the answer to the
+[Event Log](event-log.md) and to the panes; they hand nothing back to the
+caller. For a value *in hand*, go to the object underneath: `ctx.uds.client`
+is the udsoncan client while a session is open, and `ctx.canopen.node(5).sdo`
+is the node itself. Those block until the ECU answers, and a hook runs on the
+window's own thread, so a request that takes a second freezes the window for a
+second. Fine for reading one DID in a `startup` hook; not something to do in
+`trace.frame_kind`, which is called for every frame.
+
 ## The files, and what each one answers
 
 | File | Answers |

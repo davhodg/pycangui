@@ -222,6 +222,15 @@ class MainWindow(QMainWindow):
         self.signals = SignalHub()
         self.dbc = DbcDecoder()
         self.xcp = XcpManager(self.bus, self.hooks, self.signals, self.ctx)
+        # What the hook files' examples reach for, and what the Python
+        # Console has under the same names. A hook is handed ctx and
+        # nothing else, so anything it is shown doing has to be on it.
+        self.ctx.bus = self.bus
+        self.ctx.channels = self.channels
+        self.ctx.canopen = self.canopen
+        self.ctx.uds = self.uds
+        self.ctx.j1939 = self.j1939
+        self.ctx.xcp = self.xcp
         self.recorder = Recorder(self.channels)  # every connected channel
 
         # --- panes -----------------------------------------------------------
