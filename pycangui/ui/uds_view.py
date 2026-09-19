@@ -131,7 +131,12 @@ class UdsView(QWidget):
 
         # --- addressing ----------------------------------------------------
         addr = QGroupBox("ECU")
-        g = QGridLayout(addr)
+        # A row, packed left, rather than a grid. The grid spread the boxes
+        # across the whole width of the pane and put each label a long way
+        # from what it labels, and its columns were counted by hand: adding
+        # the functional address shifted everything after it, which landed
+        # "Pad" on top of "Transport".
+        g = QHBoxLayout(addr)
         self.tx_id = _hex_edit(_id_text(cfg.tx_id))
         self.tx_id.setToolTip(ADDRESS_TIP)
         self.rx_id = _hex_edit(_id_text(cfg.rx_id))
@@ -185,24 +190,21 @@ class UdsView(QWidget):
         self.open_btn = QPushButton("Open")
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
-        for col, (label, w) in enumerate(
-            (
-                ("Tx ID", self.tx_id),
-                ("Rx ID", self.rx_id),
-                ("Func ID", self.functional_id),
-                ("", self.ext),
-                ("", self.padding),
-            )
+        for label, widget in (
+            ("Tx ID", self.tx_id),
+            ("Rx ID", self.rx_id),
+            ("Func ID", self.functional_id),
+            ("", self.ext),
+            ("", self.padding),
+            ("Transport", self.transport),
+            ("CAN-DL", self.can_dl),
+            ("", self.brs),
+            ("", self.open_btn),
         ):
             if label:
-                g.addWidget(QLabel(label), 0, col * 2)
-            g.addWidget(w, 0, col * 2 + 1)
-        g.addWidget(QLabel(" Transport"), 0, 9)
-        g.addWidget(self.transport, 0, 10)
-        g.addWidget(QLabel(" CAN-DL"), 0, 11)
-        g.addWidget(self.can_dl, 0, 12)
-        g.addWidget(self.brs, 0, 13)
-        g.addWidget(self.open_btn, 0, 14)
+                g.addWidget(QLabel(label))
+            g.addWidget(widget)
+        g.addStretch()  # everything to the left, rather than spread out
         self._addresses_changed()
 
         # --- session / security ----------------------------------------------
@@ -324,6 +326,12 @@ class UdsView(QWidget):
         g.addLayout(rbox, 1, 2)
         g.addWidget(self.routine_data, 1, 3, 1, 2)
 
+        # Its own box, because it is not one of these. DID and Routine are
+        # services with their parameters laid out for them; this is the
+        # escape hatch for everything the pane does not offer, and in the
+        # same frame it reads as a third kind of routine control.
+        raw_box = QGroupBox("Raw request")
+        raw_row = QHBoxLayout(raw_box)
         self.raw = QLineEdit("22 F1 90")
         self.raw.setFont(QFont("Consolas", 9))
         self.raw.returnPressed.connect(self._send_raw)
@@ -333,9 +341,9 @@ class UdsView(QWidget):
             "service id and the rest is whatever that service expects."
         )
         raw_btn.clicked.connect(self._send_raw)
-        g.addWidget(QLabel("Raw"), 2, 0)
-        g.addWidget(self.raw, 2, 1, 1, 3)
-        g.addWidget(raw_btn, 2, 4)
+        raw_row.addWidget(QLabel("Bytes"))
+        raw_row.addWidget(self.raw, 1)
+        raw_row.addWidget(raw_btn)
 
         # --- DTCs ------------------------------------------------------------------
         # ReadDTCInformation is twenty-odd reports wearing one service number,
@@ -624,7 +632,7 @@ class UdsView(QWidget):
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        for w in (addr, sess, reset_box, data, dtc_box, xfer):
+        for w in (addr, sess, reset_box, data, raw_box, dtc_box, xfer):
             controls_layout.addWidget(w)
         controls_layout.addStretch()
         scroll = QScrollArea()
@@ -662,10 +670,22 @@ class UdsView(QWidget):
             return NO_ID
 
     def _addresses_changed(self) -> None:
-        """Open is offered once there is an ECU to open a session with."""
+        """Open is offered once there is an ECU to open a session with.
+
+        The addresses reach the manager as they are typed, not when Open is
+        pressed: they are what the trace names UDS and what Help > Known
+        CAN ids lists, and clearing a box should stop that at once rather
+        than at the next start. Only while no session is open -- moving the
+        addresses under a running one would be talking to somewhere else
+        halfway through.
+        """
         ready = self._int(self.tx_id) != NO_ID and self._int(self.rx_id) != NO_ID
         self.open_btn.setEnabled(ready or self.manager.is_open)
         self.open_btn.setToolTip(OPEN_TIP if ready else NO_ADDRESS_TIP)
+        if not self.manager.is_open:
+            self.manager.config.tx_id = self._int(self.tx_id)
+            self.manager.config.rx_id = self._int(self.rx_id)
+            self.manager.config.functional_id = self._int(self.functional_id)
 
     def _config(self) -> UdsConfig:
         cfg = UdsConfig(

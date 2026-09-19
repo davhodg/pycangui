@@ -96,13 +96,13 @@ class XcpView(QWidget):
         # setting: it would be sent to whatever happens to answer on it,
         # and it would label frames in the trace as XCP that are not.
         self.cmd_id = QLineEdit(cfg.get("cmd_id", ""))
-        self.cmd_id.setPlaceholderText("hex")
+        self.cmd_id.setPlaceholderText("none")
         self.cmd_id.setToolTip(ID_TIP)
         self.cmd_id.setFont(mono)
         self.cmd_id.setFixedWidth(70)
         self.cmd_id.textChanged.connect(lambda _t: self._ids_changed())
         self.res_id = QLineEdit(cfg.get("res_id", ""))
-        self.res_id.setPlaceholderText("hex")
+        self.res_id.setPlaceholderText("none")
         self.res_id.setToolTip(ID_TIP)
         self.res_id.setFont(mono)
         self.res_id.setFixedWidth(70)
