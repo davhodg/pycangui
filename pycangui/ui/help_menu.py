@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui import help as help_pages
-from pycangui.core import known_ids, timing
+from pycangui.core import checkout, known_ids, timing
 from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Release, latest_release
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
@@ -365,6 +365,11 @@ def environment_report() -> str:
         except Exception:  # a missing optional package is not worth a traceback here
             lines.append(f"{label:{width}}not installed")
     lines.append(f"{'Platform':{width}}{platform.platform()}")
+    # Only a checkout has one, and only a checkout needs one: between two
+    # releases every build calls itself the same version, which is no help
+    # when the question is whether somebody had pulled.
+    if (source := checkout.describe()) is not None:
+        lines.append(f"{'Source':{width}}{source}")
     return "\n".join(lines)
 
 

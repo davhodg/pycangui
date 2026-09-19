@@ -4,6 +4,8 @@
 
 **Help > Documentation** opens this manual. It ships inside pycangui; *Back* and *Contents* get you around it.
 
+The report names the version, and -- when pycangui is being run from a source checkout rather than an installed build -- the branch or tag and the commit it is on, read from `.git` without running git. Between two releases every build calls itself the same version, so that line is what tells one pull from another. It does not say whether any file has been edited since: that needs git itself, and the launcher runs without a console for it to use.
+
 **Help > Known CAN ids...** lists every identifier pycangui would put a name to -- the messages in the [databases](signals.md) loaded, the [CANopen](canopen.md) nodes it knows of, the [UDS](uds.md) addresses and the [XCP](xcp.md) identifiers -- with where each name comes from, and marks any id two sources both claim. **Copy** puts the whole list on the clipboard, tab separated, ready for a spreadsheet or an email. J1939 is not in the list: 29-bit frames are named from the PGN in the identifier rather than from a list.
 
 **Help > Diagnostics...** writes a report of the versions, each channel's adapter, state, load and error count, and any panes out on their own, to the [Event Log](event-log.md) and copies it to the clipboard -- ready to paste into a bug report.
