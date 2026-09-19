@@ -6,7 +6,7 @@ Starting up is a chain of things that each look cheap: Qt, a workspace's
 settings, hook files, plugins, a database or two, asking every backend what is
 plugged in. When it adds up to ten seconds, guessing which one is at fault
 costs more than measuring it, and the answer is different on every machine --
-a large DBC here, an antivirus scanner there, a driver that takes its time
+a large DBC here, a slow file system there, a driver that takes its time
 enumerating adapters somewhere else.
 
 So the marks are always in the code and the measuring is off unless asked

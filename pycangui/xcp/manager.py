@@ -25,14 +25,11 @@ from pycangui.xcp import DATATYPES, decode_value, encode_value
 from pycangui.xcp.a2l import A2l, Parameter
 from pycangui.xcp.engine import XcpEngine, XcpError
 
-DEFAULT_BACKEND = "xcp-builtin"
 #: An engine is named "<protocol>-<implementation>", so that the list says
 #: both things it has to: which protocol it speaks, and whose code speaks
-#: it. "native" said only the second, which was enough while there was one
-#: engine and stopped being enough the moment there were two; an engine
-#: calling into somebody's Rust library would be "xcp-rust" beside
-#: "xcp-builtin". A workspace remembering an older name still opens.
-RENAMED = {"native": "xcp-builtin", "xcp": "xcp-builtin", "ccp": "ccp-builtin"}
+#: it. An engine calling into a Rust library would be "xcp-rust" beside
+#: "xcp-builtin".
+DEFAULT_BACKEND = "xcp-builtin"
 
 
 class XcpManager(QObject):
@@ -49,8 +46,7 @@ class XcpManager(QObject):
         self._ctx = ctx
         self.a2l: A2l | None = None
         self.engine: XcpEngine | None = None
-        remembered = str(ctx.settings.get("backends.xcp", DEFAULT_BACKEND))
-        self.backend_name = RENAMED.get(remembered, remembered)
+        self.backend_name = str(ctx.settings.get("backends.xcp", DEFAULT_BACKEND))
         self._connected = False
         self._polled: dict[str, Parameter] = {}
         self._jobs: queue.Queue = queue.Queue()
@@ -91,6 +87,13 @@ class XcpManager(QObject):
     def _make_engine(self) -> None:
         if self.engine is not None:
             self.engine.close()
+        if BACKENDS.get("xcp", self.backend_name) is None:
+            # A name from a workspace written before an engine was renamed,
+            # or a user backend that failed to load this run. Say which
+            # engine is being used instead rather than quietly using one:
+            # connecting with the wrong protocol looks like a broken slave.
+            was, self.backend_name = self.backend_name, BACKENDS.names("xcp")[0]
+            self.result.emit(f"No calibration engine {was!r}; using {self.backend_name}")
         try:
             self.engine = BACKENDS.create("xcp", self.backend_name, self._bus, self._ctx)
         except Exception as exc:  # a user backend may fail to construct
