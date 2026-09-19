@@ -35,7 +35,11 @@ it:
   copy exactly as it was -- which is right for one you have edited, and not
   what you want for one you have not. The row says which version is
   available, the Event Log says so once when the window opens, and updating
-  asks first, because it is a replacement rather than a merge.
+  asks first, because it is a replacement rather than a merge. If the copy
+  here has been changed since it was installed, it is moved aside and kept as
+  `_name.bak` rather than lost -- the same bargain as a hook file's `.bak`,
+  and the underscore is what keeps the copy from being loaded as a second
+  plugin. An earlier `.bak` is never written over.
 * **Export...** writes an installed plugin back out as a package, which is how
   one of yours gets to somebody else.
 * **Remove...** deletes it from the workspace, and says so first: whatever you
