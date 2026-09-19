@@ -52,7 +52,13 @@ from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.plugin_app import PluginApp
-from pycangui.ui.plugin_manager import BEHIND, INACTIVE_TIP, ManagePlugins, PluginActions
+from pycangui.ui.plugin_manager import (
+    BEHIND,
+    CHANGED,
+    INACTIVE_TIP,
+    ManagePlugins,
+    PluginActions,
+)
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.restore_supplied import RestoreSupplied
 from pycangui.ui.scope_view import ScopeView
@@ -468,6 +474,14 @@ class MainWindow(QMainWindow):
             self.events.information(
                 BEHIND.format(
                     label=record.label if record else name, installed=here, supplied=shipped
+                )
+            )
+        for name in self.plugin_actions.changed_since_install():
+            record = self.plugins.loaded.get(name)
+            self.events.information(
+                CHANGED.format(
+                    label=record.label if record else name,
+                    version=record.version if record else "?",
                 )
             )
         timing.mark("plugins")

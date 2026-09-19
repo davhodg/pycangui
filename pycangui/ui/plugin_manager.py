@@ -73,7 +73,11 @@ WHAT_IT_STAYS = (
 #: the plugin folders, so exporting one carries no bookkeeping with it.
 AS_INSTALLED = "plugins.as_installed"
 
-UPDATE_TIP = "This one is the same version as the one pycangui ships."
+UPDATE_TIP = "This one is the same as the one pycangui ships."
+UPDATE_DIFFERS = (
+    "The supplied one differs from the copy here, though both call "
+    "themselves the same version. Installing it takes the supplied one."
+)
 UPDATE_TO = (
     "Install version {version}, the one this pycangui ships, over the one\n"
     "in this workspace. Anything edited into the copy here is lost."
@@ -82,6 +86,10 @@ UPDATE_TO = (
 #: pycangui now ships. A workspace copy does not change when pycangui is
 #: updated -- that is the point of it being a copy -- so nothing would
 #: otherwise say that the drive pane gained anything.
+CHANGED = (
+    "Plugin {label} here differs from the one this pycangui ships, "
+    "though both call themselves {version}. Tools > Plugins to take the new one."
+)
 BEHIND = (
     "Plugin {label} {installed} is installed here; this pycangui ships "
     "{supplied}. Tools > Plugins to update it."
@@ -332,6 +340,24 @@ class PluginActions(QObject):
             return False
         return self._as_installed().get(name) != plugin_package.folder_fingerprint(folder)
 
+    def changed_since_install(self) -> list[str]:
+        """Plugins whose supplied copy has changed without the version moving.
+
+        The version is the author saying "this is different"; forgetting to
+        say it is the ordinary mistake, and the copy in the workspace then
+        sits there looking current. This asks the files instead: only for a
+        copy nobody has edited, because for an edited one "differs from what
+        is shipped" is what being edited means.
+        """
+        out = []
+        for entry in supplied():
+            if entry.name not in self.plugins.loaded or self._edited(entry.name):
+                continue
+            was = self._as_installed().get(entry.name)
+            if was is not None and was != plugin_package.folder_fingerprint(entry.folder):
+                out.append(entry.name)
+        return out
+
     def out_of_date(self) -> dict[str, tuple[str, str]]:
         """name -> (installed version, the version pycangui now ships).
 
@@ -440,12 +466,16 @@ class ManagePlugins(QDialog):
         self._filling = True
         self.installed.clear()
         behind = self.actions.out_of_date()
+        changed = set(self.actions.changed_since_install())
         for record in sorted(self.actions.plugins.loaded.values(), key=lambda r: r.label.lower()):
             text = record.label + PluginActions._label_version(record.version)
             if not record.ok:
                 text += "  (failed to load -- why is in the Event Log)"
             if (newer := behind.get(record.name)) is not None:
                 text += f"  --  {newer[1]} supplied with this pycangui"
+            elif record.name in changed:
+                # Same version, different files: the author forgot to say.
+                text += "  --  the supplied one differs, same version"
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, record.name)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -483,10 +513,12 @@ class ManagePlugins(QDialog):
         # Only where there is something newer to install: an Update button
         # that is always live invites pressing it to find out.
         behind = self.actions.out_of_date()
-        self.update_button.setEnabled(mine in behind)
-        self.update_button.setToolTip(
-            UPDATE_TO.format(version=behind[mine][1]) if mine in behind else UPDATE_TIP
-        )
+        differs = mine in self.actions.changed_since_install()
+        self.update_button.setEnabled(mine in behind or differs)
+        if mine in behind:
+            self.update_button.setToolTip(UPDATE_TO.format(version=behind[mine][1]))
+        else:
+            self.update_button.setToolTip(UPDATE_DIFFERS if differs else UPDATE_TIP)
         self.add_button.setEnabled(bool(self._chosen(self.offered)))
 
     # --- and what it does -------------------------------------------------------------
