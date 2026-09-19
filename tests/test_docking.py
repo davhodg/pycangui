@@ -3,7 +3,7 @@
 """Undocked panes: left as Qt makes them, with two buttons on the pane itself."""
 
 import pytest
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QRect, QSettings, Qt
 
 from pycangui.ui.main_window import MainWindow
 
@@ -454,3 +454,39 @@ def test_an_unpinned_pane_is_left_alone_by_a_dialog(app, window, real_dialogs):
     before = window.panes.docks["canopen"].windowFlags()
     open_dialog(app, window, lambda: None)
     assert window.panes.docks["canopen"].windowFlags() == before, "nothing to stand down from"
+
+
+# --- how big a detached window opens ----------------------------------------------------
+def test_a_detached_pane_opens_big_enough_to_use(app, window):
+    """It takes its size from the dock it came out of, and a dock that was
+    never on screen has none worth having: the window came up a couple of
+    hundred pixels across with the pane crushed into it."""
+    window.panes.detach("canopen")
+
+    out = window.panes.detached["canopen"]
+    assert out.width() >= 600 and out.height() >= 400
+    window.panes.attach("canopen")
+
+
+def test_a_detached_window_comes_back_where_it_was_left(app, window):
+    window.panes.detach("uds")
+    out = window.panes.detached["uds"]
+    out.setGeometry(QRect(140, 90, 980, 720))
+    window.panes.save()
+    window.panes.attach("uds")
+
+    window.panes.detach("uds")
+
+    again = window.panes.detached["uds"].geometry()
+    assert (again.width(), again.height()) == (980, 720)
+    assert (again.x(), again.y()) == (140, 90), "on the monitor it was left on"
+    window.panes.attach("uds")
+
+
+def test_a_hand_edited_size_that_makes_no_sense_is_ignored(app, window):
+    window.ctx.settings.set("panes.detached_at.j1939", ["wide", "tall", 0, 0])
+
+    window.panes.detach("j1939")
+
+    assert window.panes.detached["j1939"].width() >= 600, "and it falls back to a usable size"
+    window.panes.attach("j1939")

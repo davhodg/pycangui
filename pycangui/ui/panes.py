@@ -661,6 +661,7 @@ class Panes(QObject):
             dock.setWidget(None)
             dock.hide()
             window = DetachedPane(name, dock.windowTitle(), widget, on_top=name in self.on_top)
+            self._place_detached(name, window, widget)
             window.closed.connect(self._reattach)
             window.installEventFilter(self)  # so a dialog can get in front of it
             self.detached[name] = window
@@ -670,6 +671,34 @@ class Panes(QObject):
             self._moving.discard(name)
         self.note_shown(name)
         self._save_pane_state()
+
+    def _place_detached(self, name: str, window, widget: QWidget) -> None:
+        """Where the window goes, and how big.
+
+        A pane detached at startup comes out of a dock that was never on
+        screen, and a hidden dock has no useful size: the window opened a
+        couple of hundred pixels across with the pane crushed into it. So
+        the geometry it was left at is remembered, and failing that the
+        pane is asked what it wants, with the same floor a new pane gets.
+        """
+        if saved := self.ctx.settings.get(f"panes.detached_at.{name}", None):
+            try:
+                window.setGeometry(QRect(*(int(v) for v in saved)))
+                return
+            except (TypeError, ValueError):  # hand-edited settings.json
+                pass
+        wanted = widget.sizeHint()
+        width, height = NEW_PANE_SIZE
+        window.resize(max(width, wanted.width() + 24), max(height, wanted.height() + 48))
+
+    def _remember_detached(self) -> None:
+        """Note where each detached window is, while there is one to ask."""
+        for name, window in self.detached.items():
+            where = window.geometry()
+            self.ctx.settings.set(
+                f"panes.detached_at.{name}",
+                [where.x(), where.y(), where.width(), where.height()],
+            )
 
     @Slot(str)
     def _reattach(self, name: str, show: bool = False) -> None:
@@ -768,6 +797,7 @@ class Panes(QObject):
         """
         self.ctx.settings.set("panes.detached", sorted(self.detached))
         self.ctx.settings.set("panes.on_top", sorted(self.on_top))
+        self._remember_detached()
 
     def restore_instances(self) -> None:
         """Reopen the extra panes, before the saved layout is put back.
