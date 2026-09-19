@@ -14,9 +14,11 @@ import json
 import pytest
 from PySide6.QtCore import QSettings
 
+from pycangui.core import workspaces
 from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
+from pycangui.core.hooks import Hooks
 from pycangui.ui.ascii_view import AsciiView, Stream, decode
 from pycangui.ui.main_window import MainWindow
 
@@ -255,3 +257,64 @@ def test_they_are_still_there_after_that(app, tmp_path, monkeypatch):
     panes = [n for n in again.panes.names() if n.startswith("ascii")]
     assert [again.panes.view(n).stream.can_id for n in panes] == [0x77F, 0x780]
     again.close()
+
+
+# --- what the id says, and asking the device to print -----------------------------------
+def test_29_bit_is_read_off_the_id_that_was_typed(app, tmp_path, monkeypatch):
+    """A tick box asked a question the id mostly answers: only an id of
+    0x7FF or less is ambiguous, and writing it in full settles that."""
+    from pycangui.ui.ascii_view import _is_extended
+
+    assert not _is_extended("185", 0x185), "three digits is an 11-bit id"
+    assert _is_extended("18FEF100", 0x18FEF100), "and this can only be 29-bit"
+    assert _is_extended("00000185", 0x185), "written out in full: 29-bit, said deliberately"
+
+
+def test_the_pane_reads_the_id_the_way_it_was_typed(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = AsciiView(Channels(), ctx)
+
+    view.id_edit.setText("00000185")
+    view.id_edit.editingFinished.emit()
+    assert view.stream.extended and view.stream.can_id == 0x185
+
+    view.id_edit.setText("185")
+    view.id_edit.editingFinished.emit()
+    assert not view.stream.extended
+
+
+def test_enable_asks_the_hook_and_says_when_there_is_none(app, tmp_path, monkeypatch):
+    """Plenty of devices print nothing until asked, and how to ask is the
+    maker's business -- so a button that looked as though it worked would
+    send somebody looking at the wiring."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    said: list[str] = []
+    ctx = Context(log=said.append)
+    hooks = Hooks(ctx)
+    view = AsciiView(Channels(), ctx, Stream(can_id=0x300), hooks)
+
+    view.enable.setChecked(True)
+
+    assert not view.enable.isChecked(), "it does not pretend it worked"
+    assert any("hooks/ascii_log.py" in line for line in said), "and says what to write"
+
+
+def test_a_hook_that_sends_the_command_keeps_the_button_down(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    said: list[str] = []
+    ctx = Context(log=said.append)
+    hooks = Hooks(ctx)
+    hook = (
+        "def enable(on, can_id, extended, *, ctx):\n"
+        "    ctx.log(f'asked {on} {can_id:X}')\n"
+        "    return True\n"
+    )
+    (workspaces.hooks_dir() / "ascii_log.py").write_text(hook)
+    hooks.reload()
+    view = AsciiView(Channels(), ctx, Stream(can_id=0x300), hooks)
+
+    view.enable.setChecked(True)
+
+    assert view.enable.isChecked() and view.enable.text() == "Disable"
+    assert any("asked True 300" in line for line in said)

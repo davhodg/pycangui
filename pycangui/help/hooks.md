@@ -110,6 +110,7 @@ anything a hook wants to say arrives where everything else does.
 | `xcp.py` | the seed-to-key algorithm for CAL and the other resources |
 | `transmit.py` | a checksum your device computes its own way, for a message sent from [CAN Transmit](transmit.md) |
 | `trace.py` | what to call a frame the trace does not recognise |
+| `ascii_log.py` | how a device is asked to start and stop printing text onto the bus |
 | `startup.py` | what to do once the window is up -- see below |
 
 The per-protocol pages say which hook does what in context:

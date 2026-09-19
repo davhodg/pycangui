@@ -29,7 +29,6 @@ from dataclasses import dataclass
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
-    QCheckBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -43,10 +42,29 @@ from PySide6.QtWidgets import (
 from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
+from pycangui.core.hooks import Hooks
 
 #: How many lines a stream keeps. A device printing steadily will run to
 #: megabytes over an afternoon, and none of it is worth the memory.
 MAX_LINES = 5000
+
+#: The largest 11-bit identifier. Above it, a frame can only be 29-bit.
+MAX_11_BIT = 0x7FF
+#: How many hex digits a 29-bit id is written with, here and in the trace.
+WIDE_DIGITS = 8
+
+ID_TIP = (
+    "The identifier the text arrives on, in hex. Whether it is 11-bit or\n"
+    "29-bit is read off what you type: anything above 7FF can only be\n"
+    "29-bit, and a small one written out in full -- 00000100 rather than\n"
+    "100 -- says 29-bit too, which is the only case the number alone\n"
+    "cannot settle."
+)
+ENABLE_TIP = (
+    "Ask the device to start printing, and to stop. How to ask is the\n"
+    "maker's own business, so it lives in hooks/ascii_log.py::enable --\n"
+    "without one, this says so and sends nothing."
+)
 
 SKIP_TIP = (
     "Bytes to ignore at the start of each frame. Devices often put a\n"
@@ -127,6 +145,23 @@ class Stream:
             return cls()  # a hand-edited settings.json
 
 
+def _is_extended(typed: str, can_id: int) -> bool:
+    """Whether what was typed means a 29-bit identifier.
+
+    The tick box that used to ask this was a second answer to a question
+    the identifier mostly settles: only a number of 0x7FF or less is
+    ambiguous, and writing it out in eight digits says which is meant.
+    """
+    return can_id > MAX_11_BIT or len(typed) == WIDE_DIGITS
+
+
+def _id_text(stream: Stream) -> str:
+    """The id as it is typed back: eight digits for a 29-bit one."""
+    if not stream.chosen:
+        return ""
+    return f"{stream.can_id:08X}" if stream.extended else f"{stream.can_id:X}"
+
+
 class AsciiView(QWidget):
     """One identifier, read as text."""
 
@@ -134,9 +169,16 @@ class AsciiView(QWidget):
     #: renames the pane; this widget knows about neither.
     changed = Signal(object)
 
-    def __init__(self, channels: Channels, ctx: Context, stream: Stream | None = None) -> None:
+    def __init__(
+        self,
+        channels: Channels,
+        ctx: Context,
+        stream: Stream | None = None,
+        hooks: Hooks | None = None,
+    ) -> None:
         super().__init__()
         self.ctx = ctx
+        self.hooks = hooks
         self.stream = stream or Stream()
         self._loading = False
 
@@ -144,10 +186,12 @@ class AsciiView(QWidget):
         self.id_edit.setFont(QFont("Consolas", 9))
         self.id_edit.setFixedWidth(80)
         self.id_edit.setPlaceholderText("id (hex)")
+        self.id_edit.setToolTip(ID_TIP)
         self.id_edit.editingFinished.connect(self._on_changed)
-        self.ext = QCheckBox("29-bit")
-        self.ext.setToolTip("The same number with 29-bit addressing is a different id")
-        self.ext.toggled.connect(lambda _on: self._on_changed())
+        self.enable = QPushButton("Enable")
+        self.enable.setCheckable(True)
+        self.enable.setToolTip(ENABLE_TIP)
+        self.enable.toggled.connect(self._on_enable)
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("name (optional)")
         self.name_edit.setFixedWidth(140)
@@ -164,11 +208,11 @@ class AsciiView(QWidget):
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Id"))
         bar.addWidget(self.id_edit)
-        bar.addWidget(self.ext)
         bar.addWidget(self.name_edit)
         bar.addWidget(QLabel("Skip"))
         bar.addWidget(self.skip)
         bar.addStretch()
+        bar.addWidget(self.enable)
         bar.addWidget(clear)
 
         self.text = QPlainTextEdit()
@@ -189,8 +233,7 @@ class AsciiView(QWidget):
     # --- the id it is reading ---------------------------------------------------------
     def _show_stream(self) -> None:
         self._loading = True
-        self.id_edit.setText(f"{self.stream.can_id:X}" if self.stream.chosen else "")
-        self.ext.setChecked(self.stream.extended)
+        self.id_edit.setText(_id_text(self.stream))
         self.name_edit.setText(self.stream.name)
         self.skip.setValue(self.stream.skip)
         self._loading = False
@@ -211,13 +254,39 @@ class AsciiView(QWidget):
             self.stream,
             Stream(
                 can_id=can_id,
-                extended=self.ext.isChecked(),
+                extended=_is_extended(typed, can_id),
                 name=self.name_edit.text().strip(),
                 skip=self.skip.value(),
             ),
         )
         if self.stream != was:
             self.changed.emit(self.stream)
+
+    @Slot(bool)
+    def _on_enable(self, on: bool) -> None:
+        """Ask the device to start or stop printing, through the hook.
+
+        The button goes back up if nothing was sent. A control that looks
+        as though it worked, on a device still saying nothing, sends
+        somebody looking at the wiring.
+        """
+        self.enable.setText("Disable" if on else "Enable")
+        sent = (
+            self.hooks.call("ascii_log", "enable", on, self.stream.can_id, self.stream.extended)
+            if self.hooks is not None
+            else None
+        )
+        if sent is True:
+            self.ctx.log(f"ASCII Log: asked the device to {'start' if on else 'stop'}")
+            return
+        self.ctx.warn(
+            "ASCII Log: nothing was sent -- write hooks/ascii_log.py::enable to say "
+            "how this device is asked to print"
+        )
+        self.enable.blockSignals(True)
+        self.enable.setChecked(False)
+        self.enable.setText("Enable")
+        self.enable.blockSignals(False)
 
     # --- what arrives -------------------------------------------------------------------
     @Slot(list)

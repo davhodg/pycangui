@@ -845,7 +845,9 @@ class MainWindow(QMainWindow):
 
     def _new_ascii(self, name: str) -> AsciiView:
         """One pane, one identifier, taken from what the pane was opened with."""
-        view = AsciiView(self.channels, self.ctx, Stream.from_dict(self.panes.config(name)))
+        view = AsciiView(
+            self.channels, self.ctx, Stream.from_dict(self.panes.config(name)), self.hooks
+        )
         view.changed.connect(lambda stream, n=name: self._on_ascii_changed(n, stream))
         return view
 
