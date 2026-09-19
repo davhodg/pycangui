@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
-from pycangui.uds import CAN_DL, NO_ID, UdsConfig, images
+from pycangui.uds import CAN_DL, NO_ID, UdsConfig, fixed_addressing, images
 from pycangui.uds.dtc import (
     DEFAULT_STANDARD,
     DTC,
@@ -70,6 +70,23 @@ ADDRESS_TIP = (
 FUNCTIONAL_TIP = (
     "The address every ECU listens to, for a request meant for all of\n"
     "them. 7DF by the standard. Empty if this bus does not use one."
+)
+ADDRESSING_TIP = (
+    "How the identifiers are arrived at. Identifiers: type them, which is\n"
+    "what an 11-bit bus wants. J1939 addresses: give the ECU's 8-bit\n"
+    "address and your own, and ISO 15765-2 normal fixed addressing works\n"
+    "the identifiers out -- 18DA<ecu><tester> for a request, the two\n"
+    "addresses the other way round for the answer."
+)
+ECU_ADDRESS_TIP = "The controller's 8-bit address on the bus, as J1939 names it."
+TESTER_ADDRESS_TIP = (
+    "The address pycangui sends from. F9 is the usual one for a service\n"
+    "tool; if the J1939 pane has claimed an address, that one is used so\n"
+    "the two panes are not two different testers on one bus."
+)
+FUNCTIONAL_TARGET_TIP = (
+    "Who a functional request is addressed to. 33 is the OBD functional\n"
+    "address; a manufacturer's own diagnostics may use another."
 )
 OPEN_TIP = (
     "Open an ISO-TP session with the ECU at the addresses above.\n"
@@ -121,7 +138,11 @@ def _picked(combo: QComboBox) -> int:
 
 class UdsView(QWidget):
     def __init__(
-        self, manager: UdsManager, ctx: Context, confirm: Confirmations | None = None
+        self,
+        manager: UdsManager,
+        ctx: Context,
+        confirm: Confirmations | None = None,
+        j1939=None,
     ) -> None:
         super().__init__()
         self.manager = manager
@@ -158,9 +179,22 @@ class UdsView(QWidget):
             # worse than waiting.
             box.textChanged.connect(lambda _t: self._addresses_changed())
             box.editingFinished.connect(self._apply_addresses)
-        self.ext = QCheckBox("29-bit")
-        self.ext.setToolTip("Address the ECU with 29-bit identifiers rather than 11-bit")
-        self.ext.setChecked(cfg.extended_id)
+        self.addressing = QComboBox()
+        self.addressing.setToolTip(ADDRESSING_TIP)
+        self.addressing.addItem("Identifiers", False)
+        self.addressing.addItem("J1939 addresses", True)
+        self.addressing.setCurrentIndex(1 if cfg.fixed else 0)
+        self.addressing.currentIndexChanged.connect(lambda _i: self._addressing_changed())
+        self.ecu_address = _hex_edit(f"{cfg.ecu_address:02X}", 46)
+        self.ecu_address.setToolTip(ECU_ADDRESS_TIP)
+        self.tester_address = _hex_edit(f"{cfg.tester_address:02X}", 46)
+        self.tester_address.setToolTip(TESTER_ADDRESS_TIP)
+        self.functional_target = _hex_edit(f"{cfg.functional_target:02X}", 46)
+        self.functional_target.setToolTip(FUNCTIONAL_TARGET_TIP)
+        self.address_labels = {}
+        for box in (self.ecu_address, self.tester_address, self.functional_target):
+            box.textChanged.connect(lambda _t: self._addresses_changed())
+            box.editingFinished.connect(self._apply_addresses)
         self.padding = QCheckBox("Pad")
         self.padding.setToolTip(
             "Pad every frame out to 8 bytes. Some ECUs require it and ignore\n"
@@ -199,10 +233,13 @@ class UdsView(QWidget):
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
         for label, widget in (
+            ("Addressing", self.addressing),
+            ("ECU", self.ecu_address),
+            ("Tester", self.tester_address),
+            ("Func TA", self.functional_target),
             ("Tx ID", self.tx_id),
             ("Rx ID", self.rx_id),
             ("Func ID", self.functional_id),
-            ("", self.ext),
             ("", self.padding),
             ("Transport", self.transport),
             ("CAN-DL", self.can_dl),
@@ -210,10 +247,19 @@ class UdsView(QWidget):
             ("", self.open_btn),
         ):
             if label:
-                g.addWidget(QLabel(label))
+                named = QLabel(label)
+                self.address_labels[widget] = named
+                g.addWidget(named)
             g.addWidget(widget)
         g.addStretch()  # everything to the left, rather than spread out
-        self._addresses_changed()
+        self._addressing_changed()
+        # One tester on the bus, not two. If the J1939 pane has claimed an
+        # address, that is this tool's address, and typing a different one
+        # here would mean answering to one and sending from the other.
+        if j1939 is not None:
+            if (claimed := j1939.own_address) is not None:
+                self._j1939_claimed(claimed)
+            j1939.claimed.connect(self._j1939_claimed)
 
         # --- session / security ----------------------------------------------
         sess = QGroupBox("Session and security")
@@ -677,6 +723,52 @@ class UdsView(QWidget):
         except ValueError:
             return NO_ID
 
+    def _addressing_changed(self) -> None:
+        """Show the boxes this way of addressing needs, and hide the rest.
+
+        In J1939 addressing the identifiers are worked out rather than
+        typed, so they are still shown -- somebody comparing against a
+        trace wants to see them -- but not editable, because editing one
+        would be disagreeing with the addresses above it.
+        """
+        fixed = bool(self.addressing.currentData())
+        for widget in (self.ecu_address, self.tester_address, self.functional_target):
+            widget.setVisible(fixed)
+            self.address_labels[widget].setVisible(fixed)
+        for widget in (self.tx_id, self.rx_id, self.functional_id):
+            widget.setReadOnly(fixed)
+        self._apply_addresses()
+
+    @Slot(int)
+    def _j1939_claimed(self, address: int) -> None:
+        """Follow the address the J1939 pane claimed, while that is possible.
+
+        Not while a session is open, and not over something somebody has
+        typed and not yet applied: a claim arriving mid-edit should not
+        take the box away from them. 0xFE is "lost it", which is not an
+        address to send from.
+        """
+        if self.manager.is_open or address == 0xFE:
+            return
+        self.tester_address.setText(f"{address:02X}")
+        self._apply_addresses()
+
+    def _fill_in_fixed(self) -> None:
+        """Work the identifiers out from the two addresses, and show them."""
+        request, response, functional = fixed_addressing(
+            self._int(self.ecu_address) & 0xFF,
+            self._int(self.tester_address) & 0xFF,
+            self._int(self.functional_target) & 0xFF,
+        )
+        for box, value in (
+            (self.tx_id, request),
+            (self.rx_id, response),
+            (self.functional_id, functional),
+        ):
+            box.blockSignals(True)  # these are not somebody typing
+            box.setText(f"{value:08X}")
+            box.blockSignals(False)
+
     def _address_boxes(self):
         """Each address box and the field it sets, in one place."""
         return (
@@ -712,16 +804,29 @@ class UdsView(QWidget):
         """
         if self.manager.is_open:
             return
+        cfg = self.manager.config
+        cfg.fixed = bool(self.addressing.currentData())
+        if cfg.fixed:
+            cfg.ecu_address = self._int(self.ecu_address) & 0xFF
+            cfg.tester_address = self._int(self.tester_address) & 0xFF
+            cfg.functional_target = self._int(self.functional_target) & 0xFF
+            self._fill_in_fixed()
         for box, field in self._address_boxes():
-            setattr(self.manager.config, field, self._int(box))
+            setattr(cfg, field, self._int(box))
         self._addresses_changed()  # nothing is waiting now, so no tint
 
     def _config(self) -> UdsConfig:
+        # No 29-bit tick box: whether these are 29-bit identifiers is
+        # something the identifiers themselves say, and asking as well left
+        # two answers to one question, one of which could be wrong.
         cfg = UdsConfig(
             tx_id=self._int(self.tx_id),
             rx_id=self._int(self.rx_id),
             functional_id=self._int(self.functional_id),
-            extended_id=self.ext.isChecked(),
+            fixed=bool(self.addressing.currentData()),
+            ecu_address=self._int(self.ecu_address) & 0xFF,
+            tester_address=self._int(self.tester_address) & 0xFF,
+            functional_target=self._int(self.functional_target) & 0xFF,
             padding=0xCC if self.padding.isChecked() else None,
             can_fd=self.manager.bus.fd,
             tx_data_length=self.can_dl.currentData() or 8,

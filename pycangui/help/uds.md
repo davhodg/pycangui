@@ -21,12 +21,28 @@ for reproducing a sequence out of a trace or a specification.
 
 ## Connecting and the everyday services
 
-**Open** makes the ISO-TP connection on the tester and ECU ids, and nothing
-else on the pane works until it is open. **29-bit** addresses the ECU with
-extended identifiers, **Pad** fills every frame out to 8 bytes for the ECUs
-that ignore anything shorter, and **Transport** picks the ISO-TP
-implementation -- your own can be added as a [back end](backends.md). On a CAN
-FD channel **CAN-DL** and **BRS** sit beside them, as
+**Addressing** says how the identifiers are arrived at. *Identifiers* is the
+plain way: type the request, response and functional ids, anything from three
+hex digits to eight, and nothing is worked out for you. *J1939 addresses* is
+ISO 15765-2 normal fixed addressing, which is how UDS is done on a J1939 bus:
+give the ECU's 8-bit address and your own, and the identifiers follow --
+`18DA<ecu><tester>` for a request, the two addresses the other way round for
+the answer, and `18DB<target><tester>` for a functional one, with *Func TA*
+the target (`33` is OBD's). The identifiers are still shown, so they can be
+compared against a trace, but they are not typed there.
+
+Nothing asks whether these are 29-bit identifiers: an identifier above `7FF`
+is one, and an identifier below it is not. A tick box as well would be a
+second answer to the same question, and the two could disagree.
+
+If the [J1939](j1939.md) pane has claimed an address, that is the address this
+pane sends from -- one tool on the bus rather than two testers.
+
+**Open** makes the ISO-TP connection on those identifiers, and nothing
+else on the pane works until it is open. **Pad** fills every frame out to 8
+bytes for the ECUs that ignore anything shorter, and **Transport** picks the
+ISO-TP implementation -- your own can be added as a [back end](backends.md).
+On a CAN FD channel **CAN-DL** and **BRS** sit beside them, as
 [CAN adapters and channels](channels.md) describes.
 
 **Change** moves the ECU into the session chosen beside it. **Unlock** runs

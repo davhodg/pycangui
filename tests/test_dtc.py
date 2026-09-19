@@ -393,3 +393,89 @@ def test_an_address_not_yet_applied_is_tinted(app, tmp_path, monkeypatch):
     assert view.tx_id.styleSheet() == "", "and settled once it is"
     assert window.uds.config.tx_id == 0x700
     window.close()
+
+
+# --- how the identifiers are arrived at --------------------------------------------------
+def test_29_bit_is_read_off_the_identifier(app):
+    """It was a tick box beside the identifiers, which is two answers to
+    one question and a way to get it wrong."""
+    from pycangui.uds import UdsConfig
+
+    assert not UdsConfig(tx_id=0x7E0, rx_id=0x7E8).extended_id
+    assert UdsConfig(tx_id=0x18DA00F9, rx_id=0x18DAF900).extended_id
+
+
+def test_j1939_addressing_works_the_identifiers_out(app, tmp_path, monkeypatch):
+    """Normal fixed addressing: the ECU's 8-bit address and your own are
+    what somebody knows, and ISO 15765-2 says the rest."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+
+    view.addressing.setCurrentIndex(1)  # J1939 addresses
+    view.ecu_address.setText("17")
+    view.tester_address.setText("F9")
+    view.functional_target.setText("33")
+    view._apply_addresses()
+
+    assert view.tx_id.text() == "18DA17F9", "request: to the ECU, from the tester"
+    assert view.rx_id.text() == "18DAF917", "answer: the two addresses the other way round"
+    assert view.functional_id.text() == "18DB33F9"
+    assert window.uds.config.extended_id, "which are 29-bit, without being asked"
+    window.close()
+
+
+def test_the_identifiers_are_not_typed_over_in_j1939_addressing(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+
+    assert not view.tx_id.isReadOnly(), "typing them is the other way of working"
+    view.addressing.setCurrentIndex(1)
+    assert view.tx_id.isReadOnly(), "here they are worked out, so editing one would disagree"
+    assert not view.ecu_address.isHidden()
+
+    view.addressing.setCurrentIndex(0)
+    assert not view.tx_id.isReadOnly()
+    assert view.ecu_address.isHidden()
+    window.close()
+
+
+def test_any_address_can_still_be_typed_in_full(app, tmp_path, monkeypatch):
+    """The J1939 way is an option, not a replacement: a bus that uses
+    neither scheme is still somebody's bus."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+
+    for box, text in ((view.tx_id, "1CDA10FA"), (view.rx_id, "600"), (view.functional_id, "")):
+        box.setText(text)
+        box.editingFinished.emit()
+
+    assert window.uds.config.tx_id == 0x1CDA10FA, "not a normal fixed id, and still accepted"
+    assert window.uds.config.rx_id == 0x600
+    assert window.uds.config.functional_id == NO_ID
+    window.close()
+
+
+def test_the_tester_address_follows_the_one_j1939_claimed(app, tmp_path, monkeypatch):
+    """Two panes on one bus are one tool: sending from an address the other
+    pane is not answering on would be two testers."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+    view.addressing.setCurrentIndex(1)
+    view.ecu_address.setText("17")
+    view._apply_addresses()
+
+    window.j1939.claimed.emit(0x80)
+
+    assert view.tester_address.text() == "80"
+    assert view.tx_id.text() == "18DA1780", "and the identifiers follow it"
+    window.j1939.claimed.emit(0xFE)  # lost it
+    assert view.tester_address.text() == "80", "which is not an address to send from"
+    window.close()

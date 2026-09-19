@@ -650,7 +650,7 @@ class MainWindow(QMainWindow):
                 "uds",
                 "UDS",
                 Qt.RightDockWidgetArea,
-                lambda _name: UdsView(self.uds, self.ctx, self.confirm),
+                lambda _name: UdsView(self.uds, self.ctx, self.confirm, self.j1939),
                 floating_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),
