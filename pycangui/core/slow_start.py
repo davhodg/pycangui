@@ -8,10 +8,6 @@ time. Thirteen seconds where two is normal, once, and then it cures itself --
 but somebody watching a blank screen has no way of knowing that, and "it has
 got slow" is what sticks.
 
-What else is reading those files at the same time is not something this can
-know. A virus scanner is the usual suspect on Windows and may well be right,
-but the message says what was counted rather than what was guessed.
-
 This is not a guess about the clock. Python records where each module's
 compiled copy lives, so counting the ones written during this start says
 exactly what happened: nothing compiled means nothing to explain, and a
