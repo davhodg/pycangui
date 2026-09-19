@@ -22,7 +22,7 @@ from PySide6.QtCore import QSettings
 from pycangui.core import plugin_package
 from pycangui.core.plugins import builtin_dir
 from pycangui.plugins.cia402 import drive as cia402
-from pycangui.plugins.cia402.plugin import MAKER_NONE_SET, MAKER_STATUS
+from pycangui.plugins.cia402.plugin import MAKER_NONE_SET, maker_bits
 from pycangui.ui.main_window import MainWindow
 
 #: Statuswords as a drive really sends them: the state bits, plus voltage
@@ -701,7 +701,18 @@ def test_the_closing_halt_carries_them_too(app, window, view, monkeypatch):
 
 def test_the_maker_bits_in_the_statusword_are_shown(app, view):
     view._took(cia402.STATUSWORD, ENABLED | (1 << 14))
-    assert view.maker_status.text() == MAKER_STATUS.format(bits="14")
+    assert view.maker_status.text() == "statusword bit 14"
 
     view._took(cia402.STATUSWORD, ENABLED)
-    assert view.maker_status.text() == MAKER_STATUS.format(bits=MAKER_NONE_SET)
+    assert view.maker_status.text() == MAKER_NONE_SET
+    assert "0x0237" in view.raw.text(), "the statusword itself is beside it, in hex"
+
+
+def test_a_bit_number_is_never_shown_as_though_it_were_the_statusword():
+    """ "statusword: 14" promised the statusword and gave a bit number. The
+    two are different things, and the statusword itself is on the line
+    above in hex."""
+    assert maker_bits([14]) == "statusword bit 14"
+    assert maker_bits([8, 15]) == "statusword bits 8, 15"
+    assert maker_bits([]) == MAKER_NONE_SET
+    assert ":" not in maker_bits([14]), "a colon there promises a value"

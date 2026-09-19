@@ -130,8 +130,8 @@ MAKER_CONTROL_TIP = (
     "one write that stops the machine."
 )
 MAKER_STATUS_TIP = "The maker's bits in the statusword the drive last answered with."
-MAKER_STATUS = "statusword: {bits}"
-MAKER_NONE_SET = "none set"
+MAKER_NONE_SET = "no maker bits in the statusword"
+MAKER_NOT_READ = "statusword not read yet"
 LIMITS_TITLE = "Change the drive's limits?"
 LIMITS_WARNING = (
     "These are the limits the drive holds itself to in every mode: the\n"
@@ -139,6 +139,20 @@ LIMITS_WARNING = (
     "lets the machine do more than it could before, whatever is asking.\n\n"
     "Write them?"
 )
+
+
+def maker_bits(bits) -> str:
+    """Which of the maker's statusword bits are set, in words.
+
+    "statusword: 14" promised the statusword and gave a bit number, which
+    are two different things and one of them is already on the line above
+    in hex. So this names the bit rather than appearing to equal it, and
+    the number is a position counted from zero, in decimal.
+    """
+    if not bits:
+        return MAKER_NONE_SET
+    said = ", ".join(str(bit) for bit in bits)
+    return f"statusword bit {said}" if len(bits) == 1 else f"statusword bits {said}"
 
 
 class NodeDrive(Drive):
@@ -202,10 +216,10 @@ class MotorView(QWidget):
         maker_row.addWidget(heading)
         for bit in cia402.MANUFACTURER_CONTROL_BITS:
             box = QCheckBox(str(bit))
-            box.setToolTip(MAKER_CONTROL_TIP)
+            box.setToolTip(f"Controlword bit {bit}.\n{MAKER_CONTROL_TIP}")
             self.maker_control[bit] = box
             maker_row.addWidget(box)
-        self.maker_status = QLabel(MAKER_STATUS.format(bits=MAKER_NONE_SET))
+        self.maker_status = QLabel(MAKER_NOT_READ)
         self.maker_status.setToolTip(MAKER_STATUS_TIP)
         maker_row.addWidget(self.maker_status)
         maker_row.addStretch()
@@ -679,7 +693,7 @@ class MotorView(QWidget):
             self.state.setText("Not read yet")
             self.flags.setText("Press Poll, or one of the commands below.")
             self.raw.setText("")
-            self.maker_status.setText(MAKER_STATUS.format(bits="--"))
+            self.maker_status.setText(MAKER_NOT_READ)
             for button in (self.enable, self.disable, self.quick_stop, self.reset):
                 button.setEnabled(True)
             return
@@ -689,8 +703,7 @@ class MotorView(QWidget):
         self.flags.setText(", ".join(flags) if flags else "no flags set")
         self.raw.setText(f"Statusword 0x{self.statusword:04X}")
         maker = cia402.bits_set(self.statusword)
-        bits = ", ".join(str(bit) for bit in maker) or MAKER_NONE_SET
-        self.maker_status.setText(MAKER_STATUS.format(bits=bits))
+        self.maker_status.setText(maker_bits(maker))
         faulted = cia402.is_faulted(self.statusword)
         self.enable.setEnabled(not cia402.is_enabled(self.statusword))
         self.quick_stop.setEnabled(cia402.is_enabled(self.statusword))
