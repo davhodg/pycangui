@@ -73,10 +73,41 @@ TARGET_VELOCITY = Object(0x60FF, 0, "Target velocity", "<i", "counts/s")
 TARGET_TORQUE = Object(0x6071, 0, "Target torque", "<h", "per mille of rated")
 PROFILE_VELOCITY = Object(0x6081, 0, "Profile velocity", "<I", "counts/s")
 
+#: Limits. These are not mode specific in the way a target is: a drive in
+#: any mode is held to its maximum torque, and the velocity limits cap what
+#: a profile or a controller may ask for. They are written once for a set-up
+#: rather than moment to moment, which is why they sit apart from the target.
+MAX_TORQUE = Object(0x6072, 0, "Max torque", "<H", "per mille of rated")
+MAX_PROFILE_VELOCITY = Object(0x607F, 0, "Max profile velocity", "<I", "counts/s")
+#: In rpm by the standard, unlike the velocity objects above: this one is
+#: about the motor rather than about the profile, and CiA 402 gives it
+#: revolutions per minute directly.
+MAX_MOTOR_SPEED = Object(0x6080, 0, "Max motor speed", "<I", "rpm")
+
+#: Which modes this drive has, as a bit per mode. Bit 0 is profile position,
+#: so the bit number is the mode number minus one, and the top sixteen bits
+#: are the manufacturer's own.
+SUPPORTED_MODES = Object(0x6502, 0, "Supported drive modes", "<I")
+
+#: Mode number -> the bit in 0x6502 that says the drive has it. Velocity
+#: mode is bit 1 and mode 2, homing is bit 5 and mode 6: the numbering is
+#: off by one and not worth deriving in the head each time.
+MODE_BITS = {1: 0, 2: 1, 3: 2, 4: 3, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9}
+
+
+def modes_in(supported: int) -> set[int]:
+    """The modes a drive says it has, out of 0x6502."""
+    return {mode for mode, bit in MODE_BITS.items() if supported & (1 << bit)}
+
+
 #: Read every round. Deliberately short: an SDO round is a round trip per
 #: object, and a screen that reads twenty things at 1 Hz is worse than one that
 #: reads six at 5 Hz.
 WATCHED = (STATUSWORD, MODE_DISPLAY, POSITION_ACTUAL, VELOCITY_ACTUAL, TORQUE_ACTUAL)
+
+#: Written rather than watched: read once when a drive is chosen, and
+#: again only when somebody asks.
+LIMITS = (MAX_TORQUE, MAX_PROFILE_VELOCITY, MAX_MOTOR_SPEED)
 
 
 def encode(obj: Object, value: int) -> bytes:

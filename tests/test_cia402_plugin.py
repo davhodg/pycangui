@@ -493,3 +493,76 @@ def test_losing_the_bus_while_it_is_running_is_reported(app, window, view, monke
     window.bus.disconnected.emit()
     app.processEvents()
     assert window.log.toPlainText() != before
+
+
+# --- what a heartbeat must not do --------------------------------------------------------
+def test_a_heartbeat_does_not_wipe_the_values(app, window, view):
+    """node_seen arrives with every heartbeat -- once a second on a quiet
+    bus -- and rebuilding the list cleared the values that had just been
+    read: they appeared and blanked, appeared and blanked."""
+    view._took(cia402.STATUSWORD, ENABLED)
+    view._took(cia402.POSITION_ACTUAL, 12345)
+    shown = view.actuals[cia402.POSITION_ACTUAL.where].text()
+    assert "12,345" in shown
+
+    window.canopen.node_seen.emit(5, "operational")  # as a heartbeat does
+    window.canopen.node_seen.emit(5, "operational")
+
+    assert view.actuals[cia402.POSITION_ACTUAL.where].text() == shown
+    assert view.state.text() == "Operation enabled", "and the state is still known"
+
+
+# --- limits ------------------------------------------------------------------------------
+def test_the_limits_are_there_to_be_read_and_written(app, view):
+    """Not targets: a drive in any mode is held to these."""
+    assert set(view.limits) == {obj.where for obj in cia402.LIMITS}
+    assert cia402.MAX_TORQUE.where in view.limits
+    assert cia402.MAX_PROFILE_VELOCITY.where in view.limits
+    assert cia402.MAX_MOTOR_SPEED.where in view.limits
+
+
+def test_the_speed_limits_are_two_different_objects_in_two_units(app):
+    """0x607F caps the profile in the same units as the velocity objects;
+    0x6080 is about the motor and is in rpm by the standard."""
+    assert cia402.MAX_PROFILE_VELOCITY.unit == "counts/s"
+    assert cia402.MAX_MOTOR_SPEED.unit == "rpm"
+
+
+# --- only what this drive has ------------------------------------------------------------
+def test_modes_are_restricted_to_the_ones_the_drive_reports(app, view):
+    view._show_modes(cia402.modes_in(0b000111))  # profile position, velocity, profile velocity
+
+    offered = {view.mode_box.itemData(i) for i in range(view.mode_box.count())}
+    assert offered == {0, 1, 2, 3}, "and No mode, which 0x6502 does not list"
+
+    view._show_modes(None)
+    assert len(offered) < view.mode_box.count(), "unknown means offer them all"
+
+
+def test_the_supported_modes_bits_are_read_the_way_the_standard_numbers_them(app):
+    """Bit 0 is mode 1, so the numbering is off by one -- worth a table
+    rather than working it out in the head each time."""
+    assert cia402.modes_in(1 << 0) == {1}
+    assert cia402.modes_in(1 << 5) == {6}, "homing is bit 5"
+    assert cia402.modes_in(0) == set()
+
+
+def test_an_object_the_eds_does_not_have_is_switched_off(app, view, monkeypatch):
+    """An EDS is what says which objects exist; a control for one that does
+    not would fail with an abort code nobody reads."""
+    monkeypatch.setattr(view, "_object_dictionary", lambda: {0x6040: object(), 0x6041: object()})
+
+    view._fit_to_drive()
+
+    assert not view.limits[cia402.MAX_TORQUE.where].isEnabled()
+    assert "EDS" in view.limits[cia402.MAX_TORQUE.where].toolTip()
+
+
+def test_without_an_eds_everything_is_offered(app, view, monkeypatch):
+    """Most drives have these, and greying a control because pycangui was
+    never given a file would be worse than an SDO coming back refused."""
+    monkeypatch.setattr(view, "_object_dictionary", lambda: None)
+
+    view._fit_to_drive()
+
+    assert view.limits[cia402.MAX_TORQUE.where].isEnabled()
