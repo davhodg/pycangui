@@ -447,6 +447,14 @@ class CanopenManager(QObject):
             self._labels = self._build_labels()
         return self._labels.get(frame.can_id)
 
+    def known_ids(self) -> dict[int, str]:
+        """Every id the known nodes account for. Empty when none are known."""
+        if not self.nodes():
+            return {}
+        if self._labels is None:
+            self._labels = self._build_labels()
+        return dict(self._labels)
+
     def forget_labels(self) -> None:
         """The names are out of date: a node, its SDO channel or its PDOs changed."""
         self._labels = None

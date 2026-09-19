@@ -20,11 +20,14 @@ from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication, QImage, QTex
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
+    QHeaderView,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
     QTabWidget,
     QTextBrowser,
     QVBoxLayout,
@@ -32,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui import help as help_pages
+from pycangui.core import known_ids
 from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Release, latest_release
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
@@ -263,6 +267,53 @@ class LicenceDialog(QDialog):
         layout.addWidget(buttons)
 
 
+class KnownIdsDialog(QDialog):
+    """What pycangui will put a name to, and who says so.
+
+    The trace names nothing from an identifier alone, which leaves the
+    question this answers: a frame with an empty Kind column is either one
+    nothing was told about, or one whose id is not where it was expected,
+    and those look identical until this list is read.
+    """
+
+    COLUMNS = ("ID", "Name", "From")
+
+    def __init__(self, parent: QMainWindow, entries: list, note: str = "") -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Known CAN ids")
+        self.resize(560, 520)
+        clashing = known_ids.clashes(entries)
+        heading = QLabel(
+            f"{len(entries)} identifier(s) would be named. {note}"
+            if entries
+            else "Nothing would be named yet: no database is loaded, no CANopen node "
+            "is known, and no protocol has been given its identifiers."
+        )
+        heading.setWordWrap(True)
+        self.table = QTableWidget(len(entries), len(self.COLUMNS))
+        self.table.setHorizontalHeaderLabels(self.COLUMNS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setFont(QFont("Consolas", 9))
+        for row, entry in enumerate(entries):
+            for column, text in enumerate((entry.shown, entry.name, entry.source)):
+                item = QTableWidgetItem(text)
+                if entry.can_id in clashing:
+                    # Two sources naming one id: the first in the list wins
+                    # in the trace and the other never appears, which is
+                    # worth seeing rather than puzzling over.
+                    item.setToolTip("More than one source names this id; the first one wins.")
+                self.table.setItem(row, column, item)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        for widget in (heading, self.table, buttons):
+            layout.addWidget(widget)
+
+
 class AboutDialog(QDialog):
     """Version and environment, selectable so it can be pasted into a report."""
 
@@ -381,6 +432,12 @@ class HelpMenu(QObject):
         menu = window.menuBar().addMenu("&Help")
         menu.addAction("Documentation", self._open_docs)
         menu.addAction("Diagnostics...", self._show_diagnostics)
+        ids = menu.addAction("Known CAN ids...", self._show_known_ids)
+        ids.setToolTip(
+            "Every identifier pycangui would put a name to, and where the\n"
+            "name comes from: the databases loaded, the CANopen nodes known,\n"
+            "and the addresses in the UDS and XCP panes."
+        )
         menu.addSeparator()
         self.check_action = menu.addAction("Check for updates...", self._check_for_updates)
         menu.addAction("Licences...", self._show_licences)
@@ -421,6 +478,16 @@ class HelpMenu(QObject):
         report = diagnostics(self.window)
         QGuiApplication.clipboard().setText(report)
         self.window.log.appendPlainText("Diagnostics (copied to the clipboard):\n" + report + "\n")
+
+    def _show_known_ids(self) -> None:
+        window = self.window
+        entries = known_ids.collect(
+            dbc=getattr(window, "dbc", None),
+            canopen=getattr(window, "canopen", None),
+            uds=getattr(window, "uds", None),
+            xcp=getattr(window, "xcp", None),
+        )
+        KnownIdsDialog(window, entries, known_ids.J1939_NOTE).exec()
 
     def _show_licences(self) -> None:
         LicenceDialog(self.window).exec()
