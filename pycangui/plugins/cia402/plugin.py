@@ -49,7 +49,7 @@ from .drive import Drive, Object
 
 API_VERSION = 1
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.3"
+VERSION = "1.4"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -123,6 +123,18 @@ MODE_SUPPORTED_TIP = (
     "listed, and No mode, which is how a drive is told to be in none of\n"
     "them."
 )
+MAKER_BITS_NOTE = (
+    "Bits the profile leaves to the maker. What they mean is in the drive's "
+    "manual and nowhere else, so they are shown and set by number."
+)
+MAKER_CONTROL_TIP = (
+    "Held in every controlword this pane writes, the commands and the\n"
+    "closing halt included. A bit some drives need before they will act\n"
+    "on anything would be worse than useless if it were dropped from the\n"
+    "one write that stops the machine."
+)
+MAKER_STATUS_TIP = "Set in the statusword the drive last answered with."
+MAKER_NONE_SET = "none set"
 LIMITS_TITLE = "Change the drive's limits?"
 LIMITS_WARNING = (
     "These are the limits the drive holds itself to in every mode: the\n"
@@ -179,6 +191,37 @@ class MotorView(QWidget):
         self.flags.setWordWrap(True)
         self.raw = QLabel("")
         self.raw.setToolTip("The statusword itself, for when the state is not the whole story.")
+
+        # --- the bits the profile leaves to the maker -----------------------------------
+        # By number and unnamed, because one drive's bit 15 is a brake release
+        # and another's is a spindle orientation request. The manual says
+        # which; nothing here can.
+        self.maker_control: dict[int, QCheckBox] = {}
+        maker_control_row = QHBoxLayout()
+        maker_control_row.addWidget(QLabel("Controlword:"))
+        for bit in cia402.MANUFACTURER_CONTROL_BITS:
+            box = QCheckBox(str(bit))
+            box.setToolTip(MAKER_CONTROL_TIP)
+            self.maker_control[bit] = box
+            maker_control_row.addWidget(box)
+        maker_control_row.addStretch()
+
+        self.maker_status = QLabel(MAKER_NONE_SET)
+        self.maker_status.setToolTip(MAKER_STATUS_TIP)
+        maker_status_row = QHBoxLayout()
+        maker_status_row.addWidget(QLabel("Statusword:"))
+        maker_status_row.addWidget(self.maker_status)
+        maker_status_row.addStretch()
+
+        maker_note = QLabel(MAKER_BITS_NOTE)
+        maker_note.setWordWrap(True)
+        maker_note.setEnabled(False)
+
+        self.maker_box = QGroupBox("Manufacturer bits")
+        maker_inside = QVBoxLayout(self.maker_box)
+        maker_inside.addLayout(maker_control_row)
+        maker_inside.addLayout(maker_status_row)
+        maker_inside.addWidget(maker_note)
 
         self.enable = QPushButton("Enable")
         self.enable.setToolTip(
@@ -368,6 +411,7 @@ class MotorView(QWidget):
         layout.addWidget(status_box)
         layout.addWidget(run_box)
         layout.addWidget(limits_box)
+        layout.addWidget(self.maker_box)
         layout.addWidget(watch_box)
         layout.addWidget(units)
         layout.addStretch()
@@ -561,6 +605,17 @@ class MotorView(QWidget):
 
         self.app.run_in_background(lambda: drive.write(obj, value), done)
 
+    # --- the bits the profile leaves to the maker ----------------------------------------
+    def _maker_bits(self) -> int:
+        """The ticked manufacturer bits, as a word to hold in a controlword.
+
+        Held in every controlword this pane writes, the closing halt
+        included. Some drives will not act on anything without one of these
+        set, so a bit dropped from the one write that stops the machine
+        would be worse than a bit that was never offered.
+        """
+        return cia402.mask_of(bit for bit, box in self.maker_control.items() if box.isChecked())
+
     def _drive(self) -> NodeDrive | None:
         node_id = self.node.currentData()
         node = self.app.canopen.node(node_id) if node_id is not None else None
@@ -637,6 +692,7 @@ class MotorView(QWidget):
             self.state.setText("Not read yet")
             self.flags.setText("Press Poll, or one of the commands below.")
             self.raw.setText("")
+            self.maker_status.setText("--")
             for button in (self.enable, self.disable, self.quick_stop, self.reset):
                 button.setEnabled(True)
             return
@@ -645,6 +701,8 @@ class MotorView(QWidget):
         flags = cia402.flags_of(self.statusword)
         self.flags.setText(", ".join(flags) if flags else "no flags set")
         self.raw.setText(f"Statusword 0x{self.statusword:04X}")
+        maker = cia402.bits_set(self.statusword)
+        self.maker_status.setText(", ".join(str(bit) for bit in maker) or MAKER_NONE_SET)
         faulted = cia402.is_faulted(self.statusword)
         self.enable.setEnabled(not cia402.is_enabled(self.statusword))
         self.quick_stop.setEnabled(cia402.is_enabled(self.statusword))
@@ -750,9 +808,11 @@ class MotorView(QWidget):
         if drive is None or self._busy or not steps:
             return
 
+        held = self._maker_bits()
+
         def job():
             for step in steps:
-                drive.write(cia402.CONTROLWORD, step.controlword)
+                drive.write(cia402.CONTROLWORD, step.controlword | held)
             return steps[-1].what
 
         def done(_last, error) -> None:
@@ -847,9 +907,11 @@ class MotorView(QWidget):
             self.app.error(COULD_NOT_STOP.format(node=node, why="it is no longer on the bus"))
             return
 
+        held = self._maker_bits()
+
         def job():
             for obj, value in writes:
-                drive.write(obj, value)
+                drive.write(obj, value | held if obj.where == cia402.CONTROLWORD.where else value)
 
         def done(_result, error) -> None:
             if error:
