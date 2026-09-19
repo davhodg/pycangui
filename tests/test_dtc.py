@@ -499,3 +499,61 @@ def test_the_identifier_tooltips_follow_the_addressing(app, tmp_path, monkeypatc
     view.addressing.setCurrentIndex(0)
     assert view.tx_id.toolTip() == typed, "and back to how to type one"
     window.close()
+
+
+# --- what the pane remembers ---------------------------------------------------------
+def test_the_addresses_are_kept_without_opening_a_session(app, tmp_path, monkeypatch):
+    """They were written down only as a session opened, so anything typed
+    and not opened was gone at the next start."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    ctx = Context(log=print)
+    first = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), ctx)
+    first.tx_id.setText("700")
+    first._apply_addresses()
+
+    second = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), Context(log=print))
+    assert second.tx_id.text() == "700"
+
+
+def test_a_cleared_identifier_stays_cleared(app, tmp_path, monkeypatch):
+    """The default came back in its place, so there was no way to say this
+    bus has no UDS on it."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    ctx = Context(log=print)
+    first = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), ctx)
+    first.tx_id.setText("")
+    first.rx_id.setText("")
+    first._apply_addresses()
+
+    second = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), Context(log=print))
+    assert second.tx_id.text() == ""
+    assert second.rx_id.text() == ""
+    assert second.manager.config.tx_id == NO_ID
+
+
+# --- padding -------------------------------------------------------------------------
+def test_the_pad_byte_is_typed_rather_than_ticked(app, view):
+    """ "Pad" answered half the question and left which byte to a constant
+    nobody could see."""
+    assert view.padding.text() == "00", "the default, and the usual one"
+    assert view._config().padding == 0x00
+
+    view.padding.setText("AA")
+    assert view._config().padding == 0xAA
+
+    view.padding.setText("")
+    assert view._config().padding is None, "empty is no padding at all"
+
+
+def test_the_pad_byte_is_kept(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    ctx = Context(log=print)
+    first = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), ctx)
+    first.padding.setText("55")
+    first._save()
+
+    second = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), Context(log=print))
+    assert second.padding.text() == "55"

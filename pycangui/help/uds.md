@@ -38,10 +38,16 @@ second answer to the same question, and the two could disagree.
 If the [J1939](j1939.md) pane has claimed an address, that is the address this
 pane sends from -- one tool on the bus rather than two testers.
 
+Everything in this box is written down as each box is finished with, rather
+than when a session opens. An identifier cleared on purpose stays cleared at
+the next start, instead of the default coming back in its place as though
+nobody had said anything.
+
 **Open** makes the ISO-TP connection on those identifiers, and nothing
-else on the pane works until it is open. **Pad** fills every frame out to 8
-bytes for the ECUs that ignore anything shorter, and **Transport** picks the
-ISO-TP implementation -- your own can be added as a [back end](backends.md).
+else on the pane works until it is open. **Pad** is the byte every frame is
+filled out to 8 bytes with, for the ECUs that ignore anything shorter -- `00`
+unless you say otherwise, and empty for no padding at all. **Transport** picks
+the ISO-TP implementation -- your own can be added as a [back end](backends.md).
 On a CAN FD channel **CAN-DL** and **BRS** sit beside them, as
 [CAN adapters and channels](channels.md) describes.
 
