@@ -22,7 +22,7 @@ from PySide6.QtCore import QSettings
 from pycangui.core import plugin_package
 from pycangui.core.plugins import builtin_dir
 from pycangui.plugins.cia402 import drive as cia402
-from pycangui.plugins.cia402.plugin import MAKER_NONE_SET
+from pycangui.plugins.cia402.plugin import MAKER_NONE_SET, MAKER_STATUS
 from pycangui.ui.main_window import MainWindow
 
 #: Statuswords as a drive really sends them: the state bits, plus voltage
@@ -701,7 +701,7 @@ def test_the_closing_halt_carries_them_too(app, window, view, monkeypatch):
 
 def test_the_maker_bits_in_the_statusword_are_shown(app, view):
     view._took(cia402.STATUSWORD, ENABLED | (1 << 14))
-    assert view.maker_status.text() == "14"
+    assert view.maker_status.text() == MAKER_STATUS.format(bits="14")
 
     view._took(cia402.STATUSWORD, ENABLED)
-    assert view.maker_status.text() == MAKER_NONE_SET
+    assert view.maker_status.text() == MAKER_STATUS.format(bits=MAKER_NONE_SET)
