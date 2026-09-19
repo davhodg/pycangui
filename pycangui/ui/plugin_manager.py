@@ -54,6 +54,11 @@ REPLACING = (
     "This replaces {label} {old}, which is installed in this workspace now.\n"
     "Anything you have edited into it is lost."
 )
+REPLACING_EDITED = (
+    "This replaces {label} {old}, which is installed in this workspace now.\n"
+    "That copy has been changed since it was installed, so it is moved aside "
+    "and kept rather than lost."
+)
 GOING_BACK = "The one you are installing ({new}) is older than the one installed ({old})."
 
 #: Said at the same time, because "what will this do to my window" is the other
@@ -63,6 +68,10 @@ WHAT_IT_STAYS = (
     "Whatever it adds -- a pane, menu entries, a button -- belongs to this "
     "workspace and stays until you remove it or switch it off."
 )
+
+#: Where the fingerprints of installed plugins live: the workspace, not
+#: the plugin folders, so exporting one carries no bookkeeping with it.
+AS_INSTALLED = "plugins.as_installed"
 
 UPDATE_TIP = "This one is the same version as the one pycangui ships."
 UPDATE_TO = (
@@ -167,10 +176,12 @@ class PluginActions(QObject):
             return
 
         old = plugin_package.installed(self.folder, package.name)
+        edited = old is not None and self._edited(package.name)
         question = [f"Install {package.label}{self._label_version(package.info.version)}?", ""]
         if old is not None:
+            shape = REPLACING_EDITED if edited else REPLACING
             question.append(
-                REPLACING.format(label=old.title or package.name, old=_version(old.version) or "?")
+                shape.format(label=old.title or package.name, old=_version(old.version) or "?")
             )
             if _older(package.info.version, old.version):
                 question.append(GOING_BACK.format(new=package.info.version, old=old.version))
@@ -188,6 +199,16 @@ class PluginActions(QObject):
         )
         if answer != QMessageBox.Yes:
             return
+        # Moved aside rather than deleted, the same as a hook file's .bak:
+        # what is being replaced is somebody's own work, and an install that
+        # threw it away would be the one operation here with no way back.
+        kept = None
+        if edited:
+            try:
+                kept = plugin_package.keep_a_copy(self.folder / package.name)
+            except OSError as why:
+                self._refuse(parent, f"{package.name} could not be moved aside: {why}")
+                return
         try:
             doit(True)
         except plugin_package.PackageError as why:
@@ -197,9 +218,12 @@ class PluginActions(QObject):
             self._refuse(parent, f"{package.name} could not be unpacked: {why}")
             return
         self.set_active(package.name, True, quiet=True)
+        self._note_as_installed(package.name)
         self.ctx.events.information(
             f"Installed plugin {package.label}{self._label_version(package.info.version)}"
         )
+        if kept is not None:
+            self.ctx.events.information(f"The copy you had was kept as {kept.name}")
         self.changed.emit(package.name)
 
     @staticmethod
@@ -277,6 +301,36 @@ class PluginActions(QObject):
         """The supplied plugins this workspace has not got."""
         here = set(self.plugins.found())
         return [s for s in supplied() if s.name not in here]
+
+    # --- a copy somebody has worked on ---------------------------------------------
+    def _as_installed(self) -> dict:
+        saved = self.ctx.settings.get(AS_INSTALLED, {})
+        return dict(saved) if isinstance(saved, dict) else {}
+
+    def _note_as_installed(self, name: str) -> None:
+        """Remember what this plugin looked like when it went in.
+
+        In the workspace's settings rather than in the plugin folder, so
+        that exporting one does not carry pycangui's bookkeeping along to
+        whoever it is sent to.
+        """
+        folder = self.folder / name
+        if folder.is_dir():
+            record = self._as_installed()
+            record[name] = plugin_package.folder_fingerprint(folder)
+            self.ctx.settings.set(AS_INSTALLED, record)
+
+    def _edited(self, name: str) -> bool:
+        """Whether the copy here differs from the one that was installed.
+
+        Unknown counts as edited: a plugin installed before any of this
+        existed has no record, and treating that as untouched would throw
+        away exactly the copy this is here to keep.
+        """
+        folder = self.folder / name
+        if not folder.is_dir():
+            return False
+        return self._as_installed().get(name) != plugin_package.folder_fingerprint(folder)
 
     def out_of_date(self) -> dict[str, tuple[str, str]]:
         """name -> (installed version, the version pycangui now ships).

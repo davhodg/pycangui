@@ -224,3 +224,68 @@ def test_what_a_plugin_says_about_itself_is_read_rather_than_executed():
 
 def test_a_plugin_file_that_will_not_parse_says_nothing_rather_than_failing():
     assert plugin_package.describe_source("def register(app)\n").title == ""
+
+
+# --- keeping a copy somebody has worked on -----------------------------------------------
+def test_a_folder_is_the_same_however_the_lines_end(tmp_path):
+    """The same file checked out on Windows and on Linux is the same file."""
+    windows, linux = tmp_path / "w", tmp_path / "l"
+    for folder, ending in ((windows, b"\r\n"), (linux, b"\n")):
+        (folder / "inner").mkdir(parents=True)
+        (folder / "plugin.py").write_bytes(b"VERSION = '1.0'" + ending)
+        (folder / "inner" / "more.py").write_bytes(b"x = 1" + ending)
+
+    assert plugin_package.folder_fingerprint(windows) == plugin_package.folder_fingerprint(linux)
+
+
+def test_what_python_leaves_behind_is_not_a_change(tmp_path):
+    folder = tmp_path / "plugin"
+    folder.mkdir()
+    (folder / "plugin.py").write_text("VERSION = '1.0'", encoding="utf-8")
+    was = plugin_package.folder_fingerprint(folder)
+
+    (folder / "__pycache__").mkdir()
+    (folder / "__pycache__" / "plugin.cpython-313.pyc").write_bytes(b"compiled")
+
+    assert plugin_package.folder_fingerprint(folder) == was, "running it is not editing it"
+
+
+def test_an_edit_anywhere_in_the_folder_shows(tmp_path):
+    folder = tmp_path / "plugin"
+    (folder / "inner").mkdir(parents=True)
+    (folder / "plugin.py").write_text("VERSION = '1.0'", encoding="utf-8")
+    (folder / "inner" / "more.py").write_text("x = 1", encoding="utf-8")
+    was = plugin_package.folder_fingerprint(folder)
+
+    (folder / "inner" / "more.py").write_text("x = 2", encoding="utf-8")
+
+    assert plugin_package.folder_fingerprint(folder) != was
+
+
+def test_a_kept_copy_is_not_loaded_as_a_plugin_of_its_own(tmp_path):
+    """Two panes calling themselves the same thing would be a puzzle, so
+    what is kept is named where the loader does not look."""
+    from pycangui.core.plugins import Plugins
+
+    plugins = tmp_path / "plugins"
+    folder = plugins / "mine"
+    folder.mkdir(parents=True)
+    (folder / "plugin.py").write_text("VERSION = '1.0'\n", encoding="utf-8")
+
+    kept = plugin_package.keep_a_copy(folder)
+
+    assert kept.name.startswith("_") and kept.name.endswith(".bak")
+    assert not folder.exists(), "moved, not copied: the new one goes in its place"
+    assert Plugins(folder=plugins, disabled=set()).found() == {}, "the loader passes it over"
+
+
+def test_a_second_copy_does_not_land_on_the_first(tmp_path):
+    plugins = tmp_path / "plugins"
+    for _ in range(2):
+        folder = plugins / "mine"
+        folder.mkdir(parents=True)
+        (folder / "plugin.py").write_text("VERSION = '1.0'\n", encoding="utf-8")
+        plugin_package.keep_a_copy(folder)
+
+    kept = sorted(p.name for p in plugins.iterdir())
+    assert kept == ["_mine.bak", "_mine.bak2"], "an earlier copy is never written over"

@@ -728,3 +728,43 @@ def test_the_update_button_is_live_only_where_there_is_one(app, window):
     assert entry.info.version in dialog.update_button.toolTip()
     assert entry.info.version in dialog.installed.item(0).text(), "and the row says so too"
     dialog.close()
+
+
+def test_an_edited_plugin_is_kept_when_it_is_replaced(app, window, monkeypatch):
+    """Same bargain as a hook file's .bak: what is replaced is somebody's
+    own work, and an install that threw it away would be the one operation
+    here with no way back."""
+    from pycangui.core.plugins import supplied
+    from pycangui.ui import messages
+
+    entry = supplied()[0]
+    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
+    window.plugin_actions.install_supplied(entry.name)
+    folder = window.ctx.workspace_dir / "plugins" / entry.name
+    assert not window.plugin_actions._edited(entry.name), "as installed, untouched"
+
+    (folder / "plugin.py").write_text(
+        (folder / "plugin.py").read_text(encoding="utf-8") + "\n# my own note\n", encoding="utf-8"
+    )
+    assert window.plugin_actions._edited(entry.name), "and now it is not"
+
+    window.plugin_actions.install_supplied(entry.name)
+
+    kept = folder.with_name(f"_{entry.name}.bak")
+    assert kept.is_dir(), "the edited copy is beside the new one"
+    assert "my own note" in (kept / "plugin.py").read_text(encoding="utf-8")
+    assert "my own note" not in (folder / "plugin.py").read_text(encoding="utf-8")
+
+
+def test_an_untouched_plugin_is_replaced_without_a_pile_of_copies(app, window, monkeypatch):
+    from pycangui.core.plugins import supplied
+    from pycangui.ui import messages
+
+    entry = supplied()[0]
+    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
+    window.plugin_actions.install_supplied(entry.name)
+
+    window.plugin_actions.install_supplied(entry.name)
+
+    folder = window.ctx.workspace_dir / "plugins"
+    assert not (folder / f"_{entry.name}.bak").exists(), "nothing was lost, so nothing was kept"

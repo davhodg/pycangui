@@ -34,6 +34,7 @@ What it refuses, and why:
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import zipfile
@@ -231,6 +232,42 @@ def inspect_folder(folder: Path) -> Package:
     return Package(
         name=check_name(folder.name), info=describe_source(source), root=folder.name, path=folder
     )
+
+
+def folder_fingerprint(folder: Path) -> str:
+    """One hash for a plugin folder, so an edited copy can be told apart.
+
+    Line endings are left out, as they are for the supplied hook files: the
+    same file checked out on Windows and on Linux is the same file. What
+    Python leaves behind is left out too -- a plugin that has merely been
+    run is not a plugin somebody has changed.
+    """
+    parts = []
+    for path in sorted(folder.rglob("*")):
+        if not path.is_file() or "__pycache__" in path.parts or path.suffix == ".pyc":
+            continue
+        relative = path.relative_to(folder).as_posix()
+        body = hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+        parts.append(f"{relative}:{body}")
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def keep_a_copy(folder: Path) -> Path:
+    """Move a plugin folder aside rather than losing it. Returns where it went.
+
+    Named with a leading underscore so that what is kept is not loaded as a
+    plugin of its own: the folder is a copy of somebody's work, not a second
+    plugin, and two panes calling themselves the same thing would be a
+    puzzle. Never over an earlier copy, in the same way a hook file's .bak
+    is never overwritten.
+    """
+    kept = folder.with_name(f"_{folder.name}.bak")
+    number = 2
+    while kept.exists():
+        kept = folder.with_name(f"_{folder.name}.bak{number}")
+        number += 1
+    shutil.move(str(folder), str(kept))
+    return kept
 
 
 def installed(into: Path, name: str) -> Info | None:
