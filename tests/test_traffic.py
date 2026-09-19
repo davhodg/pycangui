@@ -13,6 +13,7 @@ import time
 import pytest
 from PySide6.QtCore import QSettings
 
+from pycangui.canopen import PdoConfig
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.detect import DEMO_CHANNEL, channels_for
@@ -166,5 +167,56 @@ def test_nothing_on_an_extended_id_is_called_canopen(app, tmp_path, monkeypatch)
     manager.add_node(5)
     j1939 = Frame(0.0, "CAN", 0x18FEF105, True, False, True, b"")
     assert manager.classify(j1939) is None
+    manager.shutdown()
+    bus.disconnect_bus()
+
+
+def test_a_pdo_the_file_gives_no_value_for_is_not_a_frame_at_zero(app, tmp_path, monkeypatch):
+    """An EDS can declare the communication object and leave the value out,
+    which reads as zero -- and zero is the NMT id, not this node's PDO."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    manager = CanopenManager(bus)
+    bus.connect_bus("virtual", "vcan_labels", 500000, False)
+    manager.add_node(5)
+    monkeypatch.setattr(
+        manager,
+        "pdo_configs",
+        lambda _node: [
+            PdoConfig(node_id=5, direction="TPDO", number=1, name="", cob_id=0, enabled=True),
+            PdoConfig(node_id=5, direction="TPDO", number=2, name="", cob_id=0x285, enabled=False),
+            PdoConfig(node_id=5, direction="TPDO", number=3, name="", cob_id=0x385, enabled=True),
+        ],
+    )
+    manager.forget_labels()
+
+    nmt = Frame(0.0, "CAN", 0x000, False, False, True, b"")
+    assert manager.classify(nmt) == "NMT", "not the node's PDO"
+    disabled = Frame(0.1, "CAN", 0x285, False, False, True, b"")
+    assert manager.classify(disabled) == "TxPDO2 n5", "the predefined place still stands"
+    real = Frame(0.2, "CAN", 0x385, False, False, True, b"")
+    assert manager.classify(real) == "TPDO3 n5", "a configured one is named where it is"
+    manager.shutdown()
+    bus.disconnect_bus()
+
+
+def test_a_pdo_somewhere_else_is_named_where_it_actually_is(app, tmp_path, monkeypatch):
+    """A DCF carries the configured identifier, which is the point of one."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    manager = CanopenManager(bus)
+    bus.connect_bus("virtual", "vcan_labels", 500000, False)
+    manager.add_node(5)
+    monkeypatch.setattr(
+        manager,
+        "pdo_configs",
+        lambda _node: [
+            PdoConfig(node_id=5, direction="TPDO", number=1, name="", cob_id=0x2A5, enabled=True)
+        ],
+    )
+    manager.forget_labels()
+
+    moved = Frame(0.0, "CAN", 0x2A5, False, False, True, b"")
+    assert manager.classify(moved) == "TPDO1 n5"
     manager.shutdown()
     bus.disconnect_bus()
