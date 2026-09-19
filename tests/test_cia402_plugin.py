@@ -22,6 +22,7 @@ from PySide6.QtCore import QSettings
 from pycangui.core import plugin_package
 from pycangui.core.plugins import builtin_dir
 from pycangui.plugins.cia402 import drive as cia402
+from pycangui.plugins.cia402.plugin import MAKER_NONE_SET
 from pycangui.ui.main_window import MainWindow
 
 #: Statuswords as a drive really sends them: the state bits, plus voltage
@@ -651,3 +652,56 @@ def test_an_object_the_eds_does_not_have_is_not_polled_for(app, view, monkeypatc
 
     view._read_one(*cia402.STATUSWORD.where)
     assert asked, "0x6041 is in this EDS, so it is read"
+
+
+# --- the bits the profile leaves to the maker ----------------------------------------------
+def test_which_bits_belong_to_the_maker_in_each_word():
+    """Statusword bits 12 and 13 are defined per mode by the standard, so
+    calling them manufacturer bits would mislead somebody reading a manual."""
+    assert cia402.MANUFACTURER_STATUS_BITS == (8, 14, 15)
+    assert cia402.MANUFACTURER_CONTROL_BITS == (11, 12, 13, 14, 15)
+    assert cia402.bits_set(1 << 15 | 1 << 8) == [8, 15]
+    assert cia402.bits_set(ENABLED) == []
+    assert cia402.mask_of([11, 15]) == 0x8800
+    assert cia402.mask_of([]) == 0
+
+
+def test_a_ticked_bit_goes_out_with_every_controlword(app, view, monkeypatch):
+    """Some drives will not act on anything without one of these set, so a
+    bit that only reached the first write would look like an intermittent
+    drive rather than a missing bit."""
+    drive = wired(view, monkeypatch, FAULT)
+    view.maker_control[15].setChecked(True)
+
+    view._command(lambda: cia402.steps_to_enable(view.statusword))
+
+    assert [value for _index, value in drive.written] == [
+        0x8000,
+        0x8080,
+        0x8006,
+        0x8007,
+        0x800F,
+    ]
+
+
+def test_the_closing_halt_carries_them_too(app, window, view, monkeypatch):
+    """The one write that stops the machine is the last place to drop a bit
+    the drive may need before it will act on anything."""
+    drive = running(view, monkeypatch)
+    view.maker_control[11].setChecked(True)
+
+    view.set_visible_to_user(False)
+
+    assert (
+        cia402.CONTROLWORD.index,
+        cia402.ENABLE_OPERATION | cia402.HALT | 0x0800,
+    ) in drive.written
+    assert (cia402.TARGET_VELOCITY.index, 0) in drive.written, "and the target is not touched"
+
+
+def test_the_maker_bits_in_the_statusword_are_shown(app, view):
+    view._took(cia402.STATUSWORD, ENABLED | (1 << 14))
+    assert view.maker_status.text() == "14"
+
+    view._took(cia402.STATUSWORD, ENABLED)
+    assert view.maker_status.text() == MAKER_NONE_SET

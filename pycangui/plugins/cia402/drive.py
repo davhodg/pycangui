@@ -245,6 +245,32 @@ FLAGS = (
     (1 << 11, "Internal limit active"),
 )
 
+#: The bits the profile hands to the maker, in both words.
+#:
+#: What they mean is not in CiA 402 and cannot be: one drive's bit 15 is a
+#: brake release and another's is a spindle orientation request. So they are
+#: shown and set by number and left unnamed, which is all that can be said
+#: honestly without the manual in front of you.
+#:
+#: Statusword bit 8 is the maker's too, and bits 12 and 13 are not: those are
+#: defined per mode by the standard, so naming them "manufacturer" would be
+#: wrong in a way that matters when somebody is comparing this with a manual.
+MANUFACTURER_STATUS_BITS = (8, 14, 15)
+MANUFACTURER_CONTROL_BITS = (11, 12, 13, 14, 15)
+
+
+def bits_set(word: int, bits=MANUFACTURER_STATUS_BITS) -> list[int]:
+    """Which of ``bits`` are set in ``word``, lowest first."""
+    return [bit for bit in sorted(bits) if word & (1 << bit)]
+
+
+def mask_of(bits) -> int:
+    """The bits as one word, ready to be held in a controlword."""
+    value = 0
+    for bit in bits:
+        value |= 1 << bit
+    return value
+
 
 def state_of(statusword: int) -> str:
     """Which of the eight states the drive is in, or that it is in none of them.
