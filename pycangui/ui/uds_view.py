@@ -111,6 +111,13 @@ OPEN_TIP = (
     "Nothing else on this pane works until it is open."
 )
 NO_ADDRESS_TIP = "Fill in the Tx and Rx identifiers first."
+PADDING_TIP = (
+    "The byte every frame is padded out to 8 bytes with. Some ECUs require\n"
+    "padding and ignore anything shorter; others do not mind either way.\n"
+    "Leave it empty to send frames at the length they are. Taken up when a\n"
+    "session is opened, since it belongs to the transport rather than to\n"
+    "one request."
+)
 
 
 def _id_text(value: int) -> str:
@@ -203,6 +210,7 @@ class UdsView(QWidget):
         self.addressing.addItem("J1939 addresses", True)
         self.addressing.setCurrentIndex(1 if cfg.fixed else 0)
         self.addressing.currentIndexChanged.connect(lambda _i: self._addressing_changed())
+        self.addressing.currentIndexChanged.connect(lambda _i: self._apply_addresses())
         self.ecu_address = _hex_edit(f"{cfg.ecu_address:02X}", 46)
         self.ecu_address.setToolTip(ECU_ADDRESS_TIP)
         self.tester_address = _hex_edit(f"{cfg.tester_address:02X}", 46)
@@ -213,12 +221,14 @@ class UdsView(QWidget):
         for box in (self.ecu_address, self.tester_address, self.functional_target):
             box.textChanged.connect(lambda _t: self._addresses_changed())
             box.editingFinished.connect(self._apply_addresses)
-        self.padding = QCheckBox("Pad")
-        self.padding.setToolTip(
-            "Pad every frame out to 8 bytes. Some ECUs require it and ignore\n"
-            "anything shorter; others do not mind either way."
-        )
-        self.padding.setChecked(cfg.padding is not None)
+        # A byte rather than a tick. "Pad" answered half the question and
+        # left the other half to a constant nobody could see: which byte.
+        # Empty is no padding, the same "empty means none" the identifier
+        # boxes above use.
+        self.padding = _hex_edit("" if cfg.padding is None else f"{cfg.padding:02X}", 46)
+        self.padding.setPlaceholderText("none")
+        self.padding.setToolTip(PADDING_TIP)
+        self.padding.editingFinished.connect(self._save)
         self.transport = QComboBox()
         self.transport.setToolTip("ISO-TP implementation (add your own in the backends folder)")
         for spec in BACKENDS.specs("isotp"):
@@ -240,6 +250,7 @@ class UdsView(QWidget):
         for length in CAN_DL:
             self.can_dl.addItem(str(length), length)
         self.can_dl.setCurrentText(str(cfg.tx_data_length))
+        self.can_dl.currentIndexChanged.connect(lambda _i: self._save())
         self.brs = QCheckBox("BRS")
         self.brs.setToolTip(
             "Switch to the faster data rate for the data phase of each FD\n"
@@ -247,6 +258,7 @@ class UdsView(QWidget):
             "bitrate, so the data rate chosen on the toolbar never gets used."
         )
         self.brs.setChecked(cfg.bitrate_switch)
+        self.brs.toggled.connect(lambda _on: self._save())
         self.open_btn = QPushButton("Open")
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
@@ -258,7 +270,7 @@ class UdsView(QWidget):
             ("Tx ID", self.tx_id),
             ("Rx ID", self.rx_id),
             ("Func ID", self.functional_id),
-            ("", self.padding),
+            ("Pad", self.padding),
             ("Transport", self.transport),
             ("CAN-DL", self.can_dl),
             ("", self.brs),
@@ -837,12 +849,28 @@ class UdsView(QWidget):
         for box, field in self._address_boxes():
             setattr(cfg, field, self._int(box))
         self._addresses_changed()  # nothing is waiting now, so no tint
+        self._save()
+
+    def _padding(self) -> int | None:
+        """The pad byte, or None for a box left empty."""
+        value = self._int(self.padding)
+        return None if value == NO_ID else value & 0xFF
+
+    def _save(self) -> None:
+        """Write down what the pane is set to, whenever a box is finished with.
+
+        It used to be written only as a session opened, so anything typed
+        and not opened was gone at the next start -- and clearing an
+        identifier was gone twice over, since the default came back in its
+        place and there was no record that anybody had cleared it.
+        """
+        self.ctx.settings.set("uds.config", self._config().to_dict())
 
     def _config(self) -> UdsConfig:
         # No 29-bit tick box: whether these are 29-bit identifiers is
         # something the identifiers themselves say, and asking as well left
         # two answers to one question, one of which could be wrong.
-        cfg = UdsConfig(
+        return UdsConfig(
             tx_id=self._int(self.tx_id),
             rx_id=self._int(self.rx_id),
             functional_id=self._int(self.functional_id),
@@ -850,18 +878,17 @@ class UdsView(QWidget):
             ecu_address=self._int(self.ecu_address) & 0xFF,
             tester_address=self._int(self.tester_address) & 0xFF,
             functional_target=self._int(self.functional_target) & 0xFF,
-            padding=0xCC if self.padding.isChecked() else None,
+            padding=self._padding(),
             can_fd=self.manager.bus.fd,
             tx_data_length=self.can_dl.currentData() or 8,
             bitrate_switch=self.brs.isChecked(),
         )
-        self.ctx.settings.set("uds.config", cfg.to_dict())
-        return cfg
 
     @Slot(bool)
     def _toggle_open(self, on: bool) -> None:
         if on:
             try:
+                self._save()
                 self.manager.open(self._config())
             except ValueError as exc:
                 self._append(f"UDS: bad id: {exc}")

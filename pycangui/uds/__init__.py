@@ -71,7 +71,8 @@ class UdsConfig:
     ecu_address: int = 0x00
     tester_address: int = 0xF9
     functional_target: int = OBD_FUNCTIONAL
-    padding: int | None = 0xCC  # None = no padding
+    #: The byte frames are padded out to 8 with, or None for no padding.
+    padding: int | None = 0x00
     #: ISO 15765-2 over CAN FD. CAN_DL is how many bytes go in one frame:
     #: 8 as it always was, or one of the FD lengths up to 64, which is what
     #: makes a transfer over FD worth having.
