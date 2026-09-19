@@ -3,10 +3,14 @@
 """Say so when this start had to compile Python again, and will not next time.
 
 The first start after an update is much slower than the rest: every changed
-file is compiled to bytecode again, and on Windows the virus scanner reads
-each new file as it appears. Thirteen seconds where two is normal, once, and
-then it cures itself -- but somebody watching a blank screen has no way of
-knowing that, and "it has got slow" is what sticks.
+file is compiled to bytecode again, and every file is read for the first
+time. Thirteen seconds where two is normal, once, and then it cures itself --
+but somebody watching a blank screen has no way of knowing that, and "it has
+got slow" is what sticks.
+
+What else is reading those files at the same time is not something this can
+know. A virus scanner is the usual suspect on Windows and may well be right,
+but the message says what was counted rather than what was guessed.
 
 This is not a guess about the clock. Python records where each module's
 compiled copy lives, so counting the ones written during this start says
@@ -51,7 +55,6 @@ def message(since: float, took: float, modules=None) -> str | None:
     if written < ENOUGH_TO_MENTION:
         return None
     return (
-        f"Starting took {took:.1f} s because Python compiled {written} changed files, "
-        "which it does once after an update -- on Windows the virus scanner reads each "
-        "new file as well. The next start will be quicker."
+        f"Starting took {took:.1f} s: Python compiled {written} changed files, which "
+        "it does once after an update. The next start will be quicker."
     )

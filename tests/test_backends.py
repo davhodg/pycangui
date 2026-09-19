@@ -122,9 +122,10 @@ def test_broken_user_backend_is_isolated(app, tmp_path, monkeypatch):
     assert "xcp-builtin" in BACKENDS.names("xcp")  # built-in still usable
 
 
-def test_an_older_name_for_an_engine_still_opens(app, tmp_path, monkeypatch):
-    """A workspace that remembers "native" was written when that was the
-    only engine there was, and must not open on the wrong one."""
+def test_an_engine_that_does_not_exist_says_so(app, tmp_path, monkeypatch):
+    """A name from before a rename, or a user backend that failed to load.
+    Falling back is right; doing it quietly is not, because connecting with
+    the wrong protocol looks like a broken slave."""
     from pycangui.core.context import Context
     from pycangui.core.hooks import Hooks
     from pycangui.core.signals import SignalHub
@@ -132,9 +133,31 @@ def test_an_older_name_for_an_engine_still_opens(app, tmp_path, monkeypatch):
 
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
-    ctx.settings.set("backends.xcp", "native")
+    ctx.settings.set("backends.xcp", "nonesuch")
+    manager = XcpManager(BusManager(), Hooks(ctx), SignalHub(), ctx)
+    assert manager.backend_name == "xcp-builtin", "it carries on with one that exists"
+
+    # Again, with somewhere for the message to go this time: the first one
+    # is said while the manager is being built, before anything can listen.
+    said: list[str] = []
+    manager.result.connect(said.append)
+    manager.backend_name = "nonesuch"
+    manager._make_engine()
+
+    assert any("nonesuch" in line for line in said), "and names the one it could not find"
+    manager.shutdown()
+
+
+def test_the_engine_chosen_last_time_is_the_one_that_opens(app, tmp_path, monkeypatch):
+    from pycangui.core.context import Context
+    from pycangui.core.hooks import Hooks
+    from pycangui.core.signals import SignalHub
+    from pycangui.xcp.manager import XcpManager
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    ctx.settings.set("backends.xcp", "ccp-builtin")
     manager = XcpManager(BusManager(), Hooks(ctx), SignalHub(), ctx)
 
-    assert manager.backend_name == "xcp-builtin"
-    assert manager.protocol == "XCP"
+    assert manager.protocol == "CCP"
     manager.shutdown()
