@@ -15,6 +15,7 @@ import threading
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from pycangui.ccp import engine as _ccp_engine  # noqa: F401  (registers the CCP backend)
 from pycangui.core.backends import BACKENDS
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
@@ -52,6 +53,21 @@ class XcpManager(QObject):
         self._make_engine()
 
     # --- backend ---------------------------------------------------------------
+    @property
+    def protocol(self) -> str:
+        """What the engine in use speaks, for the log to say so."""
+        return getattr(self.engine, "protocol", "XCP")
+
+    @property
+    def needs_station(self) -> bool:
+        """Whether this engine wants a station address as well as ids."""
+        return bool(getattr(self.engine, "needs_station", False))
+
+    def set_station(self, station: int) -> None:
+        """Which controller on these identifiers, for a protocol that asks."""
+        if self.engine is not None and hasattr(self.engine, "set_station"):
+            self.engine.set_station(station)
+
     def backends(self) -> list[str]:
         return BACKENDS.names("xcp")
 
@@ -62,7 +78,7 @@ class XcpManager(QObject):
         self.backend_name = name
         self._ctx.settings.set("backends.xcp", name)
         self._make_engine()
-        self.result.emit(f"XCP backend: {name}")
+        self.result.emit(f"Calibration engine: {name}")
 
     def _make_engine(self) -> None:
         if self.engine is not None:
@@ -71,7 +87,7 @@ class XcpManager(QObject):
             self.engine = BACKENDS.create("xcp", self.backend_name, self._bus, self._ctx)
         except Exception as exc:  # a user backend may fail to construct
             self.engine = None
-            self.result.emit(f"XCP backend {self.backend_name!r} failed: {exc}")
+            self.result.emit(f"Calibration engine {self.backend_name!r} failed: {exc}")
 
     # --- worker ------------------------------------------------------------------
     def _run(self) -> None:
@@ -116,7 +132,7 @@ class XcpManager(QObject):
             self.set_connected(True)
             order = "big-endian" if info.big_endian else "little-endian"
             return (
-                f"XCP connected ({self.backend_name}): resources "
+                f"{self.protocol} connected ({self.backend_name}): resources "
                 f"{info.resource_names(info.resources)}, maxCTO {info.max_cto}, "
                 f"maxDTO {info.max_dto}, {order}"
             )
@@ -130,7 +146,7 @@ class XcpManager(QObject):
         def fn() -> str:
             self.engine.disconnect()
             self.set_connected(False)
-            return "XCP disconnected"
+            return f"{self.protocol} disconnected"
 
         self._submit("DISCONNECT", fn)
 
@@ -152,9 +168,12 @@ class XcpManager(QObject):
             seed = self.engine.get_seed(resource)
             key = self._hooks.call("xcp", "compute_key", resource, bytes(seed))
             if key is None:
-                return "XCP unlock: no key algorithm (implement hooks/xcp.py::compute_key)"
+                return (
+                    f"{self.protocol} unlock: no key algorithm "
+                    "(implement hooks/xcp.py::compute_key)"
+                )
             self.engine.unlock(bytes(key))
-            return f"XCP resource 0x{resource:02X} unlocked"
+            return f"{self.protocol} resource 0x{resource:02X} unlocked"
 
         self._submit("UNLOCK", fn)
 

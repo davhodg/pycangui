@@ -15,9 +15,9 @@ because what everybody meets on their first run *is* the examples.
 
 #: The nodes the demo device is made of, in the order they are started.
 #: Not the gateway: that wants two channels and the demo has one.
-DEMO = ("canopen_device", "uds_server", "j1939_engine", "xcp_slave")
+DEMO = ("canopen_device", "uds_server", "j1939_engine", "xcp_slave", "ccp_slave")
 
 #: What the whole of it is called, on the channel and in the Event Log. Not
-#: "CANopen demo device": it answers four protocols and always did, and a
+#: "CANopen demo device": it answers several protocols and always did, and a
 #: name that mentions only one sends people looking for the others.
 DEMO_NAME = "Demo device"

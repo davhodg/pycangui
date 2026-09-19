@@ -664,7 +664,10 @@ class MainWindow(QMainWindow):
             ),
             PaneKind(
                 "xcp",
-                "XCP",
+                # Named for both, since one pane drives either: the kind is
+                # still "xcp" so that a layout or a setting written before
+                # CCP existed still names its own pane.
+                "XCP / CCP",
                 Qt.RightDockWidgetArea,
                 lambda _name: XcpView(self.xcp, self.ctx),
                 floating_first=True,

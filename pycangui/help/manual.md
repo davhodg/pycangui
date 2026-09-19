@@ -16,7 +16,7 @@
 - [CANopen](canopen.md) --- object dictionary, PDO configuration, EMCY, DCF, LSS
 - [UDS](uds.md) --- sessions, DIDs, DTCs, routines and firmware transfer over ISO-TP
 - [J1939](j1939.md) --- address claims, DM1 faults, multi-packet messages
-- [XCP](xcp.md) --- measurements and characteristics from an A2L
+- [XCP / CCP](xcp.md) --- measurements and characteristics from an A2L, in either protocol
 - [Custom panes](custom-panes.md) --- the objects a job needs, laid out as a form
 - [Python Console](console.md) --- direct access to the underlying Python, or running a custom script 
 

@@ -34,6 +34,8 @@ per protocol pycangui speaks, on the one channel.
 - [J1939](j1939.md) -- an engine that claims source address 0 and defends
   it, broadcasts engine and wheel speed, reports a fault, and answers a
   request for its ComponentID as a multi-packet transfer.
+- [CCP](xcp.md) on 0x7B0/0x7B1 at station 1 -- the same memory over CCP,
+  big-endian as that protocol is
 - [XCP](xcp.md) on 0x7A0/0x7A1 -- a calibratable memory matching
   `resources/demo.a2l`, with writing locked until a seed and key.
 
