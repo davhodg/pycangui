@@ -53,6 +53,7 @@ from pycangui.uds.manager import (
 )
 from pycangui.ui import folders
 from pycangui.ui.confirm import Confirmations
+from pycangui.ui.field_widgets import PENDING
 from pycangui.ui.persist import remember
 
 #: Operations that change what is on the ECU, and so are worth a question
@@ -149,7 +150,14 @@ class UdsView(QWidget):
         self.functional_id.setToolTip(FUNCTIONAL_TIP)
         for box in (self.tx_id, self.rx_id, self.functional_id):
             box.setPlaceholderText("none")
+            # Two signals, because the two things want different moments.
+            # Whether Open can be pressed follows every keystroke, which
+            # costs nothing. What is sent and what the trace calls UDS
+            # waits until the box is finished with: halfway through typing
+            # 7E0 the address is 7, and claiming that id for a moment is
+            # worse than waiting.
             box.textChanged.connect(lambda _t: self._addresses_changed())
+            box.editingFinished.connect(self._apply_addresses)
         self.ext = QCheckBox("29-bit")
         self.ext.setToolTip("Address the ECU with 29-bit identifiers rather than 11-bit")
         self.ext.setChecked(cfg.extended_id)
@@ -669,23 +677,44 @@ class UdsView(QWidget):
         except ValueError:
             return NO_ID
 
+    def _address_boxes(self):
+        """Each address box and the field it sets, in one place."""
+        return (
+            (self.tx_id, "tx_id"),
+            (self.rx_id, "rx_id"),
+            (self.functional_id, "functional_id"),
+        )
+
     def _addresses_changed(self) -> None:
         """Open is offered once there is an ECU to open a session with.
 
-        The addresses reach the manager as they are typed, not when Open is
-        pressed: they are what the trace names UDS and what Help > Known
-        CAN ids lists, and clearing a box should stop that at once rather
-        than at the next start. Only while no session is open -- moving the
-        addresses under a running one would be talking to somewhere else
-        halfway through.
+        A box holding something not yet applied is tinted, the same amber a
+        typed value wears in the CANopen and custom panes: it says "this is
+        not what is in use yet" without a message, and Enter or leaving the
+        box settles it.
         """
         ready = self._int(self.tx_id) != NO_ID and self._int(self.rx_id) != NO_ID
         self.open_btn.setEnabled(ready or self.manager.is_open)
         self.open_btn.setToolTip(OPEN_TIP if ready else NO_ADDRESS_TIP)
-        if not self.manager.is_open:
-            self.manager.config.tx_id = self._int(self.tx_id)
-            self.manager.config.rx_id = self._int(self.rx_id)
-            self.manager.config.functional_id = self._int(self.functional_id)
+        for box, field in self._address_boxes():
+            waiting = self._int(box) != getattr(self.manager.config, field)
+            box.setStyleSheet(PENDING if waiting else "")
+
+    def _apply_addresses(self) -> None:
+        """Hand the addresses to the manager, once a box is finished with.
+
+        They are what a request is sent to, what the trace names UDS and
+        what Help > Known CAN ids lists, so clearing one should stop all of
+        that now rather than at the next start -- which is what pressing
+        Open used to be needed for. Not while a session is open: moving the
+        addresses under a running one would be talking somewhere else
+        halfway through.
+        """
+        if self.manager.is_open:
+            return
+        for box, field in self._address_boxes():
+            setattr(self.manager.config, field, self._int(box))
+        self._addresses_changed()  # nothing is waiting now, so no tint
 
     def _config(self) -> UdsConfig:
         cfg = UdsConfig(
