@@ -49,7 +49,7 @@ from .drive import Drive, Object
 
 API_VERSION = 1
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.0"
+VERSION = "1.1"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"

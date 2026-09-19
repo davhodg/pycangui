@@ -768,3 +768,48 @@ def test_an_untouched_plugin_is_replaced_without_a_pile_of_copies(app, window, m
 
     folder = window.ctx.workspace_dir / "plugins"
     assert not (folder / f"_{entry.name}.bak").exists(), "nothing was lost, so nothing was kept"
+
+
+def test_a_supplied_plugin_that_changed_without_a_version_bump_is_noticed(app, window, monkeypatch):
+    """The version is the author saying "this is different", and forgetting
+    to say it is the ordinary mistake -- which is how the CiA 402 pane
+    gained its limits and went on calling itself 1.0."""
+    from pycangui.core import plugin_package
+    from pycangui.core.plugins import supplied
+    from pycangui.ui import messages
+
+    entry = supplied()[0]
+    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
+    window.plugin_actions.install_supplied(entry.name)
+    assert window.plugin_actions.changed_since_install() == [], "just installed, so identical"
+
+    # As a pull does: the supplied copy moves on, the workspace's does not.
+    # Only the supplied folder is made to look different -- changing the
+    # record instead would make the local copy look edited, which is the
+    # other case and the one this must not be confused with.
+    real = plugin_package.folder_fingerprint
+    monkeypatch.setattr(
+        plugin_package,
+        "folder_fingerprint",
+        lambda folder: "moved on" if folder == entry.folder else real(folder),
+    )
+
+    assert entry.name in window.plugin_actions.changed_since_install()
+    assert window.plugin_actions.out_of_date() == {}, "and the versions still agree"
+
+
+def test_an_edited_copy_is_not_called_out_of_date(app, window, monkeypatch):
+    """For an edited copy, "differs from what is shipped" is what being
+    edited means, and saying it every start would be noise."""
+    from pycangui.core.plugins import supplied
+    from pycangui.ui import messages
+
+    entry = supplied()[0]
+    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
+    window.plugin_actions.install_supplied(entry.name)
+    folder = window.ctx.workspace_dir / "plugins" / entry.name
+    (folder / "plugin.py").write_text(
+        (folder / "plugin.py").read_text(encoding="utf-8") + "\n# mine\n", encoding="utf-8"
+    )
+
+    assert window.plugin_actions.changed_since_install() == []

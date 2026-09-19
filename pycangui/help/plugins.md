@@ -35,7 +35,11 @@ it:
   copy exactly as it was -- which is right for one you have edited, and not
   what you want for one you have not. The row says which version is
   available, the Event Log says so once when the window opens, and updating
-  asks first, because it is a replacement rather than a merge. If the copy
+  asks first, because it is a replacement rather than a merge. Mostly this
+  goes by the version each one declares; where the supplied copy has changed
+  without its version moving -- an author forgetting to say so is the
+  ordinary mistake -- the files are compared instead, and the row says the
+  supplied one differs. If the copy
   here has been changed since it was installed, it is moved aside and kept as
   `_name.bak` rather than lost -- the same bargain as a hook file's `.bak`,
   and the underscore is what keeps the copy from being loaded as a second
