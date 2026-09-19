@@ -34,7 +34,7 @@ def test_a_loaded_database_lists_its_messages(app, tmp_path, monkeypatch):
     entries = known_ids.from_databases(dbc)
 
     assert entries, "the demo database has messages in it"
-    assert all(e.source == "Database" for e in entries)
+    assert all(e.source == "DBC" for e in entries)
     assert any(e.name == "DriveStatus" for e in entries)
 
 
@@ -85,9 +85,9 @@ def test_xcp_is_listed_once_its_identifiers_are_given(app, tmp_path, monkeypatch
 def test_an_id_two_sources_claim_is_pointed_out():
     """The first one wins in the trace, so the second never appears."""
     entries = [
-        known_ids.Known(0x185, False, "DriveStatus", "Database"),
+        known_ids.Known(0x185, False, "DriveStatus", "DBC"),
         known_ids.Known(0x185, False, "TxPDO1 n5", "CANopen"),
-        known_ids.Known(0x200, False, "PumpCommand", "Database"),
+        known_ids.Known(0x200, False, "PumpCommand", "DBC"),
     ]
     assert known_ids.clashes(entries) == {0x185}
 
@@ -121,3 +121,28 @@ def test_the_dialog_says_so_when_there_is_nothing(app, tmp_path, monkeypatch):
     assert dialog.table.rowCount() == 0, "an empty table rather than a dialog that will not open"
     dialog.close()
     window.close()
+
+
+def test_the_list_is_in_numerical_order_whatever_named_each_one(app, tmp_path, monkeypatch):
+    """Somebody reading this has an id in front of them, not a source."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    window.dbc.load(resources.path("demo.dbc"))
+    window.xcp.set_ids(0x7A0, 0x7A1, False)
+
+    entries = known_ids.collect(window.dbc, window.canopen, window.uds, window.xcp)
+
+    ids = [e.can_id for e in entries]
+    assert ids == sorted(ids)
+    assert len({e.source for e in entries}) > 1, "and they are mixed together, not grouped"
+    window.close()
+
+
+def test_29_bit_ids_come_after_the_11_bit_ones():
+    entries = [
+        known_ids.Known(0x18DAF110, True, "wide", "DBC"),
+        known_ids.Known(0x700, False, "narrow", "CANopen"),
+    ]
+    ordered = sorted(entries, key=lambda k: (k.extended, k.can_id, k.source))
+    assert [e.name for e in ordered] == ["narrow", "wide"], "0x700 is not larger than 0x18DAF110"
