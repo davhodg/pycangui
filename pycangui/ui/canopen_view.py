@@ -19,6 +19,7 @@ from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QBrush, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -131,7 +132,7 @@ class CanopenView(QWidget):
             "login, so this is hooks/canopen.py::login, written for your device."
         )
         login.clicked.connect(self._login)
-        read_level = QPushButton("Read level")
+        read_level = QPushButton("Read access level")
         read_level.setToolTip(
             "Ask the selected node which access level is held, through\n"
             "hooks/canopen.py::current_level."
@@ -149,14 +150,18 @@ class CanopenView(QWidget):
             self.nmt_command.addItem(label, command)
         self.nmt_command.setToolTip("Command to send to the selected node (or to all nodes)")
         nmt_bar.addWidget(self.nmt_command)
-        send_nmt = QPushButton("Send")
+        # "Send NMT" rather than "Send": the bar has a second control beside
+        # it and several more below, and a bare Send does not say which of
+        # them it belongs to.
+        send_nmt = QPushButton("Send NMT")
         send_nmt.setToolTip("Send this NMT command to the selected node")
         send_nmt.clicked.connect(self._send_nmt)
         nmt_bar.addWidget(send_nmt)
         nmt_bar.addSpacing(16)
-        nmt_bar.addWidget(QLabel("SYNC producer:"))
-        self.sync_btn = QPushButton("SYNC")
-        self.sync_btn.setCheckable(True)
+        # A tick rather than a button that stays down. It is a state this
+        # tool is in -- producing SYNC or not -- and the label no longer has
+        # to change to say which, since a tick already says it.
+        self.sync_btn = QCheckBox("SYNC producer")
         self.sync_btn.setToolTip(SYNC_TIP)
         self.sync_btn.toggled.connect(self._toggle_sync)
         nmt_bar.addWidget(self.sync_btn)
@@ -361,7 +366,7 @@ class CanopenView(QWidget):
         menu = QMenu(self.nodes)
         menu.addAction("Add node...", self._add_node)
         on_a_node = self.nodes.itemAt(at) is not None
-        for text, slot in (("Login...", self._login), ("Read level", self._read_level)):
+        for text, slot in (("Login...", self._login), ("Read access level", self._read_level)):
             menu.addAction(text, slot).setEnabled(on_a_node)
         menu.exec(self.nodes.viewport().mapToGlobal(at))
 
@@ -393,7 +398,7 @@ class CanopenView(QWidget):
     def _read_level(self) -> None:
         node_id = self.selected_node()
         if node_id is None:
-            self.ctx.warn("Read level: no node selected")
+            self.ctx.warn("Read access level: no node selected")
             return
         self.manager.read_level(node_id)
 
@@ -609,7 +614,6 @@ class CanopenView(QWidget):
 
     @Slot(bool)
     def _toggle_sync(self, on: bool) -> None:
-        self.sync_btn.setText("SYNC on" if on else "SYNC")
         if on:
             # The rate comes from the settings rather than a box beside the
             # button: it is a fact about the bus, agreed once.
