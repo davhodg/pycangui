@@ -140,6 +140,15 @@ def describe_register(register: int) -> str:
     return ", ".join(names) if names else "unknown"
 
 
+#: What an emergency is now, as against what it was when it arrived. The
+#: distinction is the whole point of keeping a list: an arrival log answers
+#: "what happened", and the question in front of somebody with a machine
+#: that will not run is "what is still wrong".
+ACTIVE = "active"
+CLEARED = "cleared"
+RESET = "reset"
+
+
 @dataclass(frozen=True)
 class Emcy:
     """One emergency object, as received."""
@@ -181,6 +190,64 @@ class Emcy:
         if self.manufacturer_text:
             text += f" -- {self.manufacturer_text}"
         return text
+
+
+def states(history) -> list[str]:
+    """What each emergency in a history is now, in the order they arrived.
+
+    One rule, in one place, because the pane marks them as they arrive and
+    an export works them out afterwards: an emergency is active until that
+    *same node* sends a reset, and a reset clears everything that node had
+    outstanding. Emergencies from other nodes are untouched -- one drive
+    recovering says nothing about another.
+    """
+    answer = [ACTIVE] * len(history)
+    outstanding: dict[int, list[int]] = {}
+    for position, emergency in enumerate(history):
+        if emergency.is_reset:
+            answer[position] = RESET
+            for earlier in outstanding.pop(emergency.node_id, []):
+                answer[earlier] = CLEARED
+        else:
+            outstanding.setdefault(emergency.node_id, []).append(position)
+    return answer
+
+
+def as_rows(history) -> list[list[str]]:
+    """The history as text, a row per emergency, for export.
+
+    Every column the pane shows and two it does not: the raw register byte
+    beside its decoding, since a maker quoting a bit number wants the
+    number.
+    """
+    rows = [
+        [
+            "Time",
+            "Node",
+            "Code",
+            "Description",
+            "State",
+            "Register",
+            "Register decoded",
+            "Data",
+            "Manufacturer",
+        ]
+    ]
+    for emergency, state in zip(history, states(history), strict=True):
+        rows.append(
+            [
+                f"{emergency.timestamp:.3f}" if emergency.timestamp else "",
+                str(emergency.node_id),
+                f"{emergency.code:04X}",
+                emergency.description,
+                state,
+                f"{emergency.register:02X}",
+                emergency.register_text,
+                emergency.data_hex,
+                emergency.manufacturer_text,
+            ]
+        )
+    return rows
 
 
 def encode(code: int, register: int, data: bytes = b"") -> bytes:

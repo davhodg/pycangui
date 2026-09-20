@@ -12,6 +12,7 @@ EDS selection flow when a node first appears:
 
 from __future__ import annotations
 
+import csv
 import time
 from pathlib import Path
 
@@ -40,6 +41,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import resources
 from pycangui.canopen import NodeIdentity, find_eds
+from pycangui.canopen import emcy as emcy_mod
 from pycangui.canopen.display import (
     Display,
     as_number,
@@ -78,6 +80,13 @@ COL_WATCH = 5
 # --- columns of the node list, which is a different tree with its own 5 ---
 COL_LEVEL = 4  #: the access level held
 COL_ERROR = 5  #: what the node's own error register says, when asked
+
+# --- columns of the emergencies tree, which is a third one ---
+COL_EMCY_DESCRIPTION = 2
+COL_EMCY_STATE = 3
+#: Arrivals kept across every node. Old enough to have scrolled past a
+#: hundred times, and a tree of thousands is a tree nobody reads.
+MOST_EMERGENCIES = 500
 ERROR_COLOUR = QColor(200, 40, 40)
 LOST_COLOUR = QColor(150, 150, 150)
 ALIVE_BRUSH = QBrush()  # an empty brush restores the theme's normal colour
@@ -119,6 +128,11 @@ class CanopenView(QWidget):
         #: because they were there a moment ago and which one went is the
         #: news, but nothing can be asked of them until they are back.
         self._lost: set[int] = set()
+        #: The Emergencies tree, which is grouped: a row per node, and the
+        #: arrivals under it. The flat list beside it is arrival order, which
+        #: is what says which to drop when there are too many.
+        self._emcy_nodes: dict[int, QTreeWidgetItem] = {}
+        self._emcy_rows: list[QTreeWidgetItem] = []
         mono = QFont("Consolas", 9)
 
         # --- nodes ---------------------------------------------------------
@@ -339,9 +353,13 @@ class CanopenView(QWidget):
 
         self.emcy = QTreeWidget()
         self.emcy.setHeaderLabels(
-            ["Time", "Node", "Code", "Description", "Register", "Data", "Manufacturer"]
+            ["Time / node", "Code", "Description", "State", "Register", "Data", "Manufacturer"]
         )
-        self.emcy.setRootIsDecorated(False)
+        # A row per node with its emergencies under it, rather than one flat
+        # arrival log. An arrival log answers "what happened"; somebody with
+        # a machine that will not run is asking "what is still wrong", and
+        # that question is per node.
+        self.emcy.setRootIsDecorated(True)
         self.emcy.setFont(mono)
         self.emcy.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.emcy.header().setStretchLastSection(True)
@@ -356,7 +374,18 @@ class CanopenView(QWidget):
         )
         emcy_bar = QHBoxLayout()
         emcy_bar.addStretch()
+        save_emcy = QPushButton("Save...")
+        save_emcy.setToolTip(
+            "Write what has arrived to a CSV file, each emergency with what it\n"
+            "is now: active, or cleared by a later reset from the same node."
+        )
+        save_emcy.clicked.connect(self._save_emergencies)
+        emcy_bar.addWidget(save_emcy)
         clear_emcy = QPushButton("Clear")
+        clear_emcy.setToolTip(
+            "Empty this list. It is pycangui's record of what it heard, so this\n"
+            "does not touch what the nodes themselves kept -- see the Faults tab."
+        )
         clear_emcy.clicked.connect(self.clear_emergencies)
         emcy_bar.addWidget(clear_emcy)
         emcy_l.addLayout(emcy_bar)
@@ -724,35 +753,108 @@ class CanopenView(QWidget):
         self._offer_node_buttons()  # nothing in the list, so nothing selected
 
     # --- emergencies ----------------------------------------------------------------
+    def _emcy_parent(self, node_id: int) -> QTreeWidgetItem:
+        """The row this node's emergencies hang under, made if it is new."""
+        parent = self._emcy_nodes.get(node_id)
+        if parent is None:
+            parent = QTreeWidgetItem([f"Node {node_id}"])
+            self._emcy_nodes[node_id] = parent
+            self.emcy.addTopLevelItem(parent)
+            parent.setExpanded(True)
+        return parent
+
+    def _say_how_many(self, node_id: int) -> None:
+        """The node's own row says how much of this is still a problem."""
+        parent = self._emcy_nodes.get(node_id)
+        if parent is None:
+            return
+        children = [parent.child(i) for i in range(parent.childCount())]
+        active = sum(1 for child in children if child.text(COL_EMCY_STATE) == emcy_mod.ACTIVE)
+        parent.setText(COL_EMCY_DESCRIPTION, f"{active} active" if active else "all clear")
+        parent.setForeground(COL_EMCY_DESCRIPTION, ERROR_COLOUR if active else RESET_COLOUR)
+
     @Slot(object)
     def on_emcy(self, emergency) -> None:
+        """One arrival, under its node, and what it does to the others.
+
+        A reset clears what that node had outstanding and nothing else: one
+        drive recovering says nothing about another. The rule is
+        ``emcy.states``, which is also what the CSV export uses, so the two
+        cannot drift apart.
+        """
+        parent = self._emcy_parent(emergency.node_id)
+        state = emcy_mod.RESET if emergency.is_reset else emcy_mod.ACTIVE
         item = QTreeWidgetItem(
             [
                 f"{emergency.timestamp:.3f}" if emergency.timestamp else "",
-                str(emergency.node_id),
                 f"{emergency.code:04X}",
                 emergency.description,
+                state,
                 f"{emergency.register:02X} ({emergency.register_text})",
                 emergency.data_hex,
                 emergency.manufacturer_text,
             ]
         )
+        item.setForeground(
+            COL_EMCY_DESCRIPTION, RESET_COLOUR if emergency.is_reset else ERROR_COLOUR
+        )
         if emergency.is_reset:
-            item.setForeground(3, RESET_COLOUR)
-        else:
-            item.setForeground(3, ERROR_COLOUR)
-        self.emcy.addTopLevelItem(item)
+            for position in range(parent.childCount()):
+                child = parent.child(position)
+                if child.text(COL_EMCY_STATE) == emcy_mod.ACTIVE:
+                    child.setText(COL_EMCY_STATE, emcy_mod.CLEARED)
+                    child.setForeground(COL_EMCY_DESCRIPTION, LOST_COLOUR)
+        parent.addChild(item)
+        self._emcy_rows.append(item)
+        self._say_how_many(emergency.node_id)
         self.emcy.scrollToBottom()
-        if self.emcy.topLevelItemCount() > 500:
-            self.emcy.takeTopLevelItem(0)
+        self._trim_emergencies()
         # An emergency is an error, and an emergency reset is the one line
         # in the log that is good news: it says the fault that filled the
         # screen a moment ago has gone.
         self.ctx.log(f"EMCY {emergency}", GOOD if emergency.is_reset else ERROR)
 
+    def _trim_emergencies(self) -> None:
+        """Oldest first, across every node, and a node row goes with its last one."""
+        while len(self._emcy_rows) > MOST_EMERGENCIES:
+            oldest = self._emcy_rows.pop(0)
+            parent = oldest.parent()
+            if parent is None:
+                continue
+            parent.removeChild(oldest)
+            if parent.childCount() == 0:
+                node_id = next(n for n, row in self._emcy_nodes.items() if row is parent)
+                self.emcy.takeTopLevelItem(self.emcy.indexOfTopLevelItem(parent))
+                self._emcy_nodes.pop(node_id, None)
+
+    def _save_emergencies(self) -> None:
+        """Write the history to CSV, each entry with what it is now.
+
+        From the history rather than from the tree: the tree is a view of
+        it, and what somebody attaches to a report should be the record.
+        """
+        history = self.manager.emcy_history
+        if not history:
+            self.ctx.warn("No emergencies to save.")
+            return
+        path = folders.save_file(
+            self, self.ctx, "emergencies", "Save emergencies", "CSV (*.csv)", "emergencies.csv"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                csv.writer(handle).writerows(emcy_mod.as_rows(history))
+        except OSError as exc:
+            self.ctx.error(f"Could not write {path}: {exc}")
+            return
+        self.ctx.log(f"{len(history)} emergencies written to {path}")
+
     @Slot()
     def clear_emergencies(self) -> None:
         self.emcy.clear()
+        self._emcy_nodes.clear()
+        self._emcy_rows.clear()
         self.manager.clear_emcy_history()
 
     # --- object dictionary -------------------------------------------------------

@@ -258,3 +258,102 @@ def test_what_was_read_is_still_there_when_the_node_is_chosen_again(app, window)
     view.nodes.setCurrentItem(view._node_item(7))
     assert "Faulted" in view.faults.state.text()
     assert view.faults.stored.topLevelItemCount() == 1
+
+
+# --- the emergencies tab: grouped, and what is still wrong ---------------------------
+def emcy(node_id, code, register=0x01):
+    from pycangui.canopen.emcy import Emcy
+
+    return Emcy(node_id=node_id, code=code, register=register, timestamp=1.0)
+
+
+def node_rows(view):
+    tree = view.emcy
+    return {
+        tree.topLevelItem(i).text(0): tree.topLevelItem(i) for i in range(tree.topLevelItemCount())
+    }
+
+
+def test_emergencies_are_grouped_under_the_node_that_sent_them(app, window):
+    view = window.canopen_view
+    for one in (emcy(1, 0x2310), emcy(1, 0x3210), emcy(5, 0x4210)):
+        view.on_emcy(one)
+
+    rows = node_rows(view)
+    assert set(rows) == {"Node 1", "Node 5"}
+    assert rows["Node 1"].childCount() == 2
+    assert rows["Node 5"].childCount() == 1
+
+
+def test_a_node_row_says_how_much_is_still_wrong(app, window):
+    from pycangui.ui.canopen_view import COL_EMCY_DESCRIPTION
+
+    view = window.canopen_view
+    view.on_emcy(emcy(1, 0x2310))
+    view.on_emcy(emcy(1, 0x3210))
+    assert node_rows(view)["Node 1"].text(COL_EMCY_DESCRIPTION) == "2 active"
+
+    view.on_emcy(emcy(1, 0x0000))
+    assert node_rows(view)["Node 1"].text(COL_EMCY_DESCRIPTION) == "all clear"
+
+
+def test_a_reset_clears_that_node_and_leaves_the_others(app, window):
+    from pycangui.canopen.emcy import ACTIVE, CLEARED
+    from pycangui.ui.canopen_view import COL_EMCY_STATE
+
+    view = window.canopen_view
+    view.on_emcy(emcy(1, 0x2310))
+    view.on_emcy(emcy(5, 0x4210))
+    view.on_emcy(emcy(1, 0x0000))
+
+    rows = node_rows(view)
+    assert rows["Node 1"].child(0).text(COL_EMCY_STATE) == CLEARED
+    assert rows["Node 5"].child(0).text(COL_EMCY_STATE) == ACTIVE, "a different machine"
+
+
+def test_the_oldest_arrivals_go_first_whichever_node_sent_them(app, window, monkeypatch):
+    """Grouping is how it is shown; arrival order is what says which to
+    drop. A node whose last one goes takes its row with it."""
+    from pycangui.ui import canopen_view as view_mod
+
+    view = window.canopen_view
+    monkeypatch.setattr(view_mod, "MOST_EMERGENCIES", 3)
+    for one in (emcy(1, 0x2310), emcy(5, 0x4210), emcy(1, 0x3210), emcy(1, 0x4310)):
+        view.on_emcy(one)
+
+    rows = node_rows(view)
+    assert rows["Node 1"].childCount() == 2, "its oldest went, being the oldest of all"
+    assert rows["Node 5"].childCount() == 1, "newer than that one, so it stays"
+
+    monkeypatch.setattr(view_mod, "MOST_EMERGENCIES", 2)
+    view.on_emcy(emcy(1, 0x5000))
+
+    rows = node_rows(view)
+    assert "Node 5" not in rows, "its only one went, and the row went with it"
+    assert rows["Node 1"].childCount() == 2
+
+
+def test_saving_writes_what_arrived_and_what_it_is_now(app, window, tmp_path, monkeypatch):
+    import csv
+
+    from pycangui.canopen.emcy import ACTIVE, CLEARED, RESET
+    from pycangui.ui import folders
+
+    window.canopen.emcy_history.extend([emcy(1, 0x2310), emcy(5, 0x4210), emcy(1, 0x0000)])
+    out = tmp_path / "emergencies.csv"
+    monkeypatch.setattr(folders, "save_file", lambda *_a, **_k: str(out))
+
+    window.canopen_view._save_emergencies()
+
+    rows = list(csv.reader(out.read_text(encoding="utf-8").splitlines()))
+    assert rows[0][:5] == ["Time", "Node", "Code", "Description", "State"]
+    assert [r[4] for r in rows[1:]] == [CLEARED, ACTIVE, RESET]
+
+
+def test_saving_nothing_says_so_rather_than_writing_an_empty_file(app, window, monkeypatch):
+    from pycangui.ui import folders
+
+    asked: list = []
+    monkeypatch.setattr(folders, "save_file", lambda *a, **k: asked.append(a))
+    window.canopen_view._save_emergencies()
+    assert not asked, "no dialog for a file with nothing in it"

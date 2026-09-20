@@ -123,3 +123,51 @@ def test_history_is_bounded_and_clearable(stack):
     assert manager.emcy_history[0].timestamp == 100.0  # oldest dropped
     manager.clear_emcy_history()
     assert manager.emcy_history == []
+
+
+# --- what an emergency is now, as against what it was -----------------------------------
+def make(node_id, code, at=0.0):
+    return Emcy(node_id=node_id, code=code, register=0x01, timestamp=at)
+
+
+def test_an_emergency_is_active_until_its_own_node_resets():
+    """An arrival log answers "what happened". Somebody with a machine that
+    will not run is asking "what is still wrong"."""
+    from pycangui.canopen.emcy import ACTIVE, CLEARED, RESET, states
+
+    history = [make(1, 0x2310), make(1, 0x3210), make(1, 0x0000), make(1, 0x4210)]
+    assert states(history) == [CLEARED, CLEARED, RESET, ACTIVE]
+
+
+def test_one_node_recovering_says_nothing_about_another():
+    from pycangui.canopen.emcy import ACTIVE, CLEARED, RESET, states
+
+    history = [make(1, 0x2310), make(2, 0x3210), make(2, 0x0000)]
+    assert states(history) == [ACTIVE, CLEARED, RESET]
+
+
+def test_a_node_that_faults_again_after_a_reset_is_active_again():
+    from pycangui.canopen.emcy import ACTIVE, CLEARED, RESET, states
+
+    history = [make(1, 0x2310), make(1, 0x0000), make(1, 0x2310)]
+    assert states(history) == [CLEARED, RESET, ACTIVE]
+
+
+def test_nothing_at_all_is_not_an_error():
+    from pycangui.canopen.emcy import states
+
+    assert states([]) == []
+
+
+def test_the_export_carries_the_state_and_the_raw_register():
+    """A maker quoting a bit number wants the number, not only the words."""
+    from pycangui.canopen.emcy import ACTIVE, as_rows
+
+    rows = as_rows([Emcy(node_id=3, code=0x2310, register=0x06, data=b"\x01\x02")])
+    assert rows[0][:5] == ["Time", "Node", "Code", "Description", "State"]
+    assert rows[1][1] == "3"
+    assert rows[1][2] == "2310"
+    assert rows[1][4] == ACTIVE
+    assert rows[1][5] == "06", "the byte itself"
+    assert "current" in rows[1][6], "and what it decodes to, beside it"
+    assert rows[1][7] == "01 02"

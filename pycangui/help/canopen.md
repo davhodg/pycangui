@@ -91,14 +91,30 @@ timer and mapped objects. **Read from node** reads what the node is actually
 configured to send and receive, rather than what its EDS says it was built
 with; edit a cell, or use **Map object...** and **Unmap**, and **Write to node**
 writes the selected PDO's communication and mapping records back over SDO. The *Live PDOs* tab shows each
-PDO with its receive count and rate, and the *Emergencies* tab decodes EMCY
-objects: the CiA 301 error code, the error register bit by bit, and the five
-manufacturer-specific bytes as decoded by
-[`hooks/canopen.py::emcy_manufacturer`](hooks.md) (only the device maker knows what those
-mean, so that is a hook). **Store** / **Restore
+PDO with its receive count and rate. **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
 node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is the [CANopen DCF compare](compare.md) plugin.
+
+### Emergencies: what arrived, and what is still wrong
+
+The *Emergencies* tab decodes EMCY objects -- the CiA 301 error code, the
+error register bit by bit, and the five manufacturer-specific bytes as decoded
+by [`hooks/canopen.py::emcy_manufacturer`](hooks.md), since only the device
+maker knows what those mean.
+
+They are **grouped by node**, and each one says whether it is **active** or
+**cleared**: an emergency stands until that same node sends a reset (code
+`0000`), which clears what that node had outstanding and nothing else -- one
+drive recovering says nothing about another. Each node's own row says how many
+of its faults are still active, or *all clear*. An arrival log answers "what
+happened"; somebody with a machine that will not run is asking "what is still
+wrong", and that question is per node.
+
+**Save...** writes the lot to CSV, each entry with its state, the raw error
+register byte beside its decoding, and the manufacturer bytes -- something to
+attach to a report or send to a maker. **Clear** empties pycangui's record and
+does not touch what the nodes kept, which is the next section.
 
 ### Faults: what the node says when asked
 
