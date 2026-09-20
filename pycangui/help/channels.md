@@ -103,6 +103,42 @@ straight away is saying the cause is still there, and restarting it onto the
 wrong bitrate only puts more error frames on a bus that has working nodes on
 it. Fix the cause, then recover.
 
+## Message filter
+
+Click a channel in the status bar and choose **Message filter...** to accept
+only certain identifiers on it. It is the one thing in pycangui that loses
+frames.
+
+Everywhere else that narrows what you see -- the [trace](trace.md)'s filter
+box and Filter menu, Pause, Latest per ID -- hides rows and keeps the data,
+and relaxing it brings everything back. A message filter is handed to
+python-can, which gives it to the adapter's driver where the adapter can do
+the work and drops the frames as it reads them where it cannot. Either way
+they never reach pycangui: not traced, not decoded, not counted, not
+recorded, not exported, and not answered. A filter that leaves out a node's
+SDO replies stops [CANopen](canopen.md) talking to that node, and nothing
+about the symptom will point at the filter.
+
+So a filtered channel **says FILTERED in the status bar and blinks**, for as
+long as the filter is on. That is deliberate and there is no way to quieten
+it: somebody who set a filter an hour ago and forgot is exactly who it is
+for. Applying one is also a warning in the [Event Log](event-log.md), and it
+is said again on every connect.
+
+A rule is an identifier and a mask, and a frame is accepted when its
+identifier, masked, equals the rule's identifier masked. All bits set -- the
+default -- is one identifier exactly. Clearing the low bits widens the rule
+to a block, so `0x180/0x780` is every id from 0x180 to 0x1FF, which on
+CANopen is TPDO1 from any node. Standard and 29-bit identifiers are separate,
+so a bus carrying both needs a rule for each. **No rules at all means every
+frame is accepted**, which is the normal state.
+
+Type an identifier into the box at the bottom of the dialog to be told
+whether the rules as they stand would let it through, before finding out on
+a bus. Rules are kept per channel in the workspace, and are back in force as
+soon as the channel is opened -- including one that was left in place when
+the workspace was last closed.
+
 ## Before it disturbs equipment
 
 Every time pycangui starts it shows a notice saying what it is capable of, which you click through with **Continue**, or leave with **Quit**. 

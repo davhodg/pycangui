@@ -47,7 +47,7 @@ from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
-from pycangui.ui import event_colours, folders, keep_file, messages
+from pycangui.ui import event_colours, folders, keep_file, message_filter, messages
 from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.bus_status import BusStatus
 from pycangui.ui.canopen_view import CanopenView
@@ -289,7 +289,7 @@ class MainWindow(QMainWindow):
         self._arrange_default()
 
         self.setStatusBar(QStatusBar())
-        self.bus_status = BusStatus(self.channels)
+        self.bus_status = BusStatus(self.channels, ctx=self.ctx)
         self.statusBar().addWidget(self.bus_status, 1)
         self._frame_count = 0
         self._status_timer = QTimer(self, interval=500, timeout=self._update_status)
@@ -297,6 +297,10 @@ class MainWindow(QMainWindow):
 
         # --- wiring ----------------------------------------------------------
         self.channels.frames.connect(self._decode_frames)
+        # A channel gets back the filter this workspace last put on it, and
+        # a new one gets whatever was saved under its name before.
+        message_filter.restore(self.ctx, self.channels)
+        self.channels.channel_added.connect(self._restore_filter)
         self.recorder.state.connect(self._on_record_state)
         self.recorder.error.connect(self.events.error)
         self.recorder.note.connect(self.events.information)
@@ -2004,6 +2008,24 @@ class MainWindow(QMainWindow):
     @Slot(list)
     def _count_frames(self, frames: list) -> None:
         self._frame_count += len(frames)
+
+    @Slot(str)
+    def _restore_filter(self, name: str) -> None:
+        """Give a channel that has just appeared the filter saved for it.
+
+        A rename arrives here too, and it is the same bus with the same
+        filter still on the driver -- so what is on it wins, and is written
+        down again under the name it now has. Reading the new name's saved
+        rules instead would quietly take the filter off, which is the safe
+        direction but not the truthful one.
+        """
+        bus = self.channels.get(name)
+        if bus is None:
+            return
+        if bus.filters:
+            message_filter.remember(self.ctx, name, bus.filters)
+            return
+        bus.set_filters(message_filter.saved_rules(self.ctx, name))
 
     def _update_status(self) -> None:
         self.bus_status.refresh()

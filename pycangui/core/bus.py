@@ -27,6 +27,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from pycangui.core import bus_health
 from pycangui.core.detect import coerce_channel, summarise, takes_data_bitrate, takes_fd
+from pycangui.core.filters import Rule, as_can_filters, describe
 
 
 def frame_bits(dlc: int, extended: bool, fd: bool) -> int:
@@ -170,6 +171,9 @@ class BusManager(QObject):
         self._erroring = False
         self._errors_at = 0.0
         self._collector: _Collector | None = None
+        #: Acceptance rules handed to the driver: see core/filters.py. Empty
+        #: is the normal state and means everything gets through.
+        self.filters: list[Rule] = []
         #: Channels share a clock so frames from different adapters line up.
         self._t0 = time.monotonic() if clock_start is None else clock_start
         self._shared_clock = clock_start is not None
@@ -246,6 +250,9 @@ class BusManager(QObject):
         if not self._shared_clock:
             self._t0 = time.monotonic()
         self._collector = _Collector(self.channel_name, self._t0)
+        # Before the notifier starts, so a filtered channel never has a
+        # window at the beginning where everything comes through.
+        self._apply_filters()
         self.notifier = can.Notifier(self.bus, [self._collector], timeout=0.02)
         self._timer.start()
         self.bitrate = bitrate
@@ -281,6 +288,49 @@ class BusManager(QObject):
         where = f"{interface}:{channel_value}" + (f" [{identity}]" if identity else "")
         self.description = f"{where} @ {bitrate} bit/s{fd_text}"
         self.connected.emit(self.description)
+
+    # --- acceptance filtering ---------------------------------------------------
+    def set_filters(self, rules: list[Rule]) -> None:
+        """Accept only these identifiers, or everything where there are none.
+
+        Kept whether or not a bus is open, so it is in force the moment one
+        is: a filter that only took effect on a channel that happened to be
+        connected would be off at exactly the time somebody set it.
+        """
+        was = self.filters
+        self.filters = list(rules)
+        if self.bus is None:
+            return
+        # Taking a filter off is worth a line of its own, and only here:
+        # every connect would otherwise announce the absence of one.
+        self._apply_filters(clearing=bool(was) and not self.filters)
+
+    def _apply_filters(self, clearing: bool = False) -> None:
+        """Hand them to python-can, and say out loud what is now hidden.
+
+        Said on every connect rather than only on a change. This is the one
+        setting in pycangui that makes traffic disappear, and the line in the
+        log is the record of when it started -- what somebody reads when they
+        ask why the node stopped answering an hour ago.
+        """
+        if self.bus is None:
+            return
+        try:
+            self.bus.set_filters(as_can_filters(self.filters))
+        except Exception as exc:  # a backend that will not take them
+            self.warning.emit(
+                f"{self.channel_name}: this adapter would not take a message filter "
+                f"({exc}), so every frame is still arriving."
+            )
+            return
+        if self.filters:
+            self.warning.emit(
+                f"{self.channel_name}: message filter applied -- {describe(self.filters)}. "
+                "Everything else is dropped before pycangui sees it, so it is not "
+                "traced, decoded, recorded or answered."
+            )
+        elif clearing:
+            self.note.emit(f"{self.channel_name}: message filter cleared, all ids accepted")
 
     @Slot()
     def disconnect_bus(self) -> None:
@@ -431,6 +481,7 @@ class BusManager(QObject):
             self.warning.emit(f"{name}: not connected, so there is no controller to restart")
             return False
         was = self.health
+        reopened = False
         if self.interface == "socketcan":
             done = self._restart_socketcan()
         else:
@@ -443,7 +494,13 @@ class BusManager(QObject):
                     self.note.emit(f"{name}: the adapter's reset failed ({exc}); reopening")
             if not done:
                 self.connect_bus(**self._opened_with)
-                done = self.is_connected
+                done = reopened = self.is_connected
+        if done and not reopened:
+            # A restart is the driver's or the kernel's own, and what it
+            # does to acceptance filtering is theirs too. Set them again
+            # rather than find out. Not after a reopen: connect_bus has
+            # already done it, and saying so twice reads as two filters.
+            self._apply_filters()
         if done:
             self._frame_health = None
             self._erroring = False
