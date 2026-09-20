@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -47,6 +48,7 @@ RETRIES_KEY = "canopen.sdo_retries"
 CHANNELS_KEY = "canopen.sdo_channels"
 HEARTBEATS_KEY = "canopen.heartbeat_timeouts"
 SYNC_KEY = "canopen.sync_period_ms"
+IDENTIFY_KEY = "canopen.identify_automatically"
 
 #: How often SYNC goes out while it is switched on. A rate, which is a
 #: settled choice about a bus, rather than something to decide each time
@@ -73,6 +75,16 @@ SYNC_TIP = (
     "It belongs here rather than beside the button: it is a fact about the\n"
     "bus, agreed once, not a decision to take every time synchronous PDOs\n"
     "are wanted."
+)
+IDENTIFY_TIP = (
+    "Read 0x1018 and 0x1000 from a node the first time it is heard, which\n"
+    "is what matches an EDS to it and what names it in the list.\n"
+    "\n"
+    "It is the only thing pycangui sends a node without being asked -- five\n"
+    "SDO uploads as the row appears -- so switching it off makes 'nothing\n"
+    "goes out unless I ask for it' true, which is what watching somebody\n"
+    "else's live machine wants. The cost is that a new node stays Node <id>\n"
+    "with no EDS until Identify or Load EDS is pressed."
 )
 TIMEOUT_TIP = (
     "How long to wait for a node to answer each SDO request, for every SDO\n"
@@ -105,6 +117,9 @@ class CanopenSettings:
     #: node -> milliseconds, for the nodes whose timeout is not worked out.
     heartbeat_timeouts: dict[int, float] = field(default_factory=dict)
     sync_period_ms: float = DEFAULT_SYNC_MS
+    #: Whether a node is asked who it is as soon as it is heard. On, because
+    #: an EDS is matched from the answer and nothing else would match one.
+    identify: bool = True
 
 
 def why_not(node_id: int, request: int, response: int) -> str:
@@ -167,6 +182,7 @@ def load(ctx: Context) -> CanopenSettings:
         out.retries = min(max(retries, 0), MAX_RETRIES)
     if (sync := _milliseconds(ctx.settings.get(SYNC_KEY))) is not None:
         out.sync_period_ms = min(max(sync, MIN_SYNC_MS), MAX_SYNC_MS)
+    out.identify = bool(ctx.settings.get(IDENTIFY_KEY, True))
     saved = ctx.settings.get(CHANNELS_KEY, {})
     if isinstance(saved, dict):
         for node, pair in saved.items():
@@ -191,6 +207,7 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
     ctx.settings.set(TIMEOUT_KEY, settings.timeout_ms)
     ctx.settings.set(RETRIES_KEY, settings.retries)
     ctx.settings.set(SYNC_KEY, settings.sync_period_ms)
+    ctx.settings.set(IDENTIFY_KEY, settings.identify)
     # In hex, the way a COB-ID is spoken, so the file reads as the dialog does.
     ctx.settings.set(
         CHANNELS_KEY,
@@ -253,6 +270,9 @@ class CanopenSettingsDialog(QDialog):
         self.sync_period.setSuffix(" ms")
         self.sync_period.setValue(settings.sync_period_ms)
         self.sync_period.setToolTip(SYNC_TIP)
+        self.identify = QCheckBox("Identify a node when it is first heard")
+        self.identify.setChecked(settings.identify)
+        self.identify.setToolTip(IDENTIFY_TIP)
         # "Every node" rather than "SDO, every node": the SYNC period is
         # not an SDO setting, and it moved in here the moment the rate
         # stopped being a box beside the button. What each row is about is
@@ -262,6 +282,7 @@ class CanopenSettingsDialog(QDialog):
         form.addRow("SDO timeout:", self.timeout)
         form.addRow("SDO retries:", self.retries)
         form.addRow("SYNC period:", self.sync_period)
+        form.addRow("", self.identify)
 
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
@@ -390,6 +411,7 @@ class CanopenSettingsDialog(QDialog):
             timeout_ms=self.timeout.value(),
             retries=self.retries.value(),
             sync_period_ms=self.sync_period.value(),
+            identify=self.identify.isChecked(),
             channels={
                 row.node_id: (row.request, row.response)
                 for row in rows

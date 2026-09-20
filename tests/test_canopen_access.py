@@ -284,6 +284,7 @@ def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
     offered = {a.text() for a in view.node_menu(7).actions() if not a.isSeparator()}
     assert offered == {
         "Add node...",
+        "Identify",
         "Login...",
         "Read access level",
         "Load EDS...",
@@ -392,3 +393,58 @@ def test_coming_back_does_not_re_read_the_identity(app, window, monkeypatch):
     window.canopen.node_back.emit(7)
 
     assert probed == []
+
+
+# --- identifying a node, and not doing it unasked -----------------------------------
+def test_a_node_can_be_identified_again_by_hand(app, window, monkeypatch):
+    """Nothing else re-reads 0x1018: a node is identified once, when its row
+    appears, so a reflashed one keeps what it said then."""
+    view = window.canopen_view
+    seen_by_hand(window, 7)
+    view.nodes.setCurrentItem(view._node_item(7))
+    asked: list = []
+    monkeypatch.setattr(window.canopen, "identify", asked.append)
+
+    view._identify()
+
+    assert asked == [7]
+
+
+def test_identifying_is_the_only_thing_sent_to_a_node_unasked(app, window, monkeypatch):
+    """Which is what makes switching it off worth having: with it off,
+    nothing goes out that nobody asked for."""
+    from pycangui.ui import canopen_settings
+
+    settings = canopen_settings.load(window.ctx)
+    settings.identify = False
+    canopen_settings.save(window.ctx, settings)
+
+    asked: list = []
+    monkeypatch.setattr(window.canopen, "identify", asked.append)
+    seen_by_hand(window, 9)
+
+    assert asked == [], "heard, listed, and not spoken to"
+    assert window.canopen_view._node_item(9) is not None, "but still in the list"
+
+
+def test_it_is_on_unless_somebody_turns_it_off(app, window, monkeypatch):
+    """An EDS is matched from the answer, and nothing else would match one."""
+    from pycangui.ui import canopen_settings
+
+    assert canopen_settings.load(window.ctx).identify is True
+
+    asked: list = []
+    monkeypatch.setattr(window.canopen, "identify", asked.append)
+    seen_by_hand(window, 11)
+
+    assert asked == [11]
+
+
+def test_the_choice_is_kept_in_the_workspace(app, window):
+    from pycangui.ui import canopen_settings
+
+    settings = canopen_settings.load(window.ctx)
+    settings.identify = False
+    canopen_settings.save(window.ctx, settings)
+
+    assert canopen_settings.load(window.ctx).identify is False

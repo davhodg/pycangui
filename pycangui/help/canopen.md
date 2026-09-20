@@ -37,6 +37,11 @@ while the highlighted one is lost: a button that looks pressable and then says
 "no node selected" is a worse way to find that out than one that is plainly
 not.
 
+**Identify** asks the selected node who it is -- 0x1018 and 0x1000 -- which
+is what an EDS is matched from. It happens by itself the first time a node is
+heard, and *only* then: nothing re-reads it afterwards, so a node you have
+reflashed keeps what it said before until this is pressed.
+
 **Add node...** puts in a node that has not been heard from:
 one with its heartbeat switched off, held in pre-operational, or sitting in its
 bootloader. It is identified straight away. **Login...** asks the selected
@@ -62,6 +67,12 @@ reaching for a row of buttons.
 **Settings...** holds what is set once rather than done, and is kept in the
 workspace:
 
+- **Identify a node when it is first heard** is on to begin with, and is the
+  one thing pycangui sends a node without being asked: five SDO uploads as
+  its row appears. Turn it off and nothing goes out that you did not ask for,
+  which is what watching somebody else's live machine wants -- at the cost
+  that a new node stays `Node <id>` with no EDS until *Identify* or *Load
+  EDS* is pressed.
 - **SDO timeout** is how long to wait for a node to answer each SDO request,
   and **retries** is how many more times to ask before giving up. The
   defaults, 300 ms and none, are those of the `canopen` library pycangui uses.

@@ -100,6 +100,13 @@ NMT_COMMANDS_UI = (
 )
 
 
+IDENTIFY_TIP = (
+    "Read 0x1018 and 0x1000 from the selected node: who it is, which is\n"
+    "what an EDS is matched from. A node is identified once, when its row\n"
+    "appears, so a reflashed one keeps what it said then until this is\n"
+    "pressed -- and with automatic identification off in Settings, nothing\n"
+    "has asked it at all."
+)
 SYNC_TIP = (
     "Transmit SYNC (0x080), so synchronous PDOs are exchanged. How often\n"
     "is in Settings: a rate is a fact about the bus, agreed once, rather\n"
@@ -163,6 +170,9 @@ class CanopenView(QWidget):
             "hooks/canopen.py::current_level."
         )
         read_level.clicked.connect(self._read_level)
+        identify = QPushButton("Identify")
+        identify.setToolTip(IDENTIFY_TIP)
+        identify.clicked.connect(self._identify)
         load_btn = QPushButton("Load EDS...")
         load_btn.setToolTip(
             "Choose the EDS for the selected node by hand. Normally one is\n"
@@ -174,14 +184,14 @@ class CanopenView(QWidget):
         # are. Login and Read access level are two halves of one question,
         # so they sit together. Add node is not here: it acts on the list
         # rather than on a row of it, which puts it above with the network.
-        for b in (login, read_level, load_btn):
+        for b in (identify, login, read_level, load_btn):
             node_bar.addWidget(b)
         node_bar.addStretch()
         #: Everything under the list acts on the node highlighted in it, so
         #: with nothing highlighted there is nothing for them to act on. A
         #: button that looks pressable and then says "no node selected" is a
         #: worse way to find that out than a button that is plainly not.
-        self._node_buttons = [login, read_level, load_btn]
+        self._node_buttons = [identify, login, read_level, load_btn]
         # Above the list: the network, and what changes who is on it. NMT and
         # SYNC are not about whichever row happens to be highlighted -- they
         # are services the whole bus hears, and NMT with no node selected
@@ -453,7 +463,11 @@ class CanopenView(QWidget):
         menu.addAction("Add node...", self._add_node)
         on_a_node = self._can_act_on(node_id)
         for group in (
-            (("Login...", self._login), ("Read access level", self._read_level)),
+            (
+                ("Identify", self._identify),
+                ("Login...", self._login),
+                ("Read access level", self._read_level),
+            ),
             (("Load EDS...", self._load_eds_clicked), ("Read RPDO config", self._read_rpdos)),
             (
                 ("Store", self._store),
@@ -491,6 +505,20 @@ class CanopenView(QWidget):
         level, password = dialog.chosen()
         self.ctx.settings.set(canopen_login.LEVEL_KEY, level)  # the level, never the password
         self.manager.login(node_id, level, password)
+
+    def _identify(self) -> None:
+        """Ask the selected node who it is, again if need be.
+
+        Nothing else re-reads 0x1018. A node is identified once, when its
+        row appears, so one that has been reflashed -- or that was added by
+        hand before it was powered -- keeps whatever it said then, and with
+        automatic identification switched off it never said anything.
+        """
+        node_id = self.selected_node()
+        if node_id is None:
+            self.ctx.warn("Identify: no node selected")
+            return
+        self.manager.identify(node_id)
 
     def _read_level(self) -> None:
         node_id = self.selected_node()
@@ -553,7 +581,11 @@ class CanopenView(QWidget):
             self.nodes.addTopLevelItem(item)
             if self.nodes.currentItem() is None:
                 self.nodes.setCurrentItem(item)
-            self.manager.identify(node_id)
+            # The one thing pycangui sends a node unasked, so it is the one
+            # thing worth being able to stop. Off, the row keeps its number
+            # and waits for Identify or Load EDS.
+            if canopen_settings.load(self.ctx).identify:
+                self.manager.identify(node_id)
         else:
             item.setText(2, state)  # a fresh heartbeat replaces any "lost" text
 
