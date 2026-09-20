@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.canopen import PdoConfig, PdoEntry
-from pycangui.canopen.manager import CanopenManager, od_entries
+from pycangui.canopen.manager import CanopenManager, mappable, mapped_bits, od_entries
 from pycangui.core.context import Context
 
 COL_NAME, COL_COBID, COL_ENABLED, COL_TRANS, COL_INHIBIT, COL_TIMER, COL_BITS = range(7)
@@ -66,9 +66,14 @@ class ObjectPicker(QDialog):
         node = manager.node(node_id)
         if node is not None:
             for index, sub, var, name in od_entries(node.object_dictionary):
-                if var is None or index < 0x2000:
-                    continue  # skip communication-profile objects and container rows
-                bits = var.bit_length or 8
+                if index < 0x2000 or not mappable(var):
+                    # Communication-profile objects, the container row an
+                    # array or record puts in front of its subs, and
+                    # anything whose length is not known in advance: a PDO
+                    # has a fixed layout, so a string or a domain has no
+                    # length to write into a mapping entry.
+                    continue
+                bits = mapped_bits(var)
                 self.entries.append(PdoEntry(index, sub or 0, bits, name))
                 self.list.addItem(f"{index:04X}:{(sub or 0):02X}  {name}  ({bits} bits)")
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)

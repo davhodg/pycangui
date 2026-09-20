@@ -114,7 +114,17 @@ every TPDO and RPDO with its COB-ID, transmission type, inhibit time, event
 timer and mapped objects. **Read from node** reads what the node is actually
 configured to send and receive, rather than what its EDS says it was built
 with; edit a cell, or use **Map object...** and **Unmap**, and **Write to node**
-writes the selected PDO's communication and mapping records back over SDO. The *Live PDOs* tab shows each
+writes the selected PDO's communication and mapping records back over SDO.
+
+**Map object...** lists what the node's EDS says it has from 0x2000 up, each
+with the width its data type gives it, which is the length written into the
+mapping entry. Two things are left out: the communication profile below
+0x2000, which is how a node is configured rather than what it measures, and
+anything whose length is not known in advance -- a string, a domain -- since
+a PDO is eight bytes with a layout agreed beforehand and there is no length
+to write for those. A node with no EDS loaded has nothing to offer here.
+
+The *Live PDOs* tab shows each
 PDO with its receive count and rate. **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a

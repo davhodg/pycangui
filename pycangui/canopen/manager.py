@@ -1500,6 +1500,35 @@ def od_entries(
     return out
 
 
+def mappable(var: ODVariable | None) -> bool:
+    """Whether this object can go into a PDO at all.
+
+    A PDO is eight bytes with a fixed layout agreed in advance, so an object
+    whose length is not known in advance cannot be in one. That is what
+    ``fixed_size`` answers: the struct-packed numeric types are fixed, a
+    VISIBLE_STRING, an OCTET_STRING and a DOMAIN are not. Offering one of
+    those with a made-up length would produce a mapping the device refuses,
+    or worse, accepts.
+    """
+    return var is not None and var.data_type is not None and var.fixed_size
+
+
+def mapped_bits(var: ODVariable) -> int:
+    """How many bits this object occupies in a PDO.
+
+    From the data type, which is where a PDO mapping entry's length comes
+    from. ``len()`` on an ODVariable is the ``canopen`` package's own answer
+    -- the size of the structure it packs the type with -- so a device and
+    pycangui agree about the layout without pycangui keeping a second table
+    of type sizes to fall out of step with the first.
+
+    BOOLEAN comes back as 8 rather than 1, because that is how the library
+    packs it. A device that wants it as a single bit will refuse the
+    mapping, which is visible; guessing 1 and being wrong would not be.
+    """
+    return len(var)
+
+
 def type_name(var: ODVariable | None) -> str:
     if var is None or var.data_type is None:
         return ""
