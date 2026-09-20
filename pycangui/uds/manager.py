@@ -38,6 +38,10 @@ class TransferCancelledError(Exception):
     """Asked to stop, or the ECU stopped first."""
 
 
+class RefusedError(Exception):
+    """A hook said this image must not be written to this ECU."""
+
+
 class _TransportConnection(BaseConnection):
     """Adapts any IsoTpTransport to what udsoncan's Client expects."""
 
@@ -537,6 +541,10 @@ class UdsManager(QObject):
                 return fn(client)
             except TransferCancelledError as exc:
                 return f"{label}: cancelled{exc}"
+            except RefusedError as exc:
+                # Loud, and stated as a refusal rather than as a failure:
+                # nothing went wrong, something was prevented.
+                return f"{label} REFUSED by hooks/uds.py::before_download: {exc}"
             except ImageError as exc:
                 return f"{label}: {exc}"
             except NegativeResponseException as exc:
@@ -694,6 +702,13 @@ class UdsManager(QObject):
         count = len(image.segments)
 
         def fn(c: Client) -> str:
+            # Before a single byte: the one chance to say "that image is not
+            # for this controller". Inside the job rather than in front of
+            # it, so the hook has the open session to read an identifier
+            # with, and before the erase, because an erase that runs against
+            # the wrong image has already done the damage.
+            if refused := self._hooks.call("uds", "before_download", image, c):
+                raise RefusedError(str(refused))
             done = 0
             if erase:
                 for segment in image.segments:

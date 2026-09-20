@@ -515,3 +515,54 @@ def test_the_question_says_the_memory_will_be_erased(view, images_dir, monkeypat
     view.erase.setChecked(True)
     view.start.click()
     assert "erased first" in asked[0]
+
+
+# --- refusing an image that is not for this ECU ----------------------------------------
+def hooked(manager, monkeypatch, answer):
+    real = manager._hooks.call
+
+    def call(module, name, *args, **kwargs):
+        if module == "uds" and name == "before_download":
+            return answer(*args)
+        return real(module, name, *args, **kwargs)
+
+    monkeypatch.setattr(manager._hooks, "call", call)
+
+
+def test_a_hook_can_refuse_an_image_before_anything_is_written(manager, images_dir, monkeypatch):
+    """Writing the right file to the wrong controller is the most expensive
+    mistake this tool can make, and nothing in the file says which
+    controller it is for."""
+    manager.client = ecu = FakeEcu(max_length=8)
+    hooked(manager, monkeypatch, lambda _image, _client: "not built for this controller")
+    lines = []
+    manager.result.connect(lines.append)
+
+    manager.download(images.read(images_dir("a.hex", (0x1000, bytes(16)))), erase=True)
+
+    assert ecu.calls == [], "nothing erased and nothing written"
+    assert "REFUSED" in lines[-1]
+    assert "not built for this controller" in lines[-1]
+    assert "before_download" in lines[-1], "and which hook said so"
+
+
+def test_the_hook_is_given_the_image_and_the_open_client(manager, images_dir, monkeypatch):
+    manager.client = ecu = FakeEcu(max_length=8)
+    seen: list = []
+    hooked(manager, monkeypatch, lambda image, client: seen.append((image, client)))
+
+    manager.download(images.read(images_dir("b.hex", (0x2000, bytes(8)))))
+
+    assert seen, "it was asked"
+    image, client = seen[0]
+    assert image.address == 0x2000 and image.size == 8
+    assert client is ecu, "the session it would be writing through"
+
+
+def test_saying_nothing_lets_the_download_go_ahead(manager, images_dir, monkeypatch):
+    manager.client = ecu = FakeEcu(max_length=8)
+    hooked(manager, monkeypatch, lambda _image, _client: None)
+
+    manager.download(images.read(images_dir("c.hex", (0x3000, bytes(8)))))
+
+    assert ecu.written == bytes(8)

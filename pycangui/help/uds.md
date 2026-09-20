@@ -114,6 +114,16 @@ standard, so it is editable. What either routine is *sent* comes from
 address and length in the ISO format; a bootloader wanting a CRC of what it
 was given is a couple of lines there.
 
+**Refusing an image that is not for this ECU.** Nothing in a firmware file
+says which controller it belongs to, and writing the right file to the wrong
+one is the most expensive mistake available here.
+[`hooks/uds.py::before_download`](hooks.md) is called once with the image and
+the open session, before a single byte is erased or written: read a part
+number, a hardware revision or the current session out of the ECU, compare it
+with what the file is, and return a reason to stop. The transfer then says
+*REFUSED* and names the hook, rather than reporting a failure -- nothing went
+wrong, something was prevented. Return None and it goes ahead.
+
 The rest of the box, left to right. **Operation** chooses the transfer.
 **Block** is how many data bytes go in each TransferData; left at *from ECU*,
 the ECU's own maximum is used. **Width** is how many bits the address and size

@@ -213,6 +213,47 @@ def routine_label(routine_id: int, *, ctx) -> str | None:
 
 
 @hook
+def before_download(image, client, *, ctx) -> str | None:
+    """Refuse a firmware image that does not belong to this ECU.
+
+    The most expensive mistake this tool can make is writing the right
+    file to the wrong controller, and nothing in the file says which
+    controller it is for -- that knowledge is yours. This is called once,
+    with the session already open and before a single byte is erased or
+    written. Return a reason to stop, or None to go ahead.
+
+    The reason is shown as a refusal rather than as a failure, because
+    nothing went wrong: something was prevented.
+
+    ``image`` is what was loaded -- ``image.path``, ``image.format``,
+    ``image.size``, ``image.address`` and ``image.segments``, each segment
+    with its own ``address`` and ``data``. ``client`` is the open udsoncan
+    client, so the ECU can be asked who it is. This runs on the worker
+    thread, so reading a few identifiers here costs the transfer a moment
+    and the window nothing.
+
+    Examples:
+
+        # The part number the ECU reports has to appear in the file's name
+        # part = client.read_data_by_identifier(0xF187).service_data.values[0]
+        # wanted = part.decode(errors="replace").strip()
+        # if wanted not in image.path:
+        #     return f"this file is not built for part {wanted}"
+
+        # Refuse an image that does not start where this ECU's application does
+        # APPLICATION = 0x08020000
+        # if image.address != APPLICATION:
+        #     return f"starts at 0x{image.address:08X}, not 0x{APPLICATION:08X}"
+
+        # Refuse anything but the bootloader session, whatever the pane says
+        # session = client.read_data_by_identifier(0xF186).service_data.values[0]
+        # if session != 2:
+        #     return "the ECU is not in its programming session"
+    """
+    return None
+
+
+@hook
 def erase_options(address: int, size: int, width, *, ctx) -> bytes | None:
     """The option record sent with the erase routine (0xFF00) before a download.
 
