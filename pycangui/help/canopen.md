@@ -113,8 +113,11 @@ The *PDO configuration* tab shows
 every TPDO and RPDO with its COB-ID, transmission type, inhibit time, event
 timer and mapped objects. **Read from node** reads what the node is actually
 configured to send and receive, rather than what its EDS says it was built
-with; edit a cell, or use **Map object...** and **Unmap**, and **Write to node**
-writes the selected PDO's communication and mapping records back over SDO.
+with; edit a cell, or use **Map object...** and **Unmap object**, and
+**Write to node** writes the selected PDO's communication and mapping records
+back over SDO. Nothing reaches the node until then: mapping, unmapping and
+editing a cell all change a working copy, and **Read from node** is what
+throws that copy away and asks the node again.
 
 **Map object...** lists what the node's EDS says it has from 0x2000 up, each
 with the width its data type gives it, which is the length written into the
@@ -123,6 +126,20 @@ mapping entry. Two things are left out: the communication profile below
 anything whose length is not known in advance -- a string, a domain -- since
 a PDO is eight bytes with a layout agreed beforehand and there is no length
 to write for those. A node with no EDS loaded has nothing to offer here.
+
+A PDO carries eight bytes, and an object that will not fit is refused with
+a box saying how full the PDO already is and by how much the object
+overflows it.
+
+**The COB-ID column is a number, not a name.** Hover over one and pycangui
+says what CiA 301's predefined connection set gives that identifier to --
+0x181 to node 1's TPDO1, and so on -- or says plainly that the identifier is
+not one the standard gives a meaning to. That is offered as a convention and
+nothing more: the predefined set describes a bus nobody has configured, so
+reading it backwards off a configured node is how a TPDO at 0x151 comes to
+be labelled as node 81's RPDO. True about the number, and about nothing else
+on the screen. What a PDO actually carries is the mapped objects underneath
+it.
 
 The *Live PDOs* tab shows each
 PDO with its receive count and rate. **Store** / **Restore

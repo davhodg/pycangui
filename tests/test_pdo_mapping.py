@@ -142,3 +142,138 @@ def test_a_node_with_no_eds_offers_nothing_rather_than_throwing(app, tmp_path, m
     picker = ObjectPicker(empty, 99)
     assert picker.entries == []
     bus.disconnect_bus()
+
+
+# --- the edit survives the redraw ---------------------------------------------------
+@pytest.fixture
+def view(app, manager):
+    from pycangui.core.context import Context
+    from pycangui.ui.pdo_view import PdoConfigView
+
+    out = PdoConfigView(manager, Context(log=print))
+    out.set_node(NODE)
+    assert out._configs, "no PDOs to edit, so nothing below tests anything"
+    return out
+
+
+def first_pdo(view):
+    """The top-level row for the first PDO, selected."""
+    item = view.tree.topLevelItem(0)
+    view.tree.setCurrentItem(item)
+    return item
+
+
+def test_unmapping_an_object_takes_it_out_and_keeps_it_out(view):
+    """Reported. The edit was made to a PdoConfig the redraw then threw
+    away, because redrawing asked the manager for the node's own
+    configuration again."""
+    item = first_pdo(view)
+    config = view._config_of(item)
+    if not config.entries:
+        pytest.skip("this PDO maps nothing to start with")
+    before = list(config.entries)
+
+    view.tree.setCurrentItem(item.child(0))
+    view._remove_entry()
+
+    assert view._config_of(view.tree.topLevelItem(0)).entries == before[1:]
+    assert view.tree.topLevelItem(0).childCount() == len(before) - 1
+
+
+def test_mapping_an_object_keeps_it_too(view, monkeypatch):
+    """The same bug from the other side: Map object... appended to a
+    throwaway copy."""
+    from pycangui.canopen import PdoEntry
+    from pycangui.ui import pdo_view
+
+    view._config_of(view.tree.topLevelItem(0)).entries.clear()
+    view._redraw()
+    first_pdo(view)
+
+    wanted = PdoEntry(0x2001, 0, 16, "Speed demand")
+    monkeypatch.setattr(pdo_view.ObjectPicker, "exec", lambda self: pdo_view.QDialog.Accepted)
+    monkeypatch.setattr(pdo_view.ObjectPicker, "chosen", lambda self: wanted)
+    view._add_entry()
+
+    assert view._config_of(view.tree.topLevelItem(0)).entries == [wanted]
+    assert view.tree.topLevelItem(0).childCount() == 1
+
+
+def test_reading_from_the_node_does_throw_the_edit_away(view):
+    """The one thing that should: Read from node means what the node says."""
+    view._config_of(view.tree.topLevelItem(0)).entries.clear()
+    view._redraw()
+    assert view.tree.topLevelItem(0).childCount() == 0
+
+    view.refresh()  # what Read from node does when the answer arrives
+    assert view._configs[0].entries, "the node's own mapping did not come back"
+
+
+# --- saying why an object did not go in ------------------------------------------------
+def test_a_full_pdo_says_so_in_a_box_not_only_in_the_log(view, monkeypatch):
+    """A line in a pane somebody may not have open is no answer to a button
+    they just pressed."""
+    from pycangui.canopen import PdoEntry
+    from pycangui.ui import pdo_view
+
+    config = view._config_of(view.tree.topLevelItem(0))
+    config.entries.clear()
+    config.entries.append(PdoEntry(0x2000, 2, 64, "Odometer"))  # full
+    view._redraw()
+    first_pdo(view)
+
+    said = []
+    monkeypatch.setattr(pdo_view.messages, "warning", lambda *a, **k: said.append(a))
+    monkeypatch.setattr(pdo_view.ObjectPicker, "exec", lambda self: pdo_view.QDialog.Accepted)
+    monkeypatch.setattr(
+        pdo_view.ObjectPicker, "chosen", lambda self: PdoEntry(0x2001, 0, 16, "Speed demand")
+    )
+    view._add_entry()
+
+    assert said, "only the Event Log was told"
+    title, text = said[0][1], said[0][2]
+    assert "full" in title.lower()
+    assert "64" in text and "16" in text, "does not say how full, or by how much"
+    assert len(view._config_of(view.tree.topLevelItem(0)).entries) == 1
+
+
+def test_unmapping_with_a_pdo_selected_says_what_to_select(view, monkeypatch):
+    from pycangui.ui import pdo_view
+
+    first_pdo(view)  # the PDO itself, not one of its objects
+    said = []
+    monkeypatch.setattr(pdo_view.messages, "warning", lambda *a, **k: said.append(a))
+    view._remove_entry()
+    assert said, "nothing happened and nothing was said"
+
+
+# --- what the identifier means, and what it does not -----------------------------------
+def test_the_pdo_row_is_not_labelled_from_its_identifier(view):
+    """Reported: a TPDO at 0x151 was shown as node 81's RPDO, because that
+    is what the predefined connection set gives the number to."""
+    for row in range(view.tree.topLevelItemCount()):
+        text = view.tree.topLevelItem(row).text(0)
+        assert "node" not in text.lower(), f"a guessed name is back: {text!r}"
+        assert text.strip() == text.strip().split()[0], f"more than the PDO's name: {text!r}"
+
+
+def test_the_identifier_offers_its_convention_as_a_tooltip(view):
+    from pycangui.ui.pdo_view import COL_COBID
+
+    tip = view.tree.topLevelItem(0).toolTip(COL_COBID)
+    assert "CiA 301" in tip
+    assert "not what this PDO carries" in tip or "not one of the identifiers" in tip
+
+
+def test_the_selection_survives_a_redraw(view):
+    """Unmapping one object should not mean hunting for the PDO again to
+    unmap the next."""
+    item = first_pdo(view)
+    if item.childCount() < 2:
+        pytest.skip("this PDO maps fewer than two objects")
+    view.tree.setCurrentItem(item.child(0))
+    view._remove_entry()
+
+    chosen = view.tree.selectedItems()
+    assert chosen, "nothing is selected any more"
+    assert chosen[0].parent() is view.tree.topLevelItem(0), "selection moved to another PDO"

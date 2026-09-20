@@ -62,6 +62,51 @@ def predefined_labels(node_id: int) -> dict[int, str]:
     return labels
 
 
+#: The fixed identifiers, which carry no node id.
+_FIXED = {
+    0x000: "NMT node control",
+    0x080: "SYNC",
+    0x100: "TIME",
+    0x7E4: "LSS response",
+    0x7E5: "LSS request",
+}
+
+#: Read out in full rather than as the trace's short kind. A tooltip has
+#: room for the words, and the reader is somebody asking what an identifier
+#: is for -- which is exactly the question the short form assumes you know.
+_SPELT_OUT = {
+    "EMCY": "the emergency object",
+    "SDO-T": "the SDO server response",
+    "SDO-R": "the SDO client request",
+    "Heartbeat": "the heartbeat, boot-up and node guarding",
+}
+
+
+def predefined_meaning(can_id: int) -> str:
+    """What CiA 301's predefined connection set gives this identifier to.
+
+    "" where it gives it to nothing. That is a real answer rather than a
+    gap: the predefined set is a convention for getting a bus working
+    without configuring anything, and a PDO given an identifier outside it
+    is ordinary. What is *not* safe is reading the convention backwards --
+    an identifier's default meaning says nothing about what the node in
+    front of you actually puts on it.
+    """
+    if can_id in _FIXED:
+        return _FIXED[can_id]
+    entry = _FUNCTION_CODES.get(can_id >> 7)
+    if entry is None:
+        return ""
+    prefix, _group, has_node = entry
+    node = can_id & 0x7F
+    if has_node and node == 0:
+        return ""
+    spelt = _SPELT_OUT.get(prefix)
+    if spelt:
+        return f"{spelt} of node {node}"
+    return f"{prefix} of node {node}"
+
+
 def classify(can_id: int, extended: bool) -> tuple[str, str]:
     """Return (kind, group) for a CAN id."""
     if extended:
