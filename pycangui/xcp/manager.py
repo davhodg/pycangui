@@ -16,6 +16,7 @@ import threading
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from pycangui.ccp import engine as _ccp_engine  # noqa: F401  (registers the CCP backend)
+from pycangui.core import seedkey
 from pycangui.core.backends import BACKENDS
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
@@ -110,6 +111,11 @@ class XcpManager(QObject):
                     self.result.emit(text)
             except XcpError as exc:
                 self.result.emit(f"{label}: {exc}")
+            except seedkey.SeedKeyError as exc:
+                # Its own clause because XcpError is a slave's error code
+                # and this is not: nothing was asked of the slave, the
+                # tool could not work out what to answer with.
+                self.result.emit(f"{label}: {exc}")
             except TimeoutError:
                 self.result.emit(f"{label}: timeout")
             except Exception as exc:  # report any failure, keep the worker alive
@@ -177,16 +183,34 @@ class XcpManager(QObject):
     def unlock(self, resource: int) -> None:
         def fn() -> str:
             seed = self.engine.get_seed(resource)
-            key = self._hooks.call("xcp", "compute_key", resource, bytes(seed))
-            if key is None:
-                return (
-                    f"{self.protocol} unlock: no key algorithm "
-                    "(implement hooks/xcp.py::compute_key)"
-                )
-            self.engine.unlock(bytes(key))
+            key = self._key_for(resource, bytes(seed))
+            self.engine.unlock(key)
             return f"{self.protocol} resource 0x{resource:02X} unlocked"
 
         self._submit("UNLOCK", fn)
+
+    def _key_for(self, resource: int, seed: bytes) -> bytes:
+        """The hook first, then the seed and key DLL.
+
+        The hook wins because it is this workspace's own answer and can be
+        anything -- a device whose algorithm is three lines of Python
+        should not need a compiler. The DLL is the fallback rather than
+        something the hook has to reach for, because it is a standard: the
+        ASAM interface is the same for every maker, so the ctypes for it
+        belongs here and not copied into everybody's hooks file, where a
+        fix would never reach the copies.
+        """
+        key = self._hooks.call("xcp", "compute_key", resource, seed)
+        if key is not None:
+            return bytes(key)
+        dll = str(self._ctx.settings.get(seedkey.DLL_KEY, "") or "")
+        if not dll:
+            raise seedkey.SeedKeyError(
+                "no key algorithm: choose a seed and key DLL in the XCP pane, "
+                "or write hooks/xcp.py::compute_key"
+            )
+        other = str(self._ctx.settings.get(seedkey.PYTHON_KEY, "") or "")
+        return seedkey.key_for(dll, resource, seed, other)
 
     # --- A2L -------------------------------------------------------------------------
     def load_a2l(self, path: str) -> None:

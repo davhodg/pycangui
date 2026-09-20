@@ -19,6 +19,7 @@ from udsoncan.client import Client
 from udsoncan.connections import BaseConnection
 from udsoncan.exceptions import NegativeResponseException, TimeoutException
 
+from pycangui.core import seedkey
 from pycangui.core.backends import BACKENDS
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
@@ -227,12 +228,26 @@ class UdsManager(QObject):
 
     # --- hooks ---------------------------------------------------------------------
     def _security_algo(self, level: int, seed: bytes, params: Any) -> bytes:
+        """The hook first, then the seed and key DLL.
+
+        The same order and the same DLL as XCP unlocking, because it is the
+        same question asked by a different protocol: an ECU that ships one
+        algorithm ships one file. The hook wins because it is this
+        workspace's own answer; the DLL is the standard one, so it lives in
+        pycangui rather than in a copy of the ctypes for it in everybody's
+        hooks file.
+        """
         key = self._hooks.call("uds", "security_key", level, seed)
-        if key is None:
+        if key is not None:
+            return bytes(key)
+        dll = str(self._ctx.settings.get(seedkey.DLL_KEY, "") or "")
+        if not dll:
             raise RuntimeError(
-                f"no security algorithm for level {level}: implement hooks/uds.py::security_key"
+                f"no security algorithm for level {level}: choose a seed and key DLL, "
+                "or write hooks/uds.py::security_key"
             )
-        return bytes(key)
+        other = str(self._ctx.settings.get(seedkey.PYTHON_KEY, "") or "")
+        return seedkey.key_for(dll, level, seed, other)
 
     # --- request plumbing ----------------------------------------------------------
     def _run(self, label: str, fn: Callable[[Client], str]) -> None:

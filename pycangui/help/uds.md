@@ -53,7 +53,8 @@ On a CAN FD channel **CAN-DL** and **BRS** sit beside them, as
 
 **Change** moves the ECU into the session chosen beside it. **Unlock** runs
 SecurityAccess at the **Level** beside it: the ECU hands over a seed, and
-pycangui answers with the key from `hooks/uds.py::security_key`. **Tester
+pycangui answers with the key from `hooks/uds.py::security_key`, or from the
+seed and key DLL described below where that hook returns None. **Tester
 present** sends TesterPresent every couple of seconds. Without it an ECU drops
 back to the default session after a few seconds of quiet, and loses any unlock
 with it.
@@ -136,3 +137,49 @@ Anything that writes to the ECU asks first, once a session. **Cancel** stops
 after the block being sent at the time, because the ECU is waiting for the
 TransferData it has already been promised and stopping part way through one
 would leave the two of you out of step.
+
+## The seed and key DLL
+
+There is no standard unlock *algorithm* -- only a standard way of shipping
+one: a Windows DLL exporting `XCP_GetAvailablePrivileges` and
+`XCP_ComputeKeyFromSeed`. Every measurement tool loads one, so a maker who has
+written a seed and key DLL for another tool has already written the one
+pycangui needs. **Seed and key DLL...** beside Unlock is where it is named.
+
+pycangui asks in this order, and stops at the first answer:
+
+1. the hook -- `hooks/uds.py::security_key` for UDS, `hooks/xcp.py::compute_key`
+   for XCP;
+2. the DLL, if the hook returned None;
+3. otherwise it reports that unlocking is not possible, and says both of the
+   places an answer could have come from.
+
+The hook comes first so a workspace can always override, and so a level or a
+resource the DLL does not cover can be answered in a few lines of Python:
+return a key for the ones you know and None for the rest, and each is dealt
+with by whatever can.
+
+**One DLL serves both panes.** An ECU ships one algorithm; UDS SecurityAccess
+and XCP unlocking are the same question asked by two protocols, with the
+security level where XCP puts the resource. Naming the file in either pane
+names it for both.
+
+### When the DLL is 32-bit
+
+It usually is. These DLLs are generally built 32-bit and handed out that way
+even to 64-bit tools, because **no process can load a library of the other
+bitness**. There is no flag for it and no setting: a 32-bit DLL and a 64-bit
+program cannot share an address space.
+
+What every tool does instead is run the DLL in a helper process of the right
+bitness and pass the key back. pycangui does the same: it reads the bitness out
+of the file, and where it does not match, runs the DLL through another Python
+interpreter -- found through the `py` launcher, or named in the dialog. The
+dialog says which of these will happen **when the DLL is chosen**, rather than
+leaving it to be discovered while somebody is trying to unlock an ECU.
+
+If there is no interpreter of the right bitness on the machine, there are three
+ways out and the dialog names all three: install one, point pycangui at one, or
+rebuild the DLL. Rebuilding is the tidiest where the source is yours -- these
+projects generally carry a Win32 configuration only, so an x64 one needs
+adding.

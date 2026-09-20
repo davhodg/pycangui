@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from pycangui.core import workspace_files
 from pycangui.core.backends import BACKENDS
 from pycangui.core.context import Context
-from pycangui.ui import folders, keep_file
+from pycangui.ui import folders, keep_file, seedkey_view
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
@@ -52,6 +52,14 @@ STATION_TIP = (
     "addresses a station as well as a pair of ids, so several can share\n"
     "one pair and answer in turn. XCP has no such thing, so the box is\n"
     "only shown for a CCP engine."
+)
+SEED_KEY_TIP = (
+    "The standard seed and key DLL, which is how an ECU's unlock algorithm\n"
+    "ships. Used when hooks/xcp.py::compute_key returns None, so a hook\n"
+    "always wins where there is one.\n"
+    "\n"
+    "The same DLL serves UDS SecurityAccess: one ECU ships one algorithm,\n"
+    "and naming the file twice would be pycangui's filing system showing."
 )
 #: Everything a row can be found by, worked out once when it is built.
 ROLE_SEARCH = Qt.UserRole + 1
@@ -122,9 +130,13 @@ class XcpView(QWidget):
         unlock.setToolTip(
             "GET_SEED and UNLOCK for the calibration resource, which most\n"
             "slaves want before a value can be written. The key comes from\n"
-            "hooks/xcp.py::compute_key."
+            "hooks/xcp.py::compute_key, and where that returns None, from\n"
+            "the seed and key DLL beside this button."
         )
         unlock.clicked.connect(lambda: self.manager.unlock(RESOURCE_CAL))
+        seed_key = QPushButton("Seed and key DLL...")
+        seed_key.setToolTip(SEED_KEY_TIP)
+        seed_key.clicked.connect(lambda: seedkey_view.ask(self.ctx, self))
         load = QPushButton("Load A2L...")
         load.setToolTip(
             "Read the measurements and characteristics out of an A2L, so they\n"
@@ -152,6 +164,7 @@ class XcpView(QWidget):
         bar.addWidget(self.ext)
         bar.addWidget(self.connect_btn)
         bar.addWidget(unlock)
+        bar.addWidget(seed_key)
         bar.addWidget(load)
         bar.addStretch()
 

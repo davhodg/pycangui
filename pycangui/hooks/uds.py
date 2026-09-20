@@ -117,9 +117,15 @@ def security_key(level: int, seed: bytes, *, ctx) -> bytes | None:
     """Compute the SecurityAccess key for a seed (service 0x27).
 
     ``level`` is the odd requestSeed sub-function (1, 3, 5 ...). Return the
-    key bytes, or None if you have no algorithm for this level -- pycangui
-    then reports that unlocking is not possible. This is the hook almost every
-    ECU needs; there is no standard algorithm, so there is no default.
+    key bytes, or None to let pycangui fall back to the seed and key DLL
+    chosen in the UDS pane -- and, where there is no DLL either, report that
+    unlocking is not possible.
+
+    There is no standard algorithm, only a standard way of shipping one, so
+    the two answers are a few lines of Python here or the maker's DLL. This
+    hook wins wherever it answers, which is what makes it useful alongside a
+    DLL rather than instead of one: return a key for the levels you know and
+    None for the rest, and each is dealt with by whatever can.
 
     Examples:
 

@@ -21,10 +21,15 @@ def compute_key(resource: int, seed: bytes, *, ctx) -> bytes | None:
     """Compute the XCP seed-and-key unlock key for a resource.
 
     ``resource`` is the resource being unlocked (0x01 CAL/PAG, 0x04 DAQ,
-    0x08 STIM, 0x10 PGM). Return the key bytes, or None if you have no
-    algorithm (the pane then reports that unlocking is not possible).
+    0x08 STIM, 0x10 PGM). Return the key bytes, or None to let pycangui fall
+    back to the seed and key DLL chosen in the XCP pane -- and, where there
+    is no DLL either, report that unlocking is not possible.
 
-    Most ECUs ship the algorithm as a SeedNKey DLL; here it is plain Python.
+    Most ECUs ship the algorithm as a seed and key DLL, which pycangui
+    loads itself: the interface is standard, so it needs nothing here. This
+    is for an algorithm that is a few lines of Python, or for a resource the
+    DLL does not cover -- answer for the ones you know and return None for
+    the rest, and each is dealt with by whatever can.
 
     Examples:
 

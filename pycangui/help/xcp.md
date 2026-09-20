@@ -33,7 +33,9 @@ Set the identifiers, Connect,
 press **Load A2L...** and the MEASUREMENTs and CHARACTERISTICs appear.
 Double-click to read one, edit a characteristic's value to write it (unlock CAL
 first -- the seed-to-key algorithm is
-[`hooks/xcp.py::compute_key`](hooks.md)), and tick *Plot* to poll a measurement into the
+[`hooks/xcp.py::compute_key`](hooks.md), or the seed and key DLL named
+with **Seed and key DLL...**, which is the same one the [UDS](uds.md) pane
+uses and is described there), and tick *Plot* to poll a measurement into the
 **Signals and Plot** pane. A real A2L runs to hundreds of parameters, so the
 box above the list filters them: match on the name, the address in either hex
 or decimal, the type, the unit or the description, with several words all

@@ -51,7 +51,7 @@ from pycangui.uds.manager import (
     UdsManager,
     parse_bytes,
 )
-from pycangui.ui import folders
+from pycangui.ui import folders, seedkey_view
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.field_widgets import PENDING
 from pycangui.ui.persist import remember
@@ -117,6 +117,15 @@ PADDING_TIP = (
     "Leave it empty to send frames at the length they are. Taken up when a\n"
     "session is opened, since it belongs to the transport rather than to\n"
     "one request."
+)
+
+SEED_KEY_TIP = (
+    "The standard seed and key DLL, which is how an ECU's unlock algorithm\n"
+    "ships. Used when hooks/uds.py::security_key returns None, so a hook\n"
+    "always wins where there is one.\n"
+    "\n"
+    "The same DLL serves XCP unlocking: one ECU ships one algorithm, and\n"
+    "naming the file twice would be pycangui's filing system showing."
 )
 
 
@@ -319,11 +328,16 @@ class UdsView(QWidget):
         unlock = QPushButton("Unlock")
         unlock.setToolTip(
             "SecurityAccess (0x27): ask for a seed and answer it with a key.\n"
-            "There is no standard algorithm -- the key comes from\n"
-            "hooks/uds.py::security_key, which you write."
+            "There is no standard algorithm. The key comes from\n"
+            "hooks/uds.py::security_key, and where that returns None, from\n"
+            "the seed and key DLL beside this button."
         )
         unlock.clicked.connect(lambda: self.manager.unlock(self.level.value()))
         h.addWidget(unlock)
+        seed_key = QPushButton("Seed and key DLL...")
+        seed_key.setToolTip(SEED_KEY_TIP)
+        seed_key.clicked.connect(lambda: seedkey_view.ask(self.ctx, self))
+        h.addWidget(seed_key)
         self.tp = QCheckBox("Tester present")
         self.tp.setToolTip(
             "Send TesterPresent (0x3E) every couple of seconds.\n"
