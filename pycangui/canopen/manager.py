@@ -28,7 +28,14 @@ from canopen.nmt import NMT_COMMANDS, NMT_STATES
 from canopen.objectdictionary import ODArray, ODRecord, ODVariable, datatypes, eds
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
-from pycangui.canopen import NodeIdentity, PdoConfig, PdoEntry, eds_extras, faults
+from pycangui.canopen import (
+    NodeIdentity,
+    PdoConfig,
+    PdoEntry,
+    abort_reason,
+    eds_extras,
+    faults,
+)
 from pycangui.canopen.dcf import values_from, write_dcf
 from pycangui.canopen.display import Display, from_variable, with_overrides
 from pycangui.canopen.emcy import Emcy
@@ -1425,7 +1432,7 @@ def _reason(exc: Exception) -> str:
     have a read-only object or a value out of range.
     """
     if isinstance(exc, canopen.SdoAbortedError):
-        described = canopen.SdoAbortedError.CODES.get(exc.code)
+        described = abort_reason(exc.code)
         return f"abort 0x{exc.code:08X}" + (f", {described}" if described else "")
     return f"{type(exc).__name__}: {exc}"
 

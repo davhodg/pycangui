@@ -29,6 +29,14 @@ at me" rather than "hide failures from me". [Hooks](hooks.md) and
 python-can and the protocol libraries -- canopen, can-j1939, udsoncan and
 can-isotp -- report through Python's logging, and a backend often says nothing
 about a bus error any other way. Their warnings and errors come here as well.
+
+A CANopen line carrying an **SDO abort code** gets its meaning put beside it:
+the library logs `Transfer aborted by client with code 0x05040000` and stops
+there, which is a number and a shrug, so it arrives as *...0x05040000 (Timeout
+of transfer communication detected)*. The code is what goes to the device's
+maker; the meaning is what tells you whether the node refused or never
+answered at all. *Aborted by client* is pycangui's own end giving up -- an
+SDO timeout -- rather than the device saying no.
 *Tools > Verbose CAN logging* adds their information messages too, which is
 where the detail is when something is actually wrong, and more than you want
 the rest of the time.

@@ -266,3 +266,57 @@ def test_good_news_does_not_open_the_pane(app, window):
     from pycangui.core.events import GOOD, PROBLEMS
 
     assert GOOD not in PROBLEMS
+
+
+# --- what a library line says when it reaches the log -----------------------------------
+def test_an_abort_code_from_the_library_arrives_with_its_meaning(app):
+    """The canopen package logs "Transfer aborted by client with code
+    0x05040000" and stops there, which is a number and a shrug. It has the
+    table and so do we."""
+    import logging
+
+    from pycangui.core.logbridge import LogBridge
+
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    try:
+        logging.getLogger("canopen.sdo.client").error(
+            "Transfer aborted by client with code 0x%08X", 0x05040000
+        )
+    finally:
+        bridge.detach()
+
+    assert said and said[0][0] == "error"
+    assert "0x05040000" in said[0][1], "the code, which is what goes to the maker"
+    assert "Timeout of transfer communication detected" in said[0][1]
+
+
+def test_a_code_already_explained_is_not_explained_twice(app):
+    from pycangui.canopen import explain_aborts
+
+    once = "abort 0x06020000, Object does not exist in the object dictionary"
+    assert explain_aborts(once) == once
+
+
+def test_a_number_that_is_not_an_abort_code_is_left_alone(app):
+    from pycangui.canopen import explain_aborts
+
+    assert explain_aborts("mask 0x12345678 applied") == "mask 0x12345678 applied"
+    assert explain_aborts("nothing here at all") == "nothing here at all"
+
+
+def test_only_the_canopen_logger_is_treated_this_way(app):
+    """A UDS or python-can line with an eight-digit number in it is not an
+    SDO abort, and guessing it was would be inventing a meaning."""
+    import logging
+
+    from pycangui.core.logbridge import LogBridge
+
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    try:
+        logging.getLogger("can.interface").error("address 0x05040000 is out of range")
+    finally:
+        bridge.detach()
+
+    assert said and "Timeout" not in said[0][1]

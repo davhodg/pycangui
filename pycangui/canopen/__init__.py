@@ -29,6 +29,38 @@ class NodeIdentity:
         return ":".join("-" if p is None else f"{p:08X}" for p in parts)
 
 
+#: An eight-digit hex number in a line of text, which on a CANopen logger is
+#: almost always an SDO abort code.
+_CODE = re.compile(r"0x([0-9A-Fa-f]{8})\b")
+
+
+def abort_reason(code: int) -> str:
+    """What CiA 301 says an SDO abort code means, or "" for one it does not list."""
+    import canopen
+
+    return canopen.SdoAbortedError.CODES.get(code, "")
+
+
+def explain_aborts(text: str) -> str:
+    """Put the meaning beside any abort code in a line from the library.
+
+    The ``canopen`` package logs ``Transfer aborted by client with code
+    0x05040000`` and stops there, which is a number and a shrug. It has the
+    table -- pycangui uses it for its own messages -- so a line coming
+    through the log bridge is given the same treatment: the code is what
+    goes to the maker, the meaning is what tells the person in front of the
+    machine whether the node refused or simply never answered.
+    """
+
+    def name(match: re.Match) -> str:
+        reason = abort_reason(int(match.group(1), 16))
+        if not reason or reason.lower() in text.lower():
+            return match.group(0)
+        return f"{match.group(0)} ({reason})"
+
+    return _CODE.sub(name, text)
+
+
 def eds_identity(path: Path) -> tuple[int | None, int | None, int | None]:
     """(VendorNumber, ProductNumber, RevisionNumber) from an EDS [DeviceInfo] section."""
     cp = configparser.ConfigParser(interpolation=None, strict=False)

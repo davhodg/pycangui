@@ -48,6 +48,14 @@ class _Bridge(logging.Handler):
             text = record.getMessage()
         except Exception:  # a broken format string is not worth taking down
             text = record.msg
+        # The canopen package logs an abort as a bare number -- "Transfer
+        # aborted by client with code 0x05040000" -- and stops there, which
+        # is a code and a shrug. It has the table, and so do we, so the
+        # meaning goes in beside it.
+        if record.name.startswith("canopen"):
+            from pycangui.canopen import explain_aborts
+
+            text = explain_aborts(text)
         # The logger name says which backend spoke, which is the useful part
         # when two adapters are connected at once.
         try:
