@@ -55,14 +55,21 @@ NO_FAULT = "no error"
 
 @dataclass(frozen=True)
 class StoredError:
-    """One entry of 0x1003, as the node kept it."""
+    """One entry of a node's fault list, however it was read.
+
+    ``text`` is for a device whose codes are its own rather than CiA 301's:
+    a hook that reads the list off a manufacturer object knows what each
+    code means and can say so, where ``describe_code`` would answer with
+    the wrong standard's name or with nothing at all.
+    """
 
     code: int
     info: int = 0  #: the high word: manufacturer-specific, often a sub-code
+    text: str = ""  #: what the maker calls it, if the standard has no name
 
     @property
     def description(self) -> str:
-        return describe_code(self.code)
+        return self.text or describe_code(self.code)
 
     @property
     def is_reset(self) -> bool:
@@ -78,6 +85,18 @@ class StoredError:
 def unpack(value: int) -> StoredError:
     """One 32-bit entry of 0x1003 split into the two halves CiA 301 gives it."""
     return StoredError(code=value & CODE_MASK, info=(value >> INFO_SHIFT) & CODE_MASK)
+
+
+def as_errors(values) -> list[StoredError]:
+    """Whatever a hook returned, as entries.
+
+    A hook that has read a device's own fault list should not have to know
+    this module to answer: a list of plain numbers is the obvious thing to
+    return and is read the way 0x1003 is read. Anything already a
+    StoredError is passed through, so a hook that wants to name its codes
+    can.
+    """
+    return [value if isinstance(value, StoredError) else unpack(int(value)) for value in values]
 
 
 @dataclass

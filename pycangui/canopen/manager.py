@@ -442,7 +442,19 @@ class CanopenManager(QObject):
         self._worker.submit(job, lambda s, e: self._faults_read(node_id, s, e))
 
     def _read_stored(self, node, state: faults.FaultState) -> None:
-        """0x1003: how many the node kept, then that many entries."""
+        """The node's fault list: its own way if it has one, else 0x1003.
+
+        The hook first, because a device that keeps its faults somewhere of
+        its own usually has a 0x1003 that is absent, empty or stale, and
+        reading that instead would answer the question wrongly rather than
+        not at all. An empty list back from the hook means "none stored",
+        which is why it is checked for None rather than for emptiness.
+        """
+        if self._hooks is not None:
+            own = self._hooks.call("canopen", "stored_errors", node)
+            if own is not None:
+                state.stored.extend(faults.as_errors(own))
+                return
         count, ok = self._optional(node, faults.PREDEFINED_ERROR_FIELD, faults.COUNT_SUB)
         if not ok or count is None:
             state.missing.add(faults.PREDEFINED_ERROR_FIELD)
@@ -489,6 +501,11 @@ class CanopenManager(QObject):
             return
 
         def job() -> None:
+            # The hook first, for the same reason as reading: a device with
+            # its own list is cleared its own way, and writing to a 0x1003
+            # it may not have would be a write to the wrong place.
+            if self._hooks is not None and self._hooks.call("canopen", "clear_stored_errors", node):
+                return
             node.sdo.download(faults.PREDEFINED_ERROR_FIELD, faults.COUNT_SUB, faults.ZERO)
 
         def done(_result, error: str | None) -> None:

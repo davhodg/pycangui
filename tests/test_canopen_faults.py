@@ -18,6 +18,8 @@ from pycangui import resources
 from pycangui.canopen import faults
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
+from pycangui.core.context import Context
+from pycangui.core.hooks import Hooks
 from pycangui.nodes import canopen_device
 
 OVER_CURRENT = 0x2310
@@ -75,7 +77,8 @@ def test_a_stored_error_is_history_rather_than_a_fault_now():
 def stack(app, tmp_path, monkeypatch, demo_device):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     bus = BusManager()
-    manager = CanopenManager(bus)
+    ctx = Context(log=print)
+    manager = CanopenManager(bus, Hooks(ctx))
     bus.connect_bus("virtual", "vcan_faults", 500000, False)
     demo = demo_device(bus, kinds=["canopen_device"])
     manager.load_eds(5, str(resources.path("demo.eds")))
@@ -357,3 +360,91 @@ def test_saving_nothing_says_so_rather_than_writing_an_empty_file(app, window, m
     monkeypatch.setattr(folders, "save_file", lambda *a, **k: asked.append(a))
     window.canopen_view._save_emergencies()
     assert not asked, "no dialog for a file with nothing in it"
+
+
+# --- a device that keeps its faults somewhere of its own -----------------------------
+def hooked(manager, monkeypatch, **answers):
+    """Stand in for a workspace hook file answering for this device."""
+    real = manager._hooks.call
+
+    def call(module, name, *args, **kwargs):
+        if module == "canopen" and name in answers:
+            return answers[name](*args)
+        return real(module, name, *args, **kwargs)
+
+    monkeypatch.setattr(manager._hooks, "call", call)
+
+
+def test_a_hook_can_read_the_fault_list_its_own_way(stack, monkeypatch):
+    """CiA 301 keeps them in 0x1003 and plenty of makers do not."""
+    manager, _demo = stack
+    hooked(manager, monkeypatch, stored_errors=lambda _node: [0x00070041, 0x00000065])
+
+    state = read(manager)
+
+    assert [e.code for e in state.stored] == [0x0041, 0x0065]
+    assert state.stored[0].info == 0x0007, "read the way a 0x1003 entry is read"
+    assert faults.PREDEFINED_ERROR_FIELD not in state.missing, "it answered, so it is not missing"
+
+
+def test_a_hook_can_name_the_codes_the_standard_does_not_know(stack, monkeypatch):
+    """A device using its own numbering gets the wrong name out of the CiA
+    table, or none at all."""
+    manager, _demo = stack
+    hooked(
+        manager,
+        monkeypatch,
+        stored_errors=lambda _node: [faults.StoredError(0x0041, text="Encoder fault")],
+    )
+
+    state = read(manager)
+
+    assert state.stored[0].description == "Encoder fault"
+    assert "Encoder fault" in str(state.stored[0])
+
+
+def test_a_hook_saying_none_stored_is_not_the_same_as_no_hook(stack, monkeypatch):
+    """An empty list is an answer: this device has no faults kept."""
+    manager, demo = stack
+    device = demo["canopen_device"].state.device
+    canopen_device._remember(device, OVER_CURRENT, 0)  # 0x1003 has one in it
+    hooked(manager, monkeypatch, stored_errors=lambda _node: [])
+
+    state = read(manager)
+
+    assert state.stored == [], "the hook answered, so 0x1003 was not read"
+    assert faults.PREDEFINED_ERROR_FIELD not in state.missing
+
+
+def test_without_a_hook_the_standard_object_is_still_read(stack, monkeypatch):
+    manager, demo = stack
+    device = demo["canopen_device"].state.device
+    canopen_device._remember(device, OVER_CURRENT, 0)
+    hooked(manager, monkeypatch, stored_errors=lambda _node: None)
+
+    assert [e.code for e in read(manager).stored] == [OVER_CURRENT]
+
+
+def test_a_hook_can_clear_the_list_its_own_way(stack, monkeypatch):
+    """A device with its own list is cleared its own way, and writing to a
+    0x1003 it may not have would be a write to the wrong place."""
+    manager, demo = stack
+    device = demo["canopen_device"].state.device
+    canopen_device._remember(device, OVER_CURRENT, 0)
+    cleared: list = []
+    hooked(manager, monkeypatch, clear_stored_errors=lambda _node: cleared.append(True) or True)
+
+    manager.clear_stored_errors(5)
+    wait_until(lambda: cleared)
+
+    assert int.from_bytes(device.get_data(0x1003, 0), "little") == 1, "0x1003 untouched"
+
+
+def test_without_a_hook_clearing_writes_to_the_standard_object(stack, monkeypatch):
+    manager, demo = stack
+    device = demo["canopen_device"].state.device
+    canopen_device._remember(device, OVER_CURRENT, 0)
+    hooked(manager, monkeypatch, clear_stored_errors=lambda _node: None)
+
+    manager.clear_stored_errors(5)
+    wait_until(lambda: int.from_bytes(device.get_data(0x1003, 0), "little") == 0)

@@ -148,6 +148,16 @@ saw and what the node kept are two different records.
 A stored error is history. A node that faulted this morning and recovered
 still holds the entry, so only the error register answers "is it faulted now".
 
+**A device that keeps its faults somewhere of its own** is read by
+[`hooks/canopen.py::stored_errors`](hooks.md), and cleared by
+`clear_stored_errors` beside it. 0x1003 is the standard's answer and plenty of
+makers have another -- a block of manufacturer objects, one object holding a
+packed array, a list you ask for by writing an index first -- and that is a
+fact about the device, so it lives in your hooks file. Return the entries and
+pycangui shows them in place of 0x1003; return None and it reads 0x1003 as
+usual. An entry can carry its own text, for a device whose numbering is its
+own and which the CiA table would name wrongly or not at all.
+
 **What Apply DCF reports.** Every parameter the node refused is listed,
 grouped by the reason the node itself gave -- `abort 0x06010002, Attempt to
 write a read only object` once with the objects under it, rather than the same

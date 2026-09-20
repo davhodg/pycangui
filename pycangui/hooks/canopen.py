@@ -82,6 +82,86 @@ def eds_for_node(identity: NodeIdentity, *, ctx) -> Path | str | None:
 
 
 @hook
+def stored_errors(node, *, ctx) -> list | None:
+    """Read this device's fault list its own way.
+
+    CiA 301 keeps recent faults in 0x1003, and pycangui reads that unless
+    this hook answers. Plenty of makers do it differently -- a block of
+    manufacturer objects, one object holding a packed array, a list you
+    have to ask for by writing an index first -- and those are read here,
+    where the device's own arrangement belongs.
+
+    Return the entries newest first, or None to let pycangui read 0x1003.
+    An entry is either a plain 32-bit number, read the way 0x1003 entries
+    are read (code in the low word, the maker's own word in the high one),
+    or a ``StoredError`` when you want to name the code yourself: a device
+    using its own numbering gets the wrong name out of the CiA table, or
+    none at all.
+
+    Returning an empty list means "this device has no faults stored", which
+    is not the same as None. Shown on the Faults tab.
+
+    ``node`` is the canopen node object, so ``node.sdo`` reaches it. This
+    one runs off the window's thread, unlike most hooks, so a dozen SDO
+    reads here are fine: the pane is not waiting on them.
+
+    Examples:
+
+        # A block of manufacturer objects, one fault each, 0 for an empty slot
+        # kept = []
+        # for sub in range(1, 11):
+        #     value = node.sdo.upload(0x5000, sub)
+        #     code = int.from_bytes(value, "little")
+        #     if code:
+        #         kept.append(code)
+        # return kept
+
+        # One object holding a packed array, and the maker's own names
+        # from pycangui.canopen.faults import StoredError
+        # NAMES = {0x41: "Encoder fault", 0x65: "Contactor did not close"}
+        # blob = node.sdo.upload(0x5310, 0)
+        # return [
+        #     StoredError(code=b, text=NAMES.get(b, "")) for b in blob if b
+        # ]
+
+        # Ask for each in turn: write the index, then read the answer
+        # kept = []
+        # for position in range(1, 6):
+        #     node.sdo.download(0x5200, 1, bytes([position]))
+        #     kept.append(int.from_bytes(node.sdo.upload(0x5200, 2), "little"))
+        # return [code for code in kept if code]
+    """
+    return None
+
+
+@hook
+def clear_stored_errors(node, *, ctx) -> bool | None:
+    """Empty this device's fault list its own way.
+
+    The companion to ``stored_errors``: a device that keeps its faults
+    somewhere of its own is usually cleared somewhere of its own too, and
+    pycangui's default -- writing 0 to 0x1003 sub 0 -- would be writing to
+    an object it may not have.
+
+    Return True when the request has been sent, or None to let pycangui
+    write to 0x1003. It runs off the window's thread, as ``stored_errors``
+    does, so it may take its time.
+
+    Examples:
+
+        # A command object that means "forget the lot"
+        # node.sdo.download(0x5001, 0, (1).to_bytes(4, "little"))
+        # return True
+
+        # Clear each slot in turn
+        # for sub in range(1, 11):
+        #     node.sdo.download(0x5000, sub, bytes(4))
+        # return True
+    """
+    return None
+
+
+@hook
 def emcy_manufacturer(code: int, register: int, data: bytes, *, ctx) -> str | None:
     """Decode the five manufacturer-specific bytes of an emergency object.
 
