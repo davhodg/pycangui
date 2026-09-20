@@ -56,6 +56,7 @@ from pycangui.core.hooks import Hooks
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
 from pycangui.ui import canopen_login, canopen_settings, folders, keep_file, messages
+from pycangui.ui.faults_view import FaultsView
 from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
 
@@ -64,6 +65,7 @@ ROLE_SUB = Qt.UserRole + 1
 #: The text a row is filtered on, built once when the tree is filled.
 ROLE_SEARCH = Qt.UserRole + 2
 
+# --- columns of the object dictionary tree ---
 COL_NAME = 1
 COL_ACCESS = 3
 COL_VALUE = 4
@@ -72,6 +74,10 @@ COL_VALUE = 4
 #: worth more than the search that built it -- and it is the shape a
 #: user-composed pane will need later.
 COL_WATCH = 5
+
+# --- columns of the node list, which is a different tree with its own 5 ---
+COL_LEVEL = 4  #: the access level held
+COL_ERROR = 5  #: what the node's own error register says, when asked
 ERROR_COLOUR = QColor(200, 40, 40)
 LOST_COLOUR = QColor(150, 150, 150)
 ALIVE_BRUSH = QBrush()  # an empty brush restores the theme's normal colour
@@ -117,7 +123,7 @@ class CanopenView(QWidget):
 
         # --- nodes ---------------------------------------------------------
         self.nodes = QTreeWidget()
-        self.nodes.setHeaderLabels(["Node", "Name", "State", "EDS", "Access"])
+        self.nodes.setHeaderLabels(["Node", "Name", "State", "EDS", "Access", "Error"])
         self.nodes.setRootIsDecorated(False)
         self.nodes.currentItemChanged.connect(self._on_node_selected)
         self.nodes.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -355,6 +361,12 @@ class CanopenView(QWidget):
         emcy_bar.addWidget(clear_emcy)
         emcy_l.addLayout(emcy_bar)
         self.emcy_tab_index = bottom.addTab(emcy_box, "Emergencies")
+        # Beside the arrival log rather than in it: one holds what was
+        # broadcast while pycangui was listening, the other what the node
+        # says when asked. Plugging in after a fault is the case that needs
+        # both.
+        self.faults = FaultsView(manager, ctx)
+        bottom.addTab(self.faults, "Faults")
         self.lss = LssView(manager, ctx)
         bottom.addTab(self.lss, "LSS")
         self.bottom_tabs = bottom
@@ -375,6 +387,7 @@ class CanopenView(QWidget):
         manager.eds_loaded.connect(self.on_eds_loaded)
         manager.sdo_result.connect(self.on_sdo_result)
         manager.pdo_update.connect(self.on_pdo_update)
+        manager.fault_state.connect(self.on_fault_state)
         manager.emcy.connect(manager.remember_emcy)
         manager.emcy.connect(self.on_emcy)
         manager.message.connect(ctx.log)
@@ -460,7 +473,21 @@ class CanopenView(QWidget):
     @Slot(int, object)
     def on_access_level(self, node_id: int, level) -> None:
         if (item := self._node_item(node_id)) is not None:
-            item.setText(4, "" if level is None else str(level))
+            item.setText(COL_LEVEL, "" if level is None else str(level))
+
+    @Slot(object)
+    def on_fault_state(self, state) -> None:
+        """The Error column: what the node's own error register says.
+
+        Only the register, and only when it was read. An emergency that
+        arrived and went is not a fault now, and a node nobody has asked
+        gets an empty cell rather than a reassuring one.
+        """
+        item = self._node_item(state.node_id)
+        if item is None:
+            return
+        item.setText(COL_ERROR, state.register_text if state.faulted else "")
+        item.setForeground(COL_ERROR, ERROR_COLOUR if state.faulted else ALIVE_BRUSH)
 
     def _open_settings(self) -> None:
         dialog = canopen_settings.CanopenSettingsDialog(
@@ -746,6 +773,7 @@ class CanopenView(QWidget):
 
     def _on_node_selected(self, current: QTreeWidgetItem | None, _previous) -> None:
         self._offer_node_buttons()
+        self.faults.set_node(None if current is None else current.data(0, ROLE_INDEX))
         self.clear_live_pdos()
         self.pdo_config.set_node(None if current is None else current.data(0, ROLE_INDEX))
         self._populate_od(None if current is None else current.data(0, ROLE_INDEX))

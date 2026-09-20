@@ -28,7 +28,7 @@ from canopen.nmt import NMT_COMMANDS, NMT_STATES
 from canopen.objectdictionary import ODArray, ODRecord, ODVariable, datatypes, eds
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
-from pycangui.canopen import NodeIdentity, PdoConfig, PdoEntry, eds_extras
+from pycangui.canopen import NodeIdentity, PdoConfig, PdoEntry, eds_extras, faults
 from pycangui.canopen.dcf import values_from, write_dcf
 from pycangui.canopen.display import Display, from_variable, with_overrides
 from pycangui.canopen.emcy import Emcy
@@ -119,6 +119,7 @@ class CanopenManager(QObject):
     pdo_config = Signal(int)  # node_id: its PDO configuration changed
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
     access_level = Signal(int, object)  # node_id, the access level held (None: none known)
+    fault_state = Signal(object)  # faults.FaultState: what a node says about itself
     #: For the Event Log pane, with how much the line matters. The level
     #: belongs at the call site: only the code that knows a read failed
     #: knows that the line is a failure rather than a note.
@@ -134,6 +135,10 @@ class CanopenManager(QObject):
         #: through it rather than rebuilt from the parsed dictionary.
         self._eds_path: dict[int, str] = {}
         self.emcy_history: list[Emcy] = []
+        #: node_id -> what it last said about its own faults, from read_faults.
+        #: Kept because it is state rather than an event: the answer stands
+        #: until somebody asks again or the node says otherwise.
+        self.fault_states: dict[int, faults.FaultState] = {}
         #: node_id -> when its last heartbeat arrived, and the interval between
         #: the last two. A node is called lost after MISSED_HEARTBEATS of them.
         self.last_heartbeat: dict[int, float] = {}
@@ -306,6 +311,7 @@ class CanopenManager(QObject):
         self.heartbeat_interval.clear()
         self.lost_nodes.clear()
         self.access_levels.clear()
+        self.fault_states.clear()
 
     # --- a node added by hand ----------------------------------------------------
     def add_node(self, node_id: int) -> bool:
@@ -397,6 +403,104 @@ class CanopenManager(QObject):
             self.access_level.emit(node_id, held)
 
         self._worker.submit(lambda: hooks.call("canopen", "current_level", node), done)
+
+    # --- what a node says about its own faults -------------------------------
+    def read_faults(self, node_id: int, stored: bool = True) -> None:
+        """Read the error register, and the two optional objects beside it.
+
+        One trip rather than three calls, because they are read together and
+        answer one question. ``stored`` is false for a refresh that only
+        wants to know whether the node is faulted now: 0x1003 costs an SDO
+        per entry, and a list of history does not change while nothing is
+        happening.
+
+        Nothing here assumes an object exists. 0x1001 is mandatory and the
+        other two are not, so an abort against those is an answer -- "this
+        node has nowhere to keep that" -- and is recorded as such rather
+        than reported as a failure.
+        """
+        node = self.node(node_id)
+        if node is None:
+            self.message.emit(f"Node {node_id}: not known", WARNING)
+            return
+
+        def job() -> faults.FaultState:
+            state = faults.FaultState(node_id)
+            state.register, ok = self._optional(node, faults.ERROR_REGISTER)
+            if not ok:
+                # Mandatory in CiA 301, so a node refusing it is worth the
+                # line: it is either not a CANopen node or it is in a state
+                # where it will not answer anything else either.
+                state.missing.add(faults.ERROR_REGISTER)
+            state.manufacturer_status, ok = self._optional(node, faults.MANUFACTURER_STATUS)
+            if not ok:
+                state.missing.add(faults.MANUFACTURER_STATUS)
+            if stored:
+                self._read_stored(node, state)
+            return state
+
+        self._worker.submit(job, lambda s, e: self._faults_read(node_id, s, e))
+
+    def _read_stored(self, node, state: faults.FaultState) -> None:
+        """0x1003: how many the node kept, then that many entries."""
+        count, ok = self._optional(node, faults.PREDEFINED_ERROR_FIELD, faults.COUNT_SUB)
+        if not ok or count is None:
+            state.missing.add(faults.PREDEFINED_ERROR_FIELD)
+            return
+        for sub in range(1, min(int(count), faults.MOST_ENTRIES) + 1):
+            value, ok = self._optional(node, faults.PREDEFINED_ERROR_FIELD, sub)
+            if not ok or value is None:
+                break  # a node that says five and holds three is describing itself
+            state.stored.append(faults.unpack(int(value)))
+
+    @staticmethod
+    def _optional(node, index: int, sub: int = 0) -> tuple[int | None, bool]:
+        """Read one object, with "the node has not got it" as an answer.
+
+        Returns the value and whether the node answered at all. Every abort
+        is taken as absence: 0x06020000 is the one that means it, and a
+        device that answers 0x06090011 or times out is equally a device with
+        nothing to show, which is what the caller has to act on.
+        """
+        try:
+            return int.from_bytes(node.sdo.upload(index, sub), "little"), True
+        except Exception:
+            return None, False
+
+    def _faults_read(self, node_id: int, state, error: str | None) -> None:
+        if error:
+            self.message.emit(f"Node {node_id}: reading its faults failed ({error})", WARNING)
+            return
+        self.fault_states[node_id] = state
+        for index in sorted(state.missing):
+            self.message.emit(f"Node {node_id}: {faults.missing_text(index)}", INFORMATION)
+        self.fault_state.emit(state)
+
+    def clear_stored_errors(self, node_id: int) -> None:
+        """Write 0 to 0x1003 sub 0, which is how CiA 301 says to empty it.
+
+        The node's own history, not this tool's copy of it: the Emergencies
+        list is untouched, because what pycangui saw and what the node kept
+        are two different records and clearing one is not clearing the other.
+        """
+        node = self.node(node_id)
+        if node is None:
+            self.message.emit(f"Node {node_id}: not known", WARNING)
+            return
+
+        def job() -> None:
+            node.sdo.download(faults.PREDEFINED_ERROR_FIELD, faults.COUNT_SUB, faults.ZERO)
+
+        def done(_result, error: str | None) -> None:
+            if error:
+                self.message.emit(
+                    f"Node {node_id}: clearing its stored errors failed ({error})", WARNING
+                )
+                return
+            self.message.emit(f"Node {node_id}: stored errors cleared", GOOD)
+            self.read_faults(node_id)
+
+        self._worker.submit(job, done)
 
     def _node_for_hooks(self, node_id: int):
         if self.network is None:

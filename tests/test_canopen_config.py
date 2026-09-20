@@ -163,6 +163,7 @@ def test_the_object_dictionary_is_the_first_tab(app, tmp_path, monkeypatch):
         "Live PDOs",
         "PDO configuration",
         "Emergencies",
+        "Faults",
         "LSS",
     ]
     window.close()

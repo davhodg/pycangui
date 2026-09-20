@@ -41,6 +41,11 @@ SLEW = 50
 SPEED_DEMAND = 0x2001  # written by whoever is commanding this device
 MEASUREMENTS = 0x2000  # what it reports back: speed at sub 1, odometer at 2
 ERROR_REGISTER = 0x1001  # CiA 301: which kinds of fault are active
+#: CiA 301's list of what went wrong, newest first, with sub 0 the count.
+#: A real drive keeps one so that a tool plugged in afterwards can still
+#: find out what happened; this device keeps one for the same reason.
+STORED_ERRORS = 0x1003
+MOST_STORED = 4  # what the EDS declares room for
 
 #: Past this demand the device complains. A device that never faults is a
 #: device you cannot test the fault handling of.
@@ -132,6 +137,7 @@ def _emergencies(node, device, demand: int) -> None:
         node.state.over_current = True
         current = min(abs(demand) // 10, 0xFFFF)  # 0.1 A per bit
         device.set_data(ERROR_REGISTER, 0, bytes([ERROR_CURRENT]))
+        _remember(device, OVER_CURRENT, current)
         node.send(
             0x80 + NODE_ID,
             encode_emcy(OVER_CURRENT, ERROR_CURRENT, current.to_bytes(2, "little") + b"\x01"),
@@ -140,6 +146,20 @@ def _emergencies(node, device, demand: int) -> None:
         node.state.over_current = False
         device.set_data(ERROR_REGISTER, 0, b"\x00")
         node.send(0x80 + NODE_ID, encode_emcy(0x0000, 0x00, b""))  # error reset
+
+
+def _remember(device, code: int, info: int) -> None:
+    """Push an entry onto 0x1003, newest first, as CiA 301 describes it.
+
+    The reset is deliberately not recorded. 0x1003 is a list of what went
+    wrong; an entry saying nothing went wrong is how a device fills its own
+    history with silence.
+    """
+    kept = int.from_bytes(device.get_data(STORED_ERRORS, 0), "little")
+    for sub in range(min(kept, MOST_STORED - 1), 0, -1):
+        device.set_data(STORED_ERRORS, sub + 1, device.get_data(STORED_ERRORS, sub))
+    device.set_data(STORED_ERRORS, 1, (code | (info << 16)).to_bytes(4, "little"))
+    device.set_data(STORED_ERRORS, 0, bytes([min(kept + 1, MOST_STORED)]))
 
 
 def stop(node, *, ctx):

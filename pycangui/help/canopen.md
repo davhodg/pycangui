@@ -100,6 +100,38 @@ defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
 node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is the [CANopen DCF compare](compare.md) plugin.
 
+### Faults: what the node says when asked
+
+The *Emergencies* tab holds what was broadcast **while pycangui was
+listening**. Plug in after a controller has faulted and it is empty, which
+reads as "no faults" and is not. The *Faults* tab asks the selected node
+instead, so the answer does not depend on having been there:
+
+- **the error register** (0x1001) -- mandatory in CiA 301, so every node has
+  one. Non-zero means the node considers itself faulted *now*, and the node
+  list's **Error** column says which categories;
+- **the manufacturer status register** (0x1002) -- optional, and its meaning
+  is the maker's alone;
+- **the stored errors** (0x1003) -- optional, the codes the node kept, newest
+  first, with the high word of each entry manufacturer-specific.
+
+**Two of the three are optional, and the pane says which answer it is
+giving.** A node with no 0x1003 says so in place of the list and its *Clear
+stored errors* is switched off; a node with an empty 0x1003 says it is holding
+none. Those are different facts and an empty list for both would be wrong half
+the time. The same goes for 0x1002: "no manufacturer status register" is not
+the same as one reading zero.
+
+Nothing is read until you press **Read** -- the stored list costs an SDO per
+entry, and clicking through a node list is not a reason to spend them. What
+was read stays, so coming back to a node shows its last answer rather than an
+empty pane. **Clear stored errors** writes 0 to 0x1003 sub 0, which is how CiA
+301 says to empty it; the Emergencies tab is untouched, because what pycangui
+saw and what the node kept are two different records.
+
+A stored error is history. A node that faulted this morning and recovered
+still holds the entry, so only the error register answers "is it faulted now".
+
 **What Apply DCF reports.** Every parameter the node refused is listed,
 grouped by the reason the node itself gave -- `abort 0x06010002, Attempt to
 write a read only object` once with the objects under it, rather than the same
