@@ -428,3 +428,93 @@ def test_what_the_two_sides_were_comes_back_next_time(app, tmp_path, monkeypatch
     again = MainWindow()
     assert again.panes.view("dcf_compare:main").left.path.text().endswith("a.dcf")
     again.close()
+
+
+# --- filtering by what the object allows ------------------------------------------------
+def test_read_only_objects_are_told_apart_from_writable_ones():
+    """A read-only object is a measurement or a nameplate: two readings of
+    one differ because the machine was running, not because anybody
+    configured it differently."""
+    from pycangui.plugins.dcf_compare.compare import writable
+
+    assert writable("rw") and writable("wo") and writable("rww") and writable("rwr")
+    assert not writable("ro")
+    assert not writable("const")
+    assert writable("RW"), "however the file spells it"
+
+
+def test_an_object_nobody_has_a_file_for_is_not_hidden_on_a_guess():
+    """A filter that hides what it cannot classify hides the thing being
+    looked for."""
+    from pycangui.plugins.dcf_compare.compare import writable
+
+    assert writable(""), "not known is not the same as read-only"
+
+
+def test_a_row_carries_the_access_either_side_knows():
+    from pycangui.plugins.dcf_compare import compare as comparison
+
+    left = comparison.Reading(
+        label="file",
+        values={(0x2000, 0): 1, (0x6064, 0): 5},
+        access={(0x2000, 0): "rw", (0x6064, 0): "ro"},
+    )
+    right = comparison.Reading(label="node", values={(0x2000, 0): 2, (0x6064, 0): 9})
+
+    rows = {row.where: row for row in comparison.compare(left, right)}
+
+    assert rows[(0x2000, 0)].access == "rw" and rows[(0x2000, 0)].writable
+    assert rows[(0x6064, 0)].access == "ro" and not rows[(0x6064, 0)].writable
+
+
+def test_the_side_with_a_file_answers_for_the_side_without():
+    """A node read over SDO says nothing about access: the device answers
+    with a value or an abort, and neither is "this one is read-only"."""
+    from pycangui.plugins.dcf_compare import compare as comparison
+
+    node = comparison.Reading(label="node", values={(0x6064, 0): 5})
+    file = comparison.Reading(label="file", values={(0x6064, 0): 7}, access={(0x6064, 0): "ro"})
+
+    rows = comparison.compare(node, file)
+
+    assert rows[0].access == "ro", "read off whichever side had a file"
+
+
+def rows_shown(view):
+    table = view.table
+    return {table.topLevelItem(i).text(0) for i in range(table.topLevelItemCount())}
+
+
+def test_the_pane_can_leave_the_measurements_out(app, view):
+    """RO objects are usually measurements, and a comparison of those is a
+    comparison of what the machine happened to be doing."""
+    from pycangui.plugins.dcf_compare import compare as comparison
+    from pycangui.plugins.dcf_compare.plugin import ALL_ACCESS, WRITABLE_ONLY
+
+    view.rows = comparison.compare(
+        comparison.Reading(
+            label="a",
+            values={(0x2000, 0): 1, (0x6064, 0): 5, (0x3000, 0): 7},
+            access={(0x2000, 0): "rw", (0x6064, 0): "ro"},
+        ),
+        comparison.Reading(label="b", values={(0x2000, 0): 2, (0x6064, 0): 9, (0x3000, 0): 8}),
+    )
+
+    view.access.setCurrentText(ALL_ACCESS)
+    view._show_rows()  # already the current entry, so nothing was emitted
+    assert rows_shown(view) == {"0x2000", "0x6064", "0x3000"}
+
+    view.access.setCurrentText(WRITABLE_ONLY)
+    assert rows_shown(view) == {"0x2000", "0x3000"}, "the one nobody had a file for stays"
+
+
+def test_which_objects_to_show_is_remembered(app, view):
+    from pycangui.plugins.dcf_compare.plugin import WRITABLE_ONLY
+
+    view.access.setCurrentText(WRITABLE_ONLY)
+    view.save()
+    view.access.setCurrentIndex(0)
+
+    view.restore()
+
+    assert view.access.currentText() == WRITABLE_ONLY

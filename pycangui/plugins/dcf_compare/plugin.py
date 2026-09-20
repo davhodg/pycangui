@@ -65,6 +65,20 @@ EDS_FILTER = "Device files (*.dcf *.eds);;All files (*)"
 
 HEADINGS = ("Index", "Sub", "Object", "Left", "Right", "")
 
+#: What the access filter offers. Read-only objects are measurements and
+#: nameplate -- a speed, a temperature, a serial number -- so two readings
+#: of them differ because the machine was doing something at the time,
+#: which is not what "what is configured differently" is asking.
+ALL_ACCESS = "RO + RW"
+WRITABLE_ONLY = "RW only"
+ACCESS_TIP = (
+    "Which objects to list. RW only leaves out the read-only ones, which\n"
+    "are measurements and nameplate: they differ between two readings\n"
+    "because the machine was running, not because anybody configured it.\n"
+    "Access comes from an EDS or DCF, so an object neither side has a file\n"
+    "for is listed either way rather than hidden on a guess."
+)
+
 NOTHING_TO_READ = (
     "Neither side names any objects, so there is nothing to compare. A DCF "
     "says which objects matter; comparing two nodes needs an EDS loaded "
@@ -181,6 +195,11 @@ class CompareView(QWidget):
             "what it implements. Those are listed separately."
         )
         self.differences_only.toggled.connect(self._show_rows)
+        self.access = QComboBox()
+        for label, writable_only in ((ALL_ACCESS, False), (WRITABLE_ONLY, True)):
+            self.access.addItem(label, writable_only)
+        self.access.setToolTip(ACCESS_TIP)
+        self.access.currentIndexChanged.connect(lambda _i: self._show_rows())
         copy = QPushButton("Copy")
         copy.setToolTip("The comparison as text, for a note or a build record.")
         copy.clicked.connect(self._copy)
@@ -188,6 +207,8 @@ class CompareView(QWidget):
         buttons = QHBoxLayout()
         buttons.addWidget(self.compare_button)
         buttons.addWidget(self.differences_only)
+        buttons.addWidget(QLabel("Show:"))
+        buttons.addWidget(self.access)
         buttons.addStretch()
         buttons.addWidget(copy)
 
@@ -276,6 +297,25 @@ class CompareView(QWidget):
                 ]
         return []
 
+    def _access_of(self, node_id: int) -> dict[tuple[int, int], str]:
+        """What the EDS loaded against this node says each object allows.
+
+        An SDO read says nothing about access -- the device answers with a
+        value or an abort, and neither is "this one is read-only" -- so a
+        node with no EDS contributes nothing here, and the other side or
+        the filter's own rule has to cope with that.
+        """
+        from pycangui.canopen.manager import _all_variables
+
+        node = self.canopen.node(node_id)
+        od = getattr(node, "object_dictionary", None)
+        if not od:
+            return {}
+        return {
+            (var.index, var.subindex): getattr(var, "access_type", "") or ""
+            for var in _all_variables(od)
+        }
+
     def _read_nodes(self, wanted: list[tuple[int, int]]) -> None:
         """Read the node sides, one after the other, then show the result."""
         outstanding = [
@@ -314,7 +354,10 @@ class CompareView(QWidget):
                     self.summary.setText(f"Node {node_id} could not be read.")
                     return
                 self._readings[name] = comparison.Reading(
-                    label=f"Node {node_id}", values=values, node_id=node_id
+                    label=f"Node {node_id}",
+                    values=values,
+                    access=self._access_of(node_id),
+                    node_id=node_id,
                 )
                 next_one()
 
@@ -342,9 +385,12 @@ class CompareView(QWidget):
     # --- showing it -------------------------------------------------------------------
     def _show_rows(self) -> None:
         only = self.differences_only.isChecked()
+        writable_only = bool(self.access.currentData())
         self.table.clear()
         for row in self.rows:
             if only and row.state == comparison.SAME:
+                continue
+            if writable_only and not row.writable:
                 continue
             item = QTreeWidgetItem(
                 [
@@ -380,6 +426,7 @@ class CompareView(QWidget):
                 "left": self.left.state(),
                 "right": self.right.state(),
                 "differences_only": self.differences_only.isChecked(),
+                "writable_only": bool(self.access.currentData()),
             },
         )
 
@@ -390,11 +437,13 @@ class CompareView(QWidget):
         self.left.restore(stored.get("left", {}))
         self.right.restore(stored.get("right", {}))
         self.differences_only.setChecked(bool(stored.get("differences_only", True)))
+        at = self.access.findData(bool(stored.get("writable_only", False)))
+        self.access.setCurrentIndex(max(at, 0))
 
 
 API_VERSION = 1
 NAME = "CANopen DCF compare"
-VERSION = "1.0"
+VERSION = "1.1"
 DESCRIPTION = "Two CANopen configurations side by side: file, device or EDS."
 
 

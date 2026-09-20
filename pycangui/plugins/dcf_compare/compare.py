@@ -56,6 +56,23 @@ COMMISSIONING = "DeviceComissioning"  # spelled as CiA 306 spells it
 FIRST_INDEX = 0x1000
 
 
+#: The access types a device will take a write to, as CiA 306 spells them.
+#: The two left out are ``ro`` and ``const``: measurements and nameplate,
+#: which differ between two readings because the machine was doing something
+#: at the time, not because anybody configured it differently.
+WRITABLE = ("rw", "wo", "rww", "rwr")
+
+
+def writable(access: str) -> bool:
+    """Whether an object is one somebody could have changed.
+
+    An unknown access type -- neither side had a file saying -- counts as
+    writable, deliberately. A filter that hides what it cannot classify
+    hides the thing being looked for.
+    """
+    return not access or access.lower() in WRITABLE
+
+
 @dataclass(frozen=True)
 class Reading:
     """One side of a comparison: what was found, and what it was called.
@@ -68,6 +85,10 @@ class Reading:
     label: str
     values: dict[tuple[int, int], object] = field(default_factory=dict)
     names: dict[tuple[int, int], str] = field(default_factory=dict)
+    #: ``ro``, ``rw``, ``const`` and the rest, where a file said. A node read
+    #: over SDO says nothing about access, so this is empty for one without
+    #: an EDS loaded -- and empty is "not known", not "read-only".
+    access: dict[tuple[int, int], str] = field(default_factory=dict)
     #: Where the values came from, when that is a node. Two readings taken at
     #: different node-IDs are comparable in principle and misleading in
     #: practice, and nothing here can tell which without being told.
@@ -75,6 +96,9 @@ class Reading:
 
     def name_of(self, where: tuple[int, int]) -> str:
         return self.names.get(where, "")
+
+    def access_of(self, where: tuple[int, int]) -> str:
+        return self.access.get(where, "")
 
 
 @dataclass(frozen=True)
@@ -87,6 +111,9 @@ class Row:
     left: object
     right: object
     state: str
+    #: What a file says this object's access type is, or "" where neither
+    #: side had one to say.
+    access: str = ""
 
     @property
     def where(self) -> tuple[int, int]:
@@ -96,6 +123,11 @@ class Row:
     def differs(self) -> bool:
         """Whether this is a disagreement, as opposed to a gap in one side."""
         return self.state == DIFFERENT
+
+    @property
+    def writable(self) -> bool:
+        """Whether this is an object somebody could have configured."""
+        return writable(self.access)
 
 
 def same_value(left: object, right: object) -> bool:
@@ -137,6 +169,7 @@ def compare(left: Reading, right: Reading, first_index: int = FIRST_INDEX) -> li
                 index=where[0],
                 sub=where[1],
                 name=left.name_of(where) or right.name_of(where),
+                access=left.access_of(where) or right.access_of(where),
                 left=left.values.get(where),
                 right=right.values.get(where),
                 state=state,
@@ -228,12 +261,14 @@ def read_file(path: str | Path, node_id: int = 0) -> Reading:
     od = canopen.import_od(str(path), stored if stored is not None else node_id)
     values: dict[tuple[int, int], object] = {}
     names: dict[tuple[int, int], str] = {}
+    access: dict[tuple[int, int], str] = {}
     for var in _all_variables(od):
         where = (var.index, var.subindex)
         names[where] = var.name or ""
+        access[where] = getattr(var, "access_type", "") or ""
         if var.value is not None:
             values[where] = var.value
-    return Reading(label=path.name, values=values, names=names, node_id=stored)
+    return Reading(label=path.name, values=values, names=names, access=access, node_id=stored)
 
 
 def _node_id_in(path: Path) -> int | None:

@@ -27,6 +27,20 @@ indices and calling the result a comparison.
 *Differences only* is ticked to begin with. Untick it to see everything,
 including the objects that agree.
 
+**Show** picks which objects are listed at all. *RO + RW* is everything;
+*RW only* leaves out the read-only ones, which are measurements and nameplate
+-- a speed, a temperature, a serial number. Two readings of those differ
+because the machine was doing something at the time, not because anybody
+configured it differently, so they are noise in the question *what has been
+changed on this device*.
+
+Access comes from an EDS or a DCF. A node read over SDO says nothing about it
+-- the device answers with a value or an abort, and neither of those is "this
+one is read-only" -- so the side that has a file answers for the side that
+does not. An object **neither** side has a file for stays listed under *RW
+only*, on purpose: a filter that hides what it cannot classify hides the thing
+being looked for.
+
 **An object held on one side and not the other is not counted as a
 difference.** A DCF carries a value only for the objects that had one, and a
 device answers only what it implements, so this is common and almost never a
