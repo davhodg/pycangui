@@ -27,6 +27,9 @@ from PySide6.QtWidgets import (
 from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
 from pycangui.ui.persist import remember
+from pycangui.ui.refresh import FAST_MS, SLOW_MS
+from pycangui.ui.refresh import LABEL as SLOW_LABEL
+from pycangui.ui.refresh import TIP as SLOW_TIP
 
 COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
 
@@ -65,6 +68,9 @@ class PlotView(QWidget):
             "than at the clock this window is running on."
         )
         self.follow.setChecked(True)
+        self.slow = QCheckBox(SLOW_LABEL)
+        self.slow.setToolTip(SLOW_TIP)
+        self.slow.toggled.connect(self._on_slow)
         self.fit = QPushButton("Fit")
         self.fit.setToolTip("Zoom to everything being plotted, wherever in time it is.")
         self.fit.clicked.connect(self._fit)
@@ -76,6 +82,7 @@ class PlotView(QWidget):
         bar.addWidget(self.window_s)
         bar.addWidget(self.pause)
         bar.addWidget(self.follow)
+        bar.addWidget(self.slow)
         bar.addWidget(self.fit)
         bar.addStretch()
         bar.addWidget(clear)
@@ -85,14 +92,24 @@ class PlotView(QWidget):
         layout.addLayout(bar)
         layout.addWidget(self.plot)
 
+        # Before the settings are restored, not after: a saved Slow refresh
+        # sets the box from inside this constructor, and _on_slow reaches
+        # for the timer the moment it does.
+        self._timer = QTimer(self, interval=FAST_MS, timeout=self._redraw)
+        self._timer.start()
+
         if ctx is not None:
             # Not Pause: an application that started up paused, showing a
             # frozen plot of a live bus, would be reported as a bug.
             remember(ctx, "plot.window_s", self.window_s)
             remember(ctx, "plot.follow", self.follow)
+            # Unlike Pause, this one is restored: a plot that comes back
+            # drawing four times a second is still a live plot.
+            remember(ctx, "plot.slow", self.slow)
 
-        self._timer = QTimer(self, interval=50, timeout=self._redraw)
-        self._timer.start()
+    @Slot(bool)
+    def _on_slow(self, slow: bool) -> None:
+        self._timer.setInterval(SLOW_MS if slow else FAST_MS)
 
     # --- the right hand axis --------------------------------------------------------------
     def _make_right_axis(self) -> None:

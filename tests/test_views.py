@@ -704,6 +704,74 @@ def test_a_trace_left_in_latest_mode_opens_again(app, tmp_path, monkeypatch):
     assert again.columns_button.menu() is again._column_menus[1]
 
 
+# --- slowing the screen down, not the capture -----------------------------------------
+def test_slow_refresh_holds_rows_back_and_loses_none(app, tmp_path, monkeypatch):
+    """The whole claim: the screen waits, the frames do not go missing."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    view.slow.setChecked(True)
+    assert view._slow_timer.isActive()
+
+    view.on_frames([frame(0x100, b"", 0.0)])
+    view.on_frames([frame(0x200, b"", 0.01)])
+    assert view.model.rowCount() == 0, "shown before the timer said so"
+
+    view._slow_timer.timeout.emit()  # the quarter second passing
+    assert view.model.rowCount() == 2
+    assert view.latest.rowCount() == 2
+
+
+def test_unticking_slow_refresh_shows_what_is_held_at_once(app, tmp_path, monkeypatch):
+    """The answer to "what is on the bus now" should not arrive after the
+    question."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    view.slow.setChecked(True)
+    view.on_frames([frame(0x100, b"", 0.0)])
+    assert view.model.rowCount() == 0
+
+    view.slow.setChecked(False)
+    assert view.model.rowCount() == 1
+    assert not view._slow_timer.isActive()
+
+
+def test_slow_refresh_does_not_undo_pause(app, tmp_path, monkeypatch):
+    """Both fill one queue, and Pause means it stays there."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    view.slow.setChecked(True)
+    view.pause.setChecked(True)
+    view.on_frames([frame(0x100, b"", 0.0)])
+
+    view._slow_timer.timeout.emit()
+    assert view.model.rowCount() == 0, "the timer let a paused view repaint"
+
+    view.pause.setChecked(False)
+    assert view.model.rowCount() == 1
+
+
+def test_a_trace_left_on_slow_refresh_opens_again(app, tmp_path, monkeypatch):
+    """Restoring it ticks the box from inside the constructor, and the
+    handler reaches straight for the timer."""
+    import sys
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    first = TraceView(Hooks(ctx), ctx)
+    first.slow.setChecked(True)
+    assert ctx.settings.get("trace.slow") is True
+
+    blew_up: list = []
+    monkeypatch.setattr(sys, "excepthook", lambda *what: blew_up.append(what))
+    again = TraceView(Hooks(ctx), ctx)
+    assert not blew_up, blew_up
+    assert again.slow.isChecked()
+    assert again._slow_timer.isActive(), "restored ticked, but nothing was holding rows"
+
+
 # --- how fast a figure is allowed to change -------------------------------------------
 def named(columns):
     """Column numbers as their headings, so a test says what it means."""

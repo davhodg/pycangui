@@ -9,6 +9,13 @@ the **Filter** menu hides whole protocol groups or channels, and **Pause**
 holds the display still while capture and recording carry on. The row count
 next to the buttons reads *shown of captured*.
 
+**Slow refresh** is the fourth, and it narrows nothing at all: it repaints
+four times a second instead of twenty, for a bus busy enough that the rows
+are a blur. The frames still arrive, are classified, recorded and exported
+exactly as before -- they are added in one go at the end of each quarter
+second rather than a dribble at a time, which is also why it costs less to
+draw. Kept per pane, so a trace opened on a quiet bus need not have it.
+
 ## What names a frame
 
 The **Kind** column says what a frame is, and nothing is named on the strength

@@ -143,3 +143,45 @@ def test_a_signal_with_no_samples_yet_does_not_pin_the_edge(app, plot):
 
     clock.t = 9.0
     assert view._edge() == pytest.approx(3.0), "the one with samples decides"
+
+
+# --- slowing the screen down ----------------------------------------------------------
+def test_slow_refresh_redraws_the_plot_less_often(plot):
+    """It is the redraw that slows; the hub keeps every sample it is given."""
+    from pycangui.ui.refresh import FAST_MS, SLOW_MS
+
+    view, hub, clock = plot
+    assert view._timer.interval() == FAST_MS
+
+    view.slow.setChecked(True)
+    assert view._timer.interval() == SLOW_MS
+    assert view._timer.isActive(), "slowed into stopping"
+
+    for i in range(20):
+        hub.push("Live", "RPM", clock() + i * 0.01, float(i))
+    assert len(hub.get("Live/RPM").times) == 20, "samples dropped to slow the screen"
+
+    view.slow.setChecked(False)
+    assert view._timer.interval() == FAST_MS
+
+
+def test_a_plot_left_on_slow_refresh_opens_again(app, tmp_path, monkeypatch):
+    """Restoring it ticks the box from inside the constructor, and the
+    handler reaches straight for the timer."""
+    import sys
+
+    from pycangui.core.context import Context
+    from pycangui.ui.refresh import SLOW_MS
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    first = PlotView(SignalHub(), Clock(), ctx)
+    first.slow.setChecked(True)
+    assert ctx.settings.get("plot.slow") is True
+
+    blew_up: list = []
+    monkeypatch.setattr(sys, "excepthook", lambda *what: blew_up.append(what))
+    again = PlotView(SignalHub(), Clock(), ctx)
+    assert not blew_up, blew_up
+    assert again.slow.isChecked()
+    assert again._timer.interval() == SLOW_MS, "restored ticked, but redrawing at full rate"

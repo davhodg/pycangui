@@ -47,6 +47,9 @@ from pycangui.ui.latest_model import (
     LatestModel,
 )
 from pycangui.ui.persist import remember, remember_columns
+from pycangui.ui.refresh import LABEL as SLOW_LABEL
+from pycangui.ui.refresh import SLOW_MS
+from pycangui.ui.refresh import TIP as SLOW_TIP
 from pycangui.ui.trace_model import COLUMNS as TRACE_COLUMNS
 from pycangui.ui.trace_model import TraceModel
 
@@ -162,6 +165,16 @@ class TraceView(QWidget):
             "and appear when you unpause."
         )
         self.pause.toggled.connect(self._on_pause)
+        #: Rows are held and added in one go rather than as they arrive. The
+        #: same queue Pause fills, because it is the same thing done for a
+        #: quarter of a second at a time.
+        self.slow = QCheckBox(SLOW_LABEL)
+        self.slow.setToolTip(SLOW_TIP)
+        #: Runs only while Slow refresh is ticked; see _on_slow. Built before
+        #: the box is connected, because remember() restoring a ticked one
+        #: fires toggled from inside this constructor.
+        self._slow_timer = QTimer(self, interval=SLOW_MS, timeout=self._flush)
+        self.slow.toggled.connect(self._on_slow)
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("filter: id, name, channel or data...")
@@ -223,6 +236,8 @@ class TraceView(QWidget):
         # threw on startup.
         remember(ctx, f"{key}.mode", self.mode)
         remember(ctx, f"{key}.autoscroll", self.autoscroll)
+        # Restoring it ticked has to start the timer, which _on_slow does.
+        remember(ctx, f"{key}.slow", self.slow)
 
         clear = QPushButton("Clear")
         clear.clicked.connect(self.clear)
@@ -232,6 +247,7 @@ class TraceView(QWidget):
         bar.addWidget(self.mode)
         bar.addWidget(self.autoscroll)
         bar.addWidget(self.pause)
+        bar.addWidget(self.slow)
         bar.addWidget(self.search)
         bar.addWidget(self.filter_button)
         bar.addWidget(self.columns_button)
@@ -246,6 +262,8 @@ class TraceView(QWidget):
 
         self._rate_timer = QTimer(self, interval=500, timeout=self.latest.refresh_rates)
         self._rate_timer.start()
+        if self.slow.isChecked():
+            self._slow_timer.start()
 
         for table in (self.table, self.latest_table):
             table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -307,6 +325,30 @@ class TraceView(QWidget):
             self._pending = []
         self._update_count()
 
+    @Slot(bool)
+    def _on_slow(self, slow: bool) -> None:
+        """Start or stop holding rows back, and show what is held right away.
+
+        Unticking shows the held rows at once rather than at the end of the
+        last quarter second: the answer to "what is on the bus now" should
+        not arrive after the question.
+        """
+        if slow:
+            self._slow_timer.start()
+        else:
+            self._slow_timer.stop()
+            self._flush()
+
+    def _flush(self) -> None:
+        """Add what has arrived since the last repaint, if anything has.
+
+        Does nothing while paused: Pause fills the same queue and means it
+        to stay there.
+        """
+        if self._pending and not self.pause.isChecked():
+            self._append(self._pending)
+            self._pending = []
+
     def _update_count(self) -> None:
         shown = self.stack.currentWidget().model().rowCount()
         total = self.model.rowCount() if self.stack.currentIndex() == 0 else self.latest.rowCount()
@@ -364,6 +406,13 @@ class TraceView(QWidget):
             self._pending.extend(frames)  # captured, just not shown yet
             del self._pending[:-MAX_PENDING]
             self._update_count()
+            return
+        if self.slow.isChecked():
+            # Queued for the next tick, and deliberately without touching the
+            # count: repainting the label on every batch is the repaint this
+            # setting exists to stop.
+            self._pending.extend(frames)
+            del self._pending[:-MAX_PENDING]
             return
         self._append(frames)
 

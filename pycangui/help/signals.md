@@ -44,6 +44,11 @@ an hour. **Pause** holds the plot still while samples carry on being
 collected, **Fit** zooms to everything plotted, wherever in time it is, and
 **Clear history** throws away the samples collected so far, for every signal.
 
+**Slow refresh** redraws four times a second instead of the usual twenty, for
+a bus busy enough that the curve is a shimmer. It is the same tick box the
+[trace](trace.md) has and makes the same promise: it changes the screen and
+nothing else, so every sample is still collected, plotted and exported.
+
 *Follow* keeps the newest samples in view as they arrive. It follows the
 **data**, not the clock, so it stops when the data does: a quiet bus, or a
 disconnected one, holds the trace still rather than scrolling it off the left
