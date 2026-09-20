@@ -81,11 +81,14 @@ def test_a_dll_of_the_wrong_bitness_says_which_way_round_it_is():
 
 
 @needs_windows
-def test_a_dll_that_is_not_a_seed_and_key_dll_says_what_was_wanted():
-    """kernel32 loads perfectly well and exports none of this."""
+def test_a_dll_that_is_not_a_seed_and_key_dll_names_the_missing_export():
+    """kernel32 loads perfectly well and exports none of this. The message
+    names the function that was wanted rather than claiming a seed and key
+    DLL must export both -- one of them is optional."""
+    ours = X64 if seedkey.host_bits() == 64 else X86
     with pytest.raises(seedkey.SeedKeyError) as raised:
-        seedkey.available_privileges(X64 if seedkey.host_bits() == 64 else X86)
-    assert "XCP_ComputeKeyFromSeed" in str(raised.value)
+        seedkey.compute_key(ours, 1, b"")
+    assert seedkey.COMPUTE in str(raised.value)
 
 
 def test_the_privilege_names_are_xcps_resource_bits():
@@ -321,3 +324,67 @@ def test_both_panes_offer_the_same_dialog(app, ctx):
     assert "seed and key DLL" in uds_view.SEED_KEY_TIP
     assert "seed and key DLL" in xcp_view.SEED_KEY_TIP
     assert uds_view.seedkey_view is xcp_view.seedkey_view
+
+
+# --- a DLL only needs the one that answers a seed --------------------------------------
+def test_the_compute_function_is_the_one_that_matters():
+    """Reported: the check refused a DLL that had no
+    XCP_GetAvailablePrivileges. That one only says which levels the DLL is
+    willing to unlock, and plenty leave it out."""
+    assert seedkey.COMPUTE == "XCP_ComputeKeyFromSeed"
+    assert seedkey.PRIVILEGES_OF == "XCP_GetAvailablePrivileges"
+
+
+@needs_windows
+def test_a_dll_with_neither_function_exports_neither():
+    ours = X64 if seedkey.host_bits() == 64 else X86
+    assert seedkey.exports(ours) == set()
+    assert not seedkey.usable(ours)
+
+
+@needs_windows
+def test_a_missing_export_says_which_one_rather_than_blaming_the_dll():
+    """The old message claimed a seed and key DLL must export both."""
+    ours = X64 if seedkey.host_bits() == 64 else X86
+    with pytest.raises(seedkey.SeedKeyError) as raised:
+        seedkey.available_privileges(ours)
+    said = str(raised.value)
+    assert seedkey.PRIVILEGES_OF in said
+    assert "must export" not in said, "still says both are required"
+
+
+@needs_windows
+def test_the_dialog_calls_a_dll_without_privileges_usable(app, ctx, monkeypatch):
+    """The whole of the reported bug: usable, and it said otherwise."""
+    from pycangui.ui.seedkey_view import SeedKeyDialog
+
+    dialog = SeedKeyDialog(ctx)
+    dialog.dll.setText(str(X64 if seedkey.host_bits() == 64 else X86))
+    monkeypatch.setattr(seedkey, "exports", lambda _p: {seedkey.COMPUTE})
+    dialog._test()
+    said = dialog.privileges.text()
+    assert "Usable" in said, said
+    assert "optional" in said
+
+
+@needs_windows
+def test_the_dialog_still_asks_when_the_dll_will_say(app, ctx, monkeypatch):
+    from pycangui.ui.seedkey_view import SeedKeyDialog
+
+    dialog = SeedKeyDialog(ctx)
+    dialog.dll.setText(str(X64 if seedkey.host_bits() == 64 else X86))
+    monkeypatch.setattr(seedkey, "exports", lambda _p: {seedkey.COMPUTE, seedkey.PRIVILEGES_OF})
+    monkeypatch.setattr(seedkey, "available_privileges", lambda _p: 0x11)
+    dialog._test()
+    assert "CAL/PAG, PGM" in dialog.privileges.text()
+
+
+@needs_windows
+def test_a_dll_with_no_compute_is_called_out(app, ctx, monkeypatch):
+    from pycangui.ui.seedkey_view import SeedKeyDialog
+
+    dialog = SeedKeyDialog(ctx)
+    dialog.dll.setText(str(X64 if seedkey.host_bits() == 64 else X86))
+    monkeypatch.setattr(seedkey, "exports", lambda _p: {seedkey.PRIVILEGES_OF})
+    dialog._test()
+    assert "cannot answer a seed" in dialog.privileges.text()

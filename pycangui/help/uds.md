@@ -54,10 +54,20 @@ On a CAN FD channel **CAN-DL** and **BRS** sit beside them, as
 **Change** moves the ECU into the session chosen beside it. **Unlock** runs
 SecurityAccess at the **Level** beside it: the ECU hands over a seed, and
 pycangui answers with the key from `hooks/uds.py::security_key`, or from the
-seed and key DLL described below where that hook returns None. **Tester
-present** sends TesterPresent every couple of seconds. Without it an ECU drops
+seed and key DLL described below where that hook returns None.
+
+**Tester present** sends TesterPresent every couple of seconds. Without it an ECU drops
 back to the default session after a few seconds of quiet, and loses any unlock
 with it.
+
+**A level is a pair of sub-functions**, and the box holds the odd one -- the
+one that asks for the seed. SecurityAccess pairs them up: 01 asks and 02
+answers, so level 1 is 01 and 02, level 2 is 03 and 04, and so on. The first
+ten levels are on the list with both namings; anything else can be typed,
+which is what most real unlocking needs, since a bootloader commonly sits on
+11 and 12 -- level 9, as nobody says out loud. The log states both
+sub-functions every time, and typing the even half of a pair unlocks that
+pair and says so rather than quietly doing something else.
 
 **Reset** restarts the ECU with the chosen **Type**, and the session and any
 unlock go with it. **Read DID** and **Write DID** work on the identifier beside
@@ -141,8 +151,7 @@ would leave the two of you out of step.
 ## The seed and key DLL
 
 There is no standard unlock *algorithm* -- only a standard way of shipping
-one: a Windows DLL exporting `XCP_GetAvailablePrivileges` and
-`XCP_ComputeKeyFromSeed`. Every measurement tool loads one, so a maker who has
+one: a Windows DLL exporting `XCP_ComputeKeyFromSeed`. Every measurement tool loads one, so a maker who has
 written a seed and key DLL for another tool has already written the one
 pycangui needs. **Seed and key DLL...** beside Unlock is where it is named.
 

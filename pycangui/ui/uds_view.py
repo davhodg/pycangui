@@ -51,6 +51,7 @@ from pycangui.uds.manager import (
     UdsManager,
     parse_bytes,
 )
+from pycangui.uds.standard import security_levels, security_pair
 from pycangui.ui import folders, seedkey_view
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.field_widgets import PENDING
@@ -111,6 +112,15 @@ OPEN_TIP = (
     "Nothing else on this pane works until it is open."
 )
 NO_ADDRESS_TIP = "Fill in the Tx and Rx identifiers first."
+LEVEL_TIP = (
+    "Which security level to unlock, as the requestSeed sub-function that\n"
+    "goes on the wire. SecurityAccess pairs them: the odd one asks for the\n"
+    "seed and the even one after it sends the key, so level 2 is 03 and 04.\n"
+    "\n"
+    "Type any sub-function. Most real unlocking is in the manufacturer\n"
+    "range and will never be on the list -- a bootloader on 11 and 12 is\n"
+    "level 9, which nobody says out loud."
+)
 PADDING_TIP = (
     "The byte every frame is padded out to 8 bytes with. Some ECUs require\n"
     "padding and ignore anything shorter; others do not mind either way.\n"
@@ -321,9 +331,14 @@ class UdsView(QWidget):
         h.addWidget(change)
         h.addSpacing(12)
         h.addWidget(QLabel("Level"))
-        self.level = QSpinBox()
-        self.level.setRange(1, 0x7D)
-        self.level.setSingleStep(2)
+        # The value is the requestSeed sub-function, which is what goes on
+        # the wire, and the entry names the level as well because an ECU
+        # document says one or the other. Editable, like the other pickers
+        # here: most real unlocking is in the manufacturer range and will
+        # never be on a list.
+        self.level = _picker(security_levels(), 2, security_pair)
+        self.level.setToolTip(LEVEL_TIP)
+        self.level.setMinimumWidth(190)
         h.addWidget(self.level)
         unlock = QPushButton("Unlock")
         unlock.setToolTip(
@@ -332,7 +347,7 @@ class UdsView(QWidget):
             "hooks/uds.py::security_key, and where that returns None, from\n"
             "the seed and key DLL beside this button."
         )
-        unlock.clicked.connect(lambda: self.manager.unlock(self.level.value()))
+        unlock.clicked.connect(lambda: self.manager.unlock(_picked(self.level)))
         h.addWidget(unlock)
         seed_key = QPushButton("Seed and key DLL...")
         seed_key.setToolTip(SEED_KEY_TIP)

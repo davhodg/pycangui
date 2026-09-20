@@ -56,6 +56,42 @@ SHORTER = {
 #: for -- only the people who built the ECU know what those are called.
 SESSIONS = {1: "default", 2: "programming", 3: "extended", 4: "safety system"}
 
+#: How many security levels to offer. The manufacturer range goes far
+#: beyond this; ten is where a list stops helping and typing is quicker.
+SECURITY_LEVELS_SHOWN = 10
+
+
+def seed_subfunction(level: int) -> int:
+    """The requestSeed sub-function of a security level: 1 -> 0x01, 2 -> 0x03."""
+    return level * 2 - 1
+
+
+def security_level(seed_sub: int) -> int | None:
+    """Which level a requestSeed sub-function belongs to, or None if even.
+
+    SecurityAccess pairs its sub-functions: odd asks for the seed, and the
+    even one after it sends the key. So a level is a pair, and only the odd
+    half of it identifies the level.
+    """
+    return None if seed_sub % 2 == 0 else (seed_sub + 1) // 2
+
+
+def security_levels(count: int = SECURITY_LEVELS_SHOWN) -> dict[int, str]:
+    """Keyed by requestSeed sub-function, which is what gets sent.
+
+    Named by level as well, because an ECU document says one or the other
+    and rarely both: "security level 2" and "unlock with 0x03" are the same
+    request. Keyed by the sub-function rather than the level because the
+    manufacturer range is where most real unlocking happens -- a bootloader
+    on 0x11/0x12 is level 9, which nobody says out loud.
+    """
+    return {seed_subfunction(n): f"Level {n}" for n in range(1, count + 1)}
+
+
+def security_pair(seed_sub: int) -> str:
+    """ "requestSeed 03, sendKey 04", for saying what will actually be sent."""
+    return f"requestSeed {seed_sub:02X}, sendKey {seed_sub + 1:02X}"
+
 
 def _numbers(holder) -> dict[str, int]:
     """The integer constants on a udsoncan class, and nothing else.

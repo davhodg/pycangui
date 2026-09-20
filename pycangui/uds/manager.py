@@ -29,7 +29,7 @@ from pycangui.uds import NO_ID, UdsConfig
 from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD
 from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
-from pycangui.uds.standard import SESSIONS, memory_record
+from pycangui.uds.standard import SESSIONS, memory_record, security_level, security_pair
 from pycangui.uds.transport import IsoTpTransport
 
 DEFAULT_BACKEND = "can-isotp"
@@ -283,10 +283,26 @@ class UdsManager(QObject):
 
         self._run("DiagnosticSessionControl", fn)
 
-    def unlock(self, level: int) -> None:
+    def unlock(self, seed_sub: int) -> None:
+        """Unlock a security level, named by its requestSeed sub-function.
+
+        SecurityAccess pairs its sub-functions -- the odd one asks for the
+        seed and the even one after it sends the key -- so an even number
+        is half of a pair rather than a level of its own. udsoncan rounds
+        one down to the odd half without saying so, which means asking for
+        02 and being given 01: the right thing, done to the wrong level,
+        silently. It is said out loud here instead.
+        """
+        asked = seed_sub
+        seed_sub = seed_sub if seed_sub % 2 else seed_sub - 1
+
         def fn(c: Client) -> str:
-            c.unlock_security_access(level)
-            return f"Security level {level}: unlocked"
+            c.unlock_security_access(seed_sub)
+            said = security_pair(seed_sub)
+            level = security_level(seed_sub)
+            name = f"level {level}" if level else "level"
+            note = f" ({asked:02X} is the sendKey half of it)" if asked != seed_sub else ""
+            return f"Security {name}: {said}{note} -- unlocked"
 
         self._run("SecurityAccess", fn)
 

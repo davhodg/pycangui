@@ -44,9 +44,9 @@ WHAT = (
     "override what the DLL says."
 )
 DLL_TIP = (
-    "A DLL exporting XCP_GetAvailablePrivileges and\n"
-    "XCP_ComputeKeyFromSeed, which is the interface every\n"
-    "measurement tool loads."
+    "A DLL exporting XCP_ComputeKeyFromSeed, which is the interface\n"
+    "every measurement tool loads. XCP_GetAvailablePrivileges beside\n"
+    "it is optional and often left out."
 )
 PYTHON_TIP = (
     "A python.exe of the DLL's bitness, used to run the DLL when it\n"
@@ -67,6 +67,15 @@ NO_HELPER = (
 )
 FITS = "This DLL is {kind}, the same as pycangui, so it loads directly."
 NOT_A_DLL = "This file does not look like a Windows DLL."
+NOT_ONE = (
+    "This DLL exports no {compute}, so it cannot answer a seed. It is "
+    "probably not a seed and key DLL."
+)
+USABLE = (
+    "Usable: {compute} is there. It exports no XCP_GetAvailablePrivileges, "
+    "which is optional -- it only says which levels the DLL is willing to "
+    "unlock, and nothing needs asking."
+)
 
 
 class SeedKeyDialog(QDialog):
@@ -116,10 +125,12 @@ class SeedKeyDialog(QDialog):
         self.privileges.setWordWrap(True)
         self.privileges.setEnabled(False)
 
-        test = QPushButton("Ask the DLL what it can unlock")
+        test = QPushButton("Check the DLL")
         test.setToolTip(
-            "Call XCP_GetAvailablePrivileges, which is the cheapest proof\n"
-            "that the DLL loads, exports what it should and can be called."
+            "Load it and see what it exports. XCP_ComputeKeyFromSeed is the\n"
+            "one that matters, being what answers a seed;\n"
+            "XCP_GetAvailablePrivileges is optional, and where it is there\n"
+            "it is called to say which levels the DLL will unlock."
         )
         test.clicked.connect(self._test)
 
@@ -174,19 +185,38 @@ class SeedKeyDialog(QDialog):
         self.privileges.setText("")
 
     def _test(self) -> None:
-        """Ask the DLL what it can unlock, which proves it can be called."""
+        """Say what the DLL exports, and what it will unlock if it will say.
+
+        Only XCP_ComputeKeyFromSeed is needed: it is the one that answers a
+        seed. XCP_GetAvailablePrivileges is optional, and plenty of DLLs
+        leave it out -- a caller that already knows which level it wants
+        never asks. Insisting on both turned a perfectly usable DLL into a
+        refused one.
+        """
         path = self.dll.text().strip()
         if not path:
             self.privileges.setText(NOTHING)
             return
         try:
-            bits = seedkey.available_privileges(path)
+            found = seedkey.exports(path)
         except seedkey.SeedKeyError as exc:
             self.privileges.setText(str(exc))
             return
-        names = seedkey.names(bits)
+        if seedkey.COMPUTE not in found:
+            self.privileges.setText(NOT_ONE.format(compute=seedkey.COMPUTE))
+            return
+        if seedkey.PRIVILEGES_OF not in found:
+            self.privileges.setText(USABLE.format(compute=seedkey.COMPUTE))
+            return
+        try:
+            names = seedkey.names(seedkey.available_privileges(path))
+        except seedkey.SeedKeyError as exc:
+            self.privileges.setText(f"{seedkey.COMPUTE} is there. {exc}")
+            return
         self.privileges.setText(
-            f"The DLL says it can unlock: {names}" if names else "The DLL can unlock nothing"
+            f"Usable, and it says it can unlock: {names}"
+            if names
+            else f"{seedkey.COMPUTE} is there, and the DLL says it can unlock nothing"
         )
 
     def save(self) -> None:

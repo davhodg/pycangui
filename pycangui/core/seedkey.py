@@ -132,6 +132,38 @@ def _open(path: Path | str):
         raise SeedKeyError("A seed and key DLL can only be used on Windows") from exc
 
 
+#: The one that does the work. A DLL without it cannot answer a seed.
+COMPUTE = "XCP_ComputeKeyFromSeed"
+
+#: Which resources the DLL will unlock. Optional: plenty of DLLs implement
+#: only the key computation, and a caller that already knows which level it
+#: wants never needs to ask. Insisting on it turned a usable DLL into a
+#: refused one.
+PRIVILEGES_OF = "XCP_GetAvailablePrivileges"
+
+
+def exports(path: Path | str) -> set[str]:
+    """Which of the two functions this DLL actually exports.
+
+    Asked rather than assumed, because the two are not equally required:
+    one computes the key and the other only says what the DLL is willing to
+    unlock.
+    """
+    cdecl, stdcall = _open(path)
+    found = set()
+    for name in (COMPUTE, PRIVILEGES_OF):
+        for handle in (cdecl, stdcall):
+            if hasattr(handle, name):
+                found.add(name)
+                break
+    return found
+
+
+def usable(path: Path | str) -> bool:
+    """Whether this DLL can answer a seed at all."""
+    return COMPUTE in exports(path)
+
+
 def _call(cdecl, stdcall, name: str, *args) -> int:
     """Call the export, trying cdecl and then stdcall.
 
@@ -140,29 +172,29 @@ def _call(cdecl, stdcall, name: str, *args) -> int:
     key. cdecl is tried first because that is what the template produces.
     """
     last: Exception | None = None
+    missing = True
     for handle in (cdecl, stdcall):
         try:
             function = getattr(handle, name)
         except AttributeError as exc:
             last = exc
             continue
+        missing = False
         function.restype = ctypes.c_uint32
         try:
             return int(function(*args))
         except ValueError as exc:  # ctypes: the stack did not balance
             last = exc
-    raise SeedKeyError(
-        f"{name} could not be called: {last}. The DLL may not be a seed and "
-        "key DLL, which must export XCP_GetAvailablePrivileges and "
-        "XCP_ComputeKeyFromSeed."
-    )
+    if missing:
+        raise SeedKeyError(f"This DLL does not export {name}.")
+    raise SeedKeyError(f"{name} could not be called: {last}")
 
 
 def available_privileges(path: Path | str) -> int:
     """The resources this DLL says it can unlock, as XCP resource bits."""
     cdecl, stdcall = _open(path)
     out = ctypes.c_ubyte(0)
-    result = _call(cdecl, stdcall, "XCP_GetAvailablePrivileges", ctypes.byref(out))
+    result = _call(cdecl, stdcall, PRIVILEGES_OF, ctypes.byref(out))
     if result != ACK:
         raise SeedKeyError(RETURNS.get(result, f"the DLL returned {result}"))
     return int(out.value)
@@ -176,7 +208,7 @@ def compute_key(path: Path | str, privilege: int, seed: bytes) -> bytes:
     result = _call(
         cdecl,
         stdcall,
-        "XCP_ComputeKeyFromSeed",
+        COMPUTE,
         ctypes.c_ubyte(privilege),
         ctypes.c_ubyte(len(seed)),
         (ctypes.c_ubyte * len(seed))(*seed) if seed else None,
