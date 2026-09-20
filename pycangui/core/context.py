@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from pycangui.core import paths, timing, workspaces
-from pycangui.core.events import ERROR, INFORMATION, WARNING, EventLog
+from pycangui.core.events import ERROR, GOOD, INFORMATION, WARNING, EventLog
 from pycangui.core.layout import Layout
 from pycangui.core.settings import Settings
 
@@ -79,3 +79,7 @@ class Context:
     def error(self, message: str) -> None:
         """Say that something went wrong that nobody asked for."""
         self.events.post(message, ERROR)
+
+    def good(self, message: str) -> None:
+        """Say that something that was wrong is right again."""
+        self.events.post(message, GOOD)

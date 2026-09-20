@@ -52,7 +52,7 @@ def connected(app):
     bus = BusManager()
     manager = CanopenManager(bus, hooks=FakeHooks())
     said: list[str] = []
-    manager.message.connect(said.append)
+    manager.message.connect(lambda text, _level: said.append(text))
     bus.connect_bus("virtual", "vcan_access", 500000, False)
     yield manager, said
     bus.disconnect_bus()
@@ -91,7 +91,7 @@ def test_a_node_id_that_is_not_one_is_refused(connected):
 def test_with_no_bus_there_is_nothing_to_add_it_to(app):
     manager = CanopenManager(BusManager())
     said = []
-    manager.message.connect(said.append)
+    manager.message.connect(lambda text, _level: said.append(text))
     assert not manager.add_node(12)
     assert said and "not connected" in said[0]
     manager.shutdown()

@@ -96,9 +96,13 @@ So a hook file with a mistake in it costs you that answer, not the
 application -- and returning `None` for the cases you do not care about is how
 you handle one node without having to handle all of them.
 
-Every hook is handed `ctx`, which carries `ctx.log(text)`, `ctx.warn(text)` and
-`ctx.error(text)`: the same three levels the rest of the tool reports at, so
-anything a hook wants to say arrives where everything else does.
+Every hook is handed `ctx`, which carries `ctx.log(text)`, `ctx.warn(text)`,
+`ctx.error(text)` and `ctx.good(text)`: the same levels the rest of the tool
+reports at, so anything a hook wants to say arrives where everything else
+does, and in the same colour. A hook that decodes a device's own fault codes
+is worth saying at the level the fault deserves -- `ctx.error` for one that
+stopped the machine -- rather than at the level of a note, which is how it
+ends up the same grey as a plugin loading.
 
 It carries the protocol managers too -- `ctx.canopen`, `ctx.uds`, `ctx.j1939`,
 `ctx.xcp`, `ctx.channels` and `ctx.bus` -- which are the same objects the

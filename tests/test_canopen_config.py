@@ -76,7 +76,7 @@ def test_pdo_configs_from_the_eds(stack):
 def test_read_and_write_pdo_config(stack):
     manager, demo, _tmp = stack
     messages: list[str] = []
-    manager.message.connect(messages.append)
+    manager.message.connect(lambda text, _level: messages.append(text))
     manager.read_pdo_config(5)
     wait_until(lambda: any("PDO(s) configured" in m for m in messages))
 
@@ -95,7 +95,7 @@ def test_read_and_write_pdo_config(stack):
 def test_dcf_save_and_apply(stack):
     manager, demo, tmp_path = stack
     messages: list[str] = []
-    manager.message.connect(messages.append)
+    manager.message.connect(lambda text, _level: messages.append(text))
 
     # change something on the node, capture it, change it back, then restore it
     manager.sdo_write(5, 0x2001, 0, "-1234")
@@ -129,7 +129,7 @@ def test_dcf_save_and_apply(stack):
 def test_store_restore_and_sync(stack):
     manager, _demo, _tmp = stack
     messages: list[str] = []
-    manager.message.connect(messages.append)
+    manager.message.connect(lambda text, _level: messages.append(text))
 
     manager.store_parameters(5)  # the demo node has no 0x1010: expect a clean error
     wait_until(lambda: messages)

@@ -51,6 +51,7 @@ from pycangui.canopen.display import text as value_text
 from pycangui.canopen.manager import CanopenManager, od_entries, type_name
 from pycangui.core import workspace_files
 from pycangui.core.context import Context
+from pycangui.core.events import ERROR, GOOD
 from pycangui.core.hooks import Hooks
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
@@ -717,7 +718,10 @@ class CanopenView(QWidget):
         self.emcy.scrollToBottom()
         if self.emcy.topLevelItemCount() > 500:
             self.emcy.takeTopLevelItem(0)
-        self.ctx.log(f"EMCY {emergency}")
+        # An emergency is an error, and an emergency reset is the one line
+        # in the log that is good news: it says the fault that filled the
+        # screen a moment ago has gone.
+        self.ctx.log(f"EMCY {emergency}", GOOD if emergency.is_reset else ERROR)
 
     @Slot()
     def clear_emergencies(self) -> None:

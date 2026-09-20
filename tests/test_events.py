@@ -133,13 +133,16 @@ def test_a_problem_while_the_window_is_still_opening_is_not_lost(app, tmp_path, 
 
 
 def test_the_pane_is_written_to_in_one_place(app, window):
-    """So that colouring warnings later is a change there and nowhere else."""
+    """Which is what made colouring the levels a change there and nowhere
+    else. Worth keeping: a second writer would be a line with no level, and
+    so a line that cannot be coloured or open the pane."""
     import inspect
 
     from pycangui.ui import main_window
 
     source = inspect.getsource(main_window)
-    assert source.count("self.log.appendPlainText") == 1
+    assert source.count("cursor.insertText") == 1
+    assert "self.log.appendPlainText" not in source, "text with no level, and no format"
 
 
 # --- what now says it properly --------------------------------------------------------
@@ -169,3 +172,97 @@ def test_the_dbc_picker_explains_itself_rather_than_the_log(app, window):
     assert not picker.list.isEnabled()
     assert picker.chosen() is None, "so Ok cannot add one of the explanations"
     picker.deleteLater()
+
+
+# --- how much a line matters, and what it looks like ------------------------------------
+def test_each_level_that_matters_has_its_own_colour(app):
+    """A log where every line looks the same is a log nobody reads: the
+    encoder fault arrives in the same grey as the plugin that loaded."""
+    from pycangui.core.events import ERROR, GOOD, INFORMATION, WARNING
+    from pycangui.ui import event_colours
+
+    for dark in (False, True):
+        shown = {level: event_colours.colour_for(level, dark) for level in (ERROR, WARNING, GOOD)}
+        assert all(colour is not None for colour in shown.values())
+        assert len({colour.name() for colour in shown.values()}) == 3, "told apart at a glance"
+        assert event_colours.colour_for(INFORMATION, dark) is None, "the ordinary line is plain"
+
+    assert event_colours.bold_for(ERROR)
+    assert not event_colours.bold_for(WARNING), "or the errors have nothing to stand out from"
+
+
+def test_the_colours_follow_the_background_they_are_read_against(app):
+    """A red dark enough for white disappears into a dark theme."""
+    from PySide6.QtGui import QColor, QPalette
+
+    from pycangui.core.events import ERROR
+    from pycangui.ui import event_colours
+
+    assert event_colours.colour_for(ERROR, True) != event_colours.colour_for(ERROR, False)
+    assert (
+        event_colours.colour_for(ERROR, True).lightness()
+        > event_colours.colour_for(ERROR, False).lightness()
+    ), "the dark theme's is the lighter one"
+
+    pale, dim = QPalette(), QPalette()
+    pale.setColor(QPalette.Base, QColor("#ffffff"))
+    dim.setColor(QPalette.Base, QColor("#1e1e1e"))
+    assert not event_colours.dark_behind(pale)
+    assert event_colours.dark_behind(dim)
+
+
+def shape_of(window, line: int):
+    """How the Event Log drew a line: its colour (None if plain) and weight."""
+    from PySide6.QtGui import QTextFormat
+
+    block = window.log.document().findBlockByNumber(line)
+    fmt = next(iter(block.begin())).fragment().charFormat()
+    coloured = fmt.hasProperty(QTextFormat.ForegroundBrush)
+    return (fmt.foreground().color().name() if coloured else None), fmt.fontWeight()
+
+
+def colour_of(window, line: int):
+    return shape_of(window, line)[0]
+
+
+def test_an_error_is_drawn_in_its_own_colour_and_a_note_is_not(app, window):
+    from pycangui.core.events import ERROR, GOOD, WARNING
+    from pycangui.ui import event_colours
+
+    window.log.clear()
+    window.events.information("CAN 1 connected")
+    window.events.error("EMCY node 1: 0x5000 Device hardware")
+    window.events.warning("Node 1: identify failed")
+    window.events.good("EMCY node 1: 0x0000 Error reset or no error")
+    settle(app)
+
+    dark = window._dark_log()
+    assert colour_of(window, 0) is None, "an ordinary line is left as the theme has it"
+    assert colour_of(window, 1) == event_colours.colour_for(ERROR, dark).name()
+    assert colour_of(window, 2) == event_colours.colour_for(WARNING, dark).name()
+    assert colour_of(window, 3) == event_colours.colour_for(GOOD, dark).name()
+    assert "CAN 1 connected" in window.log.toPlainText(), "and the text is still the text"
+
+    from PySide6.QtGui import QFont
+
+    assert shape_of(window, 1)[1] == QFont.Bold, "an error is the one to find while scrolling"
+    assert shape_of(window, 2)[1] != QFont.Bold
+
+
+def test_a_traceback_keeps_its_shape(app, window):
+    """Written as text rather than as HTML, so the indentation survives and
+    nothing in a device's own message is read as markup."""
+    window.log.clear()
+    window.events.error('Traceback:\n    File "x.py", line 1\n        raise ValueError("<b>")')
+    settle(app)
+    shown = window.log.toPlainText()
+    assert '    File "x.py", line 1' in shown
+    assert "<b>" in shown, "not swallowed as a tag"
+
+
+def test_good_news_does_not_open_the_pane(app, window):
+    """A fault clearing is worth seeing in green; it is not worth a pane
+    springing open over."""
+    from pycangui.core.events import GOOD, PROBLEMS
+
+    assert GOOD not in PROBLEMS

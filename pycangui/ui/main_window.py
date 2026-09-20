@@ -7,7 +7,14 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QDesktopServices,
+    QFont,
+    QKeySequence,
+    QTextCharFormat,
+    QTextCursor,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -40,7 +47,7 @@ from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
-from pycangui.ui import folders, keep_file, messages
+from pycangui.ui import event_colours, folders, keep_file, messages
 from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.bus_status import BusStatus
 from pycangui.ui.canopen_view import CanopenView
@@ -114,6 +121,11 @@ PROTOCOL_PANE_SIZE = (1000, 700)
 #: The console is typed into, so it wants width for a line of Python and
 #: enough height to see what the last few commands said.
 CONSOLE_PANE_SIZE = (900, 520)
+
+#: How near the bottom of the Event Log still counts as being at the bottom,
+#: in scrollbar steps. Exactly at the end is too strict: a line arriving
+#: while the last one is part-scrolled would then stop following.
+AT_END = 4
 
 #: What the window opens at, and what Reset layout puts it back to. Wide,
 #: because the trace and the panes beside it are read across rather than down.
@@ -1320,12 +1332,36 @@ class MainWindow(QMainWindow):
     def _on_event(self, message: str, level: str) -> None:
         """The only thing that writes to the Event Log pane.
 
-        Which makes it the only place that would have to change to give
-        warnings and errors a colour of their own.
+        Which is what made giving each level a colour a change here and
+        nowhere else. Written through a cursor rather than appendPlainText
+        so the line can carry a format, and as text rather than as HTML so
+        that a traceback keeps its indentation and nothing in a device's
+        own message can be read as markup.
+
+        The view is only dragged to the bottom if it was already there:
+        somebody scrolled up reading the fault that just went past should
+        not be pulled away from it by the next heartbeat.
         """
-        self.log.appendPlainText(message)
+        bar = self.log.verticalScrollBar()
+        at_end = bar.value() >= bar.maximum() - AT_END
+        cursor = QTextCursor(self.log.document())
+        cursor.movePosition(QTextCursor.End)
+        if not self.log.document().isEmpty():
+            cursor.insertBlock()
+        shape = QTextCharFormat()
+        if (colour := event_colours.colour_for(level, self._dark_log())) is not None:
+            shape.setForeground(colour)
+        if event_colours.bold_for(level):
+            shape.setFontWeight(QFont.Bold)
+        cursor.insertText(message, shape)
+        if at_end:
+            bar.setValue(bar.maximum())
         if level in PROBLEMS:
             self._surface_log()
+
+    def _dark_log(self) -> bool:
+        """Which set of colours reads on the Event Log's own background."""
+        return event_colours.dark_behind(self.log.palette())
 
     def _surface_log(self) -> None:
         """Open the Event Log, because something in it needs reading.

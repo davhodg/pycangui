@@ -34,6 +34,7 @@ from pycangui.canopen.display import Display, from_variable, with_overrides
 from pycangui.canopen.emcy import Emcy
 from pycangui.core.bus import BusManager
 from pycangui.core.classify import predefined_labels
+from pycangui.core.events import GOOD, INFORMATION, WARNING
 from pycangui.core.worker import Worker
 
 DATATYPE_NAMES: dict[int, str] = {
@@ -118,7 +119,10 @@ class CanopenManager(QObject):
     pdo_config = Signal(int)  # node_id: its PDO configuration changed
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
     access_level = Signal(int, object)  # node_id, the access level held (None: none known)
-    message = Signal(str)  # for the Event Log pane
+    #: For the Event Log pane, with how much the line matters. The level
+    #: belongs at the call site: only the code that knows a read failed
+    #: knows that the line is a failure rather than a note.
+    message = Signal(str, str)  # text, level
 
     def __init__(self, bus: BusManager, hooks=None) -> None:
         super().__init__()
@@ -287,12 +291,12 @@ class CanopenManager(QObject):
             if overdue and node_id not in self.lost_nodes:
                 self.lost_nodes.add(node_id)
                 self.message.emit(
-                    f"Node {node_id}: heartbeat lost (nothing for {now - last:.1f} s)"
+                    f"Node {node_id}: heartbeat lost (nothing for {now - last:.1f} s)", WARNING
                 )
                 self.node_lost.emit(node_id)
             elif not overdue and node_id in self.lost_nodes:
                 self.lost_nodes.discard(node_id)
-                self.message.emit(f"Node {node_id}: heartbeat back")
+                self.message.emit(f"Node {node_id}: heartbeat back", GOOD)
                 self.node_back.emit(node_id)
 
     def forget_nodes(self) -> None:
@@ -313,10 +317,12 @@ class CanopenManager(QObject):
         it was added.
         """
         if self.network is None:
-            self.message.emit(f"Node {node_id}: not connected, so there is nothing to add it to")
+            self.message.emit(
+                f"Node {node_id}: not connected, so there is nothing to add it to", WARNING
+            )
             return False
         if not 1 <= node_id <= 127:
-            self.message.emit(f"{node_id} is not a node id (1 to 127)")
+            self.message.emit(f"{node_id} is not a node id (1 to 127)", WARNING)
             return False
         self._ensure_node(node_id)
         self.forget_labels()
@@ -343,24 +349,25 @@ class CanopenManager(QObject):
 
         def done(result, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {node_id}: login failed ({error})")
+                self.message.emit(f"Node {node_id}: login failed ({error})", WARNING)
                 return
             granted, held = result
             if granted is None:
                 self.message.emit(
                     f"Node {node_id}: no login for this device -- hooks/canopen.py::login "
-                    "is where one is written"
+                    "is where one is written",
+                    WARNING,
                 )
                 return
             if not granted:
                 self.access_levels.pop(node_id, None)
-                self.message.emit(f"Node {node_id}: level {level} refused")
+                self.message.emit(f"Node {node_id}: level {level} refused", WARNING)
                 self.access_level.emit(node_id, None)
                 return
             now = held if isinstance(held, int) and not isinstance(held, bool) else level
             self.access_levels[node_id] = now
             asked = f" (asked for {level})" if now != level else ""
-            self.message.emit(f"Node {node_id}: logged in at level {now}{asked}")
+            self.message.emit(f"Node {node_id}: logged in at level {now}{asked}", INFORMATION)
             self.access_level.emit(node_id, now)
 
         self._worker.submit(job, done)
@@ -374,26 +381,29 @@ class CanopenManager(QObject):
 
         def done(held, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {node_id}: reading the access level failed ({error})")
+                self.message.emit(
+                    f"Node {node_id}: reading the access level failed ({error})", WARNING
+                )
                 return
             if not isinstance(held, int) or isinstance(held, bool):
                 self.message.emit(
                     f"Node {node_id}: no way to read its access level -- "
-                    "hooks/canopen.py::current_level is where one is written"
+                    "hooks/canopen.py::current_level is where one is written",
+                    WARNING,
                 )
                 return
             self.access_levels[node_id] = held
-            self.message.emit(f"Node {node_id}: access level {held}")
+            self.message.emit(f"Node {node_id}: access level {held}", INFORMATION)
             self.access_level.emit(node_id, held)
 
         self._worker.submit(lambda: hooks.call("canopen", "current_level", node), done)
 
     def _node_for_hooks(self, node_id: int):
         if self.network is None:
-            self.message.emit(f"Node {node_id}: not connected")
+            self.message.emit(f"Node {node_id}: not connected", WARNING)
             return None
         if self._hooks is None:
-            self.message.emit(f"Node {node_id}: no hooks are loaded")
+            self.message.emit(f"Node {node_id}: no hooks are loaded", WARNING)
             return None
         return self._ensure_node(node_id)
 
@@ -604,7 +614,7 @@ class CanopenManager(QObject):
 
         def done(identity: NodeIdentity | None, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {node_id}: identify failed ({error})")
+                self.message.emit(f"Node {node_id}: identify failed ({error})", WARNING)
             else:
                 self.identified.emit(identity)
 
@@ -622,7 +632,7 @@ class CanopenManager(QObject):
 
         def done(loaded: tuple | None, error: str | None) -> None:
             if error or self.network is None:
-                self.message.emit(f"Node {node_id}: EDS load failed ({error})")
+                self.message.emit(f"Node {node_id}: EDS load failed ({error})", WARNING)
                 return
             node, extras = loaded
             self._extras[node_id] = extras
@@ -724,9 +734,11 @@ class CanopenManager(QObject):
 
         def done(names: list[str] | None, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {node_id}: PDO configuration read failed ({error})")
+                self.message.emit(
+                    f"Node {node_id}: PDO configuration read failed ({error})", WARNING
+                )
             elif names:
-                self.message.emit(f"Node {node_id}: decoding {', '.join(names)}")
+                self.message.emit(f"Node {node_id}: decoding {', '.join(names)}", INFORMATION)
 
         self._worker.submit(job, done)
 
@@ -761,7 +773,7 @@ class CanopenManager(QObject):
         """Read the live PDO configuration of a node from the node itself."""
         node = self.node(node_id)
         if node is None or not len(node.object_dictionary):
-            self.message.emit(f"Node {node_id}: load an EDS first")
+            self.message.emit(f"Node {node_id}: load an EDS first", WARNING)
             return
 
         def job() -> int:
@@ -771,9 +783,11 @@ class CanopenManager(QObject):
 
         def done(count: int | None, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {node_id}: PDO configuration read failed ({error})")
+                self.message.emit(
+                    f"Node {node_id}: PDO configuration read failed ({error})", WARNING
+                )
                 return
-            self.message.emit(f"Node {node_id}: {count} PDO(s) configured")
+            self.message.emit(f"Node {node_id}: {count} PDO(s) configured", INFORMATION)
             self.forget_labels()
             self.pdo_config.emit(node_id)
             self.rpdos_read.emit(node_id)
@@ -788,7 +802,9 @@ class CanopenManager(QObject):
         maps = node.tpdo.map if config.direction == "TPDO" else node.rpdo.map
         pdo_map = maps.get(config.number)
         if pdo_map is None:
-            self.message.emit(f"Node {config.node_id}: {config.direction}{config.number} unknown")
+            self.message.emit(
+                f"Node {config.node_id}: {config.direction}{config.number} unknown", WARNING
+            )
             return
 
         def job() -> str:
@@ -814,9 +830,9 @@ class CanopenManager(QObject):
 
         def done(text: str | None, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {config.node_id}: PDO write failed ({error})")
+                self.message.emit(f"Node {config.node_id}: PDO write failed ({error})", WARNING)
             else:
-                self.message.emit(f"Node {config.node_id}: {text}")
+                self.message.emit(f"Node {config.node_id}: {text}", INFORMATION)
                 self.forget_labels()
                 self.pdo_config.emit(config.node_id)
 
@@ -846,7 +862,10 @@ class CanopenManager(QObject):
         self._worker.submit(job, lambda t, e: self._report(node_id, t, e))
 
     def _report(self, node_id: int, text: str | None, error: str | None) -> None:
-        self.message.emit(f"Node {node_id}: {text if error is None else error}")
+        self.message.emit(
+            f"Node {node_id}: {text if error is None else error}",
+            INFORMATION if error is None else WARNING,
+        )
 
     # --- SYNC producer ---------------------------------------------------------
     @property
@@ -857,11 +876,11 @@ class CanopenManager(QObject):
         """Transmit SYNC (COB-ID 0x80) so synchronous PDOs are exchanged."""
         self.stop_sync()
         if self.network is None:
-            self.message.emit("SYNC: not connected")
+            self.message.emit("SYNC: not connected", WARNING)
             return
         self.network.sync.start(period_s)  # returns None; it keeps its own task
         self._sync_on = True
-        self.message.emit(f"SYNC started at {period_s * 1000:.0f} ms")
+        self.message.emit(f"SYNC started at {period_s * 1000:.0f} ms", INFORMATION)
 
     def stop_sync(self) -> None:
         if not self._sync_on:
@@ -871,7 +890,7 @@ class CanopenManager(QObject):
         except Exception:  # the bus went away first
             pass
         self._sync_on = False
-        self.message.emit("SYNC stopped")
+        self.message.emit("SYNC stopped", INFORMATION)
 
     # --- LSS, layer setting services (CiA 305) ----------------------------------
     # LSS configures a node's node-ID and bit rate over CAN, before it has a
@@ -1016,7 +1035,7 @@ class CanopenManager(QObject):
         """Read every readable parameter from the node and write a DCF."""
         node = self.node(node_id)
         if node is None or not len(node.object_dictionary):
-            self.message.emit(f"Node {node_id}: load an EDS first")
+            self.message.emit(f"Node {node_id}: load an EDS first", WARNING)
             return
 
         def job() -> tuple[int, int]:
@@ -1065,10 +1084,12 @@ class CanopenManager(QObject):
 
         def done(counts: tuple[int, int] | None, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {node_id}: DCF save failed ({error})")
+                self.message.emit(f"Node {node_id}: DCF save failed ({error})", WARNING)
             else:
                 read, total = counts
-                self.message.emit(f"Node {node_id}: DCF written, {read}/{total} parameters read")
+                self.message.emit(
+                    f"Node {node_id}: DCF written, {read}/{total} parameters read", INFORMATION
+                )
 
         self._worker.submit(job, done)
 
@@ -1111,7 +1132,7 @@ class CanopenManager(QObject):
     def apply_dcf(self, node_id: int, path: str) -> None:
         """Write the parameter values from a DCF into the node."""
         if self.node(node_id) is None:
-            self.message.emit(f"Node {node_id}: not known")
+            self.message.emit(f"Node {node_id}: not known", WARNING)
             return
         node = self.node(node_id)
 
@@ -1139,10 +1160,12 @@ class CanopenManager(QObject):
             result: tuple[int, int, list[tuple[int, int, str]]] | None, error: str | None
         ) -> None:
             if error:
-                self.message.emit(f"Node {node_id}: DCF apply failed ({error})")
+                self.message.emit(f"Node {node_id}: DCF apply failed ({error})", WARNING)
                 return
             written, total, failures = result
-            self.message.emit(f"Node {node_id}: {written}/{total} parameters written from the DCF")
+            self.message.emit(
+                f"Node {node_id}: {written}/{total} parameters written from the DCF", INFORMATION
+            )
             # Grouped by reason rather than listed one per line. A DCF that
             # goes wrong usually goes wrong the same way two hundred times --
             # one read-only object, or one value the node's range rejects --
@@ -1150,10 +1173,10 @@ class CanopenManager(QObject):
             for reason, where in _by_reason(failures).items():
                 shown = ", ".join(f"{index:04X}:{sub:02X}" for index, sub in where[:12])
                 more = f" ... and {len(where) - 12} more" if len(where) > 12 else ""
-                self.message.emit(f"  {len(where)} refused -- {reason}")
-                self.message.emit(f"    {shown}{more}")
+                self.message.emit(f"  {len(where)} refused -- {reason}", WARNING)
+                self.message.emit(f"    {shown}{more}", WARNING)
             if written:
-                self.message.emit(VERIFY_NOTE.format(node_id=node_id))
+                self.message.emit(VERIFY_NOTE.format(node_id=node_id), INFORMATION)
             self.read_pdo_config(node_id)
 
         self._worker.submit(job, done)
@@ -1184,20 +1207,20 @@ class CanopenManager(QObject):
             node.rpdo.read(from_od=True)
             node.tpdo.read(from_od=True)
         except Exception as exc:  # an EDS without PDO objects, or an odd one
-            self.message.emit(f"Node {node_id}: no PDO mapping in the EDS ({exc})")
+            self.message.emit(f"Node {node_id}: no PDO mapping in the EDS ({exc})", WARNING)
             return
         self.forget_labels()
         self.pdo_config.emit(node_id)
         count = len(self.rpdos(node_id))
         if count:
-            self.message.emit(f"Node {node_id}: {count} RPDO(s) available to transmit")
+            self.message.emit(f"Node {node_id}: {count} RPDO(s) available to transmit", INFORMATION)
             self.rpdos_read.emit(node_id)
 
     def read_rpdo_config(self, node_id: int) -> None:
         """Re-read a node's RPDO mapping from the node itself over SDO."""
         node = self.node(node_id)
         if node is None or not len(node.object_dictionary):
-            self.message.emit(f"Node {node_id}: load an EDS first")
+            self.message.emit(f"Node {node_id}: load an EDS first", WARNING)
             return
 
         def job() -> int:
@@ -1206,9 +1229,11 @@ class CanopenManager(QObject):
 
         def done(count: int | None, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {node_id}: RPDO configuration read failed ({error})")
+                self.message.emit(
+                    f"Node {node_id}: RPDO configuration read failed ({error})", WARNING
+                )
             else:
-                self.message.emit(f"Node {node_id}: {count} RPDO(s) configured")
+                self.message.emit(f"Node {node_id}: {count} RPDO(s) configured", INFORMATION)
                 self.rpdos_read.emit(node_id)
 
         self._worker.submit(job, done)

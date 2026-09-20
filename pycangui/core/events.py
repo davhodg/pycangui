@@ -28,11 +28,18 @@ from PySide6.QtCore import QObject, Signal
 INFORMATION = "information"
 WARNING = "warning"
 ERROR = "error"
+#: Something that was wrong is right again: a node's heartbeat came back, an
+#: emergency was cleared. Not an escalation of anything -- it is the one
+#: piece of news a log of failures otherwise never carries, and reading back
+#: through red to find out whether a fault ever cleared is a poor way to
+#: spend a morning.
+GOOD = "good"
 
-#: In the order they escalate. Anything unrecognised is treated as
-#: information: a mistyped level in somebody's hook must not be able to make
-#: the pane spring open, nor to silently swallow the message.
-LEVELS = (INFORMATION, WARNING, ERROR)
+#: In the order they escalate, with GOOD off to the side. Anything
+#: unrecognised is treated as information: a mistyped level in somebody's
+#: hook must not be able to make the pane spring open, nor to silently
+#: swallow the message.
+LEVELS = (INFORMATION, GOOD, WARNING, ERROR)
 
 #: The levels that mean something needs looking at.
 PROBLEMS = (WARNING, ERROR)
@@ -60,3 +67,7 @@ class EventLog(QObject):
     def error(self, message: str) -> None:
         """Something went wrong that nobody asked for."""
         self.post(message, ERROR)
+
+    def good(self, message: str) -> None:
+        """Something that was wrong is right again."""
+        self.post(message, GOOD)
