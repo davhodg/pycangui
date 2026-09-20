@@ -761,3 +761,50 @@ def test_a_row_with_no_figure_yet_still_answers_at_once(app):
     m._rows[0].rate_hz = m._rows[0].period_s = 0.0  # as a stall leaves it
     cyclic(m, 0x100, 0.1, 2, start=10.0)
     assert m.index(0, 7).data(), "it started again, and says so now"
+
+
+# --- work that blocks, off the window's thread ----------------------------------------
+def test_a_manager_runs_a_job_on_its_own_worker(app, tmp_path, monkeypatch):
+    """One worker per protocol is what keeps requests sequential: a second
+    thread talking to one network is two conversations sharing a listener."""
+    from pycangui.canopen.manager import CanopenManager
+    from pycangui.core.bus import BusManager
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    manager = CanopenManager(BusManager())
+    submitted: list = []
+    monkeypatch.setattr(manager._worker, "submit", lambda job, done: submitted.append((job, done)))
+
+    manager.background(lambda: 42, print)
+
+    assert submitted and submitted[0][1] is print, "the caller's own done, handed straight on"
+    assert submitted[0][0]() == 42
+    manager.shutdown()
+
+
+def test_without_a_done_the_answer_goes_to_the_log(app, tmp_path, monkeypatch):
+    from pycangui.canopen.manager import CanopenManager
+    from pycangui.core.bus import BusManager
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    manager = CanopenManager(BusManager())
+    said: list = []
+    manager.message.connect(lambda text, level: said.append((level, text)))
+
+    manager._said("all done", None)
+    manager._said(None, "it went wrong")
+
+    assert said == [("information", "all done"), ("warning", "it went wrong")]
+    manager.shutdown()
+
+
+def test_a_plugin_and_the_console_use_the_same_queue(app, tmp_path, monkeypatch):
+    """A plugin reaching into canopen._worker and a console call to
+    canopen.background must not be two different answers."""
+    import inspect
+
+    from pycangui.ui import plugin_app
+
+    source = inspect.getsource(plugin_app)
+    assert "self.canopen.background(job, done)" in source
+    assert "_worker.submit" not in source, "no reaching past the public way in"

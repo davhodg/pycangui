@@ -517,6 +517,26 @@ class UdsManager(QObject):
             self._cancel.set()
             self.result.emit("Transfer: stopping after this block")
 
+    def background(self, job, done=None) -> None:
+        """Run ``job`` off the GUI thread, on this protocol's own worker.
+
+        The UDS counterpart of ``canopen.background`` and for the same
+        reason: one worker per protocol keeps requests sequential, and a
+        second thread sending requests into one session would have its
+        answers matched to the wrong question. A job joins the queue behind
+        whatever the pane has already asked for.
+
+        ``done(result, error)`` is called on the GUI thread; without one the
+        answer goes to the pane's log.
+        """
+        self._worker.submit(job, done or self._said)
+
+    def _said(self, result, error: str | None) -> None:
+        if error:
+            self.result.emit(str(error))
+        elif result is not None:
+            self.result.emit(str(result))
+
     def _run_transfer(self, label: str, fn: Callable[[Client], str]) -> None:
         """Like _run, but for something that takes minutes rather than one reply."""
         client = self.client

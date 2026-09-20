@@ -631,6 +631,32 @@ class CanopenManager(QObject):
             return None
         return self.network.nodes.get(node_id)
 
+    def background(self, job, done=None) -> None:
+        """Run ``job`` off the GUI thread, on this protocol's own worker.
+
+        For code that blocks -- an SDO read, a loop of them -- written in the
+        console, a script or a plugin. The window keeps painting, the Event
+        Log keeps printing, and the answer comes back on the GUI thread.
+
+        **This worker and no other.** A second thread doing SDO on the same
+        network is two conversations sharing one listener, and the replies
+        are matched to whoever asked by that listener: one worker per
+        protocol is what keeps requests sequential, which is what the
+        protocol wants. Joining the queue also means a job waits behind
+        whatever a pane has already asked for, rather than talking over it.
+
+        ``done(result, error)`` is called on the GUI thread; without one the
+        answer goes to the Event Log. Pass ``print`` in the console to see
+        it there instead.
+        """
+        self._worker.submit(job, done or self._said)
+
+    def _said(self, result, error: str | None) -> None:
+        if error:
+            self.message.emit(str(error), WARNING)
+        elif result is not None:
+            self.message.emit(str(result), INFORMATION)
+
     def eds_path(self, node_id: int) -> str | None:
         """Which file this node's object dictionary was loaded from, if any."""
         return self._eds_path.get(node_id)

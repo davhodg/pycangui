@@ -206,8 +206,13 @@ class PluginApp:
         A plugin that reads five hundred objects on the GUI thread freezes the
         window until it has finished, and a frozen window is indistinguishable
         from a crashed one.
+
+        The CANopen worker, which is what makes the requests sequential with
+        the ones the panes make. A plugin doing UDS work wants
+        ``ctx.uds.background`` instead, for the same reason applied to the
+        other protocol.
         """
-        self.canopen._worker.submit(job, done)
+        self.canopen.background(job, done)
 
     # --- saying something -------------------------------------------------------------------
     def log(self, message: str) -> None:

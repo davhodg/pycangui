@@ -10,6 +10,12 @@ only for the duration of each statement.
 Code runs on the GUI thread. That keeps the API simple (no locking, you can
 poke widgets) at the cost that a blocking call such as an SDO read freezes the
 window for its duration -- fine for interactive use.
+
+For something slower there is ``canopen.background(job, done)`` and
+``uds.background(...)``, which put the work on that protocol's own worker and
+hand the answer back here. Deliberately per call rather than for everything:
+this namespace holds ``window``, and a widget touched from another thread
+takes the process with it.
 """
 
 from __future__ import annotations
@@ -41,6 +47,8 @@ BANNER = """pycangui console -- Python {ver}
   uds       UDS manager (uds.client is the udsoncan Client when open)
   j1939     J1939 manager       xcp       XCP manager (xcp.a2l parameters)
   window    the main window                     send(id, data, ext=False, fd=False)
+Anything slow: canopen.background(job, done) / uds.background(...), which run
+off this thread so the window keeps up. done(result, error), or print.
 Type help(bus), help(canopen) or dir() to explore."""
 
 
