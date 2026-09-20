@@ -191,11 +191,17 @@ class MessageFilterDialog(QDialog):
         extended.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
         extended.setCheckState(Qt.Checked if rule.extended else Qt.Unchecked)
         extended.setToolTip(EXTENDED_TIP)
+        # Silently, then one look afterwards. Each setItem fires
+        # itemChanged, so a row put in three cells at a time is read back
+        # twice while it is still half there.
+        blocked = self.table.blockSignals(True)
         for column, item in enumerate((identifier, mask, extended)):
             self.table.setItem(row, column, item)
+        self.table.blockSignals(blocked)
 
     def _add_clicked(self) -> None:
         self._add_row(Rule(0, full_mask(False), False))
+        self._recheck()
         last = self.table.rowCount() - 1
         self.table.setCurrentCell(last, 0)
         self.table.editItem(self.table.item(last, 0))
@@ -221,14 +227,23 @@ class MessageFilterDialog(QDialog):
         A row being typed into is not an error, and neither is an empty
         mask: an id on its own means that id exactly, which is what
         somebody who typed one id and stopped meant.
+
+        A row with a cell not filled in yet is skipped for the same
+        reason. That is not hypothetical -- a row is built one cell at a
+        time -- and reading the table is something this does on every
+        keystroke, so it answers for whatever is there rather than
+        insisting the table be whole.
         """
         out: list[Rule] = []
         for row in range(self.table.rowCount()):
-            extended = self.table.item(row, 2).checkState() == Qt.Checked
+            cells = [self.table.item(row, column) for column in range(len(COLUMNS))]
+            if any(cell is None for cell in cells):
+                continue
+            extended = cells[2].checkState() == Qt.Checked
             limit = full_mask(extended)
             try:
-                can_id = int(self.table.item(row, 0).text().strip() or "-", 16)
-                mask_text = self.table.item(row, 1).text().strip()
+                can_id = int(cells[0].text().strip() or "-", 16)
+                mask_text = cells[1].text().strip()
                 mask = int(mask_text, 16) if mask_text else limit
             except ValueError:
                 continue

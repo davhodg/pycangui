@@ -297,6 +297,35 @@ def test_a_row_being_typed_into_is_skipped_rather_than_guessed_at(app):
     assert dialog.rules() == [Rule(0x581)]
 
 
+def test_adding_a_row_does_not_throw(app, monkeypatch):
+    """Reported. A row is put in one cell at a time and each setItem fires
+    itemChanged, so the table was read back while it was still half there
+    and the unfilled cells were None.
+
+    Watched through the excepthook, which is why the test above passed
+    against the bug: PySide sends an exception raised inside a slot there
+    rather than to whoever emitted the signal, so the dialog carried on and
+    the only sign was a traceback.
+    """
+    import sys
+
+    blew_up: list = []
+    monkeypatch.setattr(sys, "excepthook", lambda *what: blew_up.append(what))
+    dialog = MessageFilterDialog("CAN 1", [])
+    dialog._add_clicked()
+    assert not blew_up, blew_up
+    assert dialog.table.rowCount() == 1
+
+
+def test_a_row_added_by_hand_is_a_rule_once_an_id_is_typed(app):
+    """Add gives an empty row; typing into it is the whole interaction."""
+    dialog = MessageFilterDialog("CAN 1", [])
+    dialog._add_clicked()
+    dialog.table.item(0, 0).setText("701")
+    assert dialog.rules() == [Rule(0x701)]
+    assert "0x701" in dialog.summary.text(), "the summary did not follow the table"
+
+
 def test_renaming_a_channel_keeps_its_filter(app, tmp_path, monkeypatch):
     """The same bus with the same rules on the driver. Reading the new name's
     saved rules instead would quietly take the filter off."""
