@@ -19,7 +19,7 @@ and forgot is exactly who it is for.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenu, QToolButton, QWidget
 
@@ -28,6 +28,12 @@ from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.filters import describe
 from pycangui.ui import message_filter
+from pycangui.ui.message_filter import (
+    BLINK_MS,
+    FILTER_TIP,
+    FILTERED_COLOUR,
+    FILTERED_LABEL,
+)
 
 COLOURS = {
     bus_health.DOWN: "#9e9e9e",
@@ -38,23 +44,6 @@ COLOURS = {
 }
 
 DOT_SIZE = 12
-
-#: The colour of a filtered channel, alternated with its health colour so it
-#: blinks. Not one of the health colours: a filter is not a fault, it is
-#: something the user did and may have forgotten doing.
-FILTERED_COLOUR = "#7b1fa2"
-
-#: Twice a second. Fast enough to catch the eye across a room, slow enough
-#: not to be a strobe on a bar somebody is reading all day.
-BLINK_MS = 500
-
-FILTER_TIP = (
-    "Accept only certain identifiers on this channel.\n\n"
-    "Unlike everything else that narrows what pycangui shows, this one\n"
-    "throws frames away: they are dropped by the driver, so they are not\n"
-    "traced, decoded, counted, recorded or answered. It is for a bus too\n"
-    "busy to keep up with, and it is why a filtered channel blinks."
-)
 
 RECOVER_TIP = (
     "Restart this channel's CAN controller.\n\n"
@@ -118,7 +107,7 @@ class ChannelIndicator(QToolButton):
         # First of all, before even the asterisk: on a bar somebody is
         # scanning, it is the thing most likely to explain what they are
         # puzzled by. The asterisk stays next to the name it marks.
-        hidden = "FILTERED " if filters else ""
+        hidden = f"{FILTERED_LABEL} " if filters else ""
         if connected:
             state = "" if health == bus_health.OK else f"{health}, "
             self.setText(f"{hidden}{mark}{self.name}: {state}{bus.load_percent:.1f}% load")
@@ -142,6 +131,25 @@ class ChannelIndicator(QToolButton):
         if wanted != self._shown:
             self._shown = wanted
             self.setIcon(dot(FILTERED_COLOUR if wanted[1] else COLOURS[health]))
+
+    def open_menu(self, at) -> None:
+        """Show the menu at a screen position.
+
+        Its own method because exec blocks until something is chosen, so a
+        test can ask whether the menu was opened without opening it. The
+        same split the CANopen pane's node menu needed.
+        """
+        self.menu().exec(at)
+
+    def contextMenuEvent(self, event) -> None:
+        """Right click opens the same menu the left one does.
+
+        The button is an InstantPopup, so a left click already shows it,
+        but a right click on something that plainly has a menu should not
+        do nothing -- and a status bar is where people right click out of
+        habit.
+        """
+        self.open_menu(event.globalPos())
 
     def wants_blinking(self) -> bool:
         bus = self._channels.get(self.name)
@@ -172,6 +180,12 @@ class ChannelIndicator(QToolButton):
 class BusStatus(QWidget):
     """The indicators, one per channel in channel order, and a summary after."""
 
+    #: True on the loud half of the blink, false on the other. One clock for
+    #: everywhere that shows a filter, so the toolbar button and the status
+    #: bar dot are never caught in opposite phases -- two things blinking out
+    #: of step read as two different problems.
+    blinked = Signal(bool)
+
     def __init__(
         self, channels: Channels, parent: QWidget | None = None, ctx: Context | None = None
     ) -> None:
@@ -179,6 +193,8 @@ class BusStatus(QWidget):
         self._channels = channels
         self._ctx = ctx
         self.indicators: dict[str, ChannelIndicator] = {}
+        #: Which half of the blink everything is showing.
+        self.blink_on = False
         self._layout = QHBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(4)
@@ -202,9 +218,11 @@ class BusStatus(QWidget):
             self._flip(off=True)  # never leave one stuck on the blink colour
 
     def _flip(self, off: bool = False) -> None:
+        self.blink_on = False if off else not self.blink_on
         for name, indicator in self.indicators.items():
-            indicator.blink_on = False if off else not indicator.blink_on
+            indicator.blink_on = self.blink_on
             indicator.refresh(name == self._channels.active)
+        self.blinked.emit(self.blink_on)
 
     def _rebuild(self, names: list[str]) -> None:
         for indicator in self.indicators.values():

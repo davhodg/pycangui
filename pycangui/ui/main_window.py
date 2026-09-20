@@ -301,6 +301,9 @@ class MainWindow(QMainWindow):
         # a new one gets whatever was saved under its name before.
         message_filter.restore(self.ctx, self.channels)
         self.channels.channel_added.connect(self._restore_filter)
+        # One clock for both places a filter is shown, so the toolbar button
+        # and the status bar dot are never caught in opposite phases.
+        self.bus_status.blinked.connect(self.connect_bar.refresh_filter)
         self.recorder.state.connect(self._on_record_state)
         self.recorder.error.connect(self.events.error)
         self.recorder.note.connect(self.events.information)
@@ -2029,6 +2032,10 @@ class MainWindow(QMainWindow):
 
     def _update_status(self) -> None:
         self.bus_status.refresh()
+        # Without a phase: the blink has its own clock, and this is only
+        # asking whether the selected channel is filtered -- which it may
+        # have become from the status bar a moment ago.
+        self.connect_bar.refresh_filter()
         parts = []
         if self.recorder.is_recording:
             parts.append(f"recording {self.recorder.path.name} ({self.recorder.elapsed:.0f} s)")

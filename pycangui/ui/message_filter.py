@@ -34,6 +34,30 @@ from pycangui.core.filters import Rule, accepts, from_saved, full_mask, to_saved
 
 COLUMNS = ("ID", "Mask", "29-bit")
 
+#: The button with nothing on the channel yet, and what the channel is
+#: called once there is. The second is in capitals because it is the answer
+#: to a question somebody has not thought to ask yet.
+FILTER_LABEL = "Filter"
+FILTERED_LABEL = "FILTERED"
+
+#: The colour of a filtered channel, alternated with whatever it would
+#: otherwise be so it blinks. Not one of the health colours: a filter is not
+#: a fault, it is something the user did and may have forgotten doing.
+FILTERED_COLOUR = "#7b1fa2"
+
+#: Twice a second. Fast enough to catch the eye across a room, slow enough
+#: not to be a strobe on a bar somebody is reading all day. One clock drives
+#: every place that blinks, so the toolbar and the status bar agree.
+BLINK_MS = 500
+
+FILTER_TIP = (
+    "Accept only certain identifiers on this channel.\n\n"
+    "Unlike everything else that narrows what pycangui shows, this one\n"
+    "throws frames away: they are dropped before they arrive, so they are\n"
+    "not traced, decoded, counted, recorded or answered. It is for a bus\n"
+    "too busy to keep up with, and it is why a filtered channel blinks."
+)
+
 
 def key(channel: str) -> str:
     return f"channels.{channel}.filters"

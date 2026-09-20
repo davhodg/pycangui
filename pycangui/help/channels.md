@@ -105,8 +105,9 @@ it. Fix the cause, then recover.
 
 ## Message filter
 
-Click a channel in the status bar and choose **Message filter...** to accept
-only certain identifiers on it. It is the one thing in pycangui that loses
+**Filter** on the toolbar, beside Connect, sets which identifiers the
+selected channel accepts. The same dialog is on each channel in the status
+bar, by left click or right click. It is the one thing in pycangui that loses
 frames.
 
 Everywhere else that narrows what you see -- the [trace](trace.md)'s filter
@@ -119,8 +120,9 @@ recorded, not exported, and not answered. A filter that leaves out a node's
 SDO replies stops [CANopen](canopen.md) talking to that node, and nothing
 about the symptom will point at the filter.
 
-So a filtered channel **says FILTERED in the status bar and blinks**, for as
-long as the filter is on. That is deliberate and there is no way to quieten
+So a filtered channel **says FILTERED and blinks**, in the status bar and on
+the toolbar button both, for as long as the filter is on. The two share one
+clock, so they are never caught in opposite phases. That is deliberate and there is no way to quieten
 it: somebody who set a filter an hour ago and forgot is exactly who it is
 for. Applying one is also a warning in the [Event Log](event-log.md), and it
 is said again on every connect.

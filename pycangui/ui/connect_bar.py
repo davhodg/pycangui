@@ -28,7 +28,15 @@ from pycangui.core.detect import (
     channels_for,
     takes_a_channel,
 )
+from pycangui.core.filters import describe
 from pycangui.core.worker import Worker
+from pycangui.ui import message_filter
+from pycangui.ui.message_filter import (
+    FILTER_LABEL,
+    FILTER_TIP,
+    FILTERED_COLOUR,
+    FILTERED_LABEL,
+)
 
 #: Arbitration bitrates, slowest first. 50 and 100 kbit/s are ordinary on
 #: machinery and marine buses, where a long backbone costs more than speed.
@@ -86,6 +94,7 @@ class ConnectBar(QToolBar):
         self._worker = Worker(self)  # detection talks to drivers; keep it off the GUI thread
         self._detecting = False
         self._detected_for = ""  # the interface the list was last built for
+        self._blink_on = False  # the status bar's clock, not one of ours
 
         self.selector = QComboBox()
         self.selector.setToolTip("The channel the protocol panes work with")
@@ -140,6 +149,13 @@ class ConnectBar(QToolBar):
         self.button = QPushButton("Connect")
         self.button.setCheckable(True)
         self.button.toggled.connect(self._on_toggled)
+        # Beside Connect, because it belongs to the channel this bar is
+        # configuring rather than to any one pane, and because the status
+        # bar is at the other end of the window from where a channel is
+        # set up.
+        self.filter_button = QPushButton(FILTER_LABEL)
+        self.filter_button.setToolTip(FILTER_TIP)
+        self.filter_button.clicked.connect(self._filter)
 
         self.addWidget(QLabel(" Channel: "))
         self.addWidget(self.selector)
@@ -161,11 +177,57 @@ class ConnectBar(QToolBar):
         self._on_fd_toggled(self.fd.isChecked())
         self.addSeparator()
         self.addWidget(self.button)
+        self.addWidget(self.filter_button)
 
         channels.channel_added.connect(self._refresh_selector)
         channels.channel_removed.connect(self._refresh_selector)
         channels.state_changed.connect(self._on_state_changed)
         self._refresh_selector()
+        self.refresh_filter()
+
+    # --- the message filter ---------------------------------------------------------
+    def _filter(self) -> None:
+        """The same dialog the status bar opens, on the channel selected here."""
+        name = self.selector.currentText()
+        bus = self.channels.get(name)
+        if bus is None:
+            return
+        rules = message_filter.ask(name, bus.filters, self.parentWidget())
+        if rules is None:
+            return
+        bus.set_filters(rules)
+        message_filter.remember(self.ctx, name, rules)
+        self.refresh_filter()
+
+    def refresh_filter(self, blink_on: bool | None = None) -> None:
+        """Say whether the selected channel is filtered, and blink if it is.
+
+        Driven by the status bar's clock rather than one of its own: two
+        things blinking out of step read as two different problems. Called
+        without a phase -- on a channel change, or after the dialog -- it
+        keeps whichever half of the blink is showing, so answering "is this
+        one filtered" does not also jog the blink out of step.
+        """
+        if blink_on is None:
+            blink_on = self._blink_on
+        else:
+            self._blink_on = blink_on
+        bus = self.channels.get(self.selector.currentText())
+        filters = bus.filters if bus is not None else []
+        if not filters:
+            self.filter_button.setText(FILTER_LABEL)
+            self.filter_button.setStyleSheet("")
+            self.filter_button.setToolTip(FILTER_TIP)
+            return
+        self.filter_button.setText(FILTERED_LABEL)
+        colour = FILTERED_COLOUR if blink_on else "palette(button-text)"
+        self.filter_button.setStyleSheet(f"color: {colour}; font-weight: bold;")
+        self.filter_button.setToolTip(
+            f"Message filter on {self.selector.currentText()}: {describe(filters)}.\n"
+            "Everything else is dropped before pycangui sees it: not traced,\n"
+            "not decoded, not recorded, and not answered.\n\n"
+            "Click to change it."
+        )
 
     # --- channels -----------------------------------------------------------------
     def _refresh_selector(self, _name: str = "") -> None:
@@ -196,6 +258,7 @@ class ConnectBar(QToolBar):
             return
         self.channels.set_active(name)
         self._load_settings()
+        self.refresh_filter()  # another channel is another filter
 
     # --- detection --------------------------------------------------------------------
     @Slot(str)

@@ -28,6 +28,7 @@ from pycangui.core.filters import (
 )
 from pycangui.ui import message_filter
 from pycangui.ui.bus_status import FILTERED_COLOUR, BusStatus
+from pycangui.ui.main_window import MainWindow
 from pycangui.ui.message_filter import MessageFilterDialog, parse_try
 
 
@@ -369,3 +370,105 @@ def test_a_recovered_controller_is_still_filtered(app, bus):
     sender.shutdown()
 
     assert seen == [], "the filter came off with the restart"
+
+
+# --- reaching it from both bars ------------------------------------------------------------
+def test_right_clicking_a_channel_opens_its_menu(app, tmp_path, monkeypatch):
+    """A status bar is where people right click by habit, and a button that
+    plainly has a menu should not ignore them."""
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QContextMenuEvent
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    channels = Channels()
+    status = BusStatus(channels, ctx=Context(log=print))
+    status.refresh()
+    indicator = status.indicators[channels.names()[0]]
+
+    # Asked whether the menu was opened rather than opening it: exec blocks
+    # until something is chosen, which in a test is for ever.
+    opened = []
+    indicator.open_menu = opened.append
+    indicator.contextMenuEvent(
+        QContextMenuEvent(QContextMenuEvent.Mouse, QPoint(1, 1), QPoint(1, 1))
+    )
+    assert len(opened) == 1
+
+
+def test_the_channel_menu_offers_the_filter(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    channels = Channels()
+    status = BusStatus(channels, ctx=Context(log=print))
+    status.refresh()
+    indicator = status.indicators[channels.names()[0]]
+    assert "Message filter..." in [a.text() for a in indicator.menu().actions()]
+
+
+def test_the_toolbar_says_filtered_for_the_channel_it_is_showing(app, tmp_path, monkeypatch):
+    from pycangui.ui.message_filter import FILTER_LABEL, FILTERED_LABEL
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    window = MainWindow()
+    bar = window.connect_bar
+    name = window.channels.names()[0]
+    assert bar.filter_button.text() == FILTER_LABEL
+
+    window.channels.get(name).set_filters([Rule(0x581)])
+    bar.refresh_filter()
+    assert bar.filter_button.text() == FILTERED_LABEL
+    assert "0x581" in bar.filter_button.toolTip()
+    window.close()
+
+
+def test_the_toolbar_follows_the_channel_selected_in_it(app, tmp_path, monkeypatch):
+    """Another channel is another filter, and the button is about one channel."""
+    from pycangui.ui.message_filter import FILTER_LABEL, FILTERED_LABEL
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    window = MainWindow()
+    bar = window.connect_bar
+    first = window.channels.names()[0]
+    window.channels.add("CAN 2")
+    window.channels.get(first).set_filters([Rule(0x581)])
+
+    bar.refresh_filter()
+    assert bar.filter_button.text() == FILTERED_LABEL
+    bar.selector.setCurrentText("CAN 2")
+    assert bar.filter_button.text() == FILTER_LABEL, "showing another channel's filter"
+    bar.selector.setCurrentText(first)
+    assert bar.filter_button.text() == FILTERED_LABEL, "did not follow the selector back"
+    window.close()
+
+
+def test_a_filter_set_from_the_status_bar_reaches_the_toolbar(app, tmp_path, monkeypatch):
+    """The two are at opposite ends of the window and must not disagree."""
+    from pycangui.ui.message_filter import FILTERED_LABEL
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    window = MainWindow()
+    name = window.channels.names()[0]
+    window.channels.get(name).set_filters([Rule(0x581)])
+
+    window._update_status()  # the half second tick, both bars
+    assert window.connect_bar.filter_button.text() == FILTERED_LABEL
+    assert "FILTERED" in window.bus_status.indicators[name].text()
+    window.close()
+
+
+def test_both_bars_blink_on_the_same_clock(app, tmp_path, monkeypatch):
+    """Two things blinking out of step read as two different problems."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    window = MainWindow()
+    name = window.channels.names()[0]
+    window.channels.get(name).set_filters([Rule(0x581)])
+    window.bus_status.refresh()
+
+    window.bus_status._flip()
+    assert window.bus_status.blink_on is True
+    assert FILTERED_COLOUR in window.connect_bar.filter_button.styleSheet()
+
+    window.bus_status._flip()
+    assert window.bus_status.blink_on is False
+    assert FILTERED_COLOUR not in window.connect_bar.filter_button.styleSheet()
+    assert "bold" in window.connect_bar.filter_button.styleSheet(), "stopped saying it entirely"
+    window.close()
