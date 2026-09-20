@@ -568,10 +568,45 @@ class CanopenView(QWidget):
     def on_node_back(self, node_id: int) -> None:
         self._lost.discard(node_id)
         self._offer_node_buttons()
+        self._ask_the_hooks_again(node_id)
         item = self._node_item(node_id)
         if item is not None:
             for column in range(item.columnCount()):
                 item.setForeground(column, ALIVE_BRUSH)
+
+    def _ask_the_hooks_again(self, node_id: int) -> None:
+        """A node that went away and came back may not be what it was.
+
+        A controller is reflashed by dropping off the bus and returning, and
+        what comes back can want a different EDS or a different name. Its
+        row is never removed while that happens -- which node went is the
+        news -- so nothing would otherwise reconsider either.
+
+        pycangui does not re-read 0x1018 here. Probing a node that has just
+        recovered is precisely the behaviour worth being able to switch off,
+        and it would be pycangui deciding to do it. The hooks are asked
+        again instead: they can reach the device themselves if they want to,
+        and whether a reflashed controller needs looking at again is
+        knowledge about that device, which is what a hook is for.
+
+        Only the hooks. The remembered choice, the search of the EDS folder
+        and the file dialog are for a node nobody has an answer for yet, and
+        a dialog opening every time a heartbeat came back would be a way of
+        making people unplug things.
+        """
+        identity = self._identities.get(node_id, NodeIdentity(node_id))
+        if (name := self.hooks.call("canopen", "node_name", identity)) and (
+            item := self._node_item(node_id)
+        ):
+            item.setText(1, name)
+        path = self.hooks.call("canopen", "eds_for_node", identity)
+        if not path or str(path) == self.manager.eds_path(node_id):
+            return  # the same file it already has, so nothing to do
+        if Path(path).exists():
+            self.ctx.log(f"Node {node_id}: back, and the hook now says {Path(path).name}")
+            self.manager.load_eds(node_id, str(path))
+        else:
+            self.ctx.warn(f"Node {node_id}: EDS not found: {path}")
 
     @Slot(object)
     def on_identified(self, identity: NodeIdentity) -> None:

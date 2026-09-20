@@ -623,6 +623,10 @@ class CanopenManager(QObject):
             return None
         return self.network.nodes.get(node_id)
 
+    def eds_path(self, node_id: int) -> str | None:
+        """Which file this node's object dictionary was loaded from, if any."""
+        return self._eds_path.get(node_id)
+
     def nodes(self) -> list[int]:
         """Every node this manager knows of: heard from, or asked about."""
         seen = set(self.last_heartbeat)

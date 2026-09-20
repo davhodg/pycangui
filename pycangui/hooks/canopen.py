@@ -42,6 +42,10 @@ def node_name(identity: NodeIdentity, *, ctx) -> str | None:
     Return None for the default, which is "Node <id>" or the name remembered
     from the EDS (DeviceInfo ProductName) once one is loaded.
 
+    Asked when a node is first identified, and again whenever one that had
+    gone quiet starts heartbeating -- a reflashed controller may want a
+    different name, and its identity is not read again.
+
     Examples:
 
         # Name by product code

@@ -324,3 +324,71 @@ def test_a_lost_node_can_no_longer_be_asked_anything(app, window):
 
     window.canopen.node_back.emit(7)
     assert all(b.isEnabled() for b in view._node_buttons)
+
+
+# --- a node that went away and came back --------------------------------------------
+def answers(window, monkeypatch, **hooks):
+    """Stand in for a workspace hook file answering for this device."""
+    real = window.canopen_view.hooks.call
+
+    def call(module, name, *args, **kwargs):
+        if module == "canopen" and name in hooks:
+            return hooks[name](*args)
+        return real(module, name, *args, **kwargs)
+
+    monkeypatch.setattr(window.canopen_view.hooks, "call", call)
+
+
+def test_a_node_coming_back_is_offered_to_the_hooks_again(app, window, monkeypatch):
+    """A controller is reflashed by dropping off the bus and returning, and
+    what comes back can want a different name."""
+    view = window.canopen_view
+    seen_by_hand(window, 7)
+    assert view._node_item(7).text(1) == "Node 7"
+
+    answers(window, monkeypatch, node_name=lambda _identity: "Drive A, reflashed")
+    window.canopen.node_lost.emit(7)
+    window.canopen.node_back.emit(7)
+
+    assert view._node_item(7).text(1) == "Drive A, reflashed"
+
+
+def test_the_hook_can_change_the_eds_when_a_node_returns(app, window, monkeypatch, tmp_path):
+    from pycangui import resources
+
+    seen_by_hand(window, 7)
+    eds = str(resources.path("demo.eds"))
+    loaded: list = []
+    monkeypatch.setattr(window.canopen, "load_eds", lambda n, p: loaded.append((n, p)))
+
+    answers(window, monkeypatch, eds_for_node=lambda _identity: eds)
+    window.canopen.node_back.emit(7)
+
+    assert loaded == [(7, eds)]
+
+
+def test_the_same_eds_is_not_loaded_again(app, window, monkeypatch):
+    from pycangui import resources
+
+    eds = str(resources.path("demo.eds"))
+    seen_by_hand(window, 7)
+    monkeypatch.setattr(window.canopen, "eds_path", lambda _n: eds)
+    loaded: list = []
+    monkeypatch.setattr(window.canopen, "load_eds", lambda n, p: loaded.append((n, p)))
+
+    answers(window, monkeypatch, eds_for_node=lambda _identity: eds)
+    window.canopen.node_back.emit(7)
+
+    assert loaded == [], "it already has that file"
+
+
+def test_coming_back_does_not_re_read_the_identity(app, window, monkeypatch):
+    """Probing a node that has just recovered is the behaviour worth being
+    able to switch off, so pycangui does not do it -- the hooks may."""
+    seen_by_hand(window, 7)
+    probed: list = []
+    monkeypatch.setattr(window.canopen, "identify", probed.append)
+
+    window.canopen.node_back.emit(7)
+
+    assert probed == []

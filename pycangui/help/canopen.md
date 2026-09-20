@@ -7,7 +7,20 @@
 Nodes appear in the list as they are heard on the bus, with their name, NMT
 state and the EDS matched to them. The EDS is found from the node's identity,
 by [`hooks/canopen.py::eds_for_node`](hooks.md), or by **Load EDS...**, which
-chooses one by hand for the selected node.
+chooses one by hand for the selected node. The **name** is whatever
+[`hooks/canopen.py::node_name`](hooks.md) answers, or the EDS's ProductName,
+or `Node <id>` until one of those says otherwise.
+
+**A node that goes away and comes back** -- which is what a controller does
+while it is reflashed -- keeps its row, because which node went is the news.
+Its identity is *not* read again: probing a node that has just recovered
+would be pycangui deciding to put traffic on your bus. What does happen is
+that `node_name` and `eds_for_node` are asked again, so a hook that knows a
+reflashed controller wants a different file or a different name can say so,
+and can read the device itself to find out. Only those two: the remembered
+choice, the search of the EDS folder and the file dialog are for a node
+nobody has an answer for yet, and a dialog opening every time a heartbeat
+came back would be a way of making people unplug things.
 
 **NMT command**, with **Send NMT** beside it, sends Start, Pre-operational,
 Stop, Reset node or Reset communication to the selected node, or to every node
