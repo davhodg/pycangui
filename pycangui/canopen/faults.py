@@ -113,6 +113,16 @@ class FaultState:
     register: int | None = None
     manufacturer_status: int | None = None
     stored: list[StoredError] = field(default_factory=list)
+    #: What is wrong *now*, where a hook has said so. None means nobody
+    #: has: the error register is then the only answer available. An empty
+    #: list is an answer -- this device has nothing active -- which is why
+    #: it is not the default.
+    #:
+    #: CiA 301 has no object for this. 0x1001 gives categories rather than
+    #: faults, and 0x1002 is one word a maker may use for anything or not
+    #: implement at all, so a device that can list what is currently wrong
+    #: does it its own way and a hook is the only place that fits.
+    active: list[StoredError] | None = None
     #: Indices the node refused or that its EDS does not list.
     missing: set[int] = field(default_factory=set)
 
@@ -120,11 +130,25 @@ class FaultState:
     def faulted(self) -> bool:
         """Whether the node says it is in error *now*.
 
-        Only the error register answers this. A stored error is history: a
-        node that faulted this morning and recovered still has the entry,
-        and calling that a fault would be reporting the past as the present.
+        A hook listing what is active answers this where there is one,
+        since it is the better answer: the error register says a category
+        is set, and a list says which fault it is. Failing that, the
+        register.
+
+        A stored error is history either way: a node that faulted this
+        morning and recovered still has the entry, and calling that a fault
+        would be reporting the past as the present.
         """
+        if self.active is not None:
+            return bool(self.active)
         return bool(self.register)
+
+    @property
+    def active_text(self) -> str:
+        """What is wrong now, in a few words, for a column in a list."""
+        if self.active:
+            return ", ".join(error.description for error in self.active)
+        return self.register_text if self.faulted else ""
 
     @property
     def register_text(self) -> str:

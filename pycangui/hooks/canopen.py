@@ -86,6 +86,53 @@ def eds_for_node(identity: NodeIdentity, *, ctx) -> Path | str | None:
 
 
 @hook
+def active_faults(node, *, ctx) -> list | None:
+    """What is wrong with this device *now*, where it can say.
+
+    CiA 301 has no object for this, which is the reason the hook exists.
+    0x1001 gives categories -- current, voltage, temperature -- rather than
+    faults, and 0x1002 is one word a maker may use for anything or may not
+    implement at all. A device that can list what is currently wrong does
+    it its own way: a bitfield of active faults, a block of objects, a
+    count and an array.
+
+    Return the entries, or None to leave the error register as the only
+    answer. An empty list means "nothing active now", which is not the
+    same as None: it is a device saying it is healthy, and the pane shows
+    it as such.
+
+    Entries are as ``stored_errors`` takes them -- a plain number, or a
+    ``StoredError`` when you want to name the code yourself. Where this
+    answers, it is what decides whether the node list calls the node
+    faulted, because "which fault" is a better answer than "some category
+    is set".
+
+    ``node`` is the canopen node object. Runs on the worker thread, so a
+    few SDO reads here cost the window nothing.
+
+    Examples:
+
+        # A bitfield of what is active, with the maker's own names
+        # from pycangui.canopen.faults import StoredError
+        # NAMES = {0: "Encoder", 1: "Over temperature", 2: "Contactor"}
+        # word = int.from_bytes(node.sdo.upload(0x5100, 0), "little")
+        # return [
+        #     StoredError(code=bit, text=name)
+        #     for bit, name in NAMES.items()
+        #     if word & (1 << bit)
+        # ]
+
+        # A count, then that many active codes
+        # how_many = int.from_bytes(node.sdo.upload(0x5110, 0), "little")
+        # return [
+        #     int.from_bytes(node.sdo.upload(0x5110, sub), "little")
+        #     for sub in range(1, how_many + 1)
+        # ]
+    """
+    return None
+
+
+@hook
 def stored_errors(node, *, ctx) -> list | None:
     """Read this device's fault list its own way.
 

@@ -448,3 +448,81 @@ def test_without_a_hook_clearing_writes_to_the_standard_object(stack, monkeypatc
 
     manager.clear_stored_errors(5)
     wait_until(lambda: int.from_bytes(device.get_data(0x1003, 0), "little") == 0)
+
+
+# --- what is wrong now, for a device that can list it -------------------------------
+def test_a_hook_can_say_what_is_active_where_the_standard_cannot(stack, monkeypatch):
+    """CiA 301 has no object for it: 0x1001 gives categories rather than
+    faults, and 0x1002 is a word meaning whatever the maker chose."""
+    manager, _demo = stack
+    hooked(
+        manager,
+        monkeypatch,
+        active_faults=lambda _node: [faults.StoredError(1, text="Over temperature")],
+    )
+
+    state = read(manager)
+
+    assert [e.description for e in state.active] == ["Over temperature"]
+    assert state.faulted, "it listed one, so the node is faulted whatever 0x1001 says"
+    assert state.active_text == "Over temperature"
+
+
+def test_an_empty_list_is_a_device_saying_it_is_healthy(stack, monkeypatch):
+    manager, demo = stack
+    device = demo["canopen_device"].state.device
+    device.set_data(canopen_device.ERROR_REGISTER, 0, bytes([0x02]))  # the register disagrees
+    hooked(manager, monkeypatch, active_faults=lambda _node: [])
+
+    state = read(manager)
+
+    assert state.active == []
+    assert not state.faulted, "the hook is the better answer, and it says nothing is active"
+
+
+def test_without_the_hook_the_register_is_still_the_answer(stack, monkeypatch):
+    manager, demo = stack
+    device = demo["canopen_device"].state.device
+    device.set_data(canopen_device.ERROR_REGISTER, 0, bytes([0x02]))
+    hooked(manager, monkeypatch, active_faults=lambda _node: None)
+
+    state = read(manager)
+
+    assert state.active is None, "nobody said, which is not the same as nothing active"
+    assert state.faulted and "current" in state.active_text
+
+
+def test_the_pane_hides_the_list_for_a_device_that_cannot_say(app, window):
+    """An empty box under a heading reads as "nothing is wrong", and on a
+    device that cannot list its faults nobody made that claim."""
+    from pycangui.canopen.manager import ADDED_BY_HAND
+
+    window.canopen.node_seen.emit(7, ADDED_BY_HAND)
+    view = window.canopen_view
+    view.nodes.setCurrentItem(view._node_item(7))
+
+    show(window, faults.FaultState(7, register=0x02))
+    assert not view.faults.active.isVisibleTo(view.faults)
+    assert not view.faults.active_note.isVisibleTo(view.faults)
+
+    show(window, faults.FaultState(7, register=0x02, active=[faults.StoredError(1, text="Hot")]))
+    assert view.faults.active.isVisibleTo(view.faults)
+    assert view.faults.active.topLevelItem(0).text(1) == "Hot"
+
+    show(window, faults.FaultState(7, register=0x00, active=[]))
+    assert not view.faults.active.isVisibleTo(view.faults), "nothing to list"
+    assert view.faults.active_note.isVisibleTo(view.faults), "but it said so"
+
+
+def test_the_node_list_shows_which_fault_rather_than_which_category(app, window):
+    from pycangui.canopen.manager import ADDED_BY_HAND
+    from pycangui.ui.canopen_view import COL_ERROR
+
+    window.canopen.node_seen.emit(7, ADDED_BY_HAND)
+    view = window.canopen_view
+
+    show(window, faults.FaultState(7, register=0x02, active=[faults.StoredError(1, text="Hot")]))
+    assert view._node_item(7).text(COL_ERROR) == "Hot"
+
+    show(window, faults.FaultState(7, register=0x02))
+    assert "current" in view._node_item(7).text(COL_ERROR), "no hook, so the category"

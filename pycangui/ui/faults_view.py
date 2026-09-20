@@ -40,6 +40,13 @@ NO_NODE = "No node selected."
 NO_FAULT = "No error: the node says it is not faulted."
 FAULTED = "Faulted: {text}"
 NONE_STORED = "The node is holding no stored errors."
+NONE_ACTIVE = "Nothing active: the device says nothing is wrong with it now."
+ACTIVE_TIP = (
+    "What this device says is wrong now, from\n"
+    "hooks/canopen.py::active_faults. CiA 301 has no object for it: 0x1001\n"
+    "gives categories rather than faults, so a device that can list them\n"
+    "does it its own way."
+)
 NOT_HELD = "This node has no stored error list (0x1003), so there is nothing to show or clear."
 
 READ_TIP = (
@@ -92,10 +99,26 @@ class FaultsView(QWidget):
         self.state.setToolTip(REGISTER_TIP)
         self.status = QLabel("")
         self.status.setToolTip(STATUS_TIP)
+        #: Only shown for a device whose hook lists them: with no hook there
+        #: is nothing to put here, and an empty box would read as "nothing
+        #: wrong" on a device that simply cannot say.
+        self.active = QTreeWidget()
+        self.active.setHeaderLabels(["Code", "Description"])
+        self.active.setRootIsDecorated(False)
+        self.active.setFont(QFont("Consolas", 9))
+        self.active.header().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.active.header().setStretchLastSection(True)
+        self.active.setToolTip(ACTIVE_TIP)
+        self.active_note = QLabel("")
+        self.active_note.setWordWrap(True)
+        self.active_note.setEnabled(False)
+
         now_box = QGroupBox("What the node says now")
         now_inside = QVBoxLayout(now_box)
         now_inside.addWidget(self.state)
         now_inside.addWidget(self.status)
+        now_inside.addWidget(self.active_note)
+        now_inside.addWidget(self.active)
 
         self.stored = QTreeWidget()
         self.stored.setHeaderLabels(["#", "Code", "Description", "Manufacturer"])
@@ -144,6 +167,8 @@ class FaultsView(QWidget):
         self.state.setText(NO_NODE if self._node is None else NOTHING_READ)
         self.state.setStyleSheet("")
         self.status.setText("")
+        self.active.clear()
+        self._show_active(None)
         self.note.setText(NO_NODE if self._node is None else NOTHING_READ)
         self.stored.clear()
 
@@ -155,6 +180,24 @@ class FaultsView(QWidget):
     def _clear(self) -> None:
         if self._node is not None:
             self.manager.clear_stored_errors(self._node)
+
+    def _show_active(self, active: list[faults.StoredError] | None) -> None:
+        """The list of what is wrong now, for a device that can say.
+
+        Hidden altogether where nothing answered. An empty box under a
+        heading reads as "nothing is wrong", and on a device that cannot
+        list its faults that would be a claim nobody made.
+        """
+        self.active.clear()
+        self.active.setVisible(bool(active))
+        self.active_note.setVisible(active is not None and not active)
+        if active is None:
+            return
+        if not active:
+            self.active_note.setText(NONE_ACTIVE)
+            return
+        for error in active:
+            self.active.addTopLevelItem(QTreeWidgetItem([f"{error.code:04X}", error.description]))
 
     @Slot(object)
     def on_fault_state(self, state: faults.FaultState) -> None:
@@ -177,6 +220,8 @@ class FaultsView(QWidget):
         else:
             value = state.manufacturer_status or 0
             self.status.setText(f"Manufacturer status: 0x{value:08X}")
+
+        self._show_active(state.active)
 
         self.stored.clear()
         held = state.says(faults.PREDEFINED_ERROR_FIELD)

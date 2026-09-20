@@ -138,7 +138,8 @@ instead, so the answer does not depend on having been there:
 
 - **the error register** (0x1001) -- mandatory in CiA 301, so every node has
   one. Non-zero means the node considers itself faulted *now*, and the node
-  list's **Error** column says which categories;
+  list's **Error** column says which categories, unless a hook has listed the
+  faults themselves;
 - **the manufacturer status register** (0x1002) -- optional, and its meaning
   is the maker's alone;
 - **the stored errors** (0x1003) -- optional, the codes the node kept, newest
@@ -160,6 +161,17 @@ saw and what the node kept are two different records.
 
 A stored error is history. A node that faulted this morning and recovered
 still holds the entry, so only the error register answers "is it faulted now".
+
+**What is wrong *now*, on a device that can list it.** CiA 301 has no object
+for that, which is worth saying plainly: 0x1001 gives categories -- current,
+voltage, temperature -- rather than faults, and 0x1002 is one word a maker may
+use for anything or not implement at all. A device that can list its active
+faults does it its own way, so
+[`hooks/canopen.py::active_faults`](hooks.md) is the only place it fits.
+Return the entries and the Faults tab lists them, and the node list's **Error**
+column says which fault rather than which category; return an empty list and
+the device is saying it is healthy, which is shown as such; return None and
+the error register is the only answer, as before.
 
 **A device that keeps its faults somewhere of its own** is read by
 [`hooks/canopen.py::stored_errors`](hooks.md), and cleared by

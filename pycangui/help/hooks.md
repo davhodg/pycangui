@@ -125,7 +125,7 @@ second. Fine for reading one DID in a `startup` hook; not something to do in
 
 | File | Answers |
 |---|---|
-| `canopen.py` | which EDS belongs to a node, what to call it, what its manufacturer emergency bytes mean, how an object should be shown -- name, unit, scaling, limits, named bits -- how to log in to an access level, and how to read and clear a fault list the device keeps its own way |
+| `canopen.py` | which EDS belongs to a node, what to call it, what its manufacturer emergency bytes mean, how an object should be shown -- name, unit, scaling, limits, named bits -- how to log in to an access level, what is wrong with a device now, and how to read and clear a fault list it keeps its own way |
 | `uds.py` | the seed-to-key algorithm, the names and descriptions of data identifiers, routines and sessions, how a DID decodes and encodes, DTC descriptions, what the erase and check routines are sent, and whether a firmware image belongs to the ECU in front of you |
 | `j1939.py` | PGN names, SPN names and failure-mode descriptions |
 | `xcp.py` | the seed-to-key algorithm for CAL and the other resources |

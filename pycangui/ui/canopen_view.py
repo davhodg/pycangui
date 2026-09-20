@@ -508,14 +508,17 @@ class CanopenView(QWidget):
     def on_fault_state(self, state) -> None:
         """The Error column: what the node's own error register says.
 
-        Only the register, and only when it was read. An emergency that
-        arrived and went is not a fault now, and a node nobody has asked
-        gets an empty cell rather than a reassuring one.
+        What is wrong now, and only when it was read. Where a hook lists
+        the active faults that is what is shown, because "which fault" is
+        a better answer than "some category is set"; otherwise the error
+        register's categories. An emergency that arrived and went is not a
+        fault now, and a node nobody has asked gets an empty cell rather
+        than a reassuring one.
         """
         item = self._node_item(state.node_id)
         if item is None:
             return
-        item.setText(COL_ERROR, state.register_text if state.faulted else "")
+        item.setText(COL_ERROR, state.active_text)
         item.setForeground(COL_ERROR, ERROR_COLOUR if state.faulted else ALIVE_BRUSH)
 
     def _open_settings(self) -> None:

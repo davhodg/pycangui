@@ -435,6 +435,14 @@ class CanopenManager(QObject):
             state.manufacturer_status, ok = self._optional(node, faults.MANUFACTURER_STATUS)
             if not ok:
                 state.missing.add(faults.MANUFACTURER_STATUS)
+            # What is wrong now, where the device can say. There is no
+            # standard object for it -- 0x1001 gives categories and 0x1002
+            # is a word meaning whatever the maker chose -- so this is the
+            # hook's answer or nothing.
+            if self._hooks is not None:
+                now = self._hooks.call("canopen", "active_faults", node)
+                if now is not None:
+                    state.active = faults.as_errors(now)
             if stored:
                 self._read_stored(node, state)
             return state
