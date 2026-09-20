@@ -49,7 +49,7 @@ from .drive import Drive, Object
 
 API_VERSION = 1
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.4"
+VERSION = "1.5"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -188,6 +188,10 @@ class MotorView(QWidget):
         #: What the node list holds, so a heartbeat that says nothing new
         #: does not rebuild it. See _fill_nodes.
         self._nodes_listed: list[int] = []
+        #: Objects whose last read failed and has been complained about. A
+        #: poll asks ten times a second, so an abort said every time would
+        #: fill the Event Log with one fact. See _went_wrong.
+        self._complained: set[tuple[int, int]] = set()
 
         self.node = QComboBox()
         self.node.setToolTip("Which drive.")
@@ -482,6 +486,7 @@ class MotorView(QWidget):
         self._read_something = False
         self.statusword = 0
         self.mode = 0
+        self._complained.clear()  # another drive's refusals are not this one's
         self.mode_now.setText("")
         for value in self.actuals.values():
             value.setText("--")
@@ -543,7 +548,7 @@ class MotorView(QWidget):
             return
 
         def done(value, error) -> None:
-            if error is None:
+            if not self._went_wrong(cia402.SUPPORTED_MODES, error):
                 self._show_modes(cia402.modes_in(int(value)))
 
         self.app.run_in_background(lambda: drive.read(cia402.SUPPORTED_MODES), done)
@@ -574,10 +579,8 @@ class MotorView(QWidget):
                 continue
 
             def done(value, error, obj=obj) -> None:
-                if error is None:
+                if not self._went_wrong(obj, error):
                     self.limits[obj.where].setValue(int(value))
-                else:
-                    self.app.warn(f"{obj.name}: {error}")
 
             self.app.run_in_background(lambda o=obj: drive.read(o), done)
 
@@ -649,7 +652,7 @@ class MotorView(QWidget):
             return
 
         def done(value, error) -> None:
-            if error is None:
+            if not self._went_wrong(obj, error):
                 self._took(obj, value)
             self.poller.answered(index, sub)
 
@@ -664,6 +667,41 @@ class MotorView(QWidget):
         node_id = self.node.currentData()
         node = self.app.canopen.node(node_id) if node_id is not None else None
         return NodeDrive(node) if node is not None else None
+
+    def _went_wrong(self, obj: Object, error) -> bool:
+        """Say that a read failed, once, and answer whether it did.
+
+        An SDO that aborts while polling used to be dropped in silence:
+        the value on screen simply stopped changing, which reads as a
+        drive holding steady rather than as a drive not answering. Now it
+        is reported -- but once, and again only after that object has
+        answered, because ten aborts a second is one fact told over and
+        over.
+        """
+        if error is None:
+            self._complained.discard(obj.where)
+            return False
+        if obj.where not in self._complained:
+            self._complained.add(obj.where)
+            self.app.warn(f"{obj.name} (0x{obj.index:04X} sub {obj.sub}): {error}")
+        return True
+
+    def _read_back(self, obj: Object) -> None:
+        """Read one object again after writing to the drive.
+
+        So the screen says what happened rather than what was asked: a
+        drive is free to refuse a mode, or to take a moment over it, and
+        either way what it reports is the answer.
+        """
+        drive = self._quietly()
+        if drive is None:
+            return
+
+        def done(value, error) -> None:
+            if not self._went_wrong(obj, error):
+                self._took(obj, value)
+
+        self.app.run_in_background(lambda: drive.read(obj), done)
 
     def _took(self, obj: Object, value: int) -> None:
         self._read_something = True
@@ -829,18 +867,22 @@ class MotorView(QWidget):
 
     def _read_statusword(self) -> None:
         """After a command, so the screen says what happened rather than what was asked."""
-        drive = self._quietly()
-        if drive is None:
-            return
-
-        def done(value, error) -> None:
-            if error is None:
-                self._took(cia402.STATUSWORD, value)
-
-        self.app.run_in_background(lambda: drive.read(cia402.STATUSWORD), done)
+        self._read_back(cia402.STATUSWORD)
 
     def _set_mode(self) -> None:
-        self._write(cia402.MODE, self.mode_box.currentData())
+        """Write 0x6060, then read 0x6061 to see whether the drive took it.
+
+        The mode on screen comes from 0x6061, which only polling was
+        reading -- so with polling off, setting the mode changed nothing
+        visible and the target box went on offering whatever the last mode
+        allowed. A drive is also free to refuse a mode or to take a moment
+        over it, and the mode display is the only thing that knows.
+        """
+        self._write(
+            cia402.MODE,
+            self.mode_box.currentData(),
+            then=lambda: self._read_back(cia402.MODE_DISPLAY),
+        )
 
     def _write_target(self) -> None:
         obj = cia402.TARGET_FOR.get(self.mode)
@@ -849,7 +891,12 @@ class MotorView(QWidget):
             return
         self._write(obj, self.target.value())
 
-    def _write(self, obj: Object, value: int) -> None:
+    def _write(self, obj: Object, value: int, then=None) -> None:
+        """One write, and whatever has to be read back afterwards.
+
+        ``then`` runs on the GUI thread once the drive has taken the
+        write, and not at all if it refused.
+        """
         drive = self._drive()
         if drive is None or self._busy:
             return
@@ -865,6 +912,8 @@ class MotorView(QWidget):
                 self.app.warn(f"Writing {obj.name} failed: {error}")
                 return
             self.app.log(f"{obj.name} = {value}")
+            if then is not None:
+                then()
 
         self._busy = True
         self.app.run_in_background(lambda: drive.write(obj, value), done)

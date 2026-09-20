@@ -297,12 +297,24 @@ def test_the_target_box_follows_the_mode(app, view):
 class FakeDrive:
     """Somewhere to write, and a record of what was written."""
 
-    def __init__(self, statusword):
+    #: 0x6502 with every profiled mode set, so the mode list is not
+    #: restricted to No mode in tests that are about something else.
+    ALL_MODES = 0x03FF
+
+    def __init__(self, statusword, mode: int = 0):
         self.statusword = statusword
+        #: What it answers for 0x6061, which need not be what was asked
+        #: for: a drive is free to refuse a mode.
+        self.mode = mode
+        self.supported = self.ALL_MODES
         self.written: list[tuple] = []
 
     def read(self, obj):
-        return self.statusword if obj.where == cia402.STATUSWORD.where else 0
+        if obj.where == cia402.STATUSWORD.where:
+            return self.statusword
+        if obj.where == cia402.MODE_DISPLAY.where:
+            return self.mode
+        return self.supported if obj.where == cia402.SUPPORTED_MODES.where else 0
 
     def write(self, obj, value):
         self.written.append((obj.index, value))
@@ -716,3 +728,105 @@ def test_a_bit_number_is_never_shown_as_though_it_were_the_statusword():
     assert maker_bits([8, 15]) == "statusword bits 8, 15"
     assert maker_bits([]) == MAKER_NONE_SET
     assert ":" not in maker_bits([14]), "a colon there promises a value"
+
+
+# --- a drive that will not answer ---------------------------------------------------
+class RefusingDrive(FakeDrive):
+    """Aborts every read, the way a drive in the wrong state does."""
+
+    def read(self, obj):
+        raise RuntimeError("abort 0x06010000, Unsupported access to an object")
+
+
+def catching(view, monkeypatch, drive):
+    """The pane against a drive, with the worker's try/except but no thread."""
+    monkeypatch.setattr(view, "_drive", lambda: drive)
+    monkeypatch.setattr(view, "_quietly", lambda: drive)
+
+    def run(job, done):
+        try:
+            value, error = job(), None
+        except Exception as exc:  # what the real worker hands back as `error`
+            value, error = None, exc
+        done(value, error)
+
+    monkeypatch.setattr(view.app, "run_in_background", run)
+    return drive
+
+
+def refusing(view, monkeypatch):
+    return catching(view, monkeypatch, RefusingDrive(0))
+
+
+def test_an_sdo_that_aborts_while_polling_is_said_once(app, window, view, monkeypatch):
+    """It used to be dropped in silence: the value stopped changing, which
+    reads as a drive holding steady rather than as one not answering."""
+    refusing(view, monkeypatch)
+    view.node.addItem("Node 5", 5)
+
+    view._read_one(*cia402.POSITION_ACTUAL.where)
+    said = window.log.toPlainText()
+    assert f"{cia402.POSITION_ACTUAL.name} (0x6064 sub 0)" in said
+    assert "abort 0x06010000" in said
+
+    before = window.log.toPlainText()
+    for _ in range(5):
+        view._read_one(*cia402.POSITION_ACTUAL.where)
+    assert window.log.toPlainText() == before, "ten a second is one fact told over and over"
+
+
+def test_it_is_said_again_after_the_object_answers(app, window, view, monkeypatch):
+    refusing(view, monkeypatch)
+    view.node.addItem("Node 5", 5)
+    view._read_one(*cia402.POSITION_ACTUAL.where)
+
+    catching(view, monkeypatch, FakeDrive(READY))  # it starts answering again
+    view._read_one(*cia402.POSITION_ACTUAL.where)
+
+    refusing(view, monkeypatch)
+    before = window.log.toPlainText()
+    view._read_one(*cia402.POSITION_ACTUAL.where)
+    assert window.log.toPlainText() != before, "a new failure, so worth saying again"
+
+
+def test_another_drive_does_not_inherit_the_silence(app, window, view, monkeypatch):
+    refusing(view, monkeypatch)
+    view.node.addItem("Node 5", 5)
+    view._read_one(*cia402.POSITION_ACTUAL.where)
+
+    view._forget()  # a different drive chosen
+
+    before = window.log.toPlainText()
+    view._read_one(*cia402.POSITION_ACTUAL.where)
+    assert window.log.toPlainText() != before
+
+
+# --- setting the mode -----------------------------------------------------------------
+def test_setting_the_mode_reads_back_what_the_drive_took(app, view, monkeypatch):
+    """The mode on screen comes from 0x6061, which only polling read -- so
+    with polling off, setting the mode changed nothing visible."""
+    drive = catching(view, monkeypatch, FakeDrive(READY))
+    drive.mode = 3  # what it reports for 0x6061 once the write lands
+    view.node.addItem("Node 5", 5)
+    view.mode_box.setCurrentIndex(view.mode_box.findData(3))
+    assert view.mode_box.currentData() == 3
+
+    view._set_mode()
+
+    assert (cia402.MODE.index, 3) in drive.written, "asked for"
+    assert view.mode == 3, "and read back, rather than assumed"
+    assert "Profile velocity" in view.mode_now.text()
+
+
+def test_a_refused_mode_is_not_shown_as_taken(app, view, monkeypatch):
+    """A drive is free to refuse a mode, and the mode display is the only
+    thing that knows."""
+    drive = catching(view, monkeypatch, FakeDrive(READY))
+    drive.mode = 0  # it stayed in No mode
+    view.node.addItem("Node 5", 5)
+    view.mode_box.setCurrentIndex(view.mode_box.findData(4))
+    assert view.mode_box.currentData() == 4
+
+    view._set_mode()
+
+    assert view.mode == 0, "what the drive says, not what was asked"
