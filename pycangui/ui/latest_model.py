@@ -52,6 +52,28 @@ COLUMNS = (
 )
 STATISTICS = COLUMNS[10:]
 
+#: Which columns are repainted when, and that is the whole of why they are
+#: numbered here.
+#:
+#: What a frame brings with it -- the bytes, the count, the time on it -- is
+#: redrawn as it arrives, because that is what the pane is for. What is
+#: *measured* from those arrivals is redrawn twice a second, because a figure
+#: changing faster than about four times a second cannot be read at all: the
+#: eye gets a blur and the reader gets nothing.
+#:
+#: They used to be one range covering the row, so every arrival repainted the
+#: rate and the refresh timer set the pace of nothing.
+#: Spans rather than one boundary, because the two kinds are interleaved:
+#: Last and First are stamps off the frames themselves and sit between Rate
+#: and the statistics.
+RECEIVED_SPANS = ((0, 6), (9, 10))  # ID..Count, Last, First
+MEASURED_SPANS = ((7, 8), (11, len(COLUMNS) - 1))  # Rate, Period; Period min..Jitter
+#: Rate and Period on their own, for the one arrival that is allowed to
+#: redraw them: a row measured for the first time, or one that had stopped
+#: and has just started again. Either should say so at once rather than
+#: sitting blank until the next tick.
+RATE_SPAN = MEASURED_SPANS[0]
+
 #: On the header, because two time bases in one row is worth a sentence
 #: each where somebody will read it rather than a paragraph in the manual.
 TIPS = {
@@ -260,6 +282,7 @@ class LatestModel(QAbstractTableModel):
     def append(self, frames: list[Frame]) -> None:
         now = time.monotonic()
         touched: set[int] = set()
+        measured = False  # a row with no figure yet, which may redraw its rate
         for f in frames:
             key = (f.channel, f.can_id, f.extended)
             r = self._index.get(key)
@@ -276,25 +299,42 @@ class LatestModel(QAbstractTableModel):
                 row.frame = f
                 row.count += 1
                 row.saw(f, now)
-                # So the second frame of a pair already says the gap, rather
-                # than the row sitting blank until the next refresh.
-                _measure(row, now)
+                # Only a row with no figure yet: one that has just appeared,
+                # or one that had stopped and has started again. Both should
+                # say so at once rather than sitting blank for half a second.
+                # Any other row is measured by refresh_rates, so that the
+                # number on screen changes at a speed somebody can read.
+                if row.period_s <= 0.0:
+                    _measure(row, now)
+                    measured = True
                 touched.add(r)
         if touched:
             lo, hi = min(touched), max(touched)
-            self.dataChanged.emit(self.index(lo, 0), self.index(hi, len(COLUMNS) - 1))
+            spans = [*RECEIVED_SPANS, RATE_SPAN] if measured else RECEIVED_SPANS
+            for first, last in spans:
+                self.dataChanged.emit(self.index(lo, first), self.index(hi, last))
 
     def refresh_rates(self) -> None:
-        """Call periodically (e.g. every 500 ms) to update Rate and Period.
+        """Call periodically (e.g. every 500 ms) to measure and redraw.
 
         The interval is how often the figures are redrawn and no longer what
-        they are measured over, so it can be chosen for the eye alone.
+        they are measured over, so it can be chosen for the eye alone -- and
+        the eye is the reason: a figure redrawn on every arrival changes
+        faster than it can be read, which is what it used to do. Every
+        arrival repainted the whole row, so the timer set the pace of
+        nothing.
+
+        Measuring here as well as redrawing here is the other half. Doing it
+        on arrival meant recomputing a rate a thousand times a second for a
+        message nobody can watch at that speed, and the row would then be
+        showing one number while the model held a newer one.
         """
         now = time.monotonic()
         for row in self._rows:
             _measure(row, now)
         if self._rows:
-            self.dataChanged.emit(self.index(0, 7), self.index(len(self._rows) - 1, 8))
+            for first, last in MEASURED_SPANS:
+                self.dataChanged.emit(self.index(0, first), self.index(len(self._rows) - 1, last))
 
     def clear(self) -> None:
         self.beginResetModel()

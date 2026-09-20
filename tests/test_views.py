@@ -702,3 +702,62 @@ def test_a_trace_left_in_latest_mode_opens_again(app, tmp_path, monkeypatch):
     assert again.mode.currentIndex() == 1
     assert again.stack.currentWidget() is again.latest_table
     assert again.columns_button.menu() is again._column_menus[1]
+
+
+# --- how fast a figure is allowed to change -------------------------------------------
+def named(columns):
+    """Column numbers as their headings, so a test says what it means."""
+    from pycangui.ui.latest_model import COLUMNS
+
+    return {COLUMNS[c] for c in columns}
+
+
+def measured_columns():
+    """The headings of everything worked out from arrivals rather than in them."""
+    from pycangui.ui.latest_model import COLUMNS, MEASURED_SPANS
+
+    return {COLUMNS[c] for first, last in MEASURED_SPANS for c in range(first, last + 1)}
+
+
+def changes_from(model, call):
+    """Which columns the model says to repaint, as a set."""
+    touched: set[int] = set()
+    model.dataChanged.connect(
+        lambda lo, hi, _roles=None: touched.update(range(lo.column(), hi.column() + 1))
+    )
+    call()
+    return touched
+
+
+def test_an_arriving_frame_does_not_repaint_the_measured_columns(app):
+    """A figure redrawn on every arrival changes faster than anybody can
+    read it. Every arrival repainted the whole row, so the 500 ms timer set
+    the pace of nothing."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.01, 10)  # measured once, on the second frame
+
+    touched = changes_from(m, lambda: cyclic(m, 0x100, 0.01, 10, start=1.0))
+
+    assert named(touched) >= {"Data", "Count", "Last"}, "what arrived is redrawn as it arrives"
+    assert not named(touched) & measured_columns(), "and nothing that was measured is"
+
+
+def test_the_timer_is_what_repaints_them(app):
+    m = LatestModel()
+    cyclic(m, 0x100, 0.01, 10)
+
+    touched = changes_from(m, m.refresh_rates)
+
+    assert named(touched) == measured_columns()
+
+
+def test_a_row_with_no_figure_yet_still_answers_at_once(app):
+    """A row that has just appeared, or one that had stopped and started
+    again, should say so rather than sitting blank for half a second."""
+    m = LatestModel()
+    cyclic(m, 0x100, 0.1, 2)  # never refreshed
+    assert m.index(0, 7).data() == "10.0 Hz"
+
+    m._rows[0].rate_hz = m._rows[0].period_s = 0.0  # as a stall leaves it
+    cyclic(m, 0x100, 0.1, 2, start=10.0)
+    assert m.index(0, 7).data(), "it started again, and says so now"

@@ -56,6 +56,15 @@ changes rate says so within about five seconds. That is what you want while
 watching a bus, and it is no use at all for "did this ever slip?", because by
 then the evidence has left the window.
 
+Every measured figure on this view is **redrawn twice a second**, whatever the
+bus is doing: a number changing faster than about four times a second cannot
+be read at all. The data, the count and the timestamps still change as frames
+arrive -- those are what the pane is for. Nothing is smoothed to achieve it,
+because on this view the variation *is* the measurement: a row whose figures
+were averaged into stillness would be hiding the thing worth seeing. A row
+that has just appeared, or one that has started again after stopping, shows
+its rate at once rather than waiting for the next redraw.
+
 So the **Columns** button offers five more that do not forget:
 
 | Column | What it is |
