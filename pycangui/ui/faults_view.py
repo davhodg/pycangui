@@ -72,6 +72,10 @@ STORED_TIP = (
 #: Loud, and only for the line that says a node is in error now.
 FAULT_STYLE = "color: #b3261e; font-weight: bold;"
 
+#: Roughly six rows and a header, in pixels. A device with more active
+#: faults than that has something to say at length, and the list scrolls.
+ACTIVE_ROWS_SHOWN = 150
+
 
 class FaultsView(QWidget):
     def __init__(self, manager: CanopenManager, ctx: Context) -> None:
@@ -109,6 +113,10 @@ class FaultsView(QWidget):
         self.active.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.active.header().setStretchLastSection(True)
         self.active.setToolTip(ACTIVE_TIP)
+        # Capped, and it scrolls past that. A tree asks for a great deal of
+        # height by default, and this one holds two or three rows: left to
+        # ask, it filled the box and pushed the kept list off the bottom.
+        self.active.setMaximumHeight(ACTIVE_ROWS_SHOWN)
         self.active_note = QLabel("")
         self.active_note.setWordWrap(True)
         self.active_note.setEnabled(False)
