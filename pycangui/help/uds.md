@@ -60,14 +60,18 @@ seed and key DLL described below where that hook returns None.
 back to the default session after a few seconds of quiet, and loses any unlock
 with it.
 
-**A level is a pair of sub-functions**, and the box holds the odd one -- the
-one that asks for the seed. SecurityAccess pairs them up: 01 asks and 02
-answers, so level 1 is 01 and 02, level 2 is 03 and 04, and so on. The first
-ten levels are on the list with both namings; anything else can be typed,
-which is what most real unlocking needs, since a bootloader commonly sits on
-11 and 12 -- level 9, as nobody says out loud. The log states both
-sub-functions every time, and typing the even half of a pair unlocks that
-pair and says so rather than quietly doing something else.
+**Level is a level**, counting from 1, and beside it pycangui shows the two
+sub-functions that will actually go out -- `req 03  resp 04` for level 2.
+SecurityAccess works in pairs: an odd sub-function asks for the seed and the
+even one after it carries the key, so level 1 is 01 and 02, level 2 is 03 and
+04, and level 9 is 11 and 12. An ECU document that quotes a sub-function
+rather than a level is naming the request half of one of those pairs.
+
+The box holds the level rather than the sub-function because nothing is lost
+by it: udsoncan normalises whatever it is given to the odd request and its
+even answer, so an unpaired combination cannot be sent anyway. Levels run to
+63, the last pair being 7D and 7E. The log names both, so what went on the
+wire is never inferred: `Security level 2 (req 03 resp 04): unlocked`.
 
 **Reset** restarts the ECU with the chosen **Type**, and the session and any
 unlock go with it. **Read DID** and **Write DID** work on the identifier beside

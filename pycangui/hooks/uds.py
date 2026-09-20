@@ -116,10 +116,11 @@ ROUTINE_DESCRIPTIONS: dict[int, str] = {
 def security_key(level: int, seed: bytes, *, ctx) -> bytes | None:
     """Compute the SecurityAccess key for a seed (service 0x27).
 
-    ``level`` is the requestSeed sub-function, which is the odd half of the
-    pair SecurityAccess uses: 0x01 for level 1, 0x03 for level 2, 0x11 for
-    the level 9 a bootloader often sits on. The even one after it carries
-    the key and is never what arrives here. Return the
+    ``level`` is the requestSeed sub-function rather than the level number
+    the pane counts in: 0x01 for level 1, 0x03 for level 2, 0x11 for the
+    level 9 a bootloader often sits on. The sub-function, because that is
+    what an ECU's own algorithm is written against; the even half of the
+    pair carries the key and never arrives here. Return the
     key bytes, or None to let pycangui fall back to the seed and key DLL
     chosen in the UDS pane -- and, where there is no DLL either, report that
     unlocking is not possible.

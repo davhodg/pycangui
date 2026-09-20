@@ -51,7 +51,7 @@ from pycangui.uds.manager import (
     UdsManager,
     parse_bytes,
 )
-from pycangui.uds.standard import security_levels, security_pair
+from pycangui.uds.standard import MAX_SECURITY_LEVEL, security_pair, seed_subfunction
 from pycangui.ui import folders, seedkey_view
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.field_widgets import PENDING
@@ -113,13 +113,13 @@ OPEN_TIP = (
 )
 NO_ADDRESS_TIP = "Fill in the Tx and Rx identifiers first."
 LEVEL_TIP = (
-    "Which security level to unlock, as the requestSeed sub-function that\n"
-    "goes on the wire. SecurityAccess pairs them: the odd one asks for the\n"
-    "seed and the even one after it sends the key, so level 2 is 03 and 04.\n"
+    "Which security level to unlock. SecurityAccess sends a pair of\n"
+    "sub-functions for each: an odd one asking for the seed and the even\n"
+    "one after it carrying the key, so level 2 is 03 and 04. The pair is\n"
+    "shown beside the number, and both go in the log when it is used.\n"
     "\n"
-    "Type any sub-function. Most real unlocking is in the manufacturer\n"
-    "range and will never be on the list -- a bootloader on 11 and 12 is\n"
-    "level 9, which nobody says out loud."
+    "An ECU document that quotes a sub-function rather than a level is\n"
+    "naming the request half: 11 and 12 is level 9."
 )
 PADDING_TIP = (
     "The byte every frame is padded out to 8 bytes with. Some ECUs require\n"
@@ -331,15 +331,25 @@ class UdsView(QWidget):
         h.addWidget(change)
         h.addSpacing(12)
         h.addWidget(QLabel("Level"))
-        # The value is the requestSeed sub-function, which is what goes on
-        # the wire, and the entry names the level as well because an ECU
-        # document says one or the other. Editable, like the other pickers
-        # here: most real unlocking is in the manufacturer range and will
-        # never be on a list.
-        self.level = _picker(security_levels(), 2, security_pair)
+        # A plain level number. Not the sub-function: udsoncan normalises
+        # whatever it is given to the odd request and its even answer, so
+        # an unpaired combination cannot be sent anyway, and speaking in
+        # sub-functions only moved the arithmetic onto the user. The pair
+        # is the suffix, so the one number that can be typed is the level
+        # and the two hex bytes are plainly derived from it.
+        self.level = QSpinBox()
+        self.level.setRange(1, MAX_SECURITY_LEVEL)
         self.level.setToolTip(LEVEL_TIP)
-        self.level.setMinimumWidth(190)
         h.addWidget(self.level)
+        #: What the level about to be sent actually is on the wire, beside
+        #: the number rather than inside it: the box holds one thing, and
+        #: these two bytes are what an ECU document is written in.
+        self.level_pair = QLabel("")
+        self.level_pair.setFont(QFont("Consolas", 9))
+        self.level_pair.setToolTip(LEVEL_TIP)
+        self.level.valueChanged.connect(self._say_pair)
+        self._say_pair(self.level.value())
+        h.addWidget(self.level_pair)
         unlock = QPushButton("Unlock")
         unlock.setToolTip(
             "SecurityAccess (0x27): ask for a seed and answer it with a key.\n"
@@ -347,7 +357,7 @@ class UdsView(QWidget):
             "hooks/uds.py::security_key, and where that returns None, from\n"
             "the seed and key DLL beside this button."
         )
-        unlock.clicked.connect(lambda: self.manager.unlock(_picked(self.level)))
+        unlock.clicked.connect(lambda: self.manager.unlock(self.level.value()))
         h.addWidget(unlock)
         seed_key = QPushButton("Seed and key DLL...")
         seed_key.setToolTip(SEED_KEY_TIP)
@@ -933,6 +943,10 @@ class UdsView(QWidget):
         self.brs.setEnabled(fd)
         if not fd:
             self.can_dl.setCurrentText("8")
+
+    def _say_pair(self, level: int) -> None:
+        """Show the two sub-functions this level will actually send."""
+        self.level_pair.setText(security_pair(seed_subfunction(level)))
 
     @Slot(bool)
     def _on_opened(self, opened: bool) -> None:

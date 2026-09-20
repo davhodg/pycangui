@@ -76,21 +76,38 @@ def security_level(seed_sub: int) -> int | None:
     return None if seed_sub % 2 == 0 else (seed_sub + 1) // 2
 
 
-def security_levels(count: int = SECURITY_LEVELS_SHOWN) -> dict[int, str]:
-    """Keyed by requestSeed sub-function, which is what gets sent.
-
-    Named by level as well, because an ECU document says one or the other
-    and rarely both: "security level 2" and "unlock with 0x03" are the same
-    request. Keyed by the sub-function rather than the level because the
-    manufacturer range is where most real unlocking happens -- a bootloader
-    on 0x11/0x12 is level 9, which nobody says out loud.
-    """
-    return {seed_subfunction(n): f"Level {n}" for n in range(1, count + 1)}
+#: The highest level there is: sub-functions run to 0x7E, and the request
+#: half of the last pair is 0x7D.
+MAX_SECURITY_LEVEL = 63
 
 
 def security_pair(seed_sub: int) -> str:
-    """ "requestSeed 03, sendKey 04", for saying what will actually be sent."""
-    return f"requestSeed {seed_sub:02X}, sendKey {seed_sub + 1:02X}"
+    """ "req 03 resp 04", for saying what actually went out."""
+    return f"req {seed_sub:02X} resp {seed_sub + 1:02X}"
+
+
+def level_label(level: int) -> str:
+    """ "2  req 03  resp 04": the level, then the pair it sends.
+
+    The level leads because it is what the box holds. With the level second
+    -- "03  Level 2" -- the entry is two numbers under a label saying
+    "Level", and the reasonable question is which of them the field is set
+    to. Naming the request and the response removes the guess instead of
+    moving it.
+    """
+    return f"{level}  {security_pair(seed_subfunction(level))}"
+
+
+def security_levels(count: int = SECURITY_LEVELS_SHOWN) -> dict[int, str]:
+    """Level -> its label. The level is the value; the pair is shown.
+
+    A level rather than the raw sub-function because the pairing is not a
+    convention to be worked around: udsoncan normalises whatever it is
+    given to the odd request and its even answer, so an unpaired
+    combination cannot be sent through it at all. Nothing is lost by
+    speaking in levels, and the arithmetic stops being the user's.
+    """
+    return {n: level_label(n) for n in range(1, count + 1)}
 
 
 def _numbers(holder) -> dict[str, int]:
