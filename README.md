@@ -26,7 +26,7 @@ A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, X
 - **UDS** over ISO-TP: sessions, security access, DIDs, DTCs, routines, and firmware transfer in either direction.
 - **J1939** and **XCP on CAN**, and a pane that reads any CAN identifier as text.
 - **Signals and Plot** from DBC decode, CANopen TPDOs or XCP polling, and out to CSV for whatever you analyse with.
-- **Python** hooks with hot reload, replaceable protocol back ends, a live console and *Run script*.
+- **Python** hooks with hot reload, replaceable components (your own CAN interface, ISO-TP transport or XCP engine), a live console and *Run script*.
 
 Full details in [the manual](pycangui/help/manual.md), which is also under **Help > Documentation** in the application.
 
@@ -122,7 +122,7 @@ It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed pack
 
 `build/check_build.py` also fails the build if a sample or hook template is missing, or if the built executable cannot import its protocol stacks, the MDF reader and every python-can adapter backend -- it runs `pycangui.exe --selftest` to find out rather than guessing from file names.
 
-Adapter drivers are not bundled: install the vendor's driver and python-can finds it. Hooks, back ends, EDS files and settings stay in `%APPDATA%\pycangui` and survive upgrades and uninstallation.
+Adapter drivers are not bundled: install the vendor's driver and python-can finds it. Hooks, your own components, EDS files and settings stay in `%APPDATA%\pycangui` and survive upgrades and uninstallation.
 
 `.github/workflows/ci.yml` runs the tests and lint on every push: the latest Python on Windows and Linux, and the oldest supported Python on Linux as well, since bugs that only appear on the floor are real but rarely platform specific. The installer is built only for a release -- push a `v*` tag, or start the workflow by hand from the Actions tab -- and `.github/workflows/macos.yml` runs the tests on macOS for each release too.
 

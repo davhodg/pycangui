@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pycangui.core.backends import BACKENDS
+from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.uds import CAN_DL, NO_ID, UdsConfig, fixed_addressing, images
 from pycangui.uds.dtc import (
@@ -112,6 +112,11 @@ OPEN_TIP = (
     "Nothing else on this pane works until it is open."
 )
 NO_ADDRESS_TIP = "Fill in the Tx and Rx identifiers first."
+TRANSPORT_TIP = (
+    "The ISO-TP transport, which is a replaceable component. Add one of\n"
+    "your own, or replace this one, with a file in Tools > Open folder for\n"
+    "your own components."
+)
 LEVEL_TIP = (
     "Which security level to unlock. SecurityAccess sends a pair of\n"
     "sub-functions for each: an odd one asking for the seed and the even\n"
@@ -249,14 +254,14 @@ class UdsView(QWidget):
         self.padding.setToolTip(PADDING_TIP)
         self.padding.editingFinished.connect(self._save)
         self.transport = QComboBox()
-        self.transport.setToolTip("ISO-TP implementation (add your own in the backends folder)")
-        for spec in BACKENDS.specs("isotp"):
+        self.transport.setToolTip(TRANSPORT_TIP)
+        for spec in COMPONENTS.specs("isotp"):
             self.transport.addItem(spec.name, spec.name)
             self.transport.setItemData(self.transport.count() - 1, spec.description, Qt.ToolTipRole)
-        index = self.transport.findData(manager.backend_name)
+        index = self.transport.findData(manager.component_name)
         if index >= 0:
             self.transport.setCurrentIndex(index)
-        self.transport.currentTextChanged.connect(manager.set_backend)
+        self.transport.currentTextChanged.connect(manager.set_component)
         self.can_dl = QComboBox()
         self.can_dl.setToolTip(
             "CAN_DL: how many bytes go in one ISO-TP frame. Eight is all a\n"

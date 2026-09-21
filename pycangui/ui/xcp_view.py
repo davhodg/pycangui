@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core import workspace_files
-from pycangui.core.backends import BACKENDS
+from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.ui import folders, keep_file, seedkey_view
 from pycangui.xcp import RESOURCE_CAL
@@ -61,12 +61,17 @@ SEED_KEY_TIP = (
     "The same DLL serves UDS SecurityAccess: one ECU ships one algorithm,\n"
     "and naming the file twice would be pycangui's filing system showing."
 )
+ENGINE_TIP = (
+    "The XCP or CCP engine, which is a replaceable component. Add one of\n"
+    "your own, or replace this one, with a file in Tools > Open folder for\n"
+    "your own components."
+)
 #: Everything a row can be found by, worked out once when it is built.
 ROLE_SEARCH = Qt.UserRole + 1
 
 
 def _specs(kind: str):
-    return BACKENDS.specs(kind)
+    return COMPONENTS.specs(kind)
 
 
 def _searchable(param) -> str:
@@ -143,18 +148,19 @@ class XcpView(QWidget):
             "can be used by name and in physical units rather than by address."
         )
         load.clicked.connect(self._load_a2l)
-        self.backend = QComboBox()
-        self.backend.setToolTip("XCP implementation (add your own in the backends folder)")
+        self.engine_box = QComboBox()
+        self.engine_box.setToolTip(ENGINE_TIP)
         for spec in _specs("xcp"):
-            self.backend.addItem(spec.name, spec.name)
-            self.backend.setItemData(self.backend.count() - 1, spec.description, Qt.ToolTipRole)
-        index = self.backend.findData(manager.backend_name)
+            self.engine_box.addItem(spec.name, spec.name)
+            last = self.engine_box.count() - 1
+            self.engine_box.setItemData(last, spec.description, Qt.ToolTipRole)
+        index = self.engine_box.findData(manager.component_name)
         if index >= 0:
-            self.backend.setCurrentIndex(index)
-        self.backend.currentTextChanged.connect(manager.set_backend)
+            self.engine_box.setCurrentIndex(index)
+        self.engine_box.currentTextChanged.connect(manager.set_component)
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Engine"))
-        bar.addWidget(self.backend)
+        bar.addWidget(self.engine_box)
         bar.addWidget(QLabel("Tx ID"))
         bar.addWidget(self.cmd_id)
         bar.addWidget(QLabel("Rx ID"))
@@ -239,7 +245,7 @@ class XcpView(QWidget):
         manager.a2l_loaded.connect(lambda _n: self._show_a2l())
         manager.value.connect(self._on_value)
         manager.connected.connect(lambda _on: self._ids_changed())
-        self.backend.currentTextChanged.connect(lambda _n: self._engine_changed())
+        self.engine_box.currentTextChanged.connect(lambda _n: self._engine_changed())
         if manager.a2l is not None:
             self._populate()
         self._show_a2l()

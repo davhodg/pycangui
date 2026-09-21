@@ -440,18 +440,19 @@ def _menu(window, title):
     return next(a.menu() for a in window.menuBar().actions() if a.text() == title)
 
 
-def test_backends_are_their_own_section_below_the_hook_entries(app, tmp_path, monkeypatch):
-    """Backends are the other workspace folder, not a fourth hook entry."""
+def test_components_are_their_own_section_below_the_hook_entries(app, tmp_path, monkeypatch):
+    """Components are the other user folder, not a fourth hook entry."""
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
     entries = ["---" if a.isSeparator() else a.text() for a in _menu(window, "&Tools").actions()]
-    assert entries[:6] == [
+    assert entries[:7] == [
         "Open hooks folder",
         "Reload hooks",
         "Add missing hooks",
         "---",
-        "Open backends folder",
+        "List components",
+        "Open folder for your own components",
         "---",
     ]
     window.close()
@@ -876,3 +877,41 @@ def test_a_plugin_and_the_console_use_the_same_queue(app, tmp_path, monkeypatch)
     source = inspect.getsource(plugin_app)
     assert "self.canopen.background(job, done)" in source
     assert "_worker.submit" not in source, "no reaching past the public way in"
+
+
+def test_list_components_prints_to_the_event_log(app, tmp_path, monkeypatch):
+    """What is registered, readable without opening a folder that is,
+    rightly, empty."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    said = []
+    monkeypatch.setattr(window.events, "information", said.append)
+    listed = next(a for a in _menu(window, "&Tools").actions() if a.text() == "List components")
+    listed.trigger()
+    text = "\n".join(said)
+    assert "* can-isotp" in text and "* xcp-builtin" in text, text
+    assert "(built in)" in text
+    assert "Your components folder" in text
+    window.close()
+
+
+def test_open_nodes_folder_sits_just_above_simulated_nodes(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    names = [a.text() for a in _menu(window, "&Tools").actions()]
+    at = names.index("Simulated nodes...")
+    assert names[at - 1] == "Open nodes folder"
+    window.close()
+
+
+def test_the_components_folder_explains_itself_when_empty(app, tmp_path, monkeypatch):
+    """An empty folder beside a list of components reads as lost files."""
+    from pycangui.core.components import README_NAME
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    assert (window.ctx.components_dir / README_NAME).exists()
+    window.close()

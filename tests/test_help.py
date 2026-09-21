@@ -217,7 +217,7 @@ def test_the_manual_has_no_control_characters_in_it(app):
     r"""A \b in a Python string is a backspace, not a folder separator.
 
     One got into the manual that way, and the path a user needs in order to
-    find their backends folder shipped with a character missing. Nothing that
+    find their components folder shipped with a character missing. Nothing that
     renders a document would ever have complained about it.
     """
     from pycangui.help import all_text
@@ -232,7 +232,7 @@ def test_the_manual_spells_out_the_folders_it_sends_people_to(app):
 
     text = all_text()
     assert r"%APPDATA%\pycangui" in text
-    assert r"%APPDATA%\pycangui\backends" in text
+    assert r"%APPDATA%\pycangui\components" in text
 
 
 def test_documentation_shows_the_manual_rather_than_a_browser(app, window, monkeypatch):

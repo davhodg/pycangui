@@ -4,7 +4,7 @@
 
 An engine only has to move XCP commands and responses; everything above it
 (A2L, conversions, polling, plotting, GUI) lives in ``XcpManager``. Replace it
-by registering another backend of kind ``"xcp"`` -- for example one calling
+by registering another component of kind ``"xcp"`` -- for example one calling
 into a Rust or C library through ctypes.
 
 All methods are called from a worker thread and may block. Raise ``XcpError``
@@ -17,8 +17,8 @@ import queue
 import struct
 from abc import ABC, abstractmethod
 
-from pycangui.core.backends import register_backend
 from pycangui.core.bus import BusManager, Frame
+from pycangui.core.components import register_component
 from pycangui.xcp import (
     CMD_CONNECT,
     CMD_DISCONNECT,
@@ -101,7 +101,7 @@ class XcpEngine(ABC):
         return None
 
 
-@register_backend("xcp", "xcp-builtin", "XCP on CAN, implemented in pycangui")
+@register_component("xcp", "xcp-builtin", "XCP on CAN, implemented in pycangui")
 class NativeCanEngine(XcpEngine):
     """XCP on CAN over the shared python-can bus."""
 

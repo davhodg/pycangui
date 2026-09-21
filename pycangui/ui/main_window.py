@@ -29,8 +29,8 @@ from PySide6.QtWidgets import (
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core import timing, workspace_files, workspaces
-from pycangui.core.backends import BACKENDS
 from pycangui.core.channels import ActiveBus, Channels
+from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.detect import DEMO_CHANNEL, summarise
@@ -212,10 +212,16 @@ class MainWindow(QMainWindow):
         #: line; breaking somebody's startup hook costs them an evening.
         self.vnodes = self.nodes
         timing.mark("simulated nodes")
-        BACKENDS.load_user_backends(
-            self.ctx.backends_dir, self.events.information, self.events.warning
+        # Before anything is built from them: the Connect bar lists the CAN
+        # interfaces, and the UDS and XCP managers build their component
+        # straight away, so one of yours has to be registered by then.
+        for said in carry_over(self.ctx.user_dir, self.ctx.settings):
+            self.events.information(f"Components: {said}")
+        COMPONENTS.load_user_components(
+            self.ctx.components_dir, self.events.information, self.events.warning
         )
-        timing.mark("backends")
+        write_readme(self.ctx.components_dir)
+        timing.mark("components")
 
         # --- toolbar ---------------------------------------------------------
         self.connect_bar = ConnectBar(self.channels, self.ctx)
@@ -414,15 +420,30 @@ class MainWindow(QMainWindow):
             "for getting back one you deleted: it appends every hook your\n"
             "files do not have, leaving what you have written alone."
         )
-        # Backends are the other workspace folder, and nothing to do with
-        # hooks: a separate section so the two are not read as one list.
+        # Components are the other user folder, and nothing to do with hooks:
+        # a separate section so the two are not read as one list.
         tools_menu.addSeparator()
-        backends = tools_menu.addAction("Open backends folder", self._open_backends_folder)
-        backends.setToolTip(
-            "Python files that add a CAN interface pycangui does not know\n"
-            "about. They are loaded at startup."
+        listed = tools_menu.addAction("List components", self._list_components)
+        listed.setToolTip(
+            "Print to the Event Log every component pycangui is using or could\n"
+            "use -- CAN interfaces you have added, ISO-TP transports, XCP and\n"
+            "CCP engines -- with where each came from and which is in use."
+        )
+        folder = tools_menu.addAction(
+            "Open folder for your own components", self._open_components_folder
+        )
+        folder.setToolTip(
+            "Where a component of your own goes: a Python file here adds one,\n"
+            "or replaces a built-in one by registering the same name. The\n"
+            "built-in ones are part of pycangui and are not in this folder, so\n"
+            "it is empty until you put something in it. Read at startup."
         )
         tools_menu.addSeparator()
+        nodes = tools_menu.addAction("Open nodes folder", self._open_nodes_folder)
+        nodes.setToolTip(
+            "The Python files the simulated nodes are made from, one per\n"
+            "kind of device. Kept in the workspace, beside the hooks."
+        )
         simulated = tools_menu.addAction("Simulated nodes...", self._simulated_nodes)
         simulated.setToolTip(
             "Devices pycangui pretends to be, so a real one has something\n"
@@ -1550,8 +1571,20 @@ class MainWindow(QMainWindow):
     def _open_hooks_folder(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.ctx.hooks_dir)))
 
-    def _open_backends_folder(self) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.ctx.backends_dir)))
+    def _open_components_folder(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.ctx.components_dir)))
+
+    def _list_components(self) -> None:
+        """Tools > List components: what is registered, into the Event Log."""
+        in_use = {"isotp": self.uds.component_name, "xcp": self.xcp.component_name}
+        channel = self.channels.active_bus()
+        if channel is not None and channel.interface:
+            in_use["interface"] = channel.interface
+        report = COMPONENTS.report(in_use, self.ctx.components_dir)
+        self.events.information("\n".join(report))
+
+    def _open_nodes_folder(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(workspaces.nodes_dir())))
 
     def plugin_menu(self, plugin: str) -> QMenu:
         """Where a plugin's menu entries go: Plugins > its own name.

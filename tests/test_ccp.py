@@ -39,7 +39,7 @@ def stack(app, tmp_path, monkeypatch, demo_device):
     hub = SignalHub()
     bus = BusManager()
     manager = XcpManager(bus, hooks, hub, ctx)
-    manager.set_backend("ccp-builtin")
+    manager.set_component("ccp-builtin")
     bus.connect_bus("virtual", "vcan_ccp", 500000, False)
     demo = demo_device(bus, kinds=["ccp_slave"])
     yield bus, manager, demo, hub, ctx
@@ -145,7 +145,7 @@ def test_the_pane_asks_for_a_station_only_where_one_is_needed(app, tmp_path, mon
 
     assert view.station.isHidden(), "XCP has no station address"
 
-    window.xcp.set_backend("ccp-builtin")
+    window.xcp.set_component("ccp-builtin")
     view._engine_changed()
 
     assert not view.station.isHidden(), "CCP does, and cannot connect without one"

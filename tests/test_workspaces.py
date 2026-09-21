@@ -35,8 +35,8 @@ def older_setup(home):
     (home / "hooks" / "canopen.py").write_text("# mine\n", encoding="utf-8")
     (home / "eds").mkdir()
     (home / "eds" / "drive.eds").write_text("[FileInfo]\n", encoding="utf-8")
-    (home / "backends").mkdir()
-    (home / "backends" / "mine.py").write_text("# a back end\n", encoding="utf-8")
+    (home / "components").mkdir()
+    (home / "components" / "mine.py").write_text("# a component\n", encoding="utf-8")
 
 
 # --- the setup that came before ---------------------------------------------------------
@@ -60,13 +60,13 @@ def test_nothing_is_left_behind_to_disagree_with_it(home):
     assert not (home / "eds").exists()
 
 
-def test_the_back_ends_stay_where_they_are(home):
-    """A back end is about this machine's ability to talk to a bus at all,
+def test_your_components_stay_where_they_are(home):
+    """A component is about this machine's ability to talk to a bus at all,
     not about the product being worked on, so every workspace shares them."""
     older_setup(home)
     workspaces.migrate()
-    assert (home / "backends" / "mine.py").exists()
-    assert not (workspaces.dir_for(workspaces.DEFAULT) / "backends").exists()
+    assert (home / "components" / "mine.py").exists()
+    assert not (workspaces.dir_for(workspaces.DEFAULT) / "components").exists()
 
 
 def test_it_happens_once(home):

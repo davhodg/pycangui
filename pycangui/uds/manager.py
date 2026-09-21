@@ -20,8 +20,8 @@ from udsoncan.connections import BaseConnection
 from udsoncan.exceptions import NegativeResponseException, TimeoutException
 
 from pycangui.core import seedkey
-from pycangui.core.backends import BACKENDS
 from pycangui.core.bus import BusManager, Frame
+from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
@@ -32,7 +32,7 @@ from pycangui.uds.images import write as write_image
 from pycangui.uds.standard import SESSIONS, memory_record, security_pair, seed_subfunction
 from pycangui.uds.transport import IsoTpTransport
 
-DEFAULT_BACKEND = "can-isotp"
+DEFAULT_COMPONENT = "can-isotp"
 
 
 class TransferCancelledError(Exception):
@@ -117,7 +117,7 @@ class UdsManager(QObject):
         self._ctx = ctx
         self.config = UdsConfig()
         self.client: Client | None = None
-        self.backend_name = ctx.settings.get("backends.isotp", DEFAULT_BACKEND)
+        self.component_name = ctx.settings.get("components.isotp", DEFAULT_COMPONENT)
         self._transport: IsoTpTransport | None = None
         self._worker = Worker()  # starts itself the first time it is used
         self._cancel = threading.Event()
@@ -143,11 +143,11 @@ class UdsManager(QObject):
             return
         self.config = config
         try:
-            self._transport = BACKENDS.create(
-                "isotp", self.backend_name, self._bus, config, self._ctx
+            self._transport = COMPONENTS.create(
+                "isotp", self.component_name, self._bus, config, self._ctx
             )
         except Exception as exc:
-            self.result.emit(f"UDS transport {self.backend_name!r} failed: {exc}")
+            self.result.emit(f"UDS transport {self.component_name!r} failed: {exc}")
             return
         conn = _TransportConnection(self._transport)
         cfg = dict(udsoncan.configs.default_client_config)
@@ -166,7 +166,7 @@ class UdsManager(QObject):
         self.client.open()
         ids = f"tx {config.tx_id:X} rx {config.rx_id:X}"
         ext = " (29-bit)" if config.extended_id else ""
-        self.result.emit(f"UDS open [{self.backend_name}]: {ids}{ext}")
+        self.result.emit(f"UDS open [{self.component_name}]: {ids}{ext}")
         self.opened.emit(True)
 
     @Slot()
@@ -191,17 +191,17 @@ class UdsManager(QObject):
         except (RuntimeError, TypeError):
             pass
 
-    # --- backend ---------------------------------------------------------------
-    def backends(self) -> list[str]:
-        return BACKENDS.names("isotp")
+    # --- component --------------------------------------------------------------
+    def components(self) -> list[str]:
+        return COMPONENTS.names("isotp")
 
-    def set_backend(self, name: str) -> None:
-        if name == self.backend_name:
+    def set_component(self, name: str) -> None:
+        if name == self.component_name:
             return
         was_open = self.is_open
         self.close()
-        self.backend_name = name
-        self._ctx.settings.set("backends.isotp", name)
+        self.component_name = name
+        self._ctx.settings.set("components.isotp", name)
         self.result.emit(f"UDS transport: {name}")
         if was_open:
             self.open(self.config)

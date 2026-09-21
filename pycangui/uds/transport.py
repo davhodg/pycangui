@@ -4,12 +4,12 @@
 
 UDS needs one thing from the link: send a whole message, receive a whole
 message. That is the seam, so an ISO-TP implementation in C or Rust (via
-ctypes) can replace ``can-isotp`` by registering a backend of kind ``"isotp"``:
+ctypes) can replace ``can-isotp`` by registering a component of kind ``"isotp"``:
 
-    from pycangui.core.backends import register_backend
+    from pycangui.core.components import register_component
     from pycangui.uds.transport import IsoTpTransport
 
-    @register_backend("isotp", "c-lib", "ISO-TP from my C library")
+    @register_component("isotp", "c-lib", "ISO-TP from my C library")
     class MyIsoTp(IsoTpTransport):
         def open(self): ...
         def send(self, payload): ...
@@ -24,8 +24,8 @@ from abc import ABC, abstractmethod
 
 import isotp
 
-from pycangui.core.backends import register_backend
 from pycangui.core.bus import BusManager
+from pycangui.core.components import register_component
 from pycangui.uds import UdsConfig
 
 
@@ -58,7 +58,7 @@ class IsoTpTransport(ABC):
         return True
 
 
-@register_backend("isotp", "can-isotp", "ISO 15765-2 from the can-isotp package")
+@register_component("isotp", "can-isotp", "ISO 15765-2 from the can-isotp package")
 class CanIsoTpTransport(IsoTpTransport):
     def __init__(self, bus: BusManager, config: UdsConfig, ctx=None) -> None:
         super().__init__(bus, config, ctx)

@@ -47,7 +47,7 @@ nobody had said anything.
 else on the pane works until it is open. **Pad** is the byte every frame is
 filled out to 8 bytes with, for the ECUs that ignore anything shorter -- `00`
 unless you say otherwise, and empty for no padding at all. **Transport** picks
-the ISO-TP implementation -- your own can be added as a [back end](backends.md).
+the ISO-TP implementation -- your own can be added as a [component](components.md).
 On a CAN FD channel **CAN-DL** and **BRS** sit beside them, as
 [CAN adapters and channels](channels.md) describes.
 

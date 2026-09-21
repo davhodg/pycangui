@@ -5,8 +5,8 @@
 The hooks, the EDS files, the settings and the layout moved out of here and
 into a workspace -- see ``core/workspaces.py`` -- because they are about the
 product being worked on rather than about this computer. What is left is the
-folder they all sit under and the back ends, which are about being able to
-talk to a bus at all.
+folder they all sit under and your own components, which are about being
+able to talk to a bus at all.
 
 Windows:  %APPDATA%\\pycangui        (e.g. C:\\Users\\you\\AppData\\Roaming\\pycangui)
 Linux:    $XDG_CONFIG_HOME/pycangui  (default ~/.config/pycangui)
@@ -51,5 +51,6 @@ def user_dir() -> Path:
     return made(base)
 
 
-def backends_dir() -> Path:
-    return made(user_dir() / "backends")
+def components_dir() -> Path:
+    """Your own components: additions and replacements, never the built-in ones."""
+    return made(user_dir() / "components")

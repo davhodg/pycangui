@@ -33,8 +33,8 @@ from pycangui.ccp import (
     PID_RETURN,
     RETURN_CODES,
 )
-from pycangui.core.backends import register_backend
 from pycangui.core.bus import BusManager, Frame
+from pycangui.core.components import register_component
 from pycangui.xcp import ConnectInfo
 from pycangui.xcp.engine import NO_ID, XcpEngine
 
@@ -45,7 +45,7 @@ class CcpError(Exception):
         self.code = code
 
 
-@register_backend("xcp", "ccp-builtin", "CCP on CAN, implemented in pycangui")
+@register_component("xcp", "ccp-builtin", "CCP on CAN, implemented in pycangui")
 class CanCcpEngine(XcpEngine):
     """CCP on CAN over the shared python-can bus.
 

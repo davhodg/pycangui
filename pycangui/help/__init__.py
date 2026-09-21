@@ -60,7 +60,7 @@ PAGES = (
     "virtual.md",
     "hooks.md",
     "plugins.md",
-    "backends.md",
+    "components.md",
     "about.md",
 )
 

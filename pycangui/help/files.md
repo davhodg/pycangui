@@ -32,8 +32,8 @@ convenience. [`layout.json`](panes.md) holds the dock arrangement, which is Qt's
 opaque data rather than anything to read; *View > Reset layout* puts it back.
 
 Outside the workspaces are the things that belong to the machine rather than
-to what you are working on: `backends/`, which is about being able to talk to a
-bus at all, the window's position on screen, and the questions you have told
+to what you are working on: `components/`, your own additions and replacements,
+which are about being able to talk to a bus at all, the window's position on screen, and the questions you have told
 pycangui not to ask again -- all of which stay in `QSettings`. The last of
 those is outside a workspace on purpose, so that an agreement about disturbing
 equipment is not meant to travel inside a folder you hand to somebody else.
@@ -76,5 +76,5 @@ A reset that undid it all in place would have to delete hook files, simulated
 nodes and plugins -- code you wrote -- as a side effect of putting window sizes
 back. Two things are yours rather than the workspace's and carry across to a
 new one: the questions you have stopped being asked, which *Ask about
-everything again* brings back, and `backends/`, which only ever holds what you
+everything again* brings back, and `components/`, which only ever holds what you
 put there.

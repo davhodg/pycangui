@@ -28,9 +28,9 @@ class Context:
         # surprising amount on a profile that is redirected to a network
         # share or watched by a scanner.
         self.user_dir: Path = paths.user_dir()
-        #: The back ends are about this machine's ability to talk to a bus at
-        #: all, so they are shared by every workspace rather than owned by one.
-        self.backends_dir: Path = paths.backends_dir()
+        #: Your own components are about this machine's ability to talk to a
+        #: bus at all, so every workspace shares them rather than owning one.
+        self.components_dir: Path = paths.components_dir()
         timing.mark("user folder")
         #: Which product is being worked on. Everything below belongs to it.
         self.workspace: str = workspaces.active()

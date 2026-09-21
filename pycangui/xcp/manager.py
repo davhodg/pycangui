@@ -3,7 +3,7 @@
 """XCP pane logic: A2L handling, seed-and-key, read/write, measurement polling.
 
 The protocol itself lives behind an :class:`~pycangui.xcp.engine.XcpEngine`
-chosen from the backend registry, so a different implementation (a Rust or C
+chosen from the component registry, so a different implementation (a Rust or C
 library, or another transport) can be dropped in without touching this file or
 the GUI. Commands run on a worker thread because they block on the slave.
 """
@@ -15,10 +15,10 @@ import threading
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from pycangui.ccp import engine as _ccp_engine  # noqa: F401  (registers the CCP backend)
+from pycangui.ccp import engine as _ccp_engine  # noqa: F401  (registers the CCP engine)
 from pycangui.core import seedkey
-from pycangui.core.backends import BACKENDS
 from pycangui.core.bus import BusManager, Frame
+from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.signals import SignalHub
@@ -30,7 +30,7 @@ from pycangui.xcp.engine import XcpEngine, XcpError
 #: both things it has to: which protocol it speaks, and whose code speaks
 #: it. An engine calling into a Rust library would be "xcp-rust" beside
 #: "xcp-builtin".
-DEFAULT_BACKEND = "xcp-builtin"
+DEFAULT_COMPONENT = "xcp-builtin"
 
 
 class XcpManager(QObject):
@@ -47,7 +47,7 @@ class XcpManager(QObject):
         self._ctx = ctx
         self.a2l: A2l | None = None
         self.engine: XcpEngine | None = None
-        self.backend_name = str(ctx.settings.get("backends.xcp", DEFAULT_BACKEND))
+        self.component_name = str(ctx.settings.get("components.xcp", DEFAULT_COMPONENT))
         self._connected = False
         self._polled: dict[str, Parameter] = {}
         self._jobs: queue.Queue = queue.Queue()
@@ -57,7 +57,7 @@ class XcpManager(QObject):
         bus.disconnected.connect(lambda: self.set_connected(False))
         self._make_engine()
 
-    # --- backend ---------------------------------------------------------------
+    # --- component --------------------------------------------------------------
     @property
     def protocol(self) -> str:
         """What the engine in use speaks, for the log to say so."""
@@ -73,33 +73,33 @@ class XcpManager(QObject):
         if self.engine is not None and hasattr(self.engine, "set_station"):
             self.engine.set_station(station)
 
-    def backends(self) -> list[str]:
-        return BACKENDS.names("xcp")
+    def components(self) -> list[str]:
+        return COMPONENTS.names("xcp")
 
-    def set_backend(self, name: str) -> None:
-        if name == self.backend_name and self.engine is not None:
+    def set_component(self, name: str) -> None:
+        if name == self.component_name and self.engine is not None:
             return
         self.disconnect_slave()
-        self.backend_name = name
-        self._ctx.settings.set("backends.xcp", name)
+        self.component_name = name
+        self._ctx.settings.set("components.xcp", name)
         self._make_engine()
         self.result.emit(f"Calibration engine: {name}")
 
     def _make_engine(self) -> None:
         if self.engine is not None:
             self.engine.close()
-        if BACKENDS.get("xcp", self.backend_name) is None:
+        if COMPONENTS.get("xcp", self.component_name) is None:
             # A name from a workspace written before an engine was renamed,
-            # or a user backend that failed to load this run. Say which
+            # or one of your own components that failed to load this run. Say which
             # engine is being used instead rather than quietly using one:
             # connecting with the wrong protocol looks like a broken slave.
-            was, self.backend_name = self.backend_name, BACKENDS.names("xcp")[0]
-            self.result.emit(f"No calibration engine {was!r}; using {self.backend_name}")
+            was, self.component_name = self.component_name, COMPONENTS.names("xcp")[0]
+            self.result.emit(f"No calibration engine {was!r}; using {self.component_name}")
         try:
-            self.engine = BACKENDS.create("xcp", self.backend_name, self._bus, self._ctx)
-        except Exception as exc:  # a user backend may fail to construct
+            self.engine = COMPONENTS.create("xcp", self.component_name, self._bus, self._ctx)
+        except Exception as exc:  # one of your own components may fail to construct
             self.engine = None
-            self.result.emit(f"Calibration engine {self.backend_name!r} failed: {exc}")
+            self.result.emit(f"Calibration engine {self.component_name!r} failed: {exc}")
 
     # --- worker ------------------------------------------------------------------
     def _run(self) -> None:
@@ -123,7 +123,7 @@ class XcpManager(QObject):
 
     def _submit(self, label: str, fn) -> None:
         if self.engine is None:
-            self.result.emit(f"{label}: no XCP backend")
+            self.result.emit(f"{label}: no XCP engine")
             return
         self._jobs.put((fn, label))
 
@@ -149,7 +149,7 @@ class XcpManager(QObject):
             self.set_connected(True)
             order = "big-endian" if info.big_endian else "little-endian"
             return (
-                f"{self.protocol} connected ({self.backend_name}): resources "
+                f"{self.protocol} connected ({self.component_name}): resources "
                 f"{info.resource_names(info.resources)}, maxCTO {info.max_cto}, "
                 f"maxDTO {info.max_dto}, {order}"
             )

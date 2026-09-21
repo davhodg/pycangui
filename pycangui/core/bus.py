@@ -622,7 +622,12 @@ class BusManager(QObject):
 
 
 def available_interfaces() -> list[str]:
-    """Interfaces python-can knows about, virtual first so dev works without hardware."""
-    names = sorted(can.interfaces.VALID_INTERFACES)
+    """Interfaces python-can knows about, virtual first so dev works without hardware.
+
+    Read from python-can's live table rather than VALID_INTERFACES, which is
+    a copy frozen when python-can is imported and so never includes a CAN
+    interface added from your components folder afterwards.
+    """
+    names = sorted(can.interfaces.BACKENDS)
     names.remove("virtual")
     return ["virtual", *names]
