@@ -102,6 +102,29 @@ def selftest() -> int:
     return 0
 
 
+def import_can_without_mf4() -> None:
+    """Import python-can without the MF4 support it loads at import.
+
+    python-can imports asammdf on the way in, whether or not a file is ever
+    written, and asammdf brings pandas: some 500 modules, a third of
+    everything pycangui loads at start-up, and on a cold disk the difference
+    between seconds and half a minute. pycangui records and replays only the
+    formats that do not need it, and reads MDF through asammdf itself
+    (core/mdf.py), which is still imported normally when that is used.
+
+    asammdf is hidden only while python-can is imported, which python-can
+    takes as asammdf not being installed.
+    """
+    if "can" in sys.modules or "asammdf" in sys.modules:
+        return
+    sys.modules["asammdf"] = None  # type: ignore[assignment]
+    try:
+        import can  # noqa: F401
+    finally:
+        if sys.modules.get("asammdf", False) is None:
+            del sys.modules["asammdf"]
+
+
 #: Who Windows thinks the windows belong to. Without one, a pycangui started
 #: from source is grouped under pythonw.exe and the taskbar shows Python's
 #: icon whatever the window says -- the window icon only reaches the title bar.
@@ -150,9 +173,10 @@ def main() -> int:
     def load() -> None:
         """The slow half of starting up, done behind the notice.
 
-        A second and a half of libraries -- Qt's plotting, python-can, canopen
-        -- with nothing on screen while it happens is how a tool comes to feel
-        heavy. Behind a dialog somebody is reading, it is free.
+        Seconds of libraries -- Qt's plotting, python-can, canopen -- with
+        nothing on screen while they load is how a tool comes to feel heavy.
+        Behind a dialog somebody is reading, it is free. Run on a thread of
+        its own, so imports only: the window is made on the GUI thread after.
 
         Imported here rather than at the top of the file for a second reason
         as well: a library which is not installed becomes a dialog. Started
@@ -161,13 +185,12 @@ def main() -> int:
         word about why.
         """
         try:
+            import_can_without_mf4()
             from pycangui.ui.main_window import MainWindow
             from pycangui.ui.session import Session
 
+            loaded["classes"] = (Session, MainWindow)
             timing.mark("libraries imported")
-            # Held by a Session rather than a local, because switching
-            # workspace replaces the window rather than reconfiguring it.
-            loaded["session"] = Session(MainWindow)
         except ImportError as exc:
             loaded["error"] = exc
 
@@ -195,6 +218,10 @@ def main() -> int:
         )
         return 1
 
+    session_class, window_class = loaded["classes"]
+    # Held by a Session rather than a local, because switching workspace
+    # replaces the window rather than reconfiguring it.
+    loaded["session"] = session_class(window_class)
     window = loaded["session"].open()
     timing.mark("window on screen")
     if timing.enabled():

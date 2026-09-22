@@ -2,9 +2,12 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """The once-a-session questions asked before disturbing real equipment."""
 
+import threading
+import time
+
 import pytest
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMessageBox, QProgressDialog
 
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
@@ -306,15 +309,83 @@ def test_it_cannot_be_switched_off(app, monkeypatch):
 
 
 def test_the_slow_half_of_starting_up_happens_behind_it(app, monkeypatch):
-    """Which is what makes an unskippable notice cost nothing: a second and a
-    half of libraries loads while somebody reads it, instead of a second and a
-    half of nothing before anything appears."""
+    """Which is what makes an unskippable notice cost nothing: the libraries
+    load while somebody reads it, instead of seconds of nothing before
+    anything appears -- and are all in by the time it says to go on."""
     order = []
     monkeypatch.setattr(
         QMessageBox, "exec", lambda _box: order.append("answered") or QMessageBox.Ok
     )
     assert accept_notice(while_shown=lambda: order.append("loaded"))
-    assert order == ["loaded", "answered"], "loaded before the answer was waited for"
+    assert sorted(order) == ["answered", "loaded"]
+
+
+def test_the_notice_can_be_answered_while_it_is_still_loading(app, monkeypatch):
+    """Reported: 29 s of imports on the GUI thread froze the notice, so it
+    could not even be read. The answer now waits for the loading instead."""
+    release = threading.Event()
+    answered_while_loading = []
+
+    def answer(_box):
+        answered_while_loading.append(not release.is_set())
+        release.set()
+        return QMessageBox.Ok
+
+    monkeypatch.setattr(QMessageBox, "exec", answer)
+    finished = []
+    assert accept_notice(while_shown=lambda: (release.wait(5), finished.append(1)))
+    assert answered_while_loading == [True]
+    assert finished == [1], "and it had finished loading by the time it returned"
+
+
+def test_continue_before_the_loading_is_done_shows_it_is_still_going(app, monkeypatch):
+    release = threading.Event()
+    shown = []
+    real_show = QProgressDialog.show
+
+    def show(dialog):
+        shown.append(dialog)
+        release.set()
+        return real_show(dialog)
+
+    monkeypatch.setattr(QProgressDialog, "show", show)
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Ok)
+    assert accept_notice(while_shown=lambda: release.wait(5))
+    assert len(shown) == 1
+
+
+def test_loading_that_is_already_done_shows_nothing_more(app, monkeypatch):
+    shown = []
+    monkeypatch.setattr(QProgressDialog, "show", lambda dialog: shown.append(dialog))
+
+    def answer_later(_box):
+        time.sleep(0.2)  # the loading below is long finished
+        return QMessageBox.Ok
+
+    monkeypatch.setattr(QMessageBox, "exec", answer_later)
+    assert accept_notice(while_shown=lambda: None)
+    assert shown == []
+
+
+def test_a_failure_while_loading_reaches_whoever_asked(app, monkeypatch):
+    """Raised on the thread that shows the window, not lost on the one that
+    loaded -- where nobody would ever hear of it."""
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Ok)
+
+    def fail():
+        raise RuntimeError("no such library")
+
+    with pytest.raises(RuntimeError, match="no such library"):
+        accept_notice(while_shown=fail)
+
+
+def test_quit_does_not_wait_for_the_loading(app, monkeypatch):
+    release = threading.Event()
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Cancel)
+    began = time.monotonic()
+    assert not accept_notice(while_shown=lambda: release.wait(5))
+    release.set()
+    assert time.monotonic() - began < 2
 
 
 def test_it_is_on_screen_before_the_slow_half_starts(app, monkeypatch):

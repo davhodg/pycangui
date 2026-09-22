@@ -10,7 +10,7 @@ It is not a question about anything in particular, which is why it is the one
 dialog here with no "do not ask again" on it: a notice dismissed for good on
 the first afternoon is never seen again on that login -- not months later, and
 not by anyone else sharing the account, as a bench computer often is. (Another
-login has settings of its own, so it sees the notice regardless.)  It is also
+login has settings of its own, so it sees the notice regardless.) It is also
 where the slow half of starting up hides -- the libraries load behind it, so
 the notice costs no time at all.
 
@@ -38,10 +38,12 @@ another account, asks that person for themselves.
 from __future__ import annotations
 
 import getpass
+import threading
+import time
 from collections.abc import Callable
 
-from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QApplication, QCheckBox, QMessageBox, QWidget
+from PySide6.QtCore import QEventLoop, QSettings, QTimer
+from PySide6.QtWidgets import QApplication, QCheckBox, QMessageBox, QProgressDialog, QWidget
 
 #: Kept outside every workspace, deliberately. See the module docstring.
 AGREED_SETTING = "confirmations/agreed"
@@ -138,11 +140,12 @@ def accept_notice(
     the first afternoon is never seen again on that login, including by anyone
     sharing the account, and it costs one keypress a session.
 
-    ``while_shown`` is called once the notice is on screen and before the
-    answer is waited for. That is where the slow half of starting up goes: a
-    second of libraries loads behind a dialog somebody is reading, instead of
-    a second of nothing before one appears. The safety notice pays for itself
-    twice.
+    ``while_shown`` is started on a thread of its own once the notice is on
+    screen, and has finished by the time this returns True. That is where the
+    slow half of starting up goes: the libraries load while somebody reads
+    the notice, and the notice stays responsive while they do. Continue
+    pressed before they are in shows how long it has been, rather than a
+    window that is not there yet. Whatever it raises is raised here.
     """
     box = QMessageBox(
         QMessageBox.Warning,
@@ -155,14 +158,87 @@ def accept_notice(
     box.button(QMessageBox.Ok).setText("Continue")
     box.button(QMessageBox.Cancel).setText("Quit")
     box.setDefaultButton(QMessageBox.Ok)
-    if while_shown is not None:
-        # Painted first, then the slow work: the point is that something is on
-        # screen while it happens. Done here rather than on a timer inside
-        # exec() so that it has demonstrably run by the time anybody answers.
-        box.show()
-        QApplication.processEvents()
-        while_shown()
-    return box.exec() == QMessageBox.Ok
+    if while_shown is None:
+        return box.exec() == QMessageBox.Ok
+    # Painted first, then the slow work: the point is that something is on
+    # screen while it happens.
+    loading = Loading(while_shown)
+    box.show()
+    QApplication.processEvents()
+    loading.start()
+    ticker = QTimer(box)
+    ticker.timeout.connect(lambda: box.setWindowTitle(loading.title(NOTICE_TITLE)))
+    ticker.start(TICK_MS)
+    agreed = box.exec() == QMessageBox.Ok
+    ticker.stop()
+    box.hide()  # shown by hand above, so not left to exec to put away
+    if agreed:
+        loading.wait(parent)
+    return agreed
+
+
+#: How often the notice and the loading box say how long it has been.
+TICK_MS = 250
+LOADING_TEXT = "Loading libraries -- {seconds:.0f} s"
+
+
+class Loading:
+    """Slow work on a thread of its own, and waiting for it with something on
+    screen.
+
+    A thread rather than the GUI thread, because an import cannot be
+    interrupted to paint: 30 s of libraries on the GUI thread is a notice
+    that cannot be scrolled, moved or answered, which reads as a hang. Only
+    imports belong here -- a Qt widget has to be made on the GUI thread.
+    """
+
+    def __init__(self, work: Callable[[], None]) -> None:
+        self._work = work
+        self._error: BaseException | None = None
+        self._began = 0.0
+        # A daemon, so that Quit pressed half way through is not held up.
+        self._thread = threading.Thread(target=self._run, name="pycangui-loading", daemon=True)
+
+    def _run(self) -> None:
+        try:
+            self._work()
+        except BaseException as exc:  # handed to the GUI thread, which raises it
+            self._error = exc
+
+    def start(self) -> None:
+        self._began = time.monotonic()
+        self._thread.start()
+
+    def busy(self) -> bool:
+        return self._thread.is_alive()
+
+    def seconds(self) -> float:
+        return time.monotonic() - self._began
+
+    def title(self, title: str) -> str:
+        if not self.busy():
+            return title
+        return f"{title} ({LOADING_TEXT.format(seconds=self.seconds()).lower()})"
+
+    def wait(self, parent: QWidget | None = None) -> None:
+        """Until the work is done, saying so if it is not done already."""
+        if self.busy():
+            dialog = QProgressDialog(parent)
+            dialog.setWindowTitle("Starting")
+            dialog.setCancelButton(None)  # there is nothing to go back to
+            dialog.setRange(0, 0)  # busy: how much is left is not known
+            dialog.setMinimumDuration(0)
+            dialog.setMinimumWidth(320)
+            dialog.show()
+            while self.busy():
+                dialog.setLabelText(LOADING_TEXT.format(seconds=self.seconds()))
+                QApplication.processEvents(QEventLoop.AllEvents, TICK_MS)
+                self._thread.join(TICK_MS / 1000)
+            dialog.close()
+            dialog.deleteLater()
+        self._thread.join()
+        if self._error is not None:
+            raise self._error
 
 
 class Confirmations:

@@ -102,6 +102,37 @@ def test_quitting_at_the_notice_opens_no_window(app, monkeypatch):
     assert not opened
 
 
+LEAN_CAN = """
+import sys
+from pycangui.__main__ import import_can_without_mf4
+import_can_without_mf4()
+import can
+bus = can.Bus(interface="virtual", channel="lean")
+bus.shutdown()
+print("pandas" in sys.modules, "asammdf" in sys.modules)
+try:
+    import asammdf
+    print("asammdf importable")
+except ImportError:
+    print("asammdf not installed")
+"""
+
+
+def test_python_can_is_imported_without_pandas():
+    """python-can's MF4 support drags in asammdf and pandas at import, some
+    500 modules that pycangui never uses from there -- the bulk of a start
+    reported at 29 s. A fresh interpreter, because this one has them already."""
+    import importlib.util
+    import subprocess
+
+    out = subprocess.run(
+        [sys.executable, "-c", LEAN_CAN], capture_output=True, text=True, check=True, timeout=120
+    ).stdout.splitlines()
+    assert out[0] == "False False", "pandas or asammdf was loaded with python-can"
+    importable = importlib.util.find_spec("asammdf") is not None
+    assert (out[1] == "asammdf importable") == importable, "MDF import must still work"
+
+
 def test_the_selftest_covers_the_libraries_that_move_firmware():
     import pycangui.__main__ as entry
 
