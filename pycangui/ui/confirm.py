@@ -54,27 +54,27 @@ REMEMBER_TIP = (
     "Kept for you, on this computer, outside any workspace -- so it does not\n"
     "travel in a workspace handed to somebody else, and another account on\n"
     "this machine is asked for itself.\n\n"
-    "Tools > Ask about everything again brings the questions back."
+    "Tools > Reset > Re-enable all confirmations brings them back."
 )
 
 NOTICE_TITLE = "Before you start"
 #: Says what the tool can do and what to do about that, and promises nothing
 #: about what it will not do. A promise in a safety notice is one a fault can
 #: break, and the person who read it has stopped checking for themselves -- so
-#: the questions pycangui asks are described as what they are, a reminder.
+#: the confirmations pycangui asks for are described as what they are, a reminder.
 NOTICE = (
     "pycangui talks to real equipment. It is intended only for people trained and "
     "experienced in working with CAN networks and the equipment connected to them.\n\n"
     "Joining a bus at the wrong bitrate makes a controller signal an error on every "
-    "frame it sees, and those error frames go out on the wire -- they can drive the "
-    "nodes that are working off the bus. Transmitting, replaying a log, writing "
+    "frame it sees, and those error frames go out on the wire -- they can impact the "
+    "nodes that are already on the bus. Transmitting, replaying a log, writing "
     "parameters, enabling a drive and downloading firmware all change what equipment "
     "does, and not all of them can be undone.\n\n"
     "Know what is on the bus before you join it, and what a device will do before you "
-    "write to it. The questions pycangui asks along the way are a reminder, not a "
-    "safeguard: like any software it can have faults, so do not rely on it to keep "
-    "anything off the bus. Where a mistake could hurt someone or damage equipment, "
-    "keep a way to stop that equipment within reach.\n\n"
+    "write to it. The confirmations pycangui asks for along the way are a reminder, "
+    "not a safeguard: like any software it can have faults, so do not rely on it to "
+    "keep anything off the bus. Where a mistake could hurt someone or damage "
+    "equipment, keep a way to stop that equipment within reach.\n\n"
     "Provided under the Apache License 2.0, without warranty of any kind."
 )
 

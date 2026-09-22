@@ -164,7 +164,7 @@ the [CiA 402 plugin](cia402.md), which is the moment a motor can move.
 
 Each carries a **Do not ask me this again on this machine** tick box.
 
-*Tools > Reset > Ask about everything again* brings the whole lot back.
+*Tools > Reset > Re-enable all confirmations* brings the whole lot back.
 
 ## Recording and replay
 

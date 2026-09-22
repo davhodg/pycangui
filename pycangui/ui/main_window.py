@@ -456,9 +456,9 @@ class MainWindow(QMainWindow):
             "where the last EDS was, a firmware image where the last image was.\n"
             "This puts them all back to pycangui's own folders."
         )
-        ask_again = self.reset_menu.addAction("Ask about everything again", self._ask_again)
+        ask_again = self.reset_menu.addAction("Re-enable all confirmations", self._ask_again)
         ask_again.setToolTip(
-            "Bring back every question you told pycangui not to ask again:\n"
+            "Bring back every confirmation you told pycangui not to ask again:\n"
             "joining a bus, transmitting and replaying."
         )
         restore = self.reset_menu.addAction("Restore supplied files...", self._restore_supplied)
@@ -1565,7 +1565,7 @@ class MainWindow(QMainWindow):
             f"Forgot {how_many} remembered answer(s): pycangui will ask again before "
             "joining a bus, transmitting or replaying."
             if how_many
-            else "Nothing was being remembered; every question is already asked."
+            else "Nothing was being remembered; every confirmation is already on."
         )
 
     def _open_hooks_folder(self) -> None:

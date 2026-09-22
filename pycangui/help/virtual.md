@@ -180,7 +180,7 @@ the more common one: that is how the real device hears it.
 bus is what pycangui asks about everywhere else; one that joined quietly
 would be the hole in that. The question is asked once for the whole node --
 a gateway standing on two channels is one action, not two -- and *Tools >
-Reset > Ask about everything again* brings it back if you tick it away.
+Reset > Re-enable all confirmations* brings it back if you tick it away.
 
 Stopping a node leaves its channels alone. They are the application's, and
 one that closed a channel on the way out would disconnect the window.

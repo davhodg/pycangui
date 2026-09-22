@@ -497,7 +497,7 @@ def test_the_resets_are_together_in_one_submenu(app, tmp_path, monkeypatch):
     assert entries == [
         "Reset layout",
         "Forget remembered folders",
-        "Ask about everything again",
+        "Re-enable all confirmations",
         "Restore supplied files...",
         "Restore deleted hooks",
         "---",
