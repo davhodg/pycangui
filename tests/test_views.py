@@ -446,20 +446,39 @@ def test_components_are_their_own_section_below_the_hook_entries(app, tmp_path, 
     QSettings().clear()
     window = MainWindow()
     entries = ["---" if a.isSeparator() else a.text() for a in _menu(window, "&Tools").actions()]
-    assert entries[:7] == [
-        "Open hooks folder",
+    assert entries[:10] == [
         "Reload hooks",
-        "Add missing hooks",
+        "Open hooks folder",
         "---",
         "List components",
-        "Open folder for your own components",
+        "Open custom components folder",
         "---",
+        "Simulated nodes...",
+        "Open nodes folder",
+        "---",
+        "Reset",
     ]
     window.close()
 
 
-def test_the_two_hook_entries_say_how_they_differ(app, tmp_path, monkeypatch):
-    """Reload and Add missing hooks are a confusing pair by name alone."""
+@pytest.mark.parametrize("title", ("&Tools", "&Plugins"))
+def test_every_folder_comes_second_in_its_section(app, tmp_path, monkeypatch, title):
+    """One rule in every menu, so a folder is always found in the same place:
+    the thing itself, then where its files are."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    entries = ["---" if a.isSeparator() else a.text() for a in _menu(window, title).actions()]
+    sections = "|".join(entries).split("|---|")
+    folders = [s.split("|") for s in sections if "folder" in s]
+    assert folders, "no folder entries found"
+    for section in folders:
+        at = next(i for i, name in enumerate(section) if name.startswith("Open "))
+        assert at == 1, f"{section[at]} is not second in {section}"
+    window.close()
+
+
+def test_the_tools_menu_shows_its_tooltips(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
@@ -480,6 +499,7 @@ def test_the_resets_are_together_in_one_submenu(app, tmp_path, monkeypatch):
         "Forget remembered folders",
         "Ask about everything again",
         "Restore supplied files...",
+        "Restore deleted hooks",
         "---",
         "Reset everything...",
     ]
@@ -893,16 +913,6 @@ def test_list_components_prints_to_the_event_log(app, tmp_path, monkeypatch):
     assert "* can-isotp" in text and "* xcp-builtin" in text, text
     assert "(built in)" in text
     assert "Your components folder" in text
-    window.close()
-
-
-def test_open_nodes_folder_sits_just_above_simulated_nodes(app, tmp_path, monkeypatch):
-    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
-    QSettings().clear()
-    window = MainWindow()
-    names = [a.text() for a in _menu(window, "&Tools").actions()]
-    at = names.index("Simulated nodes...")
-    assert names[at - 1] == "Open nodes folder"
     window.close()
 
 

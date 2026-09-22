@@ -26,7 +26,7 @@ A Python file there does one of two things:
 - **adds** a component, which then appears beside the built-in ones; or
 - **replaces** a built-in one, by registering the same kind and name.
 
-*Tools > Open folder for your own components* opens it. It is
+*Tools > Open custom components folder* opens it. It is
 `%APPDATA%\pycangui\components\` on Windows; [Your files](files.md) says where
 it is on Linux and macOS. Files are read when pycangui starts, and one whose
 name begins with an underscore is ignored.

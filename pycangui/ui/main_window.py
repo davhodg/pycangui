@@ -408,18 +408,14 @@ class MainWindow(QMainWindow):
         self._demo_stopped_by_hand = False
         tools_menu = self.menuBar().addMenu("&Tools")
         tools_menu.setToolTipsVisible(True)
-        tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
+        # Each section is the thing itself first and its folder second, in
+        # every menu, so the folder is always found in the same place.
         reload_hooks = tools_menu.addAction("Reload hooks", self._reload_hooks)
         reload_hooks.setToolTip(
             "Read the hook files again, so that an edit takes effect without\n"
             "restarting. Nothing on disk is changed."
         )
-        stubs = tools_menu.addAction("Add missing hooks", self._update_hook_stubs)
-        stubs.setToolTip(
-            "Hooks a new version adds arrive by themselves, so this is only\n"
-            "for getting back one you deleted: it appends every hook your\n"
-            "files do not have, leaving what you have written alone."
-        )
+        tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
         # Components are the other user folder, and nothing to do with hooks:
         # a separate section so the two are not read as one list.
         tools_menu.addSeparator()
@@ -429,9 +425,7 @@ class MainWindow(QMainWindow):
             "use -- CAN interfaces you have added, ISO-TP transports, XCP and\n"
             "CCP engines -- with where each came from and which is in use."
         )
-        folder = tools_menu.addAction(
-            "Open folder for your own components", self._open_components_folder
-        )
+        folder = tools_menu.addAction("Open custom components folder", self._open_components_folder)
         folder.setToolTip(
             "Where a component of your own goes: a Python file here adds one,\n"
             "or replaces a built-in one by registering the same name. The\n"
@@ -439,20 +433,20 @@ class MainWindow(QMainWindow):
             "it is empty until you put something in it. Read at startup."
         )
         tools_menu.addSeparator()
-        nodes = tools_menu.addAction("Open nodes folder", self._open_nodes_folder)
-        nodes.setToolTip(
-            "The Python files the simulated nodes are made from, one per\n"
-            "kind of device. Kept in the workspace, beside the hooks."
-        )
         simulated = tools_menu.addAction("Simulated nodes...", self._simulated_nodes)
         simulated.setToolTip(
             "Devices pycangui pretends to be, so a real one has something\n"
             "to talk to. Each is a Python file in the workspace you can edit."
         )
+        nodes = tools_menu.addAction("Open nodes folder", self._open_nodes_folder)
+        nodes.setToolTip(
+            "The Python files the simulated nodes are made from, one per\n"
+            "kind of device. Kept in the workspace, beside the hooks."
+        )
         tools_menu.addSeparator()
         # Together, because "put something back the way it was" is one thing
-        # to go looking for, and three entries scattered down a menu is
-        # three names to remember instead of one.
+        # to go looking for, and entries scattered down a menu are
+        # names to remember instead of one.
         self.reset_menu = tools_menu.addMenu("Reset")
         self.reset_menu.setToolTipsVisible(True)
         self.reset_menu.addAction(self.reset_layout_action)
@@ -472,6 +466,12 @@ class MainWindow(QMainWindow):
             "Put pycangui's own version of a hook or simulated node file back --\n"
             "to undo an edit, or to take a newer one over your changes. Yours is\n"
             "renamed rather than deleted, so nothing you wrote is lost."
+        )
+        stubs = self.reset_menu.addAction("Restore deleted hooks", self._update_hook_stubs)
+        stubs.setToolTip(
+            "Hooks a new version adds arrive by themselves, so this is only\n"
+            "for getting back one you deleted: it appends every hook your\n"
+            "files do not have, leaving what you have written alone."
         )
         self.reset_menu.addSeparator()
         everything = self.reset_menu.addAction("Reset everything...", self._reset_everything)
@@ -1655,17 +1655,16 @@ class MainWindow(QMainWindow):
         manage = self.plugins_menu.addAction("Manage plugins...", self._manage_plugins)
         manage.setToolTip("Switch one off, remove one, or write one out as a package to send.")
 
-        # Folder above reload, as in the Tools menu: open it, edit, reload is
-        # the order the work happens in, so it is the order to read them in.
+        # Reload first and the folder second, as in the Tools menu.
         self.plugins_menu.addSeparator()
-        folder = self.plugins_menu.addAction("Open plugins folder", self._open_plugins_folder)
-        folder.setToolTip("Where this workspace's plugins live.")
         reload_action = self.plugins_menu.addAction("Reload plugins", self._reload_plugins)
         reload_action.setToolTip(
             "Load the plugin files again. Whatever a plugin added last time is\n"
             "taken away first, so editing one and reloading is how it gets\n"
             "written -- there is no need to restart."
         )
+        folder = self.plugins_menu.addAction("Open plugins folder", self._open_plugins_folder)
+        folder.setToolTip("Where this workspace's plugins live.")
 
     # --- installing and switching them off ------------------------------------------------
     def _disabled_plugins(self) -> set[str]:

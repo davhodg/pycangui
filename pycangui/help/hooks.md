@@ -79,7 +79,7 @@ later: the alternative is finding out during a flash session that the default
 seed-to-key has been running all along. Fix the signature, *Reload hooks*, and
 it is used again.
 
-*Tools > Add missing hooks* does the appending on demand, for every hook your
+*Tools > Reset > Restore deleted hooks* does the appending on demand, for every hook your
 files lack rather than only the new ones. It is how to get back one you
 deleted; you should not otherwise need it.
 

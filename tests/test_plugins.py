@@ -176,14 +176,14 @@ def test_with_nothing_installed_the_menu_still_shows_the_way_in(app, window):
         "Install plugin...",
         "Supplied with pycangui",
         "Manage plugins...",
-        "Open plugins folder",
         "Reload plugins",
+        "Open plugins folder",
     ]
 
 
 def test_reloading_and_the_folder_are_in_the_plugins_menu(app, window):
-    """In the same order as the hook pair in Tools: open, edit, reload."""
-    assert entries(window.plugins_menu)[-2:] == ["Open plugins folder", "Reload plugins"]
+    """In the same order as the hook pair in Tools: the thing, then its folder."""
+    assert entries(window.plugins_menu)[-2:] == ["Reload plugins", "Open plugins folder"]
 
 
 def test_a_plugin_menu_entry_says_whose_it_is(app, window):
