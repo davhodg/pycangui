@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""Entry point: `python -m pycangui` or the `pycangui` console script."""
+"""Entry point: `python -m pycangui`, or the `pycangui` command pip installs."""
 
 # Deliberately out of order (hence the noqa): timing's clock starts when it is
 # imported, so it has to come before the imports whose cost is being measured.

@@ -62,7 +62,10 @@ mf4 = ["asammdf>=8"]
 # fails a test rather than a release.
 dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pdoc>=16", "pycangui[mf4]"]
 
-[project.scripts]
+# gui-scripts, not scripts: on Windows the launcher pip makes for a script is a
+# console program, so the window would open with a console behind it. Elsewhere
+# the two are the same. `python -m pycangui` is still there for a console.
+[project.gui-scripts]
 pycangui = "pycangui.__main__:main"
 
 [tool.setuptools.packages.find]

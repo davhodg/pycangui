@@ -93,3 +93,11 @@ def test_the_declarations_do_not_name_folders_that_are_gone():
         folder = PROJECT / Path(*package.split("."))
         if folder.exists():
             assert folder.is_dir(), f"{package} is declared but is not a folder"
+
+
+def test_the_pycangui_command_opens_no_console_on_windows():
+    """A plain script gets a console launcher on Windows, so a pip install
+    opened the window with an empty console behind it."""
+    project = tomllib.loads((PROJECT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert project["gui-scripts"]["pycangui"] == "pycangui.__main__:main"
+    assert "pycangui" not in project.get("scripts", {})
