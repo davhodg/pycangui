@@ -133,6 +133,37 @@ def test_python_can_is_imported_without_pandas():
     assert (out[1] == "asammdf importable") == importable, "MDF import must still work"
 
 
+class _Window:
+    """What note_a_slow_start needs of a window: somewhere to say things,
+    and a folder to leave the report in."""
+
+    def __init__(self, folder):
+        self.said = []
+        self.events = type("Events", (), {"information": lambda _s, text: self.said.append(text)})()
+        self.ctx = type("Ctx", (), {"user_dir": folder})()
+
+
+@pytest.mark.parametrize(("took", "reported"), [(29.0, True), (2.5, False)])
+def test_a_slow_start_reports_where_the_time_went_without_asking(
+    tmp_path, monkeypatch, took, reported
+):
+    """Reported: after a slow start the report did not appear, because it
+    only ever did with --timing -- though the marks are always recorded."""
+    import pycangui.__main__ as entry
+    from pycangui.core import slow_start, timing
+
+    monkeypatch.setattr(timing, "enabled", lambda: False)
+    monkeypatch.setattr(timing, "total_work", lambda: took)
+    monkeypatch.setattr(timing, "report_lines", lambda: ["the report"])
+    monkeypatch.setattr(slow_start, "compiled_this_start", lambda *_a: 0)
+    window = _Window(tmp_path)
+
+    entry.note_a_slow_start(window)
+
+    assert ("the report" in window.said) is reported
+    assert (tmp_path / timing.REPORT_NAME).exists() is reported
+
+
 def test_the_selftest_covers_the_libraries_that_move_firmware():
     import pycangui.__main__ as entry
 

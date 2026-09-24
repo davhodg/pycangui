@@ -224,24 +224,26 @@ def main() -> int:
     loaded["session"] = session_class(window_class)
     window = loaded["session"].open()
     timing.mark("window on screen")
-    if timing.enabled():
-        report(window)
     note_a_slow_start(window)
     return app.exec()
 
 
 def note_a_slow_start(window) -> None:
-    """Say so when this start had to compile Python again.
+    """Say so when a start was slow, and where the time went.
 
-    Not a judgement about the clock: the count comes from the compiled files
-    themselves, so it is said exactly on the starts where it is true -- the
-    first after an update -- and never on the others.
+    Why comes first when it is known -- the compiled files say exactly when
+    an update was the cause -- and then the report. The report is always
+    there to give, because the marks are always recorded; ``--timing`` only
+    decides whether a fast start prints one too.
     """
     from pycangui.core import slow_start
 
-    said = slow_start.message(timing.started_at(), timing.total_work())
+    took = timing.total_work()
+    said = slow_start.message(timing.started_at(), took, detailed=timing.enabled())
     if said is not None:
         window.events.information(said)
+    if timing.enabled() or slow_start.is_slow(took):
+        report(window)
 
 
 def report(window) -> None:

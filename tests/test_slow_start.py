@@ -26,11 +26,35 @@ def _compiled(tmp_path, how_many, when):
     return modules
 
 
-def test_nothing_is_said_when_nothing_was_compiled(tmp_path):
+def test_an_ordinary_start_says_nothing(tmp_path):
     began = time.time()
     old = _compiled(tmp_path, 20, began - 3600)  # compiled an hour ago
     assert slow_start.compiled_this_start(began, old) == 0
-    assert slow_start.message(began, 12.0, old) is None
+    assert slow_start.message(began, 2.5, old) is None
+
+
+def test_a_slow_start_with_nothing_compiled_still_says_so(tmp_path):
+    """Reported: a start of half a minute said nothing at all, because
+    nothing had been compiled -- the cold disk that caused it left no trace
+    for the compiled-file count to find."""
+    began = time.time()
+    old = _compiled(tmp_path, 20, began - 3600)
+    said = slow_start.message(began, 29.0, old)
+    assert said is not None
+    assert "29.0" in said
+
+
+def test_without_timing_it_says_how_to_get_the_detail(tmp_path):
+    began = time.time()
+    plain = slow_start.message(began, 29.0, {})
+    detailed = slow_start.message(began, 29.0, {}, detailed=True)
+    assert "--timing" in plain
+    assert "--timing" not in detailed, "already on, so nothing to suggest"
+
+
+def test_the_report_follows_a_slow_start_only():
+    assert slow_start.is_slow(slow_start.SLOW_S)
+    assert not slow_start.is_slow(3.0)
 
 
 def test_a_start_that_compiled_the_files_says_so(tmp_path):
