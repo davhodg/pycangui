@@ -323,15 +323,20 @@ class XcpView(QWidget):
         path = folders.open_file(
             self, self.ctx, folders.A2L, "Load A2L", "A2L (*.a2l);;All files (*)", self.ctx.user_dir
         )
-        if path:
+        if not path:
+            return
+
+        def load(used: str) -> bool:
             try:
-                self.manager.load_a2l(path)
+                self.manager.load_a2l(used)
             except Exception as exc:  # parser is best-effort
                 self._append(f"A2L load failed: {exc}")
-                return
-            self.ctx.settings.set(
-                "xcp.a2l", keep_file.offer(self, self.ctx, path, workspace_files.A2L)
-            )
+                return False
+            return True
+
+        value = keep_file.offer_and_load(self, self.ctx, path, workspace_files.A2L, load)
+        if value is not None:
+            self.ctx.settings.set("xcp.a2l", value)
 
     def _show_a2l(self) -> None:
         """Name the A2L in use, or say there is none."""

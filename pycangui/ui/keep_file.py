@@ -11,6 +11,7 @@ a file elsewhere does not -- so that is what it says.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox, QWidget
@@ -55,3 +56,34 @@ def offer(parent: QWidget | None, ctx: Context, path: str | Path, kind: str) -> 
         return str(path)
     ctx.log(f"Copied {source.name} into the workspace: {target}")
     return workspace_files.stored(target, workspace)
+
+
+def offer_and_load(
+    parent: QWidget | None, ctx: Context, path: str | Path, kind: str, load: Callable[[str], bool]
+) -> str | None:
+    """Offer the copy first, then load the file that will be used from now on.
+
+    In that order so that a copy, once made, is the file in use: loading the
+    original and remembering the copy left the two disagreeing for the rest
+    of the session -- a database removed by the path it was remembered under
+    stayed loaded under the one it was read from.
+
+    Returns the value to remember, or None when it did not load. A copy made
+    by this call is taken away again then, so a file that could not be read
+    does not stay behind in the workspace.
+    """
+    workspace = ctx.workspace_dir
+    folder = Path(workspace) / kind
+    before = set(folder.iterdir()) if folder.is_dir() else set()
+    value = offer(parent, ctx, path, kind)
+    used = workspace_files.resolve(value, workspace)
+    if load(str(used)):
+        return value
+    if used.parent == folder and used not in before:
+        try:
+            used.unlink()
+        except OSError:
+            pass
+        else:
+            ctx.log(f"{used.name} did not load, so the copy in the workspace was removed")
+    return None

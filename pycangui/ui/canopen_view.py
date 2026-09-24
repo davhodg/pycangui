@@ -742,7 +742,8 @@ class CanopenView(QWidget):
         name = self.hooks.call("canopen", "node_name", identity) or product_name
         if name:
             item.setText(1, name)
-        self.ctx.log(f"Node {node_id}: loaded {Path(path).name}")
+        where = workspace_files.shown(path, self.ctx.workspace_dir)
+        self.ctx.log(f"EDS loaded for node {node_id}: {where}")
         if self.selected_node() == node_id:
             self._populate_od(node_id)
             self.pdo_config.set_node(node_id)

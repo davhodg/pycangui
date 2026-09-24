@@ -16,7 +16,7 @@ import threading
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from pycangui.ccp import engine as _ccp_engine  # noqa: F401  (registers the CCP engine)
-from pycangui.core import seedkey
+from pycangui.core import seedkey, workspace_files
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
@@ -216,9 +216,10 @@ class XcpManager(QObject):
     def load_a2l(self, path: str) -> None:
         self.a2l = A2l.load(path)
         self.a2l_loaded.emit(len(self.a2l.parameters))
+        where = workspace_files.shown(path, self._ctx.workspace_dir)
         self.result.emit(
-            f"A2L loaded: {len(self.a2l.measurements())} measurements, "
-            f"{len(self.a2l.characteristics())} characteristics"
+            f"A2L loaded: {where} ({len(self.a2l.measurements())} measurements, "
+            f"{len(self.a2l.characteristics())} characteristics)"
         )
 
     def clear_a2l(self) -> None:

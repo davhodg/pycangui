@@ -56,6 +56,22 @@ def stored(path: str | Path, workspace: Path) -> str:
     return str(path)
 
 
+def shown(path: str | Path, workspace: Path) -> str:
+    """How a file is named in a message.
+
+    A file in the workspace by where it is in it -- ``dbc/demo.dbc in the
+    workspace`` -- because the rest of its path is the same for every file
+    there and says nothing. Anywhere else, in full: where somebody keeps a
+    file is exactly what they need to see to know it is the one they meant.
+    """
+    path = Path(path)
+    if not path.is_absolute():
+        path = Path(workspace) / path
+    if is_inside(path, workspace):
+        return f"{stored(path, workspace)} in the workspace"
+    return str(path)
+
+
 def resolve(value: str | Path, workspace: Path) -> Path:
     """The file a stored value means, in this workspace."""
     path = Path(value)

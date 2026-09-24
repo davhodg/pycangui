@@ -10,6 +10,7 @@ left exactly where it is.
 """
 
 import zipfile
+from pathlib import Path
 from shutil import copyfile
 
 import pytest
@@ -83,6 +84,22 @@ def test_a_file_elsewhere_is_remembered_where_it_was_chosen(home, elsewhere):
     path = a_file(elsewhere, "product.dbc")
     assert workspace_files.stored(path, workspace) == str(path)
     assert workspace_files.resolve(str(path), workspace) == path
+
+
+# --- naming one in a message ------------------------------------------------------------------
+def test_a_file_in_the_workspace_is_named_by_its_place_in_it(home):
+    """The rest of its path is the same for every file there and says nothing."""
+    workspace = workspaces.active_dir()
+    path = a_file(workspace, "dbc/product.dbc")
+    assert workspace_files.shown(path, workspace) == "dbc/product.dbc in the workspace"
+    assert workspace_files.shown("dbc/product.dbc", workspace) == "dbc/product.dbc in the workspace"
+
+
+def test_a_file_elsewhere_is_named_in_full(home, elsewhere):
+    """Where somebody keeps a file is what tells them it is the one they meant."""
+    workspace = workspaces.active_dir()
+    path = a_file(elsewhere, "product.dbc")
+    assert workspace_files.shown(path, workspace) == str(path)
 
 
 # --- copying one in ------------------------------------------------------------------------------
@@ -201,6 +218,85 @@ def test_loading_a_database_offers_to_copy_it_in(window, elsewhere, monkeypatch)
     answering(monkeypatch, QMessageBox.Yes)
     window._load_dbc_dialog()
     assert window.ctx.settings.get("dbc.paths") == ["dbc/demo.dbc"]
+
+
+@pytest.mark.parametrize("inside", [True, False])
+def test_a_loaded_database_says_it_is_a_dbc_and_which_file(window, elsewhere, monkeypatch, inside):
+    """Reported: the DBC line gave a full path and no file type, while the
+    A2L one gave the type and no path. Both now say both."""
+    folder = window.ctx.workspace_dir / "dbc" if inside else elsewhere
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "demo.dbc"
+    copyfile(resources.path("demo.dbc"), path)
+    monkeypatch.setattr(folders, "open_file", lambda *_a, **_k: str(path))
+    answering(monkeypatch, QMessageBox.No)  # asked only when it is elsewhere
+    said = []
+    monkeypatch.setattr(window.events, "information", said.append)
+    window._load_dbc_dialog()
+    line = next(text for text in said if text.startswith("DBC loaded: "))
+    where = "dbc/demo.dbc in the workspace" if inside else str(path)
+    assert line.startswith(f"DBC loaded: {where} (")
+
+
+def test_a_loaded_a2l_says_which_file(window, elsewhere):
+    path = elsewhere / "demo.a2l"
+    copyfile(resources.path("demo.a2l"), path)
+    said = []
+    window.xcp.result.connect(said.append)
+    window.xcp.load_a2l(str(path))
+    assert any(text.startswith(f"A2L loaded: {path} (") for text in said)
+
+
+# --- a copy, once made, is the file in use ----------------------------------------------------
+def test_a_database_copied_in_is_the_one_loaded(window, elsewhere, monkeypatch):
+    """Reported: yes to the copy still loaded the original, so the two
+    disagreed until the next start."""
+    path = elsewhere / "demo.dbc"
+    copyfile(resources.path("demo.dbc"), path)
+    monkeypatch.setattr(folders, "open_file", lambda *_a, **_k: str(path))
+    answering(monkeypatch, QMessageBox.Yes)
+    said = []
+    monkeypatch.setattr(window.events, "information", said.append)
+    window._load_dbc_dialog()
+    copy = window.ctx.workspace_dir / "dbc" / "demo.dbc"
+    assert [Path(p).resolve() for p in window.dbc.databases] == [copy.resolve()]
+    assert any(t.startswith("DBC loaded: dbc/demo.dbc in the workspace (") for t in said)
+
+
+def test_a_database_copied_in_can_be_removed_in_the_same_session(window, elsewhere, monkeypatch):
+    """What the disagreement broke: Remove DBC unloads by the remembered
+    path, which was the copy, while the database was held under the original."""
+    path = elsewhere / "demo.dbc"
+    copyfile(resources.path("demo.dbc"), path)
+    monkeypatch.setattr(folders, "open_file", lambda *_a, **_k: str(path))
+    answering(monkeypatch, QMessageBox.Yes)
+    window._load_dbc_dialog()
+    remembered = window.ctx.settings.get("dbc.paths")[0]
+    resolved = str(workspace_files.resolve(remembered, window.ctx.workspace_dir))
+    window._remove_dbc(remembered, resolved)
+    assert not window.dbc.databases
+
+
+def test_a_database_that_will_not_load_leaves_no_copy_behind(window, elsewhere, monkeypatch):
+    path = a_file(elsewhere, "broken.dbc", "this is not a CAN database\n")
+    monkeypatch.setattr(folders, "open_file", lambda *_a, **_k: str(path))
+    # Yes to the copy, then yes to loading it without the strict checks.
+    answering(monkeypatch, QMessageBox.Yes, QMessageBox.Yes)
+    window._load_dbc_dialog()
+    assert not (window.ctx.workspace_dir / "dbc" / "broken.dbc").exists()
+    assert window.ctx.settings.get("dbc.paths", []) == []
+
+
+def test_an_a2l_copied_in_is_the_one_loaded(window, elsewhere, monkeypatch):
+    path = elsewhere / "demo.a2l"
+    copyfile(resources.path("demo.a2l"), path)
+    monkeypatch.setattr(folders, "open_file", lambda *_a, **_k: str(path))
+    answering(monkeypatch, QMessageBox.Yes)
+    said = []
+    window.xcp.result.connect(said.append)
+    window.xcp_view._load_a2l()
+    assert any(t.startswith("A2L loaded: a2l/demo.a2l in the workspace (") for t in said)
+    assert window.ctx.settings.get("xcp.a2l") == "a2l/demo.a2l"
 
 
 def test_a_database_remembered_in_the_workspace_loads_at_startup(app, home):

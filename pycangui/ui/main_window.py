@@ -1956,13 +1956,22 @@ class MainWindow(QMainWindow):
             "CAN databases (*.dbc *.kcd *.sym *.arxml)",
             self.ctx.user_dir,
         )
-        if path and self._load_dbc(path, offer_relaxing=True):
-            workspace = self.ctx.workspace_dir
-            paths = list(self.ctx.settings.get("dbc.paths", []))
-            chosen = Path(path).resolve()
-            if any(workspace_files.resolve(p, workspace).resolve() == chosen for p in paths):
-                return  # remembered already
-            value = keep_file.offer(self, self.ctx, path, workspace_files.DBC)
+        if not path:
+            return
+        workspace = self.ctx.workspace_dir
+        paths = list(self.ctx.settings.get("dbc.paths", []))
+        chosen = Path(path).resolve()
+        if any(workspace_files.resolve(p, workspace).resolve() == chosen for p in paths):
+            self._load_dbc(path, offer_relaxing=True)  # remembered already
+            return
+        value = keep_file.offer_and_load(
+            self,
+            self.ctx,
+            path,
+            workspace_files.DBC,
+            lambda used: self._load_dbc(used, offer_relaxing=True),
+        )
+        if value is not None:
             self.ctx.settings.set("dbc.paths", [*paths, value])
 
     def _load_dbc(self, path: str, offer_relaxing: bool = False) -> bool:
@@ -1994,9 +2003,10 @@ class MainWindow(QMainWindow):
             except Exception as exc2:
                 self.events.warning(f"DBC load failed even unchecked: {path}: {exc2}")
                 return False
-            self.events.information(f"Loaded {path} without the strict checks")
-        how = "" if strict else " (strict checks off)"
-        self.events.information(f"Loaded {path}: {len(db.messages)} messages{how}")
+            strict = False
+        how = "" if strict else ", strict checks off"
+        where = workspace_files.shown(path, self.ctx.workspace_dir)
+        self.events.information(f"DBC loaded: {where} ({len(db.messages)} messages{how})")
         if hasattr(self, "tx"):
             self._refresh_transmit_sources()
         return True
