@@ -57,16 +57,23 @@ if errorlevel 1 goto :fail
 
 if /i "%~1"=="nosetup" goto :done
 
-rem Read the version through a file: nesting quotes inside a for /f is parsed
-rem differently by cmd depending on context, and comes out empty.
+rem The version comes from git: a tag is built as the tag, and refused if it
+rem disagrees with pycangui.__version__; anything else is a -dev build named
+rem after its commit. build\version.py says how. Read through a file: nesting
+rem quotes inside a for /f is parsed differently by cmd depending on context,
+rem and comes out empty.
 set VERSION=
+set FILEVERSION=
 set VERSIONFILE=%TEMP%\pycangui_version.txt
-"%PYTHON%" -c "import pycangui; print(pycangui.__version__)" > "%VERSIONFILE%"
+"%PYTHON%" build\version.py > "%VERSIONFILE%"
 if errorlevel 1 goto :fail
 set /p VERSION=<"%VERSIONFILE%"
+"%PYTHON%" build\version.py --file > "%VERSIONFILE%"
+if errorlevel 1 goto :fail
+set /p FILEVERSION=<"%VERSIONFILE%"
 del "%VERSIONFILE%" 2>nul
 if not defined VERSION (
-    echo Could not read the version from the package.
+    echo Could not work out the version.
     goto :fail
 )
 
@@ -89,7 +96,7 @@ if not defined ISCC (
     echo Install it from https://jrsoftware.org/isinfo.php to build one.
     goto :done
 )
-%ISCC% /DAppVersion=%VERSION% build\installer.iss
+%ISCC% /DAppVersion=%VERSION% /DFileVersion=%FILEVERSION% build\installer.iss
 if errorlevel 1 goto :fail
 echo Installer: dist\pycangui-%VERSION%-setup.exe
 

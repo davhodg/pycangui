@@ -4,7 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pycangui"
-version = "0.0.1"
+# From __version__ in pycangui/__init__.py, the one copy -- read without
+# importing the package. The installer takes it from there too.
+dynamic = ["version"]
 description = "Graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP, Python scripting"
 readme = "README.md"
 # Two licences, by file. pycangui is Apache-2.0; the hook and simulated-node
@@ -67,6 +69,9 @@ dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pdoc>=16", "pycangui[mf4]"]
 # the two are the same. `python -m pycangui` is still there for a console.
 [project.gui-scripts]
 pycangui = "pycangui.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "pycangui.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["pycangui*"]

@@ -126,6 +126,8 @@ Adapter drivers are not bundled: install the vendor's driver and python-can find
 
 `.github/workflows/ci.yml` runs the tests and lint on every push: the latest Python on Windows and Linux, and the oldest supported Python on Linux as well, since bugs that only appear on the floor are real but rarely platform specific. The installer is built only for a release -- push a `v*` tag, or start the workflow by hand from the Actions tab -- and `.github/workflows/macos.yml` runs the tests on macOS for each release too.
 
+The version is written once, as `__version__` in `pycangui/__init__.py`. A tag's installer is named after the tag, and the build stops if the tag and `__version__` disagree. Any other build is named `<version>-dev-<commit>`, so an installer that is not a release says so.
+
 ## Licence
 
 pycangui is free software, licensed under the Apache License 2.0; see `LICENSE` and `NOTICE`.

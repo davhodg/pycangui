@@ -10,14 +10,26 @@
 #define AppPublisher "davhodg"
 #define AppURL "https://github.com/davhodg/pycangui"
 #define AppExe "pycangui.exe"
+; build.cmd passes both, from build\version.py. 0.0.0 marks an installer
+; compiled by hand, which has no version to give it.
 #ifndef AppVersion
-  #define AppVersion "0.0.1"
+  #define AppVersion "0.0.0"
+#endif
+#ifndef FileVersion
+  #define FileVersion "0.0.0.0"
 #endif
 
 [Setup]
 AppId={{7C2F1E90-3D5B-4C7A-9E11-PYCANGUI0001}
 AppName={#AppName}
 AppVersion={#AppVersion}
+; The setup.exe's own version resource. The file version is numbers only,
+; and its text is cut at 20 characters, so the full version -- -dev and
+; commit included -- goes in the product version, which is not.
+VersionInfoVersion={#FileVersion}
+VersionInfoTextVersion={#FileVersion}
+VersionInfoProductName={#AppName}
+VersionInfoProductTextVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppPublisherURL={#AppURL}
 AppSupportURL={#AppURL}
