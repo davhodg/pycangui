@@ -85,33 +85,34 @@ PGN_NAMES: dict[int, str] = {
 }
 
 
-#: What each failure mode identifier means (SAE J1939-73). 22 to 30 are
+#: What each failure mode identifier means (SAE J1939-73), in plain words
+#: rather than the standard's own. 22 to 30 are
 #: reserved for future assignment and so are not here: an FMI with no entry
 #: shows as a bare number rather than a guess.
 FMI_NAMES: dict[int, str] = {
-    0: "Data valid but above normal operating range (most severe)",
-    1: "Data valid but below normal operating range (most severe)",
-    2: "Data erratic, intermittent or incorrect",
-    3: "Voltage above normal, or shorted to high source",
-    4: "Voltage below normal, or shorted to low source",
-    5: "Current below normal or open circuit",
-    6: "Current above normal or grounded circuit",
-    7: "Mechanical system not responding or out of adjustment",
-    8: "Abnormal frequency, pulse width or period",
-    9: "Abnormal update rate",
-    10: "Abnormal rate of change",
-    11: "Root cause not known",
-    12: "Bad intelligent device or component",
-    13: "Out of calibration",
-    14: "Special instructions",
-    15: "Data valid but above normal operating range (least severe)",
-    16: "Data valid but above normal operating range (moderately severe)",
-    17: "Data valid but below normal operating range (least severe)",
-    18: "Data valid but below normal operating range (moderately severe)",
-    19: "Received network data in error",
-    20: "Data drifted high",
-    21: "Data drifted low",
-    31: "Condition exists",
+    0: "Value too high, most severe level",
+    1: "Value too low, most severe level",
+    2: "Value erratic, intermittent or wrong",
+    3: "Voltage too high, or shorted to a higher voltage",
+    4: "Voltage too low, or shorted to a lower voltage",
+    5: "Current too low, or an open circuit",
+    6: "Current too high, or shorted to ground",
+    7: "Mechanism not responding, or not adjusted correctly",
+    8: "Frequency, pulse width or period out of range",
+    9: "Updates arriving at the wrong rate",
+    10: "Changing too quickly or too slowly",
+    11: "Cause not identified",
+    12: "Faulty smart device or component",
+    13: "Needs calibrating",
+    14: "See the manufacturer's instructions",
+    15: "Value too high, least severe level",
+    16: "Value too high, moderate level",
+    17: "Value too low, least severe level",
+    18: "Value too low, moderate level",
+    19: "Data received over the network is wrong",
+    20: "Value drifting high",
+    21: "Value drifting low",
+    31: "Condition present",
 }
 
 
@@ -139,7 +140,7 @@ def fmi_description(fmi: int, *, ctx) -> str | None:
     """What a failure mode identifier means, shown beside its number.
 
     The same for every SPN on every ECU, which is why they are worth having:
-    "voltage below normal" says a great deal more than "FMI 4". 22 to 30 are
+    "voltage too low" says a great deal more than "FMI 4". 22 to 30 are
     reserved by SAE for future assignment, so they are absent above rather
     than guessed at -- if a standard revision fills one in, or your ECU uses
     one anyway, add it to FMI_NAMES and reload.

@@ -56,7 +56,7 @@ def test_the_j1939_tables_are_in_the_hook_file_not_the_package():
     )
     assert "FMI_NAMES: dict[int, str] = {" in source
     assert "PGN_NAMES: dict[int, str] = {" in source
-    assert '4: "Voltage below normal' in source, "filled in, not commented out"
+    assert '\n    4: "' in source, "filled in, not commented out"
     assert '65226: "DM1"' in source
 
 
@@ -73,9 +73,9 @@ def hooks(app, tmp_path, monkeypatch):
 def test_the_standard_answer_comes_through_the_hook(app, hooks):
     """The lookups are in the hook files, so a user can change or drop them."""
     assert hooks.call("uds", "did_label", 0xF190) == "VIN"
-    assert hooks.call("j1939", "fmi_description", 3) == (
-        "Voltage above normal, or shorted to high source"
-    )
+    from pycangui.hooks import j1939 as j1939_hooks
+
+    assert hooks.call("j1939", "fmi_description", 3) == j1939_hooks.FMI_NAMES[3]
     assert hooks.call("j1939", "pgn_name", 65226) == "DM1"
 
 
