@@ -104,8 +104,8 @@ def claiming(app, tmp_path, monkeypatch):
 
 
 def test_a_slow_claim_is_waited_for_not_given_up_on(claiming):
-    """The Intel Mac runner answered a single look at 600 ms before can-j1939
-    had, and the claim was released as failed. Still undecided means look again."""
+    """The Intel Mac runner answered a single look at 600 ms before the J1939
+    library had, and the claim was released as failed. Still undecided means look again."""
     manager, claimed, states = claiming
     for _ in range(5):
         manager._check_claim()

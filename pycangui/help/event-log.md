@@ -26,7 +26,7 @@ at me" rather than "hide failures from me". [Hooks](hooks.md) and
 [console](console.md) scripts get the same levels: `ctx.log(text)`,
 `ctx.warn(text)`, `ctx.error(text)` and `ctx.good(text)`.
 
-python-can and the protocol libraries -- canopen, can-j1939, udsoncan and
+python-can and the protocol libraries -- canopen, python-can-j1939, udsoncan and
 can-isotp -- report through Python's logging, and a backend often says nothing
 about a bus error any other way. Their warnings and errors come here as well.
 

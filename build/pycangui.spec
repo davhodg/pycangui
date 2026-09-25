@@ -46,7 +46,8 @@ HIDDEN = [
     # modules by name from a registry -- the python-can backend pattern again.
     *collect_submodules("canmatrix.formats"),
     # pywin32 is a distribution, not a module: name the modules it provides
-    "pythoncom",  # can-j1939 imports this on Windows
+    # python-can's usb2can backend finds adapters through win32com.
+    "pythoncom",
     "win32com",
     "win32api",
 ]

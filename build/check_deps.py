@@ -13,16 +13,56 @@ milliseconds and cannot be fooled by a module that imports but is the wrong
 version of itself.
 
 Prints the missing distributions and exits 1, or prints nothing and exits 0.
+Before that, it takes out any distribution pycangui has replaced (``REPLACED``).
 """
 
 from __future__ import annotations
 
+import importlib.util
+import subprocess
 import sys
 import tomllib
+from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parent.parent
+
+#: Distributions pycangui used to depend on -> what replaced them under the same
+#: import name. pip cannot be told that one package replaces another (it
+#: ignores Obsoletes-Dist), so installing the new one beside the old leaves both
+#: registered over the same files, and removing the old one later deletes the
+#: new one's. So an old one is taken out before the install -- and its
+#: replacement too if both are present, since the pair's files are then mixed
+#: -- and the install lays the replacement down whole.
+REPLACED = {"can-j1939": "python-can-j1939"}
+
+
+def installed(name: str) -> bool:
+    try:
+        distribution(name)
+    except PackageNotFoundError:
+        return False
+    return True
+
+
+def replaced_here(is_installed: Callable[[str], bool] = installed) -> list[str]:
+    """What has to be uninstalled before the install can be trusted."""
+    stale = []
+    for old, new in REPLACED.items():
+        if is_installed(old):
+            stale.append(old)
+            if is_installed(new):
+                stale.append(new)
+    return stale
+
+
+def uninstall_command(names: list[str], python: str = sys.executable) -> list[str]:
+    """pip where this environment has it; uv where ``uv venv`` made it, which
+    leaves pip out -- the launchers choose between the two the same way."""
+    if importlib.util.find_spec("pip") is not None:
+        return [python, "-m", "pip", "uninstall", "-y", *names]
+    return ["uv", "pip", "uninstall", "--python", python, *names]
 
 
 def name_of(requirement: str) -> str:
@@ -69,6 +109,14 @@ def missing(pyproject: Path | None = None) -> list[str]:
 
 
 def main() -> int:
+    if stale := replaced_here():
+        # Quietly: what this prints is read as the list of missing packages.
+        # A failure leaves the old one in place, which still starts; the
+        # install that follows puts the replacement beside it.
+        try:
+            subprocess.run(uninstall_command(stale), capture_output=True, check=False)
+        except OSError:
+            pass
     absent = missing()
     if absent:
         print(" ".join(absent))

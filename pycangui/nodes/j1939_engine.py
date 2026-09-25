@@ -83,8 +83,6 @@ def ecu_name():
 def start(node, *, ctx):
     import j1939 as library
 
-    from pycangui.j1939 import _compat  # noqa: F401 - patches a typo in can-j1939
-
     name = ecu_name()
     # The library wants somewhere to put frames; the channel is that.
     ecu = library.ElectronicControlUnit(

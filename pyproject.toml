@@ -23,20 +23,23 @@ dependencies = [
     # the GPL-only modules live there too.
     "PySide6-Essentials>=6.7",
     "pyqtgraph>=0.13",
-    # [serial] pulls in pyserial, which the slcan and serial backends need --
-    # the cheap USB adapters (CANable, Lawicel, USB2CAN). It is only an
-    # optional extra of python-can, so without this they silently fail.
-    "python-can[serial]>=4.4",
+    # Two optional extras of python-can, so without them these adapters
+    # silently fail. [serial] pulls in pyserial, which the slcan and serial
+    # backends need -- CANable, Lawicel and the other low-cost USB adapters.
+    # [pywin32], on Windows only, is how the usb2can backend finds 8devices
+    # USB2CAN adapters (through COM).
+    "python-can[serial,pywin32]>=4.4",
     "canopen>=2.3",
     "cantools>=39",
     "numpy>=1.26",
     "udsoncan>=1.23",
     "can-isotp>=2.0",
-    "can-j1939>=2.0",
+    # The community fork of can-j1939, which has had no release since 2022.
+    # Same import name (j1939); python-can is its only dependency.
+    "python-can-j1939>=0.1.2",
     # Intel HEX, Motorola S-record and raw binary, for UDS transfers. MIT, by
     # the author of cantools, which is already here.
     "bincopy>=20.0",
-    "pywin32>=306; sys_platform == 'win32'",  # can-j1939 imports pythoncom on Windows
 ]
 
 [project.urls]

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""J1939 network side, built on the `can-j1939` package for transport
+"""J1939 network side, built on the `python-can-j1939` package for transport
 protocol reassembly (TP.BAM / TP.CM) and address claiming.
 
 The ECU object is fed from the shared bus Notifier and sends through our bus.
@@ -23,7 +23,6 @@ from pycangui.core.hooks import Hooks
 from pycangui.j1939 import (
     GLOBAL,
     Name,
-    _compat,  # noqa: F401 - patches pythoncom typo in can-j1939
     build_id,
     parse_dm1,
     parse_id,
@@ -84,7 +83,7 @@ class J1939Manager(QObject):
     log = Signal(str)
 
     #: How long a claim may stay undecided before it is reported as failed.
-    #: can-j1939 sends the claim half a second after it starts and then waits a
+    #: The library sends the claim half a second after it starts and then waits a
     #: quarter of a second for anybody to contest it, so no answer exists before
     #: about 0.75 s -- and on a busy machine its thread gets there later still.
     CLAIM_DEADLINE_S = 3.0
@@ -205,8 +204,8 @@ class J1939Manager(QObject):
     def _check_claim(self) -> None:
         """Report the claim once it has resolved, however long its thread takes.
 
-        This used to be one look after 600 ms, which is sooner than can-j1939
-        can ever answer. It usually got away with it; a loaded machine did
+        This used to be one look after 600 ms, which is sooner than the
+        library can ever answer. It usually got away with it; a loaded machine did
         not, and reported "address in use" -- releasing the address -- for a
         claim that would have succeeded a moment later.
         """

@@ -56,6 +56,49 @@ def test_a_dependency_that_is_not_installed_is_named(tmp_path):
     assert check_deps.missing(pyproject) == ["nosuchpackage-xyz"]
 
 
+# --- a dependency replaced by another under the same import name ------------------------
+def _installed(*names):
+    return lambda name: name in names
+
+
+def test_a_replaced_package_is_taken_out_before_the_install():
+    """can-j1939 and its fork install into the same j1939 folder. pip cannot be
+    told one replaces the other, so the launcher has to take the old one out."""
+    assert check_deps.replaced_here(_installed("can-j1939")) == ["can-j1939"]
+
+
+def test_both_go_when_both_are_there():
+    """Removing the old one deletes files the two share, and pip would still
+    think the new one was whole -- so it goes too, and the install puts it back."""
+    stale = check_deps.replaced_here(_installed("can-j1939", "python-can-j1939"))
+    assert stale == ["can-j1939", "python-can-j1939"]
+
+
+def test_the_replacement_alone_is_left_alone():
+    assert check_deps.replaced_here(_installed("python-can-j1939")) == []
+
+
+def test_a_uv_environment_is_uninstalled_through_uv(monkeypatch):
+    """`uv venv` makes an environment without pip in it."""
+    monkeypatch.setattr(check_deps.importlib.util, "find_spec", lambda _name: None)
+    assert check_deps.uninstall_command(["can-j1939"], "py")[:3] == ["uv", "pip", "uninstall"]
+
+
+def test_a_pip_environment_is_uninstalled_through_pip():
+    command = check_deps.uninstall_command(["can-j1939"], "py")
+    assert command == ["py", "-m", "pip", "uninstall", "-y", "can-j1939"]
+
+
+def test_the_check_uninstalls_then_reports_what_is_missing(monkeypatch, capsys):
+    ran = []
+    monkeypatch.setattr(check_deps, "replaced_here", lambda: ["can-j1939"])
+    monkeypatch.setattr(check_deps.subprocess, "run", lambda command, **_k: ran.append(command))
+    monkeypatch.setattr(check_deps, "missing", lambda: ["python-can-j1939"])
+    assert check_deps.main() == 1
+    assert ran and "can-j1939" in ran[0]
+    assert capsys.readouterr().out.split() == ["python-can-j1939"], "and nothing else is printed"
+
+
 # --- the entry point ------------------------------------------------------------------
 def test_a_missing_library_is_a_dialog_rather_than_a_silent_death(app, monkeypatch):
     """pythonw has nowhere to print, so the last chance to say anything is a window."""
