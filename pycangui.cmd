@@ -63,7 +63,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo  [3/3] Installing pycangui and the libraries it runs on.
-echo        Not the test tools -- see the README if you want those.
+echo        Not the test tools -- see CONTRIBUTING.md if you want those.
 echo        Each package is listed as it downloads; the big one is
 echo        PySide6, which is Qt.
 echo.
