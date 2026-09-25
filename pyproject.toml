@@ -7,7 +7,7 @@ name = "pycangui"
 # From __version__ in pycangui/__init__.py, the one copy -- read without
 # importing the package. The installer takes it from there too.
 dynamic = ["version"]
-description = "Graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP, Python scripting"
+description = "Graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP and CCP, Python scripting"
 readme = "README.md"
 # Two licences, by file. pycangui is Apache-2.0; the hook and simulated-node
 # templates copied into a workspace are MIT-0, so the file somebody fills with

@@ -14,19 +14,25 @@ The CI and release badges are live. The release badge includes pre-releases, so 
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 
-A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP and Python scripting, on any adapter supported by python-can. Apache-2.0.
+A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP and CCP, and Python scripting, on any adapter supported by python-can. Apache-2.0.
 
 ![pycangui on its demo device: the CAN Trace, CAN Transmit and Event Log above, and engine and vehicle speed plotted in Signals and Plot below](pycangui/help/main-window.png)
 
 ## What it does
 
-- **Live trace** of every connected channel on one clock, with filtering that hides rather than discards, and recording to six log formats.
+- **Live trace** of every connected channel on one clock, CAN FD included, with filtering that hides rather than discards, recording to six log formats, and replay of a log onto a bus.
 - **Transmit** raw frames, DBC messages edited by signal, or a CANopen RPDO.
 - **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save and apply.
+- **Custom panes**: the CANopen objects a job needs, laid out as a form with labels and units. Built from the object dictionary with no code, and polled into Signals and Plot.
 - **UDS** over ISO-TP: sessions, security access, DIDs, DTCs, routines, and firmware transfer in either direction.
-- **J1939** and **XCP on CAN**, and a pane that reads any CAN identifier as text.
-- **Signals and Plot** from DBC decode, CANopen TPDOs or XCP polling, and out to CSV for whatever you analyse with.
-- **Python** hooks with hot reload, replaceable components (your own CAN interface, ISO-TP transport or XCP engine), a live console and *Run script*.
+- **J1939**: nodes from address claims, DM1 faults with lamp status and the failure mode in words, multi-packet messages (TP.BAM and TP.CM), requesting and sending PGNs, and SPNs decoded from a J1939 DBC.
+- **XCP and CCP on CAN**: connect, seed and key, and reading and writing A2L measurements and characteristics by polling.
+- **ASCII Log**: reads any CAN identifier as text, for devices that print a console into the data bytes.
+- **Signals and Plot** from DBC decode, CANopen TPDOs or XCP and CCP polling, and out to CSV for whatever you analyse with.
+- **Python** hooks with hot reload, replaceable components (your own CAN interface, ISO-TP transport, or XCP or CCP engine), a live console and *Run script*.
+- **Plugins** that add a pane of their own, installed from a zip. Three come with pycangui: CANopen firmware download (CiA 302-3), DCF compare, and CiA 402 motor control.
+- **Simulated nodes**: devices written as Python files, on a virtual bus or standing on a real adapter, and gateways between channels.
+- **Workspaces**: one per product, holding its hooks, EDS files, databases, channels and layout, and exported as one zip.
 
 Full details in [the manual](pycangui/help/manual.md), which is also under **Help > Documentation** in the application.
 
@@ -80,7 +86,7 @@ pycangui is Apache-2.0 and is a pure-Python application on top of these packages
 | [bincopy](https://github.com/eerimoq/bincopy) | Intel HEX / S-record / binary firmware files | MIT |
 | [asammdf](https://github.com/danielhrisca/asammdf) | Reading MDF / MF4 measurement files | LGPL-3.0 |
 
-XCP and basic A2L reader are implemented directly in pycangui.
+XCP, CCP and a basic A2L reader are implemented directly in pycangui.
 
 asammdf is the one **optional** entry: the Windows installer bundles it, and a `pip` installation leaves it out until a measurement file needs it, because it brings with it about 100 MB on disc for mdf format support. `pip install pycangui[mf4]` includes it up front.
 
@@ -88,14 +94,28 @@ Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **
 
 ## For development
 
+Working on pycangui needs the same setup as running it from the source folder, plus a few extra Python packages. The launcher already installs pycangui from the source folder in editable mode, so an edit takes effect the next time it starts; all development adds is the `[dev]` extra -- pytest, pytest-xdist, ruff, pdoc and the MDF reader. The launcher leaves those out because running the application does not need them.
+
+After the launcher's first run, add them to its `.venv`:
+
 ```
-python -m venv .venv
-.venv\Scripts\pip install -e .[dev]
-.venv\Scripts\python -m pycangui
-.venv\Scripts\python -m pytest
+.venv\Scripts\python -m pip install -e .[dev]
 ```
 
-The `[dev]` extra adds pytest, pytest-xdist, ruff, pdoc and the MDF reader. The launcher does not install it -- running the application does not need the test tools.
+or, if `uv` was found and created the `.venv` (it has no pip of its own):
+
+```
+uv pip install --python .venv\Scripts\python.exe -e .[dev]
+```
+
+Without the launcher, `python -m venv .venv` first and then the pip line. Either way, this runs the tests and the linter:
+
+```
+.venv\Scripts\python -m pytest -n auto
+.venv\Scripts\python -m ruff check .
+```
+
+On Linux and macOS the folder is `.venv/bin` rather than `.venv\Scripts`.
 
 `python build/screenshots.py` regenerates `pycangui/help/main-window.png`, the screenshot in this README. It opens pycangui on the demo device for about a minute, with temporary settings of its own, so leave the window alone while it runs.
 
@@ -103,7 +123,9 @@ The `[dev]` extra adds pytest, pytest-xdist, ruff, pdoc and the MDF reader. The 
 
 The suite is a thousand Qt tests and splits cleanly across processes, so `-n auto` runs it in well under a minute rather than six. Leave it off when running a single file: starting the workers costs more than the file does.
 
-## Building a distributable
+## Building the Windows installer
+
+This section is only about making the installer, and most people never need it. To run the latest code, clone the repository and start it with the launcher (option 2 under [Installing](#installing)); to work on it, see [For development](#for-development). Releases are built by CI from a tag, so building locally is for checking the packaging itself.
 
 `build.cmd` produces a self-contained Windows application, and an installer if a compiler for one is present:
 
