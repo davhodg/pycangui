@@ -80,7 +80,7 @@ class _TimedImports:
     Put in front of ``sys.meta_path``, it lets the normal machinery find a
     module and then wraps the loader, so the cost lands under the package it
     belongs to. Time spent importing something else is subtracted, so a
-    package that merely imports numpy is not blamed for numpy.
+    package is not blamed for the packages it imports.
     """
 
     def find_spec(self, name, path=None, target=None):

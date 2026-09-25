@@ -18,8 +18,8 @@ license-files = ["LICENSE", "NOTICE", "LICENSES/*.txt"]
 requires-python = ">=3.12"
 authors = [{ name = "davhodg" }]
 dependencies = [
-    # Essentials, not the full PySide6: the "addons" wheel is another 160 MB of
-    # Qt (3D, Charts, Multimedia, WebEngine) that pycangui never imports, and
+    # Essentials, not the full PySide6: the "addons" wheel is the rest of Qt
+    # (3D, Charts, Multimedia, WebEngine), which pycangui never imports, and
     # the GPL-only modules live there too.
     "PySide6-Essentials>=6.7",
     "pyqtgraph>=0.13",
@@ -50,9 +50,8 @@ Issues = "https://github.com/davhodg/pycangui/issues"
 [project.optional-dependencies]
 # Everything optional, which today is the MDF and MF4 reader: measurement
 # files, holding decoded signals rather than frames. Optional for a pip
-# installation because it adds about 60 MB with the libraries it uses, for a
-# format not everybody opens. Nothing imports it unless a file needs one, and
-# pycangui offers to fetch it then.
+# installation, as a format not everybody opens. Nothing imports it unless a
+# file needs one, and pycangui offers to fetch it then.
 #
 # The Windows installer bundles it regardless. A frozen build has no Python
 # environment to install into afterwards, so "fetch it when needed" is not on

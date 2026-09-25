@@ -27,7 +27,7 @@ if [ ! -x .venv/bin/python ]; then
  Nothing outside that folder is touched, and deleting .venv
  undoes the whole thing.
 
- This runs once. It downloads roughly 90 MB, most of it Qt
+ This runs once. It downloads a couple of hundred megabytes, most of it Qt
  (the toolkit the windows are drawn with), so on a slow
  connection expect a few minutes. Every later start is
  immediate.

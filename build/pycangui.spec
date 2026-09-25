@@ -64,7 +64,7 @@ GPL_QT_MODULES = [
 
 EXCLUDED = [
     *GPL_QT_MODULES,
-    # Qt modules pycangui does not use; leaving them out saves ~80 MB.
+    # Qt modules pycangui does not use.
     "PySide6.Qt3DAnimation",
     "PySide6.Qt3DCore",
     "PySide6.Qt3DExtras",
@@ -100,11 +100,11 @@ EXCLUDED = [
     "PySide6.QtWebSockets",
     # asammdf's own measurement GUI. pycangui has its reader, not its
     # application, and that application wants the Qt addons deliberately left
-    # out above -- so it would either bloat the build or half-import and fail.
+    # out above -- so it would either add modules the build does not use, or
+    # half-import and fail.
     "asammdf.gui",
     "asammdf.app",
-    # Test suites that ship inside libraries. pandas' alone is some 30 MB of
-    # a build nobody runs pytest in.
+    # Test suites that ship inside libraries, which a build never runs.
     "pandas.tests",
     "numpy.tests",
     # developer tooling that has no business in a release build

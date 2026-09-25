@@ -105,12 +105,11 @@ def selftest() -> int:
 def import_can_without_mf4() -> None:
     """Import python-can without the MF4 support it loads at import.
 
-    python-can imports asammdf on the way in, whether or not a file is ever
-    written, and asammdf brings pandas: some 500 modules, a third of
-    everything pycangui loads at start-up, and on a cold disk the difference
-    between seconds and half a minute. pycangui records and replays only the
-    formats that do not need it, and reads MDF through asammdf itself
-    (core/mdf.py), which is still imported normally when that is used.
+    python-can loads its MF4 support, and the libraries that come with it,
+    when it is imported. pycangui records and replays only the formats that do
+    not need it, and reads MDF through asammdf itself (core/mdf.py), which is
+    still imported normally when that is used -- so it is left out here, and
+    start-up loads only what pycangui uses.
 
     asammdf is hidden only while python-can is imported, which python-can
     takes as asammdf not being installed.
@@ -165,7 +164,7 @@ def main() -> int:
     timing.watch_imports()
 
     # confirm.py is cheap -- Qt widgets and nothing else -- and has to come
-    # before the expensive imports, because it is what covers them.
+    # before the rest of the imports, because it is what covers them.
     from pycangui.ui.confirm import accept_notice
 
     loaded: dict = {}
@@ -173,8 +172,8 @@ def main() -> int:
     def load() -> None:
         """The slow half of starting up, done behind the notice.
 
-        Seconds of libraries -- Qt's plotting, python-can, canopen -- with
-        nothing on screen while they load is how a tool comes to feel heavy.
+        Loading the libraries with nothing on screen is how a tool comes to
+        feel heavy.
         Behind a dialog somebody is reading, it is free. Run on a thread of
         its own, so imports only: the window is made on the GUI thread after.
 

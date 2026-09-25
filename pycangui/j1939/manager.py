@@ -52,11 +52,9 @@ PGN_DM2 = 65227
 def tester_name():
     """The NAME this tool claims an address under.
 
-    Built when it is asked for rather than at import. The j1939 library brings
-    numpy with it and costs half a second, and a session that never opens the
-    J1939 pane -- which is most of them -- should not pay that on the way to
-    its first window. Every use of the library below is inside a method for
-    the same reason.
+    Built when it is asked for rather than at import, and every use of the
+    library below is inside a method for the same reason: a session that never
+    opens the J1939 pane -- which is most of them -- loads none of it.
     """
     import j1939 as j1939lib
 

@@ -281,7 +281,7 @@ def register_interface(name: str, description: str = "") -> Callable[[type], typ
     """
 
     def decorate(cls: type) -> type:
-        import can.interfaces  # heavy, so only when somebody adds an interface
+        import can.interfaces  # only when somebody adds an interface
 
         replaces = "python-can's own" if name in can.interfaces.BACKENDS else ""
         can.interfaces.BACKENDS[name] = (cls.__module__, cls.__name__)

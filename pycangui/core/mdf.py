@@ -13,9 +13,8 @@ payload cannot yield signals, and saying so is more use than returning nothing
 and letting somebody conclude their file is empty.
 
 **asammdf may not be installed.**  The Windows installer bundles it, but a
-``pip`` installation leaves it out by default -- about sixty megabytes with the
-libraries it uses, for a format not everybody meets -- and fetches it when a
-file needs it. So everything here works out whether the library is present and
+``pip`` installation leaves it out by default -- a format not everybody meets --
+and fetches it when a file needs it. So everything here works out whether the library is present and
 says what to do when it is not, and nothing imports it at start-up.
 """
 
@@ -26,14 +25,12 @@ from pathlib import Path
 
 import numpy as np
 
-#: What has to be installed, and roughly what it costs. The number is what
-#: lands on disc, measured rather than guessed: pandas is most of it.
+#: What has to be installed.
 PACKAGE = "asammdf"
-SIZE_MB = 100
 WHY = (
     "MDF and MF4 files are read by the asammdf library, which this "
-    "installation of pycangui does not include: it brings pandas with it, "
-    f"about {SIZE_MB} MB, for a format many people never open."
+    "installation of pycangui does not include. It is a download of a few "
+    "tens of megabytes."
 )
 
 #: Suffixes that mean "this is a measurement file". ``.dat`` is MDF 3, which
@@ -129,7 +126,7 @@ def looks_like_mdf(path: str | Path) -> bool:
     """Whether the first bytes say MDF, whatever the extension says.
 
     Checked before the library is asked for, so that picking the wrong file is
-    a sentence rather than sixty megabytes and then a sentence.
+    a sentence rather than a download and then a sentence.
     """
     try:
         with Path(path).open("rb") as f:

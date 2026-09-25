@@ -10,7 +10,7 @@ which is where somebody is most likely to want it.
 Markdown, because it is the same text the repository serves on the web and Qt
 renders it directly -- ``QTextBrowser.setMarkdown`` with the GitHub dialect,
 so the tables come out as tables. No web engine: the GPL-only Qt modules are
-deliberately not installed, and a manual is not worth 160 MB.
+deliberately not installed, and a manual is not worth a web engine.
 
 **A page per pane, rather than one long file.**  Nobody reads a manual; people
 look one thing up in it, and a single document answers that by making them

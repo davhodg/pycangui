@@ -172,8 +172,8 @@ def ensure_available(parent: QWidget, ctx, frozen: bool = False) -> bool:
     """Make sure the library is there, offering to fetch it if it is not.
 
     Asked at the moment a file needs it rather than carried by everyone, and
-    asked rather than done: sixty megabytes off the internet is not something
-    to start because somebody opened a file dialog.
+    asked rather than done: a download is not something to start because
+    somebody opened a file dialog.
     """
     if mdf.available():
         return True

@@ -35,7 +35,7 @@ echo.
 echo  Nothing outside that folder is touched, and deleting .venv
 echo  undoes the whole thing.
 echo.
-echo  This runs once. It downloads roughly 250 MB, most of it Qt
+echo  This runs once. It downloads a couple of hundred megabytes, most of it Qt
 echo  (the toolkit the windows are drawn with), so expect a few
 echo  minutes. Every later start is immediate.
 echo.

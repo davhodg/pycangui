@@ -23,9 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-# bincopy brings pyelftools with it and costs a third of a second, for a
-# thing that only happens when somebody picks a firmware file. Imported in
-# the two functions that read and write one.
+# bincopy is needed only when somebody picks a firmware file, so it is
+# imported in the two functions that read and write one.
 
 #: Suffixes that mean "this file has no addresses in it".
 BINARY_SUFFIXES = {".bin", ".raw", ".img", ".rom", ".dat"}
