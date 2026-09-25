@@ -14,12 +14,19 @@ that claim samples and read back with none -- but a real export is also
 somebody's product data, so the shapes are reproduced and the data is not.
 """
 
+import can  # before asammdf: see below
 import numpy as np
 import pytest
 
 from pycangui.core import mdf
 
-asammdf = pytest.importorskip("asammdf", reason="MDF support is the pycangui[mf4] extra")
+# asammdf imports python-can while it is still loading itself. If asammdf comes
+# first, python-can then finds it half-loaded, takes it as not installed, and
+# its MF4Writer -- which the bus_log fixture uses -- refuses to work. The
+# application always imports python-can at start-up, so only a test run that
+# reaches this file first ever sees it.
+
+asammdf = pytest.importorskip("asammdf", reason="MDF support is in the pycangui[all] extra")
 
 DURATION_S = 10.0
 RATE_HZ = 100.0
@@ -74,8 +81,6 @@ def bus_log(tmp_path_factory):
     that is the layout a reader will actually meet and one we invented would
     prove nothing.
     """
-    import can
-
     path = tmp_path_factory.mktemp("mdf") / "buslog.mf4"
     with can.MF4Writer(str(path)) as writer:
         for i in range(100):
