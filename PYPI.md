@@ -17,10 +17,10 @@ pycangui
 
 Python 3.12 or newer, on Windows, Linux or macOS. `python -m pycangui` starts it too.
 
-To read MDF and MF4 measurement files, add the `mf4` extra. Without it, pycangui offers to install the reader the first time a measurement file is opened.
+To include everything optional up front -- today that is the reader for MDF and MF4 measurement files -- install `all`. Without it, pycangui offers to install the reader the first time a measurement file is opened.
 
 ```
-pip install "pycangui[mf4]"
+pip install "pycangui[all]"
 ```
 
 Without Python, on Windows: the [installer on the releases page](https://github.com/davhodg/pycangui/releases) is a self-contained application.

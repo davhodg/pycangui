@@ -88,7 +88,7 @@ pycangui is Apache-2.0 and is a pure-Python application on top of these packages
 
 XCP, CCP and a basic A2L reader are implemented directly in pycangui.
 
-asammdf is the one **optional** entry: the Windows installer bundles it, and a `pip` installation leaves it out until a measurement file needs it, because it brings with it about 100 MB on disc for mdf format support. `pip install pycangui[mf4]` includes it up front.
+asammdf, the MDF and MF4 reader, is the one **optional** entry: the Windows installer includes it, and a `pip` installation fetches it the first time a measurement file is opened. `pip install pycangui[all]` includes it up front.
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **PySide6-Essentials** rather than the full PySide6, so the GPL-only add-on modules (Qt Charts, Qt Data Visualization and the rest) are never installed -- which also saves about 160 MB. Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the vendor's driver and python-can loads it at run time.
 

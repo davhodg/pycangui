@@ -13,8 +13,8 @@ payload cannot yield signals, and saying so is more use than returning nothing
 and letting somebody conclude their file is empty.
 
 **asammdf may not be installed.**  The Windows installer bundles it, but a
-``pip`` installation leaves it out by default -- it brings pandas with it, some
-hundred megabytes, for a format many people never meet -- and fetches it when a
+``pip`` installation leaves it out by default -- about sixty megabytes with the
+libraries it uses, for a format not everybody meets -- and fetches it when a
 file needs it. So everything here works out whether the library is present and
 says what to do when it is not, and nothing imports it at start-up.
 """

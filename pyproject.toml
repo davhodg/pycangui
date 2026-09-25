@@ -48,24 +48,25 @@ Repository = "https://github.com/davhodg/pycangui"
 Issues = "https://github.com/davhodg/pycangui/issues"
 
 [project.optional-dependencies]
-# MDF and MF4: measurement files, holding decoded signals rather than frames.
-# Optional for a pip installation because asammdf brings pandas with it -- some
-# eighty megabytes on disc -- for a format many people never open. Nothing
-# imports it unless a file needs one, and pycangui offers to fetch it then.
+# Everything optional, which today is the MDF and MF4 reader: measurement
+# files, holding decoded signals rather than frames. Optional for a pip
+# installation because it adds about 60 MB with the libraries it uses, for a
+# format not everybody opens. Nothing imports it unless a file needs one, and
+# pycangui offers to fetch it then.
 #
 # The Windows installer bundles it regardless. A frozen build has no Python
 # environment to install into afterwards, so "fetch it when needed" is not on
 # offer there, and a dead end in the menu costs more than the megabytes.
 # asammdf is LGPL-3.0, the same terms as Qt and python-can, and ships on the
 # same basis: separately replaceable, and named in THIRD-PARTY-NOTICES.txt.
-mf4 = ["asammdf>=8"]
-# Pinned ruff: a new one must not break the build. mf4 is pulled in so that
+all = ["asammdf>=8"]
+# Pinned ruff: a new one must not break the build. all is pulled in so that
 # CI actually exercises the reader -- a reader nobody tests is a reader that
 # breaks -- and so that the build environment has what the bundle needs.
 # pdoc builds the API pages for people writing hooks, nodes and plugins; see
 # build/api_docs.py. In dev so that CI renders them and a broken docstring
 # fails a test rather than a release.
-dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pdoc>=16", "pycangui[mf4]"]
+dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pdoc>=16", "pycangui[all]"]
 
 # gui-scripts, not scripts: on Windows the launcher pip makes for a script is a
 # console program, so the window would open with a console behind it. Elsewhere

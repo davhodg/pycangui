@@ -166,7 +166,7 @@ def test_a_file_that_is_not_an_mdf_is_refused_before_the_library_is_wanted(
 
 def test_reading_a_real_measurement_puts_it_under_the_file_name(app, window, tmp_path):
     """End to end, through the same call the menu makes."""
-    pytest.importorskip("asammdf", reason="MDF support is the pycangui[mf4] extra")
+    pytest.importorskip("asammdf", reason="MDF support is in the pycangui[all] extra")
     from asammdf import MDF, Signal
 
     t = np.arange(0.0, 5.0, 0.01)
@@ -187,7 +187,7 @@ def test_reading_a_real_measurement_puts_it_under_the_file_name(app, window, tmp
 def test_asking_for_a_signal_the_file_does_not_have_is_said_rather_than_silent(
     app, window, tmp_path
 ):
-    pytest.importorskip("asammdf", reason="MDF support is the pycangui[mf4] extra")
+    pytest.importorskip("asammdf", reason="MDF support is in the pycangui[all] extra")
     from asammdf import MDF, Signal
 
     t = np.arange(0.0, 1.0, 0.1)
