@@ -574,8 +574,7 @@ class BusManager(QObject):
             )
         return (
             f"connected to {self.description} but nothing has been received in {seconds}. "
-            "If the bus is not idle, the usual cause is the wrong bitrate; wiring and "
-            "termination are the others."
+            "If the bus is not idle, check the bitrate, wiring or termination."
         )
 
     def _update_load(self) -> None:
