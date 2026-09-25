@@ -26,6 +26,7 @@ caller passes for a particular dialog.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PySide6.QtWidgets import QFileDialog, QWidget
@@ -132,6 +133,21 @@ def open_file(
     return path
 
 
+def named_for(suggested: str, file_type: str) -> str:
+    """The suggested name, with the extension of the type the dialog opens on.
+
+    Reported: the recorder remembered ASC but still suggested capture.blf, so
+    the dialog opened showing a .blf name under an ASC type -- and Windows only
+    swaps an extension that matches the type selected before, so changing the
+    type never touched it either. A type with no extension of its own (All
+    files) leaves the name as it is.
+    """
+    match = re.search(r"\*\.(\w+)", file_type)
+    if not suggested or match is None:
+        return suggested
+    return Path(suggested).with_suffix("." + match.group(1)).name
+
+
 def save_file(
     parent: QWidget | None,
     ctx: Context,
@@ -143,12 +159,14 @@ def save_file(
 ) -> str:
     """Ask where to write a file, as this sort of file was last written."""
     folder = start_in(ctx, kind, default)
+    opens_on = remembered_type(ctx, kind, filter)
+    suggested = named_for(suggested, opens_on or filter.split(";;")[0])
     path, chosen_type = QFileDialog.getSaveFileName(
         parent,
         caption,
         str(folder / suggested if suggested else folder),
         filter,
-        remembered_type(ctx, kind, filter),
+        opens_on,
     )
     if path:
         remember(ctx, kind, path, chosen_type)

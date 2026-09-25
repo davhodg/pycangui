@@ -278,6 +278,34 @@ def test_saving_remembers_the_type_too(app, ctx, picked, tmp_path):
     assert picked.started_on[-1] == "ASC (*.asc)"
 
 
+LOGS = "BLF (*.blf);;ASC (*.asc);;All files (*)"
+
+
+def test_the_suggested_name_matches_the_type_it_opens_on(app, ctx, picked, tmp_path):
+    """Reported: the recorder remembered ASC but suggested capture.blf, and
+    changing the type in the dialog then never changed the extension."""
+    picked.answer[0] = str(tmp_path / "trace.asc")
+    picked.answer_type[0] = "ASC (*.asc)"
+    folders.save_file(None, ctx, folders.LOG, "Record", LOGS, tmp_path, suggested="capture.blf")
+
+    picked.answer[0] = ""
+    folders.save_file(None, ctx, folders.LOG, "Record", LOGS, tmp_path, suggested="capture.blf")
+
+    assert picked.started_on[-1] == "ASC (*.asc)"
+    assert picked.opened[-1].endswith("capture.asc")
+
+
+def test_all_files_leaves_the_suggested_name_alone(app, ctx, picked, tmp_path):
+    picked.answer[0] = str(tmp_path / "trace.blf")
+    picked.answer_type[0] = "All files (*)"
+    folders.save_file(None, ctx, folders.LOG, "Record", LOGS, tmp_path, suggested="capture.blf")
+
+    picked.answer[0] = ""
+    folders.save_file(None, ctx, folders.LOG, "Record", LOGS, tmp_path, suggested="capture.blf")
+
+    assert picked.opened[-1].endswith("capture.blf")
+
+
 def test_forgetting_puts_the_types_back_as_well(app, ctx, picked, tmp_path):
     picked.answer[0] = str(tmp_path / "app.bin")
     picked.answer_type[0] = "Raw binary (*.bin)"
