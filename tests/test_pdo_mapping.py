@@ -48,6 +48,13 @@ def manager(app, demo_device, tmp_path, monkeypatch):
     wait_until(lambda: seen)  # its heartbeat
     out.load_eds(NODE, str(resources.path("demo.eds")))
     wait_until(lambda: loaded)
+    # Loading the EDS also queues a read of the node's TPDOs over SDO, which
+    # empties each mapping and refills it one entry at a time. Until it is
+    # done, TPDO1 can be caught mapping nothing -- so wait for the worker to
+    # get through its queue, which it does in order.
+    settled = []
+    out.background(lambda: None, lambda _result, _error: settled.append(True))
+    wait_until(lambda: settled)
     yield out
     bus.disconnect_bus()
     out.shutdown()
