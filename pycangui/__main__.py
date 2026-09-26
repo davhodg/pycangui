@@ -7,6 +7,7 @@
 # It pulls in nothing but the standard library.
 import importlib  # noqa: I001
 import importlib.util
+import os
 import sys
 
 from pycangui.core import timing
@@ -151,9 +152,55 @@ def set_icon(app) -> None:
     app.setWindowIcon(QIcon(str(resources.path("pycangui.ico"))))
 
 
+#: The libraries Qt's X11 plugin needs that Debian, Ubuntu and Linux Mint can
+#: leave out, each with the package it comes in. Without one, Qt stops with
+#: "could not load the Qt platform plugin xcb" and does not say which.
+XCB_LIBRARIES = (
+    ("libxcb-cursor.so.0", "libxcb-cursor0"),
+    ("libxcb-icccm.so.4", "libxcb-icccm4"),
+    ("libxcb-image.so.0", "libxcb-image0"),
+    ("libxcb-keysyms.so.1", "libxcb-keysyms1"),
+    ("libxcb-render-util.so.0", "libxcb-render-util0"),
+    ("libxkbcommon-x11.so.0", "libxkbcommon-x11-0"),
+)
+
+
+def uses_xcb(environ=None) -> bool:
+    """Whether Qt will draw through X11 here, where XCB_LIBRARIES are needed."""
+    if not sys.platform.startswith("linux"):
+        return False
+    environ = os.environ if environ is None else environ
+    chosen = environ.get("QT_QPA_PLATFORM", "")
+    if chosen:
+        return chosen.startswith("xcb")
+    return environ.get("XDG_SESSION_TYPE") != "wayland"
+
+
+def missing_xcb_packages(load=None) -> list[str]:
+    """The packages to install for the XCB_LIBRARIES that cannot be loaded."""
+    if load is None:
+        import ctypes
+
+        load = ctypes.CDLL
+    missing = []
+    for library, package in XCB_LIBRARIES:
+        try:
+            load(library)
+        except OSError:
+            missing.append(package)
+    return missing
+
+
 def main() -> int:
     if "--selftest" in sys.argv:
         return selftest()
+    if uses_xcb() and (missing := missing_xcb_packages()):
+        sys.stderr.write(
+            "Qt needs libraries this system does not have to draw the window. On Debian,\n"
+            "Ubuntu and Linux Mint:\n\n"
+            f"    sudo apt install {' '.join(missing)}\n"
+        )
+        return 1
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_NAME)  # QSettings uses these two for the registry/ini path

@@ -18,7 +18,7 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
 
 import can.interfaces
 
@@ -128,6 +128,14 @@ DATA = [
     (str(PROJECT / "NOTICE"), "."),
     (str(PROJECT / "THIRD-PARTY-NOTICES.txt"), "."),
     (str(PROJECT / "README.md"), "."),
+    # The packages' own records, which About and the diagnostics report read
+    # to list what pycangui runs on and which version of each is here.
+    # pycangui's names what it requires; recursive follows those, but not
+    # into extras, so the ones this build includes are named as well.
+    *copy_metadata("pycangui", recursive=True),
+    *copy_metadata("asammdf", recursive=True),
+    *copy_metadata("pyserial"),
+    *copy_metadata("pywin32"),
 ]
 
 #: Qt ships these as plain DLLs and plugins collected by PySide6's own

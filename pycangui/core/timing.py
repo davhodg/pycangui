@@ -78,6 +78,18 @@ _imports: dict[str, float] = {}
 _local = threading.local()
 
 
+#: What the standard library's modules are counted under. Together, because
+#: each one is small and "json" or "ctypes" on a line of its own reads as a
+#: package somebody installed; kept, because it is still time spent starting.
+STDLIB = "Python standard library"
+
+
+def _package(name: str) -> str:
+    """The line a module's time goes on: its top-level package, or STDLIB."""
+    top = name.split(".")[0]
+    return STDLIB if top in sys.stdlib_module_names else top
+
+
 def _depth() -> list[float]:
     stack = getattr(_local, "stack", None)
     if stack is None:
@@ -111,7 +123,7 @@ class _TimedImports:
             spec = finder.find_spec(name, path, target)
             if spec is None or spec.loader is None:
                 continue
-            spec.loader = _TimedLoader(spec.loader, name.split(".")[0])
+            spec.loader = _TimedLoader(spec.loader, _package(name))
             return spec
         return None
 

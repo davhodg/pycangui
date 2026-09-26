@@ -43,6 +43,8 @@ echo.
 echo  [1/3] Checking Python...
 python --version
 if errorlevel 1 goto :nopython
+python -c "import sys; sys.exit(sys.version_info < (3, 12))"
+if errorlevel 1 goto :oldpython
 
 rem uv is a much faster drop-in replacement for pip. Used if it happens to be
 rem installed; never required.
@@ -74,6 +76,14 @@ if defined UV (
 )
 if errorlevel 1 goto :fail
 
+rem The entry starts this file rather than .venv's Python, so a start from
+rem the menu still notices libraries added by a later pull.
+echo.
+choice /c yn /n /m " Add pycangui to the Start menu? [Y/N] "
+if errorlevel 2 goto :finished
+".venv\Scripts\python.exe" -m pycangui.core.shortcut
+
+:finished
 echo.
 echo ============================================================
 echo  Setup finished. Starting pycangui...
@@ -133,10 +143,18 @@ echo and tick "Add python.exe to PATH" in the installer.
 pause
 exit /b 1
 
+:oldpython
+echo.
+echo pycangui needs Python 3.12 or newer, and the python on the PATH is older.
+echo Install a newer one from https://www.python.org/downloads/
+echo and tick "Add python.exe to PATH" in the installer.
+pause
+exit /b 1
+
 :fail
 echo.
 echo Setup failed ^(errorlevel %errorlevel%^). The messages above say why;
-echo the usual causes are no internet connection, a proxy that blocks
-echo pypi.org, or a Python older than 3.12.
+echo the usual causes are no internet connection, or a proxy that blocks
+echo pypi.org.
 pause
 exit /b 1

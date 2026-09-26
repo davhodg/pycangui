@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui import help as help_pages
-from pycangui.core import checkout, known_ids, timing
+from pycangui.core import checkout, known_ids, packages, timing
 from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Release, latest_release
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
@@ -342,7 +342,10 @@ class AboutDialog(QDialog):
         details = QPlainTextEdit(environment_report())
         details.setReadOnly(True)
         details.setFont(QFont("Consolas", 9))
-        details.setFixedHeight(150)
+        # Tall enough for the whole report, so nothing has to be scrolled to.
+        lines = details.toPlainText().count("\n") + 1
+        details.setMinimumHeight(details.fontMetrics().lineSpacing() * lines + 16)
+        details.setMinimumWidth(details.fontMetrics().horizontalAdvance("M" * 60))
         link = QLabel(
             f'<p>Apache License 2.0 &middot; <a href="{PROJECT_PAGE}">{PROJECT_PAGE}</a></p>'
         )
@@ -354,16 +357,20 @@ class AboutDialog(QDialog):
             layout.addWidget(widget)
 
 
+def _label_width(names) -> int:
+    return max(len(name) for name in ("Python", "Platform", *names)) + 2
+
+
 def environment_report() -> str:
-    """What a bug report needs: versions of the things that actually differ."""
-    width = 11  # wide enough for the longest label below
+    """What a bug report needs: pycangui, Python, and every package it runs on."""
+    direct = packages.declared()
+    width = _label_width(r.name for r in direct)
     lines = [f"{APP_NAME} {__version__}", f"{'Python':{width}}{sys.version.split()[0]}"]
-    for label, module in (("PySide6", "PySide6"), ("python-can", "can"), ("canopen", "canopen")):
-        try:
-            imported = __import__(module)
-            lines.append(f"{label:{width}}{getattr(imported, '__version__', 'unknown')}")
-        except Exception:  # a missing optional package is not worth a traceback here
-            lines.append(f"{label:{width}}not installed")
+    for requirement in direct:
+        found = packages.version(requirement.name)
+        if found is None:
+            found = "not installed" + (" (optional)" if requirement.extra else "")
+        lines.append(f"{requirement.name:{width}}{found}")
     lines.append(f"{'Platform':{width}}{platform.platform()}")
     # Only a checkout has one, and only a checkout needs one: between two
     # releases every build calls itself the same version, which is no help
@@ -381,6 +388,15 @@ def diagnostics(window) -> str:
     look identical from a description; this separates them.
     """
     lines = [environment_report(), ""]
+
+    # What the packages above brought with them. A fault is as likely to be
+    # in one of these -- a pyserial too old for an adapter -- and nobody
+    # would think to name them.
+    if pulled := packages.pulled_in(packages.declared()):
+        width = _label_width(pulled)
+        lines.append("Installed with them")
+        lines += [f"  {name:{width}}{packages.version(name)}" for name in pulled]
+        lines.append("")
 
     lines.append("Channels")
     for name in window.channels.names():

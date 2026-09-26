@@ -61,11 +61,22 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 [Files]
 Source: "..\dist\pycangui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; An upgrade would otherwise leave the last version's shortcuts beside the
+; new ones, named for a version that is no longer installed. The desktop
+; pattern needs a digit-dot after the name, so a shortcut of somebody's own
+; that happens to start with "pycangui " is left alone.
+[InstallDelete]
+Type: files; Name: "{group}\{#AppName} *.lnk"
+Type: files; Name: "{autodesktop}\{#AppName} ?.*.lnk"
+
+; Named with the version: an installed pycangui stays the version it is
+; until the next installer, unlike a source folder's entry, which starts
+; whatever was last pulled and is called plain pycangui.
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
+Name: "{group}\{#AppName} {#AppVersion}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\Third party notices"; Filename: "{app}\THIRD-PARTY-NOTICES.txt"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName} {#AppVersion}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName}"; Flags: nowait postinstall skipifsilent

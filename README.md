@@ -46,6 +46,22 @@ There are three options, and which one you want depends on whether you have Pyth
 
    The first run sets itself up: it creates a *virtual environment* -- a folder called `.venv` holding its own copy of Python and only the libraries pycangui needs, so nothing else on the machine is touched -- and downloads a couple of hundred megabytes into it. That takes a few minutes once; every later start is immediate, and deleting `.venv` undoes the whole thing. If `uv` is installed it is used instead of pip, which makes rebuilding that folder a matter of seconds.
 
+   **On Linux** (Debian, Ubuntu, Linux Mint and the like), run it from a terminal, so its messages can be read:
+
+   ```
+   ./pycangui.sh
+   ```
+
+   Two packages these systems often leave out are needed: the one that lets Python create `.venv`, which the launcher names if it is missing, and a library Qt uses to draw the window:
+
+   ```
+   sudo apt install python3-venv libxcb-cursor0
+   ```
+
+   Double-clicking `pycangui.sh` in a file manager works too: choose *Run in Terminal* when it asks, for the same reason.
+
+   At the end of the first run it offers to add pycangui to the Start menu, or to the applications menu on Linux, and *Tools > Add to Start menu* does the same later. The entry starts the launcher, so a start from the menu after a pull still picks up new libraries.
+
    The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does.
 
 3. **With pip** -- if you already have a Python environment and would rather pycangui went in it, install the wheel and ignore the launcher entirely:

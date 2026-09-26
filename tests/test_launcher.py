@@ -380,7 +380,17 @@ def test_imports_are_attributed_to_the_package_they_are_in(monkeypatch):
         sys.meta_path[:] = [f for f in sys.meta_path if type(f).__name__ != "_TimedImports"]
 
     assert lines and "longest to import" in lines[0]
-    assert any("difflib" in line or "wave" in line or "colorsys" in line for line in lines)
+    assert any(fresh.STDLIB in line for line in lines)
+    assert not any(line.endswith(("difflib", "wave", "colorsys")) for line in lines)
+
+
+def test_the_standard_library_is_one_line_and_a_package_is_its_own():
+    """json or ctypes on a line of its own reads as something installed."""
+    from pycangui.core import timing
+
+    assert timing._package("json.decoder") == timing.STDLIB
+    assert timing._package("_ssl") == timing.STDLIB
+    assert timing._package("canopen.sdo.client") == "canopen"
 
 
 def test_the_report_says_the_notice_line_is_a_person_waiting(monkeypatch):
@@ -518,4 +528,39 @@ def test_the_diagnostics_report_says_how_long_starting_took(app, tmp_path, monke
     assert "startup timing" in report.lower()
     assert "took longest to import" in report, "and which packages, every time"
     assert "total, not counting the wait" in report
+    assert "Installed with them" in report, "what the packages brought, as well as the packages"
     window.close()
+
+
+# --- Qt's X11 libraries -----------------------------------------------------------------
+def test_a_missing_x11_library_is_named_with_its_package():
+    from pycangui import __main__ as entry
+
+    def load(library):
+        if library == "libxcb-cursor.so.0":
+            raise OSError(library)
+
+    assert entry.missing_xcb_packages(load) == ["libxcb-cursor0"]
+    assert entry.missing_xcb_packages(lambda library: None) == []
+
+
+def test_the_x11_libraries_are_only_asked_for_where_qt_uses_x11(monkeypatch):
+    from pycangui import __main__ as entry
+
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert entry.uses_xcb({"XDG_SESSION_TYPE": "x11"})
+    assert not entry.uses_xcb({"XDG_SESSION_TYPE": "wayland"})
+    assert entry.uses_xcb({"XDG_SESSION_TYPE": "wayland", "QT_QPA_PLATFORM": "xcb"})
+    assert not entry.uses_xcb({"QT_QPA_PLATFORM": "offscreen"})
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert not entry.uses_xcb({})
+
+
+def test_starting_without_them_stops_before_qt_with_the_install_line(monkeypatch, capsys):
+    from pycangui import __main__ as entry
+
+    monkeypatch.setattr(entry, "uses_xcb", lambda: True)
+    monkeypatch.setattr(entry, "missing_xcb_packages", lambda: ["libxcb-cursor0"])
+    monkeypatch.setattr(entry, "QApplication", None)  # reaching Qt would fail the test
+    assert entry.main() == 1
+    assert "sudo apt install libxcb-cursor0" in capsys.readouterr().err

@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
-from pycangui.core import timing, workspace_files, workspaces
+from pycangui.core import shortcut, timing, workspace_files, workspaces
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
@@ -500,6 +500,19 @@ class MainWindow(QMainWindow):
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
         self.theme_menu = theme.menu(self)
         tools_menu.addMenu(self.theme_menu)
+        # Only for a source folder: the installer makes its own entry.
+        self.shortcut_action = None
+        if shortcut.launcher() is not None:
+            tools_menu.addSeparator()
+            self.shortcut_action = tools_menu.addAction(
+                f"Add to {shortcut.menu_name()}", self._add_shortcut
+            )
+            self.shortcut_action.setToolTip(
+                f"Start pycangui from the {shortcut.menu_name()}. The entry starts the\n"
+                "launcher in this folder, so after a pull it still picks up new\n"
+                "libraries, as double-clicking the launcher does. Replaces one\n"
+                "made before."
+            )
 
         #: A menu of its own rather than a corner of Tools: a plugin adds
         #: screens and commands, and Tools is where the tool's own settings
@@ -1576,6 +1589,15 @@ class MainWindow(QMainWindow):
             if how_many
             else "No folders were being remembered."
         )
+
+    def _add_shortcut(self) -> None:
+        """Tools > Add to Start menu: an entry that starts this folder's launcher."""
+        try:
+            path = shortcut.create()
+        except OSError as exc:
+            self.events.error(f"Could not add pycangui to the {shortcut.menu_name()}: {exc}")
+            return
+        self.events.good(f"Added pycangui to the {shortcut.menu_name()}: {path}")
 
     def _ask_again(self) -> None:
         """Put back every question somebody has told pycangui to stop asking.
