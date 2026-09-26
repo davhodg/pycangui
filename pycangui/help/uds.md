@@ -106,6 +106,9 @@ name a file on the ECU's own filesystem instead of an address.
 A hex or S-record file carries its own addresses, so the address box fills itself
 in and stays locked: the file is right, and a typed number could only be wrong.
 A raw binary carries none, so for one of those the address has to be supplied.
+In Intel HEX, a line that does not start with `:` -- a comment or a title some
+tools add -- cannot be a record, so it is passed over, and the Transfer log
+says how many were.
 Gaps are left as gaps -- a file with a hole in it gets a RequestDownload each side
 of it rather than being padded, because padding would write bytes the file never
 contained over whatever the ECU had there. A bootloader that wants one

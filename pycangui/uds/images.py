@@ -20,6 +20,7 @@ contiguous file.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -70,6 +71,9 @@ class Image:
     path: str
     format: str  # "Intel HEX", "Motorola S-record", "raw binary", ...
     segments: tuple[Segment, ...]
+    #: Lines of an Intel HEX file that were not records -- comments, a title
+    #: -- and so were passed over. Said in the summary, so it is never silent.
+    ignored: int = 0
 
     @property
     def size(self) -> int:
@@ -87,7 +91,11 @@ class Image:
         if len(self.segments) > 4:
             where += f", and {len(self.segments) - 4} more"
         segments = "1 segment" if len(self.segments) == 1 else f"{len(self.segments)} segments"
-        return f"{Path(self.path).name}: {self.format}, {self.size} bytes, {segments} [{where}]"
+        line = f"{Path(self.path).name}: {self.format}, {self.size} bytes, {segments} [{where}]"
+        if self.ignored:
+            lines = "1 line" if self.ignored == 1 else f"{self.ignored} lines"
+            line += f"; {lines} not starting with ':' ignored"
+        return line
 
 
 def looks_binary(path: str) -> bool:
@@ -99,6 +107,11 @@ def looks_binary(path: str) -> bool:
     return Path(path).suffix.lower() in BINARY_SUFFIXES
 
 
+#: An Intel HEX record: a colon, then hex digits -- at least a length, an
+#: address, a type and a checksum.
+_IHEX_RECORD = re.compile(rb"^:[0-9A-Fa-f]{10,}$")
+
+
 def _sniff(raw: bytes) -> str | None:
     for line in raw.splitlines():
         text = line.strip()
@@ -108,8 +121,28 @@ def _sniff(raw: bytes) -> str | None:
             return "Intel HEX"
         if text[:1] in (b"S", b"s") and text[1:2].isdigit():
             return "Motorola S-record"
+        break
+    # Intel HEX that opens with a comment or a title. Every record starts with
+    # a colon, so anything else in a text file of records is not data.
+    try:
+        lines = raw.decode("ascii").splitlines()
+    except UnicodeDecodeError:
         return None
+    if any(_IHEX_RECORD.match(line.strip().encode()) for line in lines):
+        return "Intel HEX"
     return None
+
+
+def _ihex_records(text: str) -> tuple[str, int]:
+    """The records of an Intel HEX file, and how many other lines there were."""
+    records, ignored = [], 0
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(":"):
+            records.append(stripped)
+        elif stripped:
+            ignored += 1
+    return "\n".join(records) + "\n", ignored
 
 
 def read(path: str, address: int | None = None) -> Image:
@@ -130,9 +163,15 @@ def read(path: str, address: int | None = None) -> Image:
 
     binfile = bincopy.BinFile()
     fmt = _sniff(raw)
+    ignored = 0
     if fmt is not None:
         try:
-            binfile.add(raw.decode("ascii", "strict"))
+            text = raw.decode("ascii", "strict")
+            if fmt == "Intel HEX":
+                text, ignored = _ihex_records(text)
+                binfile.add_ihex(text)
+            else:
+                binfile.add(text)
         except (UnicodeDecodeError, bincopy.Error, ValueError) as exc:
             raise ImageError(f"not readable as {fmt}: {exc}") from exc
     else:
@@ -145,7 +184,7 @@ def read(path: str, address: int | None = None) -> Image:
         binfile.add_binary(raw, address=address)
 
     segments = tuple(Segment(s.address, bytes(s.data)) for s in binfile.segments)
-    return Image(path=path, format=fmt, segments=segments)
+    return Image(path=path, format=fmt, segments=segments, ignored=ignored)
 
 
 def _srec_width(suffix: str, address: int, size: int) -> int:

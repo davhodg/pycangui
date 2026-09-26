@@ -145,6 +145,33 @@ def test_the_format_is_read_from_the_contents_not_the_name(images_dir):
     assert images.read(path).format == "Motorola S-record"
 
 
+def test_intel_hex_lines_that_are_not_records_are_passed_over(images_dir):
+    """Tools put comments and titles in; only a line starting with ':' is data."""
+    path = images_dir("commented.hex", (0x8000, bytes(range(32))))
+    records = open(path).read()
+    with open(path, "w") as out:
+        out.write("; built by some tool\n; version 1.2\n\n" + records + "; the end\n")
+
+    image = images.read(path)
+
+    assert image.format == "Intel HEX", "not taken for raw binary by its first line"
+    assert (image.address, image.segments[0].data) == (0x8000, bytes(range(32)))
+    assert image.ignored == 3
+    assert "3 lines not starting with ':' ignored" in image.summary()
+
+
+def test_a_clean_hex_file_says_nothing_about_ignoring(images_dir):
+    image = images.read(images_dir("a.hex", (0x8000, b"\x01\x02")))
+    assert image.ignored == 0 and "ignored" not in image.summary()
+
+
+def test_a_text_file_with_no_records_is_not_taken_for_intel_hex(tmp_path):
+    path = tmp_path / "notes.txt"
+    path.write_text("; nothing here\n:not a record\n")
+    with pytest.raises(images.ImageError, match="start address"):
+        images.read(str(path))
+
+
 def test_a_raw_binary_has_to_be_told_where_it_goes(images_dir):
     path = images_dir("a.bin", (0, b"\x01\x02\x03"))
     with pytest.raises(images.ImageError, match="start address"):
