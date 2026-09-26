@@ -258,6 +258,24 @@ def test_the_launcher_checks_before_every_start(name):
     assert ".[dev]" not in text, "a user's launcher has no business installing the test tools"
 
 
+def test_the_shell_launcher_is_executable_in_git():
+    """Reported: ./pycangui.sh on a fresh Linux clone said permission denied.
+    Windows keeps no executable bit, so it has to be recorded in git itself."""
+    import shutil
+    import subprocess
+
+    if shutil.which("git") is None or not (PROJECT / ".git").exists():
+        pytest.skip("not a git checkout")
+    staged = subprocess.run(
+        ["git", "ls-files", "-s", "pycangui.sh"],
+        cwd=PROJECT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert staged.startswith("100755"), staged
+
+
 # --- the check that runs before every start ------------------------------------------------
 @pytest.mark.parametrize("name", ("pycangui.cmd", "pycangui.sh"))
 def test_the_dependency_check_is_not_repeated_for_an_unchanged_pyproject(name):

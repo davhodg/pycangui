@@ -39,6 +39,11 @@ BANNER
         echo "python3 was not found. Install Python 3.12 or newer."
         exit 1
     }
+    python3 -c "import sys; sys.exit(sys.version_info < (3, 12))" || {
+        echo
+        echo "pycangui needs Python 3.12 or newer, and this python3 is older."
+        exit 1
+    }
 
     echo
     # uv is a much faster drop-in replacement for pip. Used if it happens to
@@ -55,8 +60,22 @@ BANNER
     if [ -n "$UV" ]; then
         uv venv .venv || exit 1
     else
-        python3 -m venv .venv || exit 1
-        .venv/bin/python -m pip install --upgrade pip || exit 1
+        # Debian, Ubuntu and Linux Mint ship the venv module without what it
+        # needs to install pip, as a separate package. Asked before creating
+        # anything: a failed attempt leaves a .venv with a python in it,
+        # which the next run would take as finished.
+        python3 -c "import ensurepip, venv" 2>/dev/null || {
+            echo
+            echo "Python's venv module is not complete here. On Debian, Ubuntu and"
+            echo "Linux Mint it is a separate package:"
+            echo
+            echo "    sudo apt install python3-venv"
+            echo
+            echo "then run ./pycangui.sh again."
+            exit 1
+        }
+        python3 -m venv .venv || { rm -rf .venv; exit 1; }
+        .venv/bin/python -m pip install --upgrade pip || { rm -rf .venv; exit 1; }
     fi
 
     echo
