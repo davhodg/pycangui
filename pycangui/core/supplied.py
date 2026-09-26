@@ -116,6 +116,11 @@ class Supplied:
                 dest.write_bytes(data)
                 copied[name] = shipped
                 outcome.updated.append(name)
+            elif copied.get(name) == shipped:
+                # Edited, and what ships is still what was copied: nothing
+                # newer exists. Saying one did was reported -- it came the
+                # first start after somebody edited an up-to-date hook.
+                continue
             elif told.get(name) != shipped:
                 told[name] = shipped
                 outcome.kept.append(name)
@@ -158,6 +163,15 @@ class Supplied:
             if (dest := self.folder / name).exists()
             and fingerprint(dest.read_bytes()) != fingerprint(self.sources[name].read_bytes())
         ]
+
+    def newer_ships(self, name: str) -> bool | None:
+        """Whether what ships now is newer than the version this copy was made
+        from: True, False, or None when there is no record to say -- a
+        workspace from before the record, or a file it never copied."""
+        copied = self._record()["copied"].get(name)
+        if copied is None:
+            return None
+        return copied != fingerprint(self.sources[name].read_bytes())
 
     def restore(self, name: str) -> Path:
         """Put the supplied version back, keeping the old one. Returns where

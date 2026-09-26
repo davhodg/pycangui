@@ -607,6 +607,34 @@ def test_the_restore_dialog_greys_out_what_nobody_has_edited(app, tmp_path, monk
     window.close()
 
 
+def test_the_restore_dialog_says_whether_restoring_brings_a_newer_version(
+    app, tmp_path, monkeypatch
+):
+    """Taking a newer version over your edits and just undoing them are
+    different decisions, so the list says which one each file would be."""
+    from pycangui.core import workspaces
+    from pycangui.core.supplied import fingerprint
+    from pycangui.ui.restore_supplied import EDITED, RestoreSupplied
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    hooks = workspaces.hooks_dir()
+    (hooks / "canopen.py").write_text("def node_name(identity, *, ctx):\n    x = 1\n")
+    (hooks / "uds.py").write_text("# mine\n")
+    # uds.py as if copied from an older pycangui and edited since.
+    record = window.ctx.settings.get("supplied.hooks")
+    record["copied"]["uds.py"] = fingerprint(b"# an older uds.py\n")
+    window.ctx.settings.set("supplied.hooks", record)
+    window.hooks.reload()
+
+    groups = {"hooks": window.hooks.supplied, "nodes": window.nodes.supplied}
+    dialog = RestoreSupplied(window, groups)
+    assert EDITED[False] in dialog._boxes[("hooks", "canopen.py")].text()
+    assert EDITED[True] in dialog._boxes[("hooks", "uds.py")].text()
+    window.close()
+
+
 # --- timing statistics in the latest-per-id view ----------------------------------
 def stats(m, row=0):
     """The five statistics columns, by name."""

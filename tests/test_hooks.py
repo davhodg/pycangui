@@ -275,6 +275,8 @@ def test_an_untouched_hook_file_keeps_up_and_an_edited_one_is_left(home, log):
     (folder / "uds.py").write_text("# mine\n", encoding="utf-8")
     record = ctx.settings.get("supplied.hooks")
     record["copied"]["canopen.py"] = fingerprint(older)
+    # Copied from an older pycangui and edited since, so a newer one does ship.
+    record["copied"]["uds.py"] = fingerprint(b"# an older uds.py\n")
     ctx.settings.set("supplied.hooks", record)
     log.clear()
 

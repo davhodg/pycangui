@@ -35,6 +35,14 @@ EXPLANATION = (
     "copy back out of."
 )
 NOTHING_EDITED = "Every file is already the one pycangui ships."
+#: What restoring an edited file would give, by whether a newer version ships:
+#: new work to take, or only your own changes undone. None is a workspace
+#: from before pycangui recorded what it copied, where it cannot tell.
+EDITED = {
+    True: "edited; restoring gives a newer, unedited version",
+    False: "edited; restoring gives the original, unedited version",
+    None: "edited",
+}
 TITLES = {"hooks": "Hooks", "nodes": "Simulated nodes"}
 
 
@@ -65,6 +73,8 @@ class RestoreSupplied(QDialog):
                 box.setEnabled(name in edited)
                 if name not in edited:
                     box.setText(f"{name}  (unchanged)")
+                else:
+                    box.setText(f"{name}  ({EDITED[supplied.newer_ships(name)]})")
                 layout.addWidget(box)
                 self._boxes[(label, name)] = box
         if not anything:

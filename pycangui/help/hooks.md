@@ -43,6 +43,13 @@ it puts pycangui's own version of the hook and node files you tick back, and
 renames yours to `canopen.py.bak` rather than deleting it, so an afternoon's
 work is still there to copy out of. Files that already match what pycangui
 ships are shown greyed, since there is nothing to restore and nothing to lose.
+An edited file says what restoring it would give: a newer, unedited version
+than the one you started from, or the original, unedited version, which only
+undoes your edits.
+
+A file you have not edited is brought up to date by itself when pycangui ships
+a newer one. One you have edited is left alone, and the [Event Log](event-log.md)
+says once, when a newer version first ships, that it is there to take.
 
 ## Keeping up with a new pycangui
 

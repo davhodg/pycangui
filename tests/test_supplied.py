@@ -78,6 +78,41 @@ def test_an_edited_copy_is_left_and_mentioned_once_per_version(folder, shipped, 
     assert len(run(folder, shipped, settings)[1]) == 1, "but again for the next version"
 
 
+def test_editing_an_up_to_date_copy_says_nothing(folder, shipped, settings):
+    """Reported: editing a hook that was already current brought "this version
+    of pycangui ships a newer one" on the next start -- when nothing newer
+    shipped at all."""
+    run(folder, shipped, settings)
+    (folder / "thing.py").write_text("VERSION = 1  # mine\n", encoding="utf-8")
+
+    outcome, lines = run(folder, shipped, settings)
+    assert (outcome.updated, outcome.kept, lines) == ([], [], [])
+    assert (folder / "thing.py").read_text() == "VERSION = 1  # mine\n", "and it is kept"
+
+    shipped.write_text("VERSION = 2\n", encoding="utf-8")
+    outcome, lines = run(folder, shipped, settings)
+    assert outcome.kept == ["thing.py"] and len(lines) == 1, "once something newer does ship"
+
+
+def test_it_knows_whether_a_newer_version_ships(folder, shipped, settings):
+    """What the Restore dialog needs to say whether restoring brings new work
+    or only undoes your own."""
+    run(folder, shipped, settings)
+    files = supplied(folder, shipped, settings)
+    assert files.newer_ships("thing.py") is False
+
+    (folder / "thing.py").write_text("VERSION = 1  # mine\n", encoding="utf-8")
+    assert files.newer_ships("thing.py") is False, "editing it ships nothing new"
+
+    shipped.write_text("VERSION = 2\n", encoding="utf-8")
+    assert files.newer_ships("thing.py") is True
+
+
+def test_with_no_record_it_cannot_say(folder, shipped, settings):
+    (folder / "thing.py").write_text("VERSION = 0\n", encoding="utf-8")
+    assert supplied(folder, shipped, settings).newer_ships("thing.py") is None
+
+
 def test_an_edit_that_matches_what_ships_is_simply_current(folder, shipped, settings):
     run(folder, shipped, settings)
     (folder / "thing.py").write_text("VERSION = 2\n", encoding="utf-8")
