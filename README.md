@@ -96,9 +96,17 @@ Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **
 
 See [CONTRIBUTING.md](CONTRIBUTING.md): the policy for changes, setting up to work on pycangui, running the tests, and building the Windows installer.
 
+## Safety notice
+
+pycangui talks to real equipment. It is intended only for people trained and experienced in working with CAN networks and the equipment connected to them.
+
+Joining a bus at the wrong bitrate makes a controller signal an error on every frame it sees, and those error frames go out on the wire -- they can impact the nodes that are already on the bus. Transmitting, replaying a log, writing parameters, enabling a drive and downloading firmware all change what equipment does, and not all of them can be undone.
+
+Know what is on the bus before you join it, and what a device will do before you write to it. The confirmations pycangui asks for along the way are a reminder, not a safeguard: like any software it can have faults, so do not rely on it to keep anything off the bus. Where a mistake could hurt someone or damage equipment, keep a way to stop that equipment within reach.
+
 ## Licence
 
-pycangui is free software, licensed under the Apache License 2.0; see `LICENSE` and `NOTICE`.
+pycangui is free software, provided under the Apache License 2.0, without warranty of any kind; see `LICENSE` and `NOTICE`.
 
 The hook and simulated-node templates in `pycangui/hooks` and `pycangui/nodes` are the exception. They are copied into your workspace to be edited, and are released under MIT-0 (`LICENSES/MIT-0.txt`) with no copyright claimed, so what you write in them carries no conditions.
 
