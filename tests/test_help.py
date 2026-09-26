@@ -460,3 +460,23 @@ def test_a_link_out_of_the_manual_goes_to_the_browser(app, window, monkeypatch):
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
     ManualDialog(window)._follow(QUrl("https://example.invalid/thing"))
     assert opened == ["https://example.invalid/thing"]
+
+
+def test_diagnostics_are_information_whatever_came_before(app, window):
+    """Written into the pane directly, the report took the colour of the line
+    above it: red and bold after an error."""
+    from PySide6.QtGui import QTextCursor
+
+    from pycangui.core.events import INFORMATION
+
+    posted = []
+    window.events.posted.connect(lambda text, level: posted.append((level, text)))
+    window.events.error("something went wrong")
+
+    window.help_menu._show_diagnostics()
+
+    level, text = posted[-1]
+    assert level == INFORMATION and text.startswith("Diagnostics")
+    cursor = QTextCursor(window.log.document())
+    cursor.movePosition(QTextCursor.End)
+    assert not cursor.charFormat().font().bold(), "the last line is not the error's format"

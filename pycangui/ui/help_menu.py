@@ -520,7 +520,10 @@ class HelpMenu(QObject):
         """Report the state of the window, and put it on the clipboard."""
         report = diagnostics(self.window)
         QGuiApplication.clipboard().setText(report)
-        self.window.log.appendPlainText("Diagnostics (copied to the clipboard):\n" + report + "\n")
+        # Through the Event Log like every other line, as information. Written
+        # into the pane directly it had no level of its own, and took the
+        # colour of whatever came before it -- red and bold after an error.
+        self.window.events.information("Diagnostics (copied to the clipboard):\n" + report)
 
     def _show_known_ids(self) -> None:
         window = self.window
