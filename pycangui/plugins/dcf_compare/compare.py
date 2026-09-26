@@ -252,13 +252,12 @@ def read_file(path: str | Path, node_id: int = 0) -> Reading:
     one wins, because the file knows better than the caller which node it was
     taken from.
     """
-    import canopen
-
+    from pycangui.canopen import load_od
     from pycangui.canopen.manager import _all_variables
 
     path = Path(path)
     stored = _node_id_in(path)
-    od = canopen.import_od(str(path), stored if stored is not None else node_id)
+    od = load_od(path, stored if stored is not None else node_id)
     values: dict[tuple[int, int], object] = {}
     names: dict[tuple[int, int], str] = {}
     access: dict[tuple[int, int], str] = {}

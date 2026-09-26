@@ -28,7 +28,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from pycangui.canopen import NodeIdentity, eds_extras, eds_identity
+from pycangui.canopen import NodeIdentity, eds_extras, eds_identity, load_od
 from pycangui.canopen.display import Display, from_variable, with_overrides
 
 
@@ -163,10 +163,8 @@ class FileSource(Source):
         return NodeIdentity(0, vendor_id=vendor, product_code=product, revision=revision)
 
     def reload(self) -> None:
-        import canopen
-
         try:
-            self._od = canopen.import_od(str(self.path))
+            self._od = load_od(self.path)
         except Exception:
             self._od = None  # not a file this reader understands
         self._values.clear()

@@ -34,7 +34,9 @@ from pycangui.canopen import (
     PdoEntry,
     abort_reason,
     eds_extras,
+    eds_text,
     faults,
+    load_od,
 )
 from pycangui.canopen.dcf import values_from, write_dcf
 from pycangui.canopen.display import Display, from_variable, with_overrides
@@ -794,7 +796,7 @@ class CanopenManager(QObject):
             # The extras are read from the same file in the same breath: what
             # the parser kept and what it threw away describe one object each,
             # and letting them arrive separately is how they get out of step.
-            return canopen.RemoteNode(node_id, path), eds_extras(path)
+            return canopen.RemoteNode(node_id, load_od(path, node_id)), eds_extras(path)
 
         def done(loaded: tuple | None, error: str | None) -> None:
             if error or self.network is None:
@@ -1235,7 +1237,7 @@ class CanopenManager(QObject):
             text = None
             if source:
                 try:
-                    text = Path(source).read_text(encoding="utf-8-sig", errors="replace")
+                    text = eds_text(source)
                 except OSError:
                     text = None
             if text is not None:
@@ -1309,7 +1311,7 @@ class CanopenManager(QObject):
         node = self.node(node_id)
 
         def job() -> tuple[int, int, list[tuple[int, int, str]]]:
-            source = canopen.import_od(path, node_id)
+            source = load_od(path, node_id)
             wanted = [
                 var
                 for var in _all_variables(source)

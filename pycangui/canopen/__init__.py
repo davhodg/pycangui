@@ -6,6 +6,7 @@ hooks see live here so they are importable from user code."""
 from __future__ import annotations
 
 import configparser
+import io
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,11 +62,39 @@ def explain_aborts(text: str) -> str:
     return _CODE.sub(name, text)
 
 
+def eds_text(path) -> str:
+    """An EDS or DCF as text: UTF-8 when it is, and Windows-1252 when it is not.
+
+    CiA 306 says ASCII and not every tool keeps to it -- a degree sign or an
+    en dash in a description, written in the Windows code page. The canopen
+    package opens a file in the system's own encoding, which reads those on
+    Windows and fails on them elsewhere, and turns UTF-8 into nonsense on
+    Windows. Deciding here reads either on any system. OSError if unreadable.
+    """
+    raw = Path(path).read_bytes()
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace")
+
+
+def load_od(path, node_id: int | None = None):
+    """The canopen package's object dictionary for a file, read by eds_text."""
+    import canopen
+
+    if Path(path).suffix.lower() not in (".eds", ".dcf"):
+        return canopen.import_od(str(path), node_id)
+    # Universal newlines, as opening the file would have given.
+    stream = io.StringIO(eds_text(path), newline=None)
+    stream.name = str(path)  # the package tells an EDS from other formats by the name
+    return canopen.import_od(stream, node_id)
+
+
 def eds_identity(path: Path) -> tuple[int | None, int | None, int | None]:
     """(VendorNumber, ProductNumber, RevisionNumber) from an EDS [DeviceInfo] section."""
     cp = configparser.ConfigParser(interpolation=None, strict=False)
     try:
-        cp.read(path, encoding="utf-8-sig")
+        cp.read_string(eds_text(path))
     except (configparser.Error, OSError):
         return (None, None, None)
     if not cp.has_section("DeviceInfo"):
@@ -133,7 +162,7 @@ def eds_extras(path: Path | str) -> dict[tuple[int, int], dict[str, str]]:
     and an object with no sub-index is sub 0.
     """
     try:
-        text = Path(path).read_text(encoding="utf-8-sig", errors="replace")
+        text = eds_text(path)
     except OSError:
         return {}
 

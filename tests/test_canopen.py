@@ -8,7 +8,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 
 from pycangui import resources
-from pycangui.canopen import NodeIdentity, find_eds
+from pycangui.canopen import NodeIdentity, eds_extras, find_eds, load_od
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
 
@@ -79,6 +79,36 @@ def test_find_eds_matches_device_info(tmp_path):
     assert find_eds(NodeIdentity(5), [resources.path("")]) is None
     (tmp_path / "junk.eds").write_text("not an eds")
     assert find_eds(ident, [tmp_path]) is None
+
+
+def test_an_eds_that_is_not_utf8_is_still_matched(tmp_path):
+    """Vendor tools often write Windows-1252; one such file stopped the search."""
+    ident = NodeIdentity(5, vendor_id=0x42, product_code=0x1234)
+    (tmp_path / "a_other.eds").write_bytes(
+        b"[FileInfo]\nDescription=Motor at 40\xb0C\n[DeviceInfo]\nVendorNumber=0x7\n"
+    )
+    (tmp_path / "b_drive.eds").write_bytes(
+        b"[FileInfo]\nDescription=Range 0-5\xb5A\n"
+        b"[DeviceInfo]\nVendorNumber=0x42\nProductNumber=0x1234\n"
+    )
+    assert find_eds(ident, [tmp_path]).name == "b_drive.eds"
+
+
+def test_an_eds_in_the_windows_code_page_loads_with_its_characters(tmp_path):
+    """0x96 is an en dash in Windows-1252, and no UTF-8 at all."""
+    demo = resources.path("demo.eds").read_bytes()
+    path = tmp_path / "drive.eds"
+    path.write_bytes(demo.replace(b"=Error register", b"=Error \x96 register"))
+
+    assert load_od(path, 5)[0x1001].name == "Error \u2013 register"
+    assert eds_extras(path) is not None
+
+
+def test_a_utf8_eds_keeps_its_characters_too(tmp_path):
+    demo = resources.path("demo.eds").read_bytes()
+    path = tmp_path / "drive.eds"
+    path.write_bytes(demo.replace(b"=Error register", "=Error \u00b0C".encode()))
+    assert load_od(path, 5)[0x1001].name == "Error \u00b0C"
 
 
 # --- what a refused DCF write is reported as --------------------------------------
