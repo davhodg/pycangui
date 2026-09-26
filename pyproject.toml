@@ -8,7 +8,9 @@ name = "pycangui"
 # importing the package. The installer takes it from there too.
 dynamic = ["version"]
 description = "Graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP and CCP, Python scripting"
-readme = "README.md"
+# The page shown on PyPI: shorter than the README, which is written for
+# GitHub, and with every link absolute, since PyPI has no repository behind it.
+readme = "PYPI.md"
 # Two licences, by file. pycangui is Apache-2.0; the hook and simulated-node
 # templates copied into a workspace are MIT-0, so the file somebody fills with
 # their own seed-key algorithm carries no conditions. Each file says which in

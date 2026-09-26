@@ -120,7 +120,33 @@ backend -- it runs `pycangui.exe --selftest` to find out rather than guessing fr
 
 ## Versions and releases
 
-The version is written once, as `__version__` in `pycangui/__init__.py`. A release is that
-version bumped in a commit, then a `v` tag of the same number pushed. A tag's installer is named
+The version is written once, as `__version__` in `pycangui/__init__.py`. A tag's installer is named
 after the tag, and the build stops if the tag and `__version__` disagree. Any other build is named
 `<version>-dev-<commit>`, so an installer that is not a release says so.
+
+The same tag publishes the package to [PyPI](https://pypi.org/project/pycangui/), through
+trusted publishing -- no API token is stored anywhere. Running the workflow by hand from the
+Actions tab publishes to [TestPyPI](https://test.pypi.org/project/pycangui/) instead, as
+`<version>.dev<run number>`, to check the page and the install before a release:
+
+```
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ pycangui
+```
+
+The page on PyPI is `PYPI.md`, not the README. A version can never be uploaded twice, to either
+index.
+
+Publishing waits for everything: the tests on Windows, Linux and macOS, and the installer build.
+A reviewer can be required on the `pypi` environment (repository *Settings > Environments*), so
+that a release also waits for somebody to approve it.
+
+**Making a release:**
+
+1. Bump `__version__` in `pycangui/__init__.py`, commit and push.
+2. Run the CI workflow by hand from the Actions tab. That is every check a release gets -- all
+   the tests, macOS included, the installer build -- plus an upload to TestPyPI.
+3. Look at the TestPyPI page, and install from it into a clean environment.
+4. Tag the same commit, `git tag v<version>`, and push the tag. The same checks run again, then
+   the installer goes to the GitHub release and the package to PyPI.
+
+A tag whose run fails publishes nothing: delete it, fix, and tag again.

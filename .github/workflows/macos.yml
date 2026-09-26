@@ -1,17 +1,20 @@
 name: macOS
 
-# Runs for every release tag, beside the Windows installer, and on demand:
-# Actions tab > macOS > Run workflow, or
+# Called by ci.yml for every release tag and every run by hand, where
+# publishing waits for it: a release that fails on a Mac is not published.
+# Ordinary pushes do not run it, so they do not wait for two Macs. On its own,
+# on demand: Actions tab > macOS > Run workflow, or
 #
 #   gh workflow run macos.yml
 #
-# Separate from ci.yml, so a failure here reports rather than blocks a release,
-# and ordinary pushes do not wait for two Macs. The steps mirror the test job
-# in ci.yml, less the lint (the same on every platform) and the Linux packages
-# Qt needs there.
+# The steps mirror the test job in ci.yml, less the lint (the same on every
+# platform) and the Linux packages Qt needs there.
 on:
-  push:
-    tags: ["v*"]
+  workflow_call:
+    inputs:
+      python:
+        type: string
+        default: "3.14"
   workflow_dispatch:
     inputs:
       python:

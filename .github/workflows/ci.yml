@@ -22,7 +22,8 @@ jobs:
   # actually bite. The oldest supported Python runs on Linux: bugs that appear
   # only on the floor are real -- 3.12 and 3.13 evaluate annotations eagerly,
   # which broke the hook stubs while 3.14 hid it -- but they are rarely
-  # platform specific. macOS has its own workflow, run on demand: macos.yml.
+  # platform specific. macOS runs from macos.yml, for releases and runs by hand
+  # (the macos job below).
   test:
     name: Test on ${{ matrix.os }}, Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -70,6 +71,13 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: python -m pycangui --selftest
+
+  # macOS, from its own workflow, only where something may be published:
+  # a release tag, or a run by hand, which is the check before tagging.
+  macos:
+    name: macOS
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/macos.yml
 
   # The installer is only built for a release: nothing about the packaging
   # changes between tags, and nobody installs from an ordinary push. Push a
@@ -122,3 +130,73 @@ jobs:
             THIRD-PARTY-NOTICES.txt
             LICENSE
             NOTICE
+
+  # The same two triggers as the installer: a v* tag publishes to PyPI, and a
+  # run by hand from the Actions tab publishes to TestPyPI, to see the page and
+  # try the install before a release. Trusted publishing: PyPI accepts this
+  # workflow's short-lived token, so no API token is stored anywhere, and the
+  # files get attestations of where they were built. Each index needs a
+  # publisher registered for workflow ci.yml and the environment named below.
+  #
+  # After every test run, on Windows, Linux and macOS, *and* the installer
+  # build: a release is on both or on neither, never on PyPI with no
+  # installer beside it. A reviewer can be
+  # required on the pypi environment (repository Settings > Environments), and
+  # then the job waits for that approval before anything is uploaded.
+  pypi:
+    name: Publish to ${{ startsWith(github.ref, 'refs/tags/v') && 'PyPI' || 'TestPyPI' }}
+    needs: [test, macos, package]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ startsWith(github.ref, 'refs/tags/v') && 'pypi' || 'testpypi' }}
+    permissions:
+      contents: read
+      id-token: write  # the token trusted publishing is based on
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      # A version can never be uploaded twice, so a tag that disagrees with
+      # __version__ would put the wrong number on PyPI for good. The same check
+      # the installer's name comes from.
+      - name: Check the tag against the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python build/version.py
+
+      # TestPyPI refuses a version it has seen too, so each run by hand is its
+      # own development release: 0.1.0 becomes 0.1.0.dev<run number>. Only in
+      # this checkout; nothing is committed.
+      - name: Number this test upload
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          python - <<'EOF'
+          import os, pathlib, re
+          path = pathlib.Path("pycangui/__init__.py")
+          text = path.read_text(encoding="utf-8")
+          run = os.environ["GITHUB_RUN_NUMBER"]
+          text = re.sub(r'__version__ = "([^"]+)"', rf'__version__ = "\1.dev{run}"', text)
+          path.write_text(text, encoding="utf-8")
+          EOF
+          grep __version__ pycangui/__init__.py
+
+      # --strict fails on anything PyPI would reject or render badly, the page
+      # (PYPI.md) included, before a single file is uploaded.
+      - name: Build and check
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check --strict dist/*
+
+      - name: Publish to TestPyPI
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Publish to PyPI
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: pypa/gh-action-pypi-publish@release/v1
