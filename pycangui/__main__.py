@@ -158,6 +158,10 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_NAME)  # QSettings uses these two for the registry/ini path
     set_icon(app)
+    # Before anything is drawn, so the notice is already in the colours chosen.
+    from pycangui.ui import theme
+
+    theme.apply(theme.chosen())
     timing.mark("Qt started")
     # From here on, which package each imported second belongs to. Installed
     # after Qt because Qt is already in by now, and its cost is its own line.

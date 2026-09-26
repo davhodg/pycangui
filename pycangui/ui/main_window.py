@@ -47,7 +47,7 @@ from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
-from pycangui.ui import event_colours, folders, keep_file, message_filter, messages
+from pycangui.ui import event_colours, folders, keep_file, message_filter, messages, theme
 from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.bus_status import BusStatus
 from pycangui.ui.canopen_view import CanopenView
@@ -493,6 +493,8 @@ class MainWindow(QMainWindow):
             "is not. Turn it off to load them without being asked."
         )
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
+        self.theme_menu = theme.menu(self)
+        tools_menu.addMenu(self.theme_menu)
 
         #: A menu of its own rather than a corner of Tools: a plugin adds
         #: screens and commands, and Tools is where the tool's own settings

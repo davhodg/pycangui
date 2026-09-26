@@ -22,8 +22,9 @@ authors = [{ name = "davhodg" }]
 dependencies = [
     # Essentials, not the full PySide6: the "addons" wheel is the rest of Qt
     # (3D, Charts, Multimedia, WebEngine), which pycangui never imports, and
-    # the GPL-only modules live there too.
-    "PySide6-Essentials>=6.7",
+    # the GPL-only modules live there too. 6.8 for choosing light or dark
+    # (QStyleHints.setColorScheme).
+    "PySide6-Essentials>=6.8",
     "pyqtgraph>=0.13",
     # Two optional extras of python-can, so without them these adapters
     # silently fail. [serial] pulls in pyserial, which the slcan and serial

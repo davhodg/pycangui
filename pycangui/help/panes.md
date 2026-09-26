@@ -80,3 +80,11 @@ UDS service behind a button, what a routine's Start actually sends, that
 clearing DTCs takes the freeze frames with them, that an RPDO needs the node's
 configuration read first. The obvious ones -- Clear, Remove, Connect -- are
 left alone, since a tooltip repeating its label is noise.
+
+## Light or dark
+
+pycangui follows the operating system's light or dark setting. *Tools > Theme*
+overrides it -- **Light** or **Dark** -- and **Match the system** hands it back.
+The change is immediate, and the choice is kept for you on this computer rather
+than in the workspace, so a workspace you give somebody does not change their
+colours.

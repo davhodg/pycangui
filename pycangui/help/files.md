@@ -33,7 +33,8 @@ opaque data rather than anything to read; *View > Reset layout* puts it back.
 
 Outside the workspaces are the things that belong to the machine rather than
 to what you are working on: `components/`, your own additions and replacements,
-which are about being able to talk to a bus at all, the window's position on screen, and the questions you have told
+which are about being able to talk to a bus at all, the window's position on screen, the light or
+dark theme, and the questions you have told
 pycangui not to ask again -- all of which stay in `QSettings`. The last of
 those is outside a workspace on purpose, so that an agreement about disturbing
 equipment is not meant to travel inside a folder you hand to somebody else.
