@@ -25,6 +25,26 @@ pycangui's filing system leaking into somebody's afternoon.
 
 ``lenKey`` goes in as the room available and comes back as the length used.
 
+Two other interfaces are common, and a DLL may export them instead of, or
+as well as, the XCP one:
+
+    GenerateKeyEx(const uint8 *seed, uint32 seedSize, uint32 level,
+                  const char *variant, uint8 *key, uint32 keyRoom,
+                  uint32 *keySize)
+
+which is how UDS algorithms are usually delivered -- it returns 0 for
+success -- and, from the CCP specification,
+
+    ASAP1A_CCP_ComputeKeyFromSeed(char *seed, uint16 seedSize, char *key,
+                                  uint16 keyRoom, uint16 *keySize)
+
+returning true for success, with no level at all. Each protocol prefers
+its own and falls back to the others: UDS to the XCP function, XCP to
+GenerateKeyEx, CCP to the XCP function and then GenerateKeyEx. For UDS,
+GenerateKeyEx is given the level number -- 1 for sub-functions 0x01/0x02,
+2 for 0x03/0x04; for XCP and CCP, which have no levels, 0. The variant is
+always empty.
+
 **This module imports nothing but the standard library, on purpose.** A
 32-bit DLL cannot be loaded into a 64-bit process -- there is no flag for
 it, the two cannot share an address space -- and these DLLs are generally
@@ -42,6 +62,7 @@ printing the key as hex, or a reason on stderr and a non-zero exit.
 from __future__ import annotations
 
 import ctypes
+import re
 import struct
 import subprocess
 import sys
@@ -142,29 +163,163 @@ COMPUTE = "XCP_ComputeKeyFromSeed"
 PRIVILEGES_OF = "XCP_GetAvailablePrivileges"
 
 
-def exports(path: Path | str) -> set[str]:
-    """Which of the two functions this DLL actually exports.
+#: How UDS algorithms are usually delivered: level and variant, and the key's
+#: length written back.
+GENERATE_KEY_EX = "GenerateKeyEx"
+#: The function the CCP specification gives the DLL. No level.
+CCP_COMPUTE = "ASAP1A_CCP_ComputeKeyFromSeed"
 
-    Asked rather than assumed, because the two are not equally required:
-    one computes the key and the other only says what the DLL is willing to
-    unlock.
+UDS, XCP, CCP = "uds", "xcp", "ccp"
+#: The function each protocol asks for, best first: its own, then the others.
+#: A DLL built for one protocol often serves another through the same
+#: function, and one that cannot says so -- a level it does not know is an
+#: error from the DLL, and nothing is sent.
+PREFERRED = {
+    UDS: (GENERATE_KEY_EX, COMPUTE),
+    XCP: (COMPUTE, GENERATE_KEY_EX),
+    CCP: (CCP_COMPUTE, COMPUTE, GENERATE_KEY_EX),
+}
+#: Every function this module knows how to call.
+KNOWN = (COMPUTE, PRIVILEGES_OF, GENERATE_KEY_EX, CCP_COMPUTE)
+#: What each function computes a key with, in the order they are offered.
+KEY_FUNCTIONS = (GENERATE_KEY_EX, CCP_COMPUTE, COMPUTE)
+
+#: What GenerateKeyEx returns, other than 0 for success.
+GENERATE_RETURNS = {
+    1: f"the key needs more than {KEY_ROOM} bytes",
+    2: "the DLL says the security level is not valid",
+    3: "the DLL says the variant is not valid",
+    4: "the DLL could not compute a key",
+}
+
+
+#: Seed and key functions pycangui recognises but does not call, so that the
+#: check can say they are there rather than leave them unmentioned.
+NOT_USED = ("GenerateKeyExOpt", "GenerateKey", "KWP2000_ComputeKeyFromSeed")
+
+#: A 32-bit stdcall export is decorated -- _GenerateKeyEx@28 -- unless the DLL
+#: was built with a .def file. The plain name is what is being looked for.
+_DECORATED = re.compile(r"^_?([A-Za-z]\w*?)(@\d+)?$")
+
+
+def pe_exports(path: Path | str) -> list[str]:
+    """Every name a DLL exports, read from its export table without loading it.
+
+    Read rather than loaded so that it works whatever the DLL's bitness: a
+    32-bit DLL cannot be loaded into 64-bit pycangui, and it is exactly the
+    DLL somebody most wants to check. Empty for anything that is not a DLL
+    with an export table.
     """
-    cdecl, stdcall = _open(path)
-    found = set()
-    for name in (COMPUTE, PRIVILEGES_OF):
-        for handle in (cdecl, stdcall):
-            if hasattr(handle, name):
-                found.add(name)
-                break
-    return found
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return []
+    try:
+        if data[:2] != b"MZ":
+            return []
+        (pe,) = struct.unpack_from("<I", data, 0x3C)
+        if data[pe : pe + 4] != b"PE\0\0":
+            return []
+        (sections_count,) = struct.unpack_from("<H", data, pe + 6)
+        (optional_size,) = struct.unpack_from("<H", data, pe + 20)
+        optional = pe + 24
+        (magic,) = struct.unpack_from("<H", data, optional)
+        # The data directories follow the rest of the optional header, which
+        # is 96 bytes in a 32-bit image and 112 in a 64-bit one.
+        directories = optional + (96 if magic == 0x10B else 112)
+        (export_rva,) = struct.unpack_from("<I", data, directories)
+        if not export_rva:
+            return []
+        sections = []
+        for index in range(sections_count):
+            at = optional + optional_size + 40 * index
+            virtual_size, address, raw_size, raw_at = struct.unpack_from("<IIII", data, at + 8)
+            sections.append((address, max(virtual_size, raw_size), raw_at))
+
+        def offset(rva: int) -> int:
+            for address, size, raw_at in sections:
+                if address <= rva < address + size:
+                    return rva - address + raw_at
+            raise ValueError(f"RVA {rva:#x} is in no section")
+
+        table = offset(export_rva)
+        (names_count,) = struct.unpack_from("<I", data, table + 24)
+        (names_rva,) = struct.unpack_from("<I", data, table + 32)
+        names_at = offset(names_rva)
+        out = []
+        for index in range(names_count):
+            (name_rva,) = struct.unpack_from("<I", data, names_at + 4 * index)
+            start = offset(name_rva)
+            out.append(data[start : data.index(b"\0", start)].decode("ascii", "replace"))
+        return out
+    except (struct.error, ValueError):  # truncated, or not laid out as a PE should be
+        return []
+
+
+def plain_name(export: str) -> str:
+    """_GenerateKeyEx@28 is GenerateKeyEx: the name as it was written."""
+    match = _DECORATED.match(export)
+    return match.group(1) if match else export
+
+
+def export_names(path: Path | str) -> dict[str, str]:
+    """The seed and key functions a DLL exports: plain name to the name it is
+    exported under, which is what has to be asked for when calling it."""
+    wanted = set(KNOWN) | set(NOT_USED)
+    out: dict[str, str] = {}
+    for export in pe_exports(path):
+        name = plain_name(export)
+        if name in wanted:
+            out.setdefault(name, export)
+    return out
+
+
+def _exported(cdecl, stdcall) -> dict[str, str]:
+    """What the loaded DLL answers to by plain name, for a file whose export
+    table could not be read."""
+    return {name: name for name in KNOWN if hasattr(cdecl, name) or hasattr(stdcall, name)}
+
+
+def exports(path: Path | str) -> set[str]:
+    """Which of the functions this module calls the DLL exports, by plain name.
+
+    Read from the file rather than by loading it, so it answers for a DLL of
+    either bitness. None of them is required on its own: a DLL needs one that
+    computes a key, and which one decides what each protocol can use.
+    """
+    if not Path(path).is_file():
+        raise SeedKeyError(f"No such file: {path}")
+    return {name for name in export_names(path) if name in KNOWN}
+
+
+def not_used(path: Path | str) -> list[str]:
+    """Seed and key functions the DLL exports that pycangui does not call."""
+    found = export_names(path)
+    return [name for name in NOT_USED if name in found]
+
+
+def is_fallback(name: str, protocol: str) -> bool:
+    """Whether a protocol using this function is using another's."""
+    return name != PREFERRED[protocol][0]
+
+
+def used_by(found: set[str], protocol: str) -> str | None:
+    """The function a protocol would call, of those found, or None."""
+    return next((name for name in PREFERRED[protocol] if name in found), None)
 
 
 def usable(path: Path | str) -> bool:
     """Whether this DLL can answer a seed at all."""
-    return COMPUTE in exports(path)
+    return any(name in KEY_FUNCTIONS for name in exports(path))
 
 
-def _call(cdecl, stdcall, name: str, *args) -> int:
+def uds_level(sub_function: int) -> int:
+    """The security level a requestSeed sub-function belongs to: 0x01 and
+    0x02 are level 1, 0x03 and 0x04 are level 2."""
+    return (sub_function + 1) // 2
+
+
+def _call(cdecl, stdcall, name: str, *args, restype=ctypes.c_uint32) -> int:
     """Call the export, trying cdecl and then stdcall.
 
     Getting the convention wrong leaves the stack unbalanced, which ctypes
@@ -180,7 +335,7 @@ def _call(cdecl, stdcall, name: str, *args) -> int:
             last = exc
             continue
         missing = False
-        function.restype = ctypes.c_uint32
+        function.restype = restype
         try:
             return int(function(*args))
         except ValueError as exc:  # ctypes: the stack did not balance
@@ -193,22 +348,38 @@ def _call(cdecl, stdcall, name: str, *args) -> int:
 def available_privileges(path: Path | str) -> int:
     """The resources this DLL says it can unlock, as XCP resource bits."""
     cdecl, stdcall = _open(path)
+    actual = export_names(path).get(PRIVILEGES_OF, PRIVILEGES_OF)
     out = ctypes.c_ubyte(0)
-    result = _call(cdecl, stdcall, PRIVILEGES_OF, ctypes.byref(out))
+    result = _call(cdecl, stdcall, actual, ctypes.byref(out))
     if result != ACK:
         raise SeedKeyError(RETURNS.get(result, f"the DLL returned {result}"))
     return int(out.value)
 
 
-def compute_key(path: Path | str, privilege: int, seed: bytes) -> bytes:
-    """Ask the DLL for the key to this seed, for one resource."""
+def compute_key(path: Path | str, privilege: int, seed: bytes, protocol: str = XCP) -> bytes:
+    """Ask the DLL for the key to this seed, through the function this
+    protocol prefers of those it exports. ``privilege`` is XCP's resource, or
+    for UDS the requestSeed sub-function."""
     cdecl, stdcall = _open(path)
+    table = export_names(path) or _exported(cdecl, stdcall)
+    name = used_by(set(table), protocol)
+    if name is None:
+        raise SeedKeyError(
+            f"This DLL does not export {' or '.join(PREFERRED[protocol])}, so it "
+            "cannot answer a seed."
+        )
+    if name == GENERATE_KEY_EX:
+        # XCP and CCP have resources, not levels, so they give none: 0.
+        level = uds_level(privilege) if protocol == UDS else 0
+        return _generate_key_ex(cdecl, stdcall, table[name], level, seed)
+    if name == CCP_COMPUTE:
+        return _ccp_key(cdecl, stdcall, table[name], seed)
     buffer = (ctypes.c_ubyte * KEY_ROOM)()
     length = ctypes.c_ubyte(KEY_ROOM)
     result = _call(
         cdecl,
         stdcall,
-        COMPUTE,
+        table[name],
         ctypes.c_ubyte(privilege),
         ctypes.c_ubyte(len(seed)),
         (ctypes.c_ubyte * len(seed))(*seed) if seed else None,
@@ -218,6 +389,50 @@ def compute_key(path: Path | str, privilege: int, seed: bytes) -> bytes:
     if result != ACK:
         raise SeedKeyError(RETURNS.get(result, f"the DLL returned {result}"))
     return bytes(buffer[: length.value])
+
+
+def _generate_key_ex(cdecl, stdcall, actual: str, level: int, seed: bytes) -> bytes:
+    key = (ctypes.c_ubyte * KEY_ROOM)()
+    size = ctypes.c_uint32(0)
+    result = _call(
+        cdecl,
+        stdcall,
+        actual,
+        (ctypes.c_ubyte * max(len(seed), 1))(*seed),
+        ctypes.c_uint32(len(seed)),
+        ctypes.c_uint32(level),
+        ctypes.c_char_p(b""),  # the variant: none, which most DLLs ignore anyway
+        key,
+        ctypes.c_uint32(KEY_ROOM),
+        ctypes.byref(size),
+    )
+    if result != 0:
+        said = GENERATE_RETURNS.get(result, f"the DLL returned {result}")
+        raise SeedKeyError(f"{said} (security level {level})")
+    if size.value > KEY_ROOM:
+        raise SeedKeyError(f"the DLL says the key is {size.value} bytes, in {KEY_ROOM}")
+    return bytes(key[: size.value])
+
+
+def _ccp_key(cdecl, stdcall, actual: str, seed: bytes) -> bytes:
+    key = ctypes.create_string_buffer(KEY_ROOM)
+    size = ctypes.c_uint16(0)
+    done = _call(
+        cdecl,
+        stdcall,
+        actual,
+        ctypes.create_string_buffer(bytes(seed), max(len(seed), 1)),
+        ctypes.c_uint16(len(seed)),
+        key,
+        ctypes.c_uint16(KEY_ROOM),
+        ctypes.byref(size),
+        restype=ctypes.c_bool,
+    )
+    if not done:
+        raise SeedKeyError("the DLL could not compute a key for this seed")
+    if size.value > KEY_ROOM:
+        raise SeedKeyError(f"the DLL says the key is {size.value} bytes, in {KEY_ROOM}")
+    return key.raw[: size.value]
 
 
 def names(privileges: int) -> str:
@@ -291,7 +506,9 @@ def find_python(bits: int) -> str:
     return ""
 
 
-def key_for(path: Path | str, privilege: int, seed: bytes, other_python: str = "") -> bytes:
+def key_for(
+    path: Path | str, privilege: int, seed: bytes, other_python: str = "", protocol: str = XCP
+) -> bytes:
     """The key, from the DLL here or through an interpreter that can load it.
 
     The bitness is read from the file rather than discovered by failing to
@@ -299,7 +516,7 @@ def key_for(path: Path | str, privilege: int, seed: bytes, other_python: str = "
     message when there is no way through says which way it needed to go.
     """
     if not needs_another_python(path):
-        return compute_key(path, privilege, seed)
+        return compute_key(path, privilege, seed, protocol)
     wanted = 32 if machine(path).startswith("32") else 64
     if not other_python:
         other_python = find_python(wanted)
@@ -312,12 +529,17 @@ def key_for(path: Path | str, privilege: int, seed: bytes, other_python: str = "
             "there, name one in the XCP pane, or rebuild the DLL for "
             f"{host_bits()}-bit."
         )
-    return compute_key_elsewhere(other_python, path, privilege, seed)
+    return compute_key_elsewhere(other_python, path, privilege, seed, protocol=protocol)
 
 
 # --- running the DLL somewhere else ----------------------------------------------------
 def compute_key_elsewhere(
-    python: Path | str, path: Path | str, privilege: int, seed: bytes, timeout: float = 20.0
+    python: Path | str,
+    path: Path | str,
+    privilege: int,
+    seed: bytes,
+    timeout: float = 20.0,
+    protocol: str = XCP,
 ) -> bytes:
     """Ask another interpreter to do it, for a DLL of the other bitness.
 
@@ -331,6 +553,7 @@ def compute_key_elsewhere(
         str(path),
         str(privilege),
         seed.hex(),
+        protocol,
     ]
     try:
         done = _ran(order, timeout)
@@ -347,12 +570,16 @@ def compute_key_elsewhere(
 
 
 def main(argv: list[str]) -> int:
-    """<dll> <privilege> <seed as hex>, printing the key as hex."""
-    if len(argv) != 3:
-        print(f"usage: {Path(__file__).name} <dll> <privilege> <seed as hex>", file=sys.stderr)
+    """<dll> <privilege> <seed as hex> [uds|xcp|ccp], printing the key as hex."""
+    if len(argv) not in (3, 4) or (len(argv) == 4 and argv[3] not in PREFERRED):
+        print(
+            f"usage: {Path(__file__).name} <dll> <privilege> <seed as hex> [uds|xcp|ccp]",
+            file=sys.stderr,
+        )
         return 2
+    protocol = argv[3] if len(argv) == 4 else XCP
     try:
-        key = compute_key(argv[0], int(argv[1], 0), bytes.fromhex(argv[2]))
+        key = compute_key(argv[0], int(argv[1], 0), bytes.fromhex(argv[2]), protocol)
     except (SeedKeyError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

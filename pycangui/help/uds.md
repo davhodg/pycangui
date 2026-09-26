@@ -154,10 +154,27 @@ would leave the two of you out of step.
 
 ## The seed and key DLL
 
-There is no standard unlock *algorithm* -- only a standard way of shipping
-one: a Windows DLL exporting `XCP_ComputeKeyFromSeed`. Every measurement tool loads one, so a maker who has
-written a seed and key DLL for another tool has already written the one
-pycangui needs. **Seed and key DLL...** beside Unlock is where it is named.
+There is no standard unlock *algorithm* -- only a few established ways of
+shipping one as a Windows DLL, and pycangui calls whichever the DLL exports:
+
+| Function | UDS | XCP | CCP |
+|---|---|---|---|
+| `GenerateKeyEx` -- the usual way a UDS algorithm is delivered | 1st | 2nd | 3rd |
+| `XCP_ComputeKeyFromSeed` -- from the XCP standard | 2nd | 1st | 2nd |
+| `ASAP1A_CCP_ComputeKeyFromSeed` -- from the CCP specification | | | 1st |
+
+So a maker who has written a seed and key DLL for another tool has already
+written the one pycangui needs. **Seed and key DLL...** beside Unlock is where
+it is named, and its **Check the DLL** says which function each protocol will
+use.
+
+Each protocol uses the first of these its DLL exports. For UDS,
+`GenerateKeyEx` is given the **level number** -- 1 for sub-functions 0x01
+and 0x02, 2 for 0x03 and 0x04 -- and `XCP_ComputeKeyFromSeed` the
+requestSeed sub-function itself, 0x03 for level 2. XCP and CCP have no
+levels, so `GenerateKeyEx` is given 0 for them, and `XCP_ComputeKeyFromSeed`
+the resource being unlocked. The variant is always empty. A DLL that does
+not know a level says so, and nothing is sent to the ECU.
 
 pycangui asks in this order, and stops at the first answer:
 
@@ -173,9 +190,8 @@ return a key for the ones you know and None for the rest, and each is dealt
 with by whatever can.
 
 **One DLL serves both panes.** An ECU ships one algorithm; UDS SecurityAccess
-and XCP unlocking are the same question asked by two protocols, with the
-security level where XCP puts the resource. Naming the file in either pane
-names it for both.
+and XCP or CCP unlocking are the same question asked by different protocols.
+Naming the file in either pane names it for both.
 
 ### When the DLL is 32-bit
 

@@ -8,18 +8,19 @@ fixture was built as expected. Every 64-bit Windows carries a 32-bit
 kernel32 in SysWOW64 and a 64-bit one in System32, so both answers are
 available without shipping a binary.
 
-**Not covered: a key actually computed.** That needs a real seed and key
-DLL, which cannot be built here without a compiler and cannot be committed
-without shipping somebody's algorithm. What is covered is everything up to
-the call and everything after it fails, which is where the mistakes are:
-the wrong bitness, a DLL that is not one of these, the hook order, and the
-answer coming back through another interpreter.
+The calls themselves go to stand-in DLLs: Python functions wrapped as real
+C function pointers by ctypes, so the arguments, buffers, lengths and
+return codes go through exactly what a DLL's would. A real seed and key DLL
+cannot be built here without a compiler, and cannot be committed without
+shipping somebody's algorithm.
 """
 
 from __future__ import annotations
 
+import ctypes
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -203,10 +204,14 @@ def test_uds_falls_back_to_the_dll_when_the_hook_returns_none(app, ctx, monkeypa
     ctx.settings.set(seedkey.DLL_KEY, "whatever.dll")
     asked = []
     monkeypatch.setattr(
-        seedkey, "key_for", lambda dll, level, seed, other="": asked.append((dll, level, seed))
+        seedkey,
+        "key_for",
+        lambda dll, level, seed, other="", protocol=seedkey.XCP: asked.append(
+            (dll, level, seed, protocol)
+        ),
     )
     manager._security_algo(3, b"\x09", None)
-    assert asked == [("whatever.dll", 3, b"\x09")], "the level is not what the DLL was told"
+    assert asked == [("whatever.dll", 3, b"\x09", seedkey.UDS)], "not what the DLL was told"
 
 
 def test_uds_with_no_hook_and_no_dll_says_both_ways_out(app, ctx):
@@ -239,10 +244,27 @@ def test_xcp_falls_back_to_the_same_dll_as_uds(app, ctx, monkeypatch):
     ctx.settings.set(seedkey.DLL_KEY, "shared.dll")
     asked = []
     monkeypatch.setattr(
-        seedkey, "key_for", lambda dll, res, seed, other="": asked.append((dll, res))
+        seedkey,
+        "key_for",
+        lambda dll, res, seed, other="", protocol=seedkey.XCP: asked.append((dll, res, protocol)),
     )
     manager._key_for(0x10, b"\x01")
-    assert asked == [("shared.dll", 0x10)], "the resource is not what the DLL was told"
+    assert asked == [("shared.dll", 0x10, seedkey.XCP)], "not what the DLL was told"
+    manager.shutdown()
+
+
+def test_the_ccp_engine_asks_the_dll_as_ccp(app, ctx, monkeypatch):
+    manager = xcp_manager(ctx, hooks_answering(ctx, None))
+    manager.set_component("ccp-builtin")
+    ctx.settings.set(seedkey.DLL_KEY, "shared.dll")
+    asked = []
+    monkeypatch.setattr(
+        seedkey,
+        "key_for",
+        lambda dll, res, seed, other="", protocol=seedkey.XCP: asked.append(protocol),
+    )
+    manager._key_for(0x02, b"\x01")
+    assert asked == [seedkey.CCP]
     manager.shutdown()
 
 
@@ -363,8 +385,37 @@ def test_the_dialog_calls_a_dll_without_privileges_usable(app, ctx, monkeypatch)
     monkeypatch.setattr(seedkey, "exports", lambda _p: {seedkey.COMPUTE})
     dialog._test()
     said = dialog.privileges.text()
-    assert "Usable" in said, said
-    assert "optional" in said
+    assert f"Supported: {seedkey.COMPUTE}" in said, said
+    assert f"XCP uses {seedkey.COMPUTE}." in said or f"XCP uses {seedkey.COMPUTE};" in said
+
+
+@needs_windows
+def test_the_dialog_says_which_function_each_protocol_uses(app, ctx, monkeypatch):
+    """Reported: a DLL built for UDS, with GenerateKeyEx and the CCP function
+    but no XCP one, was called unusable."""
+    from pycangui.ui.seedkey_view import SeedKeyDialog
+
+    dialog = SeedKeyDialog(ctx)
+    dialog.dll.setText(str(X64 if seedkey.host_bits() == 64 else X86))
+    found = {seedkey.GENERATE_KEY_EX, seedkey.CCP_COMPUTE}
+    monkeypatch.setattr(seedkey, "exports", lambda _p: found)
+    dialog._test()
+    said = dialog.privileges.text()
+    assert "Supported:" in said, said
+    assert f"UDS uses {seedkey.GENERATE_KEY_EX};" in said, "its own, so no mark"
+    assert f"XCP uses {seedkey.GENERATE_KEY_EX} (fallback)" in said
+    assert f"CCP uses {seedkey.CCP_COMPUTE}." in said
+
+
+def test_the_dialog_says_which_protocol_a_dll_cannot_serve(app, ctx, monkeypatch):
+    from pycangui.ui.seedkey_view import SeedKeyDialog
+
+    dialog = SeedKeyDialog(ctx)
+    dialog.dll.setText(str(X64 if seedkey.host_bits() == 64 else X86))
+    monkeypatch.setattr(seedkey, "exports", lambda _p: {seedkey.CCP_COMPUTE})
+    dialog._test()
+    said = dialog.privileges.text()
+    assert "UDS" in said.split("Nothing here for")[-1], "CCP's function has no level for UDS"
 
 
 @needs_windows
@@ -388,3 +439,212 @@ def test_a_dll_with_no_compute_is_called_out(app, ctx, monkeypatch):
     monkeypatch.setattr(seedkey, "exports", lambda _p: {seedkey.PRIVILEGES_OF})
     dialog._test()
     assert "cannot answer a seed" in dialog.privileges.text()
+
+
+# --- the functions a DLL may export, called through stand-ins ----------------------------
+U8P = ctypes.POINTER(ctypes.c_ubyte)
+GENERATE_KEY_EX = ctypes.CFUNCTYPE(
+    ctypes.c_uint32,
+    U8P,
+    ctypes.c_uint32,
+    ctypes.c_uint32,
+    ctypes.c_char_p,
+    U8P,
+    ctypes.c_uint32,
+    ctypes.POINTER(ctypes.c_uint32),
+)
+CCP_COMPUTE = ctypes.CFUNCTYPE(
+    ctypes.c_bool,
+    ctypes.POINTER(ctypes.c_char),
+    ctypes.c_uint16,
+    ctypes.POINTER(ctypes.c_char),
+    ctypes.c_uint16,
+    ctypes.POINTER(ctypes.c_uint16),
+)
+XCP_COMPUTE = ctypes.CFUNCTYPE(ctypes.c_uint32, ctypes.c_ubyte, ctypes.c_ubyte, U8P, U8P, U8P)
+
+
+class StandIn:
+    """A DLL made of Python functions, recording what each was given."""
+
+    def __init__(self, key=b"\xaa\xbb\xcc", result=None):
+        self.key = key
+        self.result = result
+        self.seen: dict = {}
+        self.functions: dict = {}
+
+    def generate_key_ex(self):
+        def call(seed, seed_size, level, variant, out, room, size):
+            self.seen.update(seed=bytes(seed[:seed_size]), level=level, variant=variant, room=room)
+            for i, byte in enumerate(self.key):
+                out[i] = byte
+            size[0] = len(self.key)
+            return 0 if self.result is None else self.result
+
+        self.functions[seedkey.GENERATE_KEY_EX] = GENERATE_KEY_EX(call)
+        return self
+
+    def ccp(self):
+        def call(seed, seed_size, out, room, size):
+            self.seen.update(seed=bytes(seed[:seed_size]), room=room)
+            for i, byte in enumerate(self.key):
+                out[i] = bytes([byte])
+            size[0] = len(self.key)
+            return True if self.result is None else self.result
+
+        self.functions[seedkey.CCP_COMPUTE] = CCP_COMPUTE(call)
+        return self
+
+    def xcp(self):
+        def call(privilege, seed_size, seed, size, out):
+            self.seen.update(privilege=privilege, seed=bytes(seed[:seed_size]))
+            for i, byte in enumerate(self.key):
+                out[i] = byte
+            size[0] = len(self.key)
+            return seedkey.ACK
+
+        self.functions[seedkey.COMPUTE] = XCP_COMPUTE(call)
+        return self
+
+    def install(self, monkeypatch):
+        handle = SimpleNamespace(**self.functions)
+        monkeypatch.setattr(seedkey, "_open", lambda _path: (handle, SimpleNamespace()))
+        return self
+
+
+def test_uds_uses_generatekeyex_with_the_level_number(monkeypatch):
+    """Level 2 is sub-functions 0x03 and 0x04, so the DLL is told 2."""
+    dll = StandIn().generate_key_ex().xcp().install(monkeypatch)
+    key = seedkey.compute_key("any.dll", 0x03, b"\x11\x22", seedkey.UDS)
+    assert key == b"\xaa\xbb\xcc", "exactly as long as the DLL said"
+    assert dll.seen["level"] == 2
+    assert dll.seen["seed"] == b"\x11\x22"
+    assert dll.seen["variant"] == b"", "no variant"
+    assert dll.seen["room"] == seedkey.KEY_ROOM
+
+
+@pytest.mark.parametrize(("sub_function", "level"), [(1, 1), (2, 1), (3, 2), (4, 2), (0x41, 33)])
+def test_a_sub_function_belongs_to_a_level(sub_function, level):
+    assert seedkey.uds_level(sub_function) == level
+
+
+def test_a_level_the_dll_refuses_says_which_level(monkeypatch):
+    StandIn(result=2).generate_key_ex().install(monkeypatch)
+    with pytest.raises(seedkey.SeedKeyError) as raised:
+        seedkey.compute_key("any.dll", 0x05, b"\x01", seedkey.UDS)
+    said = str(raised.value)
+    assert "security level" in said and "3" in said, said
+
+
+def test_uds_falls_back_to_the_xcp_function_as_before(monkeypatch):
+    """Which is still given the sub-function, as it always was."""
+    dll = StandIn().xcp().install(monkeypatch)
+    assert seedkey.compute_key("any.dll", 0x03, b"\x01", seedkey.UDS) == b"\xaa\xbb\xcc"
+    assert dll.seen["privilege"] == 0x03
+
+
+def test_ccp_uses_its_own_function(monkeypatch):
+    dll = StandIn(key=b"\x10\x20").ccp().xcp().install(monkeypatch)
+    assert seedkey.compute_key("any.dll", 0x02, b"\x99\x88", seedkey.CCP) == b"\x10\x20"
+    assert dll.seen["seed"] == b"\x99\x88"
+    assert "privilege" not in dll.seen, "the XCP function was not asked as well"
+
+
+def test_a_ccp_function_that_says_no_is_an_error(monkeypatch):
+    StandIn(result=False).ccp().install(monkeypatch)
+    with pytest.raises(seedkey.SeedKeyError):
+        seedkey.compute_key("any.dll", 0x02, b"\x01", seedkey.CCP)
+
+
+def test_xcp_falls_back_to_generatekeyex_with_no_level(monkeypatch):
+    """XCP has resources, not levels, so it gives none: 0."""
+    dll = StandIn().generate_key_ex().install(monkeypatch)
+    assert seedkey.compute_key("any.dll", 0x10, b"\x01", seedkey.XCP) == b"\xaa\xbb\xcc"
+    assert dll.seen["level"] == 0, "not the resource, and not a UDS level made from it"
+
+
+def test_xcp_still_prefers_its_own_function(monkeypatch):
+    dll = StandIn().xcp().generate_key_ex().install(monkeypatch)
+    seedkey.compute_key("any.dll", 0x01, b"\x01", seedkey.XCP)
+    assert "privilege" in dll.seen and "level" not in dll.seen
+
+
+def test_ccp_falls_back_through_xcp_to_generatekeyex(monkeypatch):
+    dll = StandIn().generate_key_ex().install(monkeypatch)
+    seedkey.compute_key("any.dll", 0x02, b"\x01", seedkey.CCP)
+    assert dll.seen["level"] == 0, "no level, as for XCP"
+
+
+def test_each_protocol_prefers_its_own_function_then_the_others():
+    everything = {seedkey.GENERATE_KEY_EX, seedkey.CCP_COMPUTE, seedkey.COMPUTE}
+    assert seedkey.used_by(everything, seedkey.UDS) == seedkey.GENERATE_KEY_EX
+    assert seedkey.used_by(everything, seedkey.CCP) == seedkey.CCP_COMPUTE
+    assert seedkey.used_by(everything, seedkey.XCP) == seedkey.COMPUTE
+    only_xcp = {seedkey.COMPUTE}
+    assert all(seedkey.used_by(only_xcp, p) == seedkey.COMPUTE for p in seedkey.PREFERRED)
+    only_uds = {seedkey.GENERATE_KEY_EX}
+    assert all(seedkey.used_by(only_uds, p) == seedkey.GENERATE_KEY_EX for p in seedkey.PREFERRED)
+    assert seedkey.used_by({seedkey.CCP_COMPUTE}, seedkey.UDS) is None, "no level to give it"
+
+
+def test_the_script_takes_the_protocol_too(capsys):
+    """The bridge to another interpreter passes it on, so a 32-bit DLL is
+    asked the same way as one loaded here."""
+    assert seedkey.main(["no-such.dll", "3", "0102", "uds"]) == 1, "a missing file"
+    assert seedkey.main(["no-such.dll", "3", "0102", "kwp"]) == 2, "not a protocol it knows"
+
+
+# --- reading the export table instead of loading the DLL ----------------------------------
+@needs_windows
+@pytest.mark.parametrize("dll", [X64, X86])
+def test_the_exports_are_read_from_either_bitness(dll):
+    """Without loading: 64-bit pycangui cannot load a 32-bit DLL, and that is
+    the one somebody most wants to check."""
+    names = seedkey.pe_exports(dll)
+    assert "CreateFileW" in names and len(names) > 1000
+
+
+def test_a_file_that_is_not_a_dll_has_no_exports(tmp_path):
+    (tmp_path / "text.dll").write_text("not a DLL", encoding="utf-8")
+    assert seedkey.pe_exports(tmp_path / "text.dll") == []
+    assert seedkey.pe_exports(tmp_path / "absent.dll") == []
+
+
+@pytest.mark.parametrize(
+    ("exported", "plain"),
+    [
+        ("_GenerateKeyEx@28", "GenerateKeyEx"),
+        ("_XCP_ComputeKeyFromSeed@20", "XCP_ComputeKeyFromSeed"),
+        ("GenerateKeyEx", "GenerateKeyEx"),
+        ("ASAP1A_CCP_ComputeKeyFromSeed", "ASAP1A_CCP_ComputeKeyFromSeed"),
+    ],
+)
+def test_a_decorated_name_is_the_function_it_names(exported, plain):
+    """A 32-bit stdcall build exports _Name@bytes unless it has a .def file."""
+    assert seedkey.plain_name(exported) == plain
+
+
+def test_a_decorated_export_is_called_by_the_name_it_has(monkeypatch):
+    """Found by its plain name, called by its real one: looking it up by the
+    plain name alone called such a DLL unusable."""
+    dll = StandIn().generate_key_ex()
+    handle = SimpleNamespace()
+    setattr(handle, "_GenerateKeyEx@28", dll.functions[seedkey.GENERATE_KEY_EX])
+    monkeypatch.setattr(seedkey, "_open", lambda _path: (SimpleNamespace(), handle))
+    monkeypatch.setattr(
+        seedkey, "export_names", lambda _path: {seedkey.GENERATE_KEY_EX: "_GenerateKeyEx@28"}
+    )
+    assert seedkey.compute_key("any.dll", 0x01, b"\x01", seedkey.UDS) == b"\xaa\xbb\xcc"
+
+
+@needs_windows
+def test_a_dll_of_the_other_bitness_is_still_checked(app, ctx):
+    """It used to stop at "cannot be loaded here" and say nothing about what
+    the DLL contains. kernel32 has no seed and key functions, and it says so."""
+    from pycangui.ui.seedkey_view import SeedKeyDialog
+
+    dialog = SeedKeyDialog(ctx)
+    dialog.dll.setText(str(X86 if seedkey.host_bits() == 64 else X64))
+    dialog._test()
+    said = dialog.privileges.text()
+    assert "none of" in said and "loaded" not in said, said

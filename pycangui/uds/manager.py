@@ -247,7 +247,7 @@ class UdsManager(QObject):
                 "or write hooks/uds.py::security_key"
             )
         other = str(self._ctx.settings.get(seedkey.PYTHON_KEY, "") or "")
-        return seedkey.key_for(dll, level, seed, other)
+        return seedkey.key_for(dll, level, seed, other, seedkey.UDS)
 
     # --- request plumbing ----------------------------------------------------------
     def _run(self, label: str, fn: Callable[[Client], str]) -> None:

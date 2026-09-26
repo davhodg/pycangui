@@ -37,16 +37,17 @@ from pycangui.core.context import Context
 TITLE = "Seed and key DLL"
 
 WHAT = (
-    "The standard seed and key DLL, which is how an ECU's unlock algorithm "
-    "ships. Used for UDS SecurityAccess and for XCP unlocking alike, and "
+    "The seed and key DLL, which is how an ECU's unlock algorithm ships. "
+    "Used for UDS SecurityAccess and for XCP and CCP unlocking alike, and "
     "only when the matching hook returns None -- hooks/uds.py::security_key "
     "and hooks/xcp.py::compute_key come first, so a workspace can always "
     "override what the DLL says."
 )
 DLL_TIP = (
-    "A DLL exporting XCP_ComputeKeyFromSeed, which is the interface\n"
-    "every measurement tool loads. XCP_GetAvailablePrivileges beside\n"
-    "it is optional and often left out."
+    "A DLL exporting any of GenerateKeyEx (the usual one for UDS),\n"
+    "XCP_ComputeKeyFromSeed (XCP) or ASAP1A_CCP_ComputeKeyFromSeed\n"
+    "(CCP). Each protocol uses its own first and the others after it;\n"
+    "Check the DLL says which each will use."
 )
 PYTHON_TIP = (
     "A python.exe of the DLL's bitness, used to run the DLL when it\n"
@@ -68,14 +69,11 @@ NO_HELPER = (
 FITS = "This DLL is {kind}, the same as pycangui, so it loads directly."
 NOT_A_DLL = "This file does not look like a Windows DLL."
 NOT_ONE = (
-    "This DLL exports no {compute}, so it cannot answer a seed. It is "
+    "This DLL exports none of {names}, so it cannot answer a seed. It is "
     "probably not a seed and key DLL."
 )
-USABLE = (
-    "Usable: {compute} is there. It exports no XCP_GetAvailablePrivileges, "
-    "which is optional -- it only says which levels the DLL is willing to "
-    "unlock, and nothing needs asking."
-)
+#: The protocols, as the check lists them.
+PROTOCOLS = ((seedkey.UDS, "UDS"), (seedkey.XCP, "XCP"), (seedkey.CCP, "CCP"))
 
 
 class SeedKeyDialog(QDialog):
@@ -185,13 +183,13 @@ class SeedKeyDialog(QDialog):
         self.privileges.setText("")
 
     def _test(self) -> None:
-        """Say what the DLL exports, and what it will unlock if it will say.
+        """Say which seed and key functions the DLL exports, which one each
+        protocol will use -- marked where it is another protocol's -- and what
+        the DLL will unlock, if it will say and can be asked from here.
 
-        Only XCP_ComputeKeyFromSeed is needed: it is the one that answers a
-        seed. XCP_GetAvailablePrivileges is optional, and plenty of DLLs
-        leave it out -- a caller that already knows which level it wants
-        never asks. Insisting on both turned a perfectly usable DLL into a
-        refused one.
+        The functions are read from the file's export table, so this answers
+        for a DLL of either bitness. Asking what it will unlock means calling
+        it, which only a DLL of pycangui's own bitness allows.
         """
         path = self.dll.text().strip()
         if not path:
@@ -202,22 +200,31 @@ class SeedKeyDialog(QDialog):
         except seedkey.SeedKeyError as exc:
             self.privileges.setText(str(exc))
             return
-        if seedkey.COMPUTE not in found:
-            self.privileges.setText(NOT_ONE.format(compute=seedkey.COMPUTE))
+        uses = []
+        for protocol, label in PROTOCOLS:
+            if name := seedkey.used_by(found, protocol):
+                fallback = " (fallback)" if seedkey.is_fallback(name, protocol) else ""
+                uses.append(f"{label} uses {name}{fallback}")
+        if not uses:
+            names = ", ".join(seedkey.KEY_FUNCTIONS)
+            self.privileges.setText(NOT_ONE.format(names=names))
             return
-        if seedkey.PRIVILEGES_OF not in found:
-            self.privileges.setText(USABLE.format(compute=seedkey.COMPUTE))
-            return
-        try:
-            names = seedkey.names(seedkey.available_privileges(path))
-        except seedkey.SeedKeyError as exc:
-            self.privileges.setText(f"{seedkey.COMPUTE} is there. {exc}")
-            return
-        self.privileges.setText(
-            f"Usable, and it says it can unlock: {names}"
-            if names
-            else f"{seedkey.COMPUTE} is there, and the DLL says it can unlock nothing"
-        )
+        exported = [name for name in seedkey.KNOWN if name in found]
+        said = "Supported: " + ", ".join(exported) + "."
+        if spare := seedkey.not_used(path):
+            said += f" Also exported, but not used by pycangui: {', '.join(spare)}."
+        said += " " + "; ".join(uses) + "."
+        cannot = [label for protocol, label in PROTOCOLS if not seedkey.used_by(found, protocol)]
+        if cannot:
+            said += f" Nothing here for {' or '.join(cannot)}."
+        if seedkey.PRIVILEGES_OF in found and not seedkey.needs_another_python(path):
+            try:
+                names = seedkey.names(seedkey.available_privileges(path))
+            except seedkey.SeedKeyError as exc:
+                said += f" Asked what it can unlock: {exc}"
+            else:
+                said += f" It says it can unlock: {names or 'nothing'}."
+        self.privileges.setText(said)
 
     def save(self) -> None:
         self.ctx.settings.set(seedkey.DLL_KEY, self.dll.text().strip())

@@ -210,7 +210,8 @@ class XcpManager(QObject):
                 "or write hooks/xcp.py::compute_key"
             )
         other = str(self._ctx.settings.get(seedkey.PYTHON_KEY, "") or "")
-        return seedkey.key_for(dll, resource, seed, other)
+        protocol = seedkey.CCP if self.protocol == "CCP" else seedkey.XCP
+        return seedkey.key_for(dll, resource, seed, other, protocol)
 
     # --- A2L -------------------------------------------------------------------------
     def load_a2l(self, path: str) -> None:
