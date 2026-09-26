@@ -159,3 +159,35 @@ def test_a_classic_transport_still_sends_eight(app):
 
     assert seen and len(seen[0].data) == 8
     assert not seen[0].is_fd
+
+
+def test_a_refused_frame_is_the_request_s_error_and_the_transport_carries_on(app, monkeypatch):
+    """An adapter whose transmit queue is full raised on can-isotp's own
+    thread, which ended it: UDS was dead until the channel was reconnected."""
+    from pycangui.uds.transport import FrameRefusedError
+
+    bus = BusManager()
+    bus.connect_bus("virtual", "vcan_isotp_refused", 500_000, False)
+    grab = Grab()
+    bus.add_listener(grab)
+    real_send = bus.bus.send
+
+    def full(msg, timeout=None):
+        raise can.CanOperationError("xlCanTransmit failed (XL_ERR_QUEUE_IS_FULL)")
+
+    transport = CanIsoTpTransport(bus, UdsConfig(padding=None))
+    transport.open()
+    try:
+        monkeypatch.setattr(bus.bus, "send", full)
+        transport.send(b"\x10\x03")
+        with pytest.raises(FrameRefusedError, match="QUEUE_IS_FULL"):
+            transport.recv(0.3)
+
+        monkeypatch.setattr(bus.bus, "send", real_send)
+        transport.send(b"\x10\x01")
+        wait_for(app, lambda: grab.seen)
+        assert transport.recv(0.05) is None, "a refusal is reported once, not every time after"
+    finally:
+        transport.close()
+        bus.disconnect_bus()
+    assert bytes(grab.seen[0].data[1:3]) == b"\x10\x01", "the thread is still sending"

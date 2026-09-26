@@ -30,7 +30,7 @@ from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD
 from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
 from pycangui.uds.standard import SESSIONS, memory_record, security_pair, seed_subfunction
-from pycangui.uds.transport import IsoTpTransport
+from pycangui.uds.transport import FrameRefusedError, IsoTpTransport
 
 DEFAULT_COMPONENT = "can-isotp"
 
@@ -109,6 +109,8 @@ class UdsManager(QObject):
     did_value = Signal(int, bytes)  # did, raw data (for scripts / future signal hub use)
     progress = Signal(str, int, int)  # what, bytes done, bytes expected
     transferring = Signal(bool)  # a transfer started or finished
+    #: Tester present turned itself off, and why: the adapter would not send it.
+    tester_present_stopped = Signal(str)
 
     def __init__(self, bus: BusManager, hooks: Hooks, ctx: Context) -> None:
         super().__init__()
@@ -327,13 +329,25 @@ class UdsManager(QObject):
         # quiet: only failures are reported
         client = self.client
 
-        def job() -> str:
+        def job() -> str | FrameRefusedError:
             try:
                 return fn(client)
             except (NegativeResponseException, TimeoutException) as exc:
                 return f"TesterPresent: {exc}"
+            except FrameRefusedError as exc:
+                return exc
 
-        self._worker.submit(job, lambda t, e: self.result.emit(t or e) if (t or e) else None)
+        def done(outcome, error: str | None) -> None:
+            # A frame the adapter refuses is a bus nothing is acknowledging.
+            # Carrying on would fill its queue again every couple of seconds,
+            # so it stops, and says so, rather than going on failing quietly.
+            if isinstance(outcome, FrameRefusedError):
+                self._tp_timer.stop()
+                self.tester_present_stopped.emit(f"Tester present stopped: {outcome}")
+            elif outcome or error:
+                self.result.emit(outcome or error)
+
+        self._worker.submit(job, done)
 
     def ecu_reset(self, reset_type: int) -> None:
         def fn(c: Client) -> str:

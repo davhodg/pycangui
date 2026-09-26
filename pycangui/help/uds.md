@@ -58,7 +58,10 @@ seed and key DLL described below where that hook returns None.
 
 **Tester present** sends TesterPresent every couple of seconds. Without it an ECU drops
 back to the default session after a few seconds of quiet, and loses any unlock
-with it.
+with it. If the adapter will not send it -- its transmit queue full, because
+nothing on the bus is acknowledging frames, as while the ECU restarts -- the box
+unticks itself and the Event Log says why, rather than it going on failing every
+couple of seconds. Tick it again once the ECU is back.
 
 **Level is a level**, counting from 1, and beside it pycangui shows the two
 sub-functions that will actually go out -- `req 03  resp 04` for level 2.

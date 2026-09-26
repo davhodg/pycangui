@@ -784,6 +784,7 @@ class UdsView(QWidget):
         self._on_fd_changed()
         manager.progress.connect(self._on_progress)
         manager.transferring.connect(self._on_transferring)
+        manager.tester_present_stopped.connect(self._on_tester_present_stopped)
 
     # --- helpers ----------------------------------------------------------------------
     @staticmethod
@@ -961,6 +962,13 @@ class UdsView(QWidget):
         self.open_btn.blockSignals(False)
         if not opened:
             self.tp.setChecked(False)
+
+    @Slot(str)
+    def _on_tester_present_stopped(self, why: str) -> None:
+        """Untick the box, so it says what is happening, and say why in both places."""
+        self.tp.setChecked(False)
+        self._append(why)
+        self.ctx.error(why)
 
     def _send_raw(self) -> None:
         try:

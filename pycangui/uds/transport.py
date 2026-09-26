@@ -22,11 +22,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+import can
 import isotp
 
 from pycangui.core.bus import BusManager
 from pycangui.core.components import register_component
 from pycangui.uds import UdsConfig
+
+
+class FrameRefusedError(Exception):
+    """The adapter would not put a frame of the request on the bus."""
 
 
 class IsoTpTransport(ABC):
@@ -85,6 +90,22 @@ class CanIsoTpTransport(IsoTpTransport):
                 "bitrate_switch": config.bitrate_switch and config.can_fd,
             },
         )
+        # can-isotp sends frames from a thread of its own. An adapter that
+        # refuses one -- its transmit queue full, because nothing on the bus
+        # is acknowledging -- raised there, which ended the thread and UDS
+        # with it until the channel was reconnected. The frame is dropped
+        # instead, and the reason goes to the request waiting for an answer,
+        # which would otherwise say only that none came.
+        self._refused: can.CanError | None = None
+        send_frame = self.stack.txfn
+
+        def txfn(msg) -> None:
+            try:
+                send_frame(msg)
+            except can.CanError as exc:
+                self._refused = exc
+
+        self.stack.txfn = txfn
 
     def open(self) -> None:
         if not self.stack.started:
@@ -95,10 +116,14 @@ class CanIsoTpTransport(IsoTpTransport):
             self.stack.stop()
 
     def send(self, payload: bytes) -> None:
+        self._refused = None  # an earlier request's, and nothing to do with this one
         self.stack.send(payload)
 
     def recv(self, timeout: float) -> bytes | None:
         data = self.stack.recv(block=True, timeout=timeout)
+        if data is None and (refused := self._refused) is not None:
+            self._refused = None
+            raise FrameRefusedError(f"the adapter would not send the request: {refused}")
         return None if data is None else bytes(data)
 
     @property

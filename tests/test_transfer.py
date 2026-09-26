@@ -593,3 +593,45 @@ def test_saying_nothing_lets_the_download_go_ahead(manager, images_dir, monkeypa
     manager.download(images.read(images_dir("c.hex", (0x3000, bytes(8)))))
 
     assert ecu.written == bytes(8)
+
+
+# --- tester present on a bus that will not take it --------------------------------------
+class RefusingEcu(FakeEcu):
+    def tester_present(self):
+        from pycangui.uds.transport import FrameRefusedError
+
+        raise FrameRefusedError("the adapter would not send the request: queue is full")
+
+
+def test_tester_present_stops_and_says_why_when_the_adapter_refuses_it(manager):
+    """Left ticking, it fills the adapter's queue again every couple of seconds."""
+    manager.client = RefusingEcu()
+    stopped, results = [], []
+    manager.tester_present_stopped.connect(stopped.append)
+    manager.result.connect(results.append)
+    manager.set_tester_present(True)
+    assert manager._tp_timer.isActive()
+
+    manager._tester_present_tick()
+
+    assert not manager._tp_timer.isActive()
+    assert stopped and "queue is full" in stopped[0]
+    assert not results, "said once, as the reason it stopped"
+
+
+def test_the_pane_unticks_the_box_and_logs_it_as_an_error(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    from pycangui.core.events import ERROR
+
+    ctx = Context(log=print)
+    posted = []
+    ctx.events.posted.connect(lambda text, level: posted.append((level, text)))
+    m = UdsManager(BusManager(), Hooks(ctx), ctx)
+    view = UdsView(m, ctx)
+    view.tp.setChecked(True)
+
+    m.tester_present_stopped.emit("Tester present stopped: queue is full")
+
+    assert not view.tp.isChecked()
+    assert "queue is full" in view.output.toPlainText()
+    assert (ERROR, "Tester present stopped: queue is full") in posted
