@@ -193,7 +193,7 @@ def main() -> int:
             from pycangui.ui.session import Session
 
             loaded["classes"] = (Session, MainWindow)
-            timing.mark("libraries imported")
+            timing.mark(timing.LIBRARIES_STEP)
         except ImportError as exc:
             loaded["error"] = exc
 
@@ -232,20 +232,23 @@ def main() -> int:
 
 
 def note_a_slow_start(window) -> None:
-    """Say so when a start was slow, and where the time went.
+    """What starting had to do and how long it took, as far as it is worth saying.
 
-    Why comes first when it is known -- the compiled files say exactly when
-    an update was the cause -- and then the report. The report is always
-    there to give, because the marks are always recorded; ``--timing`` only
-    decides whether a fast start prints one too.
+    Two separate lines, each only when there is something to say: how many
+    files Python compiled, and -- for a slow start -- what took over a second,
+    with a pointer to *Help > Diagnostics*, which always has the whole report.
+    ``--timing`` puts the whole report in the Event Log after every start.
     """
     from pycangui.core import slow_start
 
-    took = timing.total_work()
-    said = slow_start.message(timing.started_at(), took, detailed=timing.enabled())
-    if said is not None:
-        window.events.information(said)
-    if timing.enabled() or slow_start.is_slow(took):
+    if (compiled := slow_start.compiled_note(timing.started_at())) is not None:
+        window.events.information(compiled)
+    slow = slow_start.message(
+        timing.total_work(), steps=timing.step_times(), packages=timing.import_times()
+    )
+    if slow is not None:
+        window.events.information(slow)
+    if timing.enabled():
         report(window)
 
 
@@ -256,10 +259,10 @@ def report(window) -> None:
     print to, and because a number somebody has to read off the screen is a
     number that does not reach a bug report.
     """
-    for line in timing.report_lines():
+    for line in [timing.why_shown(), *timing.report_lines()]:
         window.events.information(line)
     if (path := timing.write_report(window.ctx.user_dir)) is not None:
-        window.events.information(f"startup timing written to {path}")
+        window.events.information(f"Startup timing written to {path}")
 
 
 if __name__ == "__main__":

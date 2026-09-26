@@ -9,10 +9,12 @@ costs more than measuring it, and the answer is different on every machine --
 a large DBC here, a slow file system there, a driver that takes its time
 enumerating adapters somewhere else.
 
-So the marks are always in the code and the measuring is off unless asked
-for: ``pycangui --timing``, which the launchers pass through, or
-``PYCANGUI_TIMING=1`` to leave it on. Off, ``mark`` is a comparison and a
-return; there is no reason to make somebody rebuild anything to get a number.
+So everything is always measured: the marks between steps, and how long
+each package took to import. Neither costs anything that can be measured,
+and a start that turns out to have been slow cannot be measured after the
+fact. The report is always in *Help > About*'s diagnostics, and goes to the
+Event Log after a slow start; ``pycangui --timing``, which the launchers
+pass through, or ``PYCANGUI_TIMING=1`` shows it after every start.
 
 The report goes to the Event Log and to ``startup-timing.txt`` in pycangui's
 own folder, because the launcher starts pythonw and there is no console to
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -46,6 +49,8 @@ REPORT_NAME = "startup-timing.txt"
 #: sits between two marks. It is shown, because it is part of the wait, and
 #: left out of the total, because it is not something to make faster.
 NOTICE_STEP = "waiting for the notice to be answered"
+#: The step the libraries load in, which the package times break down.
+LIBRARIES_STEP = "libraries imported"
 
 #: The clock starts when this module is imported, which ``__main__`` does
 #: before anything heavy. Whatever ran before that -- the interpreter itself,
@@ -63,11 +68,21 @@ _marks: list[tuple[str, float]] = []
 _on = FLAG in sys.argv or os.environ.get(ENV, "") not in ("", "0")
 
 
-#: Seconds spent executing each top-level package's modules, when imports are
-#: being watched. Exclusive of the imports a module does itself, so the totals
-#: add up rather than counting the same second under three names.
+#: Seconds spent executing each top-level package's modules. Exclusive of the
+#: imports a module does itself, so the totals add up rather than counting
+#: the same second under three names.
 _imports: dict[str, float] = {}
-_depth: list[float] = []
+#: The imports under way, one stack per thread: the libraries load on a
+#: thread of their own while the GUI thread may be importing too, and one
+#: shared stack would hand each thread's time to the other.
+_local = threading.local()
+
+
+def _depth() -> list[float]:
+    stack = getattr(_local, "stack", None)
+    if stack is None:
+        stack = _local.stack = []
+    return stack
 
 
 def enabled() -> bool:
@@ -81,11 +96,17 @@ class _TimedImports:
     module and then wraps the loader, so the cost lands under the package it
     belongs to. Time spent importing something else is subtracted, so a
     package is not blamed for the packages it imports.
+
+    Marked rather than recognised by its class: reloading this module makes a
+    new class, and a watcher that failed to recognise one from before would be
+    installed beside it, each asking the other for every module for ever.
     """
+
+    watcher = True
 
     def find_spec(self, name, path=None, target=None):
         for finder in sys.meta_path:
-            if finder is self or not hasattr(finder, "find_spec"):
+            if getattr(finder, "watcher", False) or not hasattr(finder, "find_spec"):
                 continue
             spec = finder.find_spec(name, path, target)
             if spec is None or spec.loader is None:
@@ -105,20 +126,21 @@ class _TimedLoader:
 
     def exec_module(self, module) -> None:
         began = time.perf_counter()
-        _depth.append(0.0)
+        stack = _depth()
+        stack.append(0.0)
         try:
             self._loader.exec_module(module)
         finally:
-            spent_below = _depth.pop()
+            spent_below = stack.pop()
             mine = time.perf_counter() - began - spent_below
             _imports[self._package] = _imports.get(self._package, 0.0) + mine
-            if _depth:  # tell whoever imported us not to count our time twice
-                _depth[-1] += mine + spent_below
+            if stack:  # tell whoever imported us not to count our time twice
+                stack[-1] += mine + spent_below
 
 
 def watch_imports() -> None:
-    """Start timing imports, if timing is on at all."""
-    if _on:
+    """Start timing imports: always, since it costs nothing measurable."""
+    if not any(getattr(finder, "watcher", False) for finder in sys.meta_path):
         sys.meta_path.insert(0, _TimedImports())
 
 
@@ -127,7 +149,7 @@ def import_lines(most: int = 8) -> list[str]:
     if not _imports:
         return []
     worst = sorted(_imports.items(), key=lambda pair: pair[1], reverse=True)[:most]
-    lines = ["the packages that took longest to import:"]
+    lines = ["The packages that took longest to import:"]
     lines += [f"  {took:6.3f}  {package}" for package, took in worst if took >= 0.001]
     return lines
 
@@ -173,6 +195,22 @@ def mark(label: str) -> None:
     _marks.append((label, time.perf_counter()))
 
 
+def why_shown() -> str:
+    """Why the report is in the Event Log, and how to stop it -- it is only
+    there when asked for, by the option or the environment variable.
+
+    Said every time, because ``--timing`` is exactly the kind of thing that
+    gets added to a shortcut for one investigation and forgotten, and then the
+    report turns up at every start with nothing to say where it came from.
+    """
+    if FLAG in sys.argv:
+        return (
+            f"Shown because pycangui was started with the {FLAG} option. Leave it "
+            "out of the shortcut or command to stop this report."
+        )
+    return f"Shown because the {ENV} environment variable is set. Remove it to stop this report."
+
+
 def report_lines() -> list[str]:
     """Each step and what it cost, slowest last so the answer is visible."""
     if not _marks:
@@ -183,7 +221,7 @@ def report_lines() -> list[str]:
         steps.append((label, at - previous))
         previous = at
     lines = [
-        "startup timing (seconds), from the first import in __main__",
+        "Startup timing (seconds), from the first import in __main__",
         f"({NOTICE_STEP} is you, and is not in the total):",
     ]
     # Before the clock above started, and often the largest part of the wait:
@@ -197,7 +235,7 @@ def report_lines() -> list[str]:
     work = [step for step in steps if step[0] != NOTICE_STEP]
     lines.append(f"  {sum(took for _, took in work):6.3f}  total, not counting the wait")
     label, took = max(work or steps, key=lambda step: step[1])
-    lines.append(f"the longest step was {label}, at {took:.3f} s")
+    lines.append(f"The longest step was {label}, at {took:.3f} s")
     return lines + import_lines()
 
 
@@ -205,6 +243,32 @@ def started_at() -> float:
     """The wall clock as this module was imported, which is as near as
     anything gets to when the process began."""
     return _STARTED_WALL
+
+
+def step_times() -> list[tuple[str, float]]:
+    """Each step and how long it took, the wait for the notice left out.
+
+    The launcher's own work and Python starting come first when the
+    launcher stamped them: a dependency check that installs something is a
+    slow start too, and nothing after Python starts would show it.
+    """
+    out: list[tuple[str, float]] = []
+    script, interpreter = launcher_seconds()
+    if script is not None:
+        out.append(("the launcher script", script))
+    if interpreter is not None:
+        out.append(("starting Python", interpreter))
+    previous = _STARTED
+    for label, at in _marks:
+        if label != NOTICE_STEP:
+            out.append((label, at - previous))
+        previous = at
+    return out
+
+
+def import_times() -> dict[str, float]:
+    """Seconds spent importing each top-level package, so far."""
+    return dict(_imports)
 
 
 def total_work() -> float:

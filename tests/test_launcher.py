@@ -186,16 +186,20 @@ class _Window:
         self.ctx = type("Ctx", (), {"user_dir": folder})()
 
 
-@pytest.mark.parametrize(("took", "reported"), [(29.0, True), (2.5, False)])
-def test_a_slow_start_reports_where_the_time_went_without_asking(
-    tmp_path, monkeypatch, took, reported
+@pytest.mark.parametrize(
+    ("took", "asked", "said", "reported"),
+    [(29.0, False, True, False), (2.5, False, False, False), (2.5, True, False, True)],
+)
+def test_a_slow_start_says_where_to_look_and_timing_prints_it_all(
+    tmp_path, monkeypatch, took, asked, said, reported
 ):
-    """Reported: after a slow start the report did not appear, because it
-    only ever did with --timing -- though the marks are always recorded."""
+    """A slow start says so in one line and points to Help > Diagnostics,
+    which always has the report; the whole report in the Event Log is for
+    --timing, which asked for it."""
     import pycangui.__main__ as entry
     from pycangui.core import slow_start, timing
 
-    monkeypatch.setattr(timing, "enabled", lambda: False)
+    monkeypatch.setattr(timing, "enabled", lambda: asked)
     monkeypatch.setattr(timing, "total_work", lambda: took)
     monkeypatch.setattr(timing, "report_lines", lambda: ["the report"])
     monkeypatch.setattr(slow_start, "compiled_this_start", lambda *_a: 0)
@@ -203,8 +207,38 @@ def test_a_slow_start_reports_where_the_time_went_without_asking(
 
     entry.note_a_slow_start(window)
 
+    assert any("Diagnostics" in line for line in window.said) is said
     assert ("the report" in window.said) is reported
     assert (tmp_path / timing.REPORT_NAME).exists() is reported
+
+
+@pytest.mark.parametrize(
+    ("argv", "env", "names"),
+    [
+        (["pycangui", "--timing"], "", "--timing"),
+        (["pycangui"], "1", "PYCANGUI_TIMING"),
+    ],
+)
+def test_the_report_says_why_it_is_there(monkeypatch, argv, env, names):
+    """A --timing left in a shortcut after one investigation turns the report
+    up at every start, so it says where it came from and how to stop it."""
+    from pycangui.core import timing
+
+    monkeypatch.setattr("sys.argv", argv)
+    monkeypatch.setenv("PYCANGUI_TIMING", env)
+    fresh = importlib.reload(timing)
+    assert names in fresh.why_shown()
+
+
+def test_the_reason_comes_first_in_the_event_log(tmp_path, monkeypatch):
+    import pycangui.__main__ as entry
+    from pycangui.core import timing
+
+    monkeypatch.setattr(timing, "why_shown", lambda: "the reason")
+    monkeypatch.setattr(timing, "report_lines", lambda: ["the report"])
+    window = _Window(tmp_path)
+    entry.report(window)
+    assert window.said[:2] == ["the reason", "the report"]
 
 
 def test_the_selftest_covers_the_libraries_that_move_firmware():
@@ -456,10 +490,14 @@ def test_the_diagnostics_report_says_how_long_starting_took(app, tmp_path, monke
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     timing.mark("a step of some kind")
+    timing.watch_imports()
+    sys.modules.pop("colorsys", None)
+    importlib.import_module("colorsys")
     window = MainWindow()
 
     report = diagnostics(window)
 
-    assert "startup timing" in report
+    assert "startup timing" in report.lower()
+    assert "took longest to import" in report, "and which packages, every time"
     assert "total, not counting the wait" in report
     window.close()
