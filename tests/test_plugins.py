@@ -127,6 +127,25 @@ def test_a_plugin_pane_starts_hidden_and_is_in_the_view_menu(app, window):
     assert "Demo screen" in [a.text() for a in window.view_menu.actions()]
 
 
+def test_the_view_menu_groups_plugin_and_custom_panes_under_headings(app, window):
+    """pycangui's own panes, then the plugins', then yours -- each group under
+    a heading that says what it is, and a heading only when there is a group."""
+    headings = [a.text() for a in window.view_menu.actions() if not a.isEnabled()]
+    assert "Plugins" not in headings and "Custom panes" not in headings
+
+    write_plugin(window, "demo", PANE.format(what="hello"))
+    window._reload_plugins()
+    window.open_custom_pane("Battery limits")
+    settle(app)
+    names = [a.text() for a in window.view_menu.actions()]
+    headings = {a.text() for a in window.view_menu.actions() if not a.isEnabled()}
+
+    assert {"Plugins", "Custom panes"} <= headings, "unclickable, so they read as headings"
+    assert names.index("CAN Trace") < names.index("Plugins") < names.index("Demo screen")
+    assert names.index("Demo screen") < names.index("Custom panes")
+    assert names.index("Custom panes") < names.index("Battery limits")
+
+
 def entries(menu):
     return [a.text() for a in menu.actions() if not a.isSeparator()]
 

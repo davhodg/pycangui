@@ -121,6 +121,8 @@ PROTOCOL_PANE_SIZE = (1000, 700)
 #: The console is typed into, so it wants width for a line of Python and
 #: enough height to see what the last few commands said.
 CONSOLE_PANE_SIZE = (900, 520)
+#: The sort of pane every custom pane is an instance of.
+CUSTOM_KIND = "custom"
 
 #: How near the bottom of the Event Log still counts as being at the bottom,
 #: in scrollbar steps. Exactly at the end is too strict: a line arriving
@@ -272,6 +274,9 @@ class MainWindow(QMainWindow):
         self.panes = Panes(self, self.ctx)
         self.panes.pane_shown.connect(self._on_pane_shown)
         self._register_panes()
+        #: pycangui's own sorts of pane, told apart in the View menu from the
+        #: ones plugins add and the custom ones you build.
+        self._own_kinds = set(self.panes.kinds) - {CUSTOM_KIND}
         # The first of each kind is named after its kind, so every layout and
         # setting written before any of this existed still names its own pane.
         self.trace = self.panes.view(self.panes.add("trace"))
@@ -748,7 +753,7 @@ class MainWindow(QMainWindow):
                 floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
-                "custom",
+                CUSTOM_KIND,
                 "Custom pane",
                 Qt.RightDockWidgetArea,
                 self._new_custom_pane,
@@ -816,7 +821,7 @@ class MainWindow(QMainWindow):
             pane = custom_model.CustomPane(title=name)
             custom_model.save(name, pane)
         return self.panes.add(
-            "custom",
+            CUSTOM_KIND,
             name=custom_instance(name),
             title=pane.title or name,
             show=True,
@@ -833,7 +838,7 @@ class MainWindow(QMainWindow):
         Cancel on any of them is Cancel for the whole close: the answer to
         "save these?" was "wait", and closing the rest anyway is not waiting.
         """
-        for name in self.panes.instances("custom"):
+        for name in self.panes.instances(CUSTOM_KIND):
             view = self.panes.view(name)
             if isinstance(view, CustomPaneView) and not view.may_discard():
                 return False
@@ -1024,10 +1029,27 @@ class MainWindow(QMainWindow):
         return order
 
     def _build_view_menu(self) -> None:
-        """Every pane, and the two things you can do to the set of them."""
+        """Every pane, and the two things you can do to the set of them.
+
+        pycangui's own panes first, then the ones plugins add and the custom
+        ones you built, each under a heading of its own. A heading rather than
+        Qt's menu section: Windows 11's style draws a section as a bare line and
+        drops its title, so a greyed entry is what says the same on every style.
+        """
         self.view_menu.clear()
+        own, plugins, custom = [], [], []
         for name in self._view_order():
-            self.view_menu.addAction(self.panes.docks[name].toggleViewAction())
+            kind = self.panes.kind_of(name)
+            group = own if kind in self._own_kinds else custom if kind == CUSTOM_KIND else plugins
+            group.append(name)
+        for heading, names in ((None, own), ("Plugins", plugins), ("Custom panes", custom)):
+            if not names:
+                continue
+            if heading:
+                self.view_menu.addSeparator()
+                self.view_menu.addAction(heading).setEnabled(False)
+            for name in names:
+                self.view_menu.addAction(self.panes.docks[name].toggleViewAction())
         self.view_menu.addSeparator()
 
         # They are panes -- they open as docks and they are removed under
