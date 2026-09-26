@@ -18,22 +18,46 @@ class Hints:
     """Stands in for QStyleHints, recording what it was asked for. The
     offscreen platform the tests run on has no colour scheme to change."""
 
-    def __init__(self):
+    def __init__(self, system):
         self.asked = []
+        self.system = system
+        self.scheme = system
 
     def setColorScheme(self, scheme):
         self.asked.append(scheme)
+        self.scheme = scheme
 
     def unsetColorScheme(self):
         self.asked.append("system")
+        self.scheme = self.system
+
+    def colorScheme(self):
+        return self.scheme
+
+
+class Style:
+    def __init__(self, name):
+        self._name = name
+
+    def name(self):
+        return self._name
 
 
 class App:
-    def __init__(self):
-        self.hints = Hints()
+    """A system set to light or dark, with the native style Qt chose for it."""
+
+    def __init__(self, style="windows11", system=Qt.ColorScheme.Light):
+        self.hints = Hints(system)
+        self._style = Style(style)
 
     def styleHints(self):
         return self.hints
+
+    def style(self):
+        return self._style
+
+    def setStyle(self, name):
+        self._style = Style(name.lower())
 
 
 @pytest.mark.parametrize(
@@ -57,6 +81,32 @@ def test_nothing_chosen_is_the_system(settings):
 def test_a_choice_is_remembered(settings):
     theme.choose(theme.DARK, settings, App())
     assert theme.chosen(settings) == theme.DARK
+
+
+# --- a native style that cannot draw dark --------------------------------------------------
+@pytest.mark.parametrize("choice", [theme.SYSTEM, theme.LIGHT, theme.DARK])
+def test_windows_10_uses_fusion_whatever_is_chosen(choice):
+    """Reported: on Windows 10 Qt's native style stays light whatever is asked
+    for, so choosing Dark did nothing. Fusion for light as well as dark, so that
+    switching changes colours and never the controls' shapes."""
+    app = App(style="windowsvista")
+    theme.apply(choice, app)
+    assert app.style().name() == "fusion"
+
+
+def test_switching_on_windows_10_changes_colours_not_the_style():
+    app = App(style="windowsvista")
+    theme.apply(theme.DARK, app)
+    theme.apply(theme.LIGHT, app)
+    assert app.style().name() == "fusion"
+    assert app.hints.asked[-1] == Qt.ColorScheme.Light
+
+
+@pytest.mark.parametrize("choice", [theme.SYSTEM, theme.LIGHT, theme.DARK])
+def test_a_native_style_that_can_be_dark_is_kept(choice):
+    app = App(style="windows11")
+    theme.apply(choice, app)
+    assert app.style().name() == "windows11"
 
 
 def test_a_value_it_does_not_know_is_the_system(settings):
