@@ -2,6 +2,9 @@
 # links below appear in the same chooser, above them.
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a question or share an idea
+    url: https://github.com/davhodg/pycangui/discussions
+    about: Help using pycangui, and ideas not yet ready to be a feature request.
   - name: Report a security vulnerability
     url: https://github.com/davhodg/pycangui/security/advisories/new
     about: Privately, please -- not as a public issue. See SECURITY.md.

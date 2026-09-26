@@ -3,7 +3,9 @@
 Bug reports, fixes and features are all welcome. pycangui is looked after by one person in their
 own time, so there is no promised response time, but every issue and pull request is read.
 
-Security problems go through [SECURITY.md](SECURITY.md), not a public issue.
+Questions, and ideas not yet ready to be a feature request, go in
+[Discussions](https://github.com/davhodg/pycangui/discussions); bugs and feature requests are
+issues. Security problems go through [SECURITY.md](SECURITY.md), not a public issue.
 
 ## Policy
 

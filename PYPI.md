@@ -52,6 +52,7 @@ No hardware is needed to try it: the `virtual` interface's *Demo device* channel
 ## More
 
 - [Source, issues and releases](https://github.com/davhodg/pycangui)
+- [Questions and ideas](https://github.com/davhodg/pycangui/discussions)
 - [Manual](https://github.com/davhodg/pycangui/blob/master/pycangui/help/manual.md)
 
 ## Safety notice and licence
