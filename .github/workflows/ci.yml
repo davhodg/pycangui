@@ -144,7 +144,9 @@ jobs:
   # required on the pypi environment (repository Settings > Environments), and
   # then the job waits for that approval before anything is uploaded.
   pypi:
-    name: Publish to ${{ startsWith(github.ref, 'refs/tags/v') && 'PyPI' || 'TestPyPI' }}
+    # A plain name: GitHub shows an expression here unevaluated whenever the
+    # job is skipped, which is on every ordinary push.
+    name: Publish to PyPI or TestPyPI
     needs: [test, macos, package]
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
