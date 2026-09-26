@@ -903,8 +903,14 @@ class CanopenManager(QObject):
                 self.message.emit(
                     f"Node {node_id}: PDO configuration read failed ({error})", WARNING
                 )
-            elif names:
+                return
+            if names:
                 self.message.emit(f"Node {node_id}: decoding {', '.join(names)}", INFORMATION)
+            # The read replaced what the EDS said with what the node maps, so
+            # anything showing the mapping has to ask again -- it may have
+            # been drawn from the EDS, or mid-read, from a map still filling.
+            self.forget_labels()
+            self.pdo_config.emit(node_id)
 
         self._worker.submit(job, done)
 

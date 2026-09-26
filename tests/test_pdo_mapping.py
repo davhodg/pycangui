@@ -34,30 +34,45 @@ def wait_until(pred, timeout=3.0):
         time.sleep(0.005)
 
 
+def settle(manager):
+    """Wait for the manager's worker to get through its queue, which it does
+    in order.
+
+    Loading an EDS also queues a read of the node's TPDOs over SDO, which
+    empties each mapping and refills it one entry at a time. Until it is
+    done, TPDO1 can be caught mapping nothing. That read is queued when the
+    EDS has loaded, so wait for ``eds_loaded`` first, or this waits for less.
+    """
+    settled = []
+    manager.background(lambda: None, lambda _result, _error: settled.append(True))
+    wait_until(lambda: settled)
+
+
 @pytest.fixture
-def manager(app, demo_device, tmp_path, monkeypatch):
-    """A node with the demo EDS on it, which is what the picker reads."""
+def on_the_bus(app, demo_device, tmp_path, monkeypatch):
+    """The demo node and a manager on one bus, the node's EDS not loaded yet."""
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     bus = BusManager()
     out = CanopenManager(bus)
     bus.connect_bus("virtual", "vcan_pdo_map", 500000, False)
-    demo_device(bus, kinds=["canopen_device"])
+    demo = demo_device(bus, kinds=["canopen_device"])
+    yield out, demo
+    bus.disconnect_bus()
+    out.shutdown()
+
+
+@pytest.fixture
+def manager(on_the_bus):
+    """A node with the demo EDS on it, which is what the picker reads."""
+    out, _demo = on_the_bus
     seen, loaded = [], []
     out.node_seen.connect(lambda n, state: seen.append(n))
     out.eds_loaded.connect(lambda n, p, name: loaded.append(n))
     wait_until(lambda: seen)  # its heartbeat
     out.load_eds(NODE, str(resources.path("demo.eds")))
     wait_until(lambda: loaded)
-    # Loading the EDS also queues a read of the node's TPDOs over SDO, which
-    # empties each mapping and refills it one entry at a time. Until it is
-    # done, TPDO1 can be caught mapping nothing -- so wait for the worker to
-    # get through its queue, which it does in order.
-    settled = []
-    out.background(lambda: None, lambda _result, _error: settled.append(True))
-    wait_until(lambda: settled)
-    yield out
-    bus.disconnect_bus()
-    out.shutdown()
+    settle(out)
+    return out
 
 
 def variable(data_type: int):
@@ -214,6 +229,31 @@ def test_reading_from_the_node_does_throw_the_edit_away(view):
 
     view.refresh()  # what Read from node does when the answer arrives
     assert view._configs[0].entries, "the node's own mapping did not come back"
+
+
+def test_the_pane_shows_what_the_node_maps_not_only_what_its_eds_says(app, on_the_bus):
+    """Loading an EDS fills the pane with the mapping the file declares, then
+    asks the node what it really maps. The pane was never told the answer,
+    so a node remapped since it left the factory went on showing the EDS
+    mapping -- or, open at the wrong moment, a PDO mapping nothing."""
+    from pycangui.core.context import Context
+    from pycangui.ui.pdo_view import PdoConfigView
+
+    manager, demo = on_the_bus
+    device = demo["canopen_device"].state.device
+    device.set_data(0x1A00, 0, b"\x01")  # TPDO1 cut down to its first object
+    view = PdoConfigView(manager, Context(log=print))
+    view.set_node(NODE)
+
+    loaded = []
+    manager.eds_loaded.connect(lambda n, p, name: loaded.append(n))
+    manager.load_eds(NODE, str(resources.path("demo.eds")))
+    wait_until(lambda: loaded)
+    settle(manager)
+
+    tpdo1 = next(c for c in view._configs if (c.direction, c.number) == ("TPDO", 1))
+    assert [e.name for e in tpdo1.entries] == ["Statusword"]
+    assert view.tree.topLevelItem(0).childCount() == 1
 
 
 # --- saying why an object did not go in ------------------------------------------------
