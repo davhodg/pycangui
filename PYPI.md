@@ -4,6 +4,13 @@
 
 # pycangui
 
+[![CI](https://github.com/davhodg/pycangui/actions/workflows/ci.yml/badge.svg)](https://github.com/davhodg/pycangui/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/release/davhodg/pycangui?include_prereleases)](https://github.com/davhodg/pycangui/releases)
+[![PyPI](https://img.shields.io/pypi/v/pycangui)](https://pypi.org/project/pycangui/)
+![python](https://img.shields.io/badge/python-3.12+-blue)
+![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
+![license](https://img.shields.io/badge/license-Apache--2.0-green)
+
 A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP and CCP, and Python scripting, on any adapter supported by python-can.
 
 ![pycangui on its demo device: the CAN Trace, CAN Transmit and Event Log above, and engine and vehicle speed plotted in Signals and Plot below](https://raw.githubusercontent.com/davhodg/pycangui/master/pycangui/help/main-window.png)

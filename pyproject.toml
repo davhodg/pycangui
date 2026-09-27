@@ -19,6 +19,36 @@ license = "Apache-2.0 AND MIT-0"
 license-files = ["LICENSE", "NOTICE", "LICENSES/*.txt"]
 requires-python = ">=3.12"
 authors = [{ name = "davhodg" }]
+# What PyPI shows as tags, and searches on.
+keywords = [
+    "CAN", "CAN bus", "CAN FD", "CANopen", "UDS", "ISO-TP", "J1939", "XCP", "CCP", "DBC",
+    "automotive", "diagnostics", "python-can", "Qt",
+]
+# Checked against the official list by tests/test_readme.py: PyPI refuses an
+# upload with a classifier it does not know, which is the last step of a
+# release. No licence classifier: the licence expression above replaces them,
+# and setuptools refuses both.
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: MacOS X",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Manufacturing",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Embedded Systems",
+    "Topic :: System :: Hardware",
+]
 dependencies = [
     # Essentials, not the full PySide6: the "addons" wheel is the rest of Qt
     # (3D, Charts, Multimedia, WebEngine), which pycangui never imports, and
@@ -47,8 +77,11 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/davhodg/pycangui"
+Documentation = "https://github.com/davhodg/pycangui/blob/master/pycangui/help/manual.md"
 Repository = "https://github.com/davhodg/pycangui"
 Issues = "https://github.com/davhodg/pycangui/issues"
+Discussions = "https://github.com/davhodg/pycangui/discussions"
+Releases = "https://github.com/davhodg/pycangui/releases"
 
 [project.optional-dependencies]
 # Everything optional, which today is the MDF and MF4 reader: measurement
@@ -68,7 +101,14 @@ all = ["asammdf>=8"]
 # pdoc builds the API pages for people writing hooks, nodes and plugins; see
 # build/api_docs.py. In dev so that CI renders them and a broken docstring
 # fails a test rather than a release.
-dev = ["pytest", "pytest-xdist", "ruff==0.16.*", "pdoc>=16", "pycangui[all]"]
+dev = [
+    "pytest",
+    "pytest-xdist",
+    "ruff==0.16.*",
+    "pdoc>=16",
+    "trove-classifiers",
+    "pycangui[all]",
+]
 
 # gui-scripts, not scripts: on Windows the launcher pip makes for a script is a
 # console program, so the window would open with a console behind it. Elsewhere
