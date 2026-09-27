@@ -11,6 +11,14 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- **ECU control** in the UDS pane: CommunicationControl (0x28), to quieten an ECU on the bus
+  or give it back, and a baud rate change (LinkControl, 0x87), verified before it is made.
+  Both ask first. ECU reset is there too.
+- **Read all** in the UDS DTC tab: every DTC matching the status mask with its extended data
+  and severity, every snapshot, the first and most recent failed and confirmed DTCs, the fault
+  detection counters and the permanent DTCs, as one report. Supported DTCs on request.
+- `hooks/uds.py::extended_data_record` and `EXTENDED_DATA_RECORDS`, for the size and name of
+  each DTC extended data record.
 - **Check for updates** asks PyPI for a pip installation, and gives the pip command that
   updates it and the environment to run it in. The Windows build still asks for the latest
   release, and a source folder for newer commits.
@@ -19,12 +27,17 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- The UDS pane is in tabs -- DIDs, routines and raw; DTCs; Transfer -- below the ECU config,
+  the session and ECU control, which stay in view. It needs a good deal less width.
 - The Windows installer shows the third-party notices on the page after the licence, before
   anything is installed, rather than after installing.
 - On the PyPI page, the link to the Windows installer is under *More*.
 
 ### Fixed
 
+- The UDS reports for a DTC's extended data (0x06) and snapshots (0x04) are read and split by
+  pycangui, where udsoncan refused them without every record's size given first. A snapshot's
+  DIDs are named and decoded like any other DID.
 - A development build, such as `0.1.0.dev5` from TestPyPI, is no longer taken as newer than the
   release it leads to.
 

@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QSpinBox,
     QTableView,
+    QTabWidget,
 )
 
 from pycangui.core.context import Context
@@ -74,6 +75,16 @@ def remember(ctx: Context, key: str, widget, default=None) -> None:
         # On editingFinished, not textChanged: settings.json is rewritten on
         # every set, and once per keystroke is no way to treat a file.
         widget.editingFinished.connect(lambda: ctx.settings.set(key, widget.text()))
+
+    elif isinstance(widget, QTabWidget):
+        # Which tab, by its text rather than its position, for the same
+        # reason as a combo: a pane that gains a tab would otherwise open on
+        # a different one.
+        if saved is not None:
+            for index in range(widget.count()):
+                if widget.tabText(index) == str(saved):
+                    widget.setCurrentIndex(index)
+        widget.currentChanged.connect(lambda index: ctx.settings.set(key, widget.tabText(index)))
 
     else:
         raise TypeError(f"remember() does not handle {type(widget).__name__}")

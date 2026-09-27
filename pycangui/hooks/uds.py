@@ -62,6 +62,16 @@ DTC_DESCRIPTIONS: dict[int, str] = {
     # 0x9A01: "CAN bus off",
 }
 
+#: Your ECU's DTC extended data records, by record number: how many bytes each
+#: holds, and what to call it. ISO 14229-1 numbers them and says nothing about
+#: their size -- 0x01 to 0x8F are the vehicle manufacturer's -- and an answer
+#: carrying several runs them together, so without this they cannot be told
+#: apart and are shown as bytes.
+EXTENDED_DATA_RECORDS: dict[int, tuple[int, str]] = {
+    # 0x01: (1, "Occurrence counter"),
+    # 0x02: (2, "Operating hours at first failure"),
+}
+
 #: Your names for routines, tried before the ISO ones. ISO 14229-1 names only
 #: four routines: erase memory (0xFF00), check programming dependencies
 #: (0xFF01), erase mirror memory DTCs (0xFF02) and the deploy loop (0xE200).
@@ -209,6 +219,19 @@ def dtc_description(dtc: int, *, ctx) -> str | None:
     unknown DTC shows its code and nothing else.
     """
     return DTC_DESCRIPTIONS.get(dtc >> 8) or DTC_DESCRIPTIONS.get(dtc)
+
+
+@hook
+def extended_data_record(record: int, *, ctx) -> tuple[int, str] | None:
+    """(size in bytes, name) of a DTC extended data record, or None if unknown.
+
+    EXTENDED_DATA_RECORDS above by default. Used to split the records an ECU
+    sends for ReadDTCInformation 0x06, and *Read all*, which asks for every
+    record of every DTC. Snapshots need nothing here: what they hold are
+    DIDs, named and decoded like any other, and their length is learned by
+    reading the DID.
+    """
+    return EXTENDED_DATA_RECORDS.get(record)
 
 
 @hook

@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""UDS pane: addressing, session / security / tester present, DIDs, DTCs,
-routines, ECU reset and raw requests. Results go to the pane's own log."""
+"""UDS pane: the ECU and how to reach it, session and security, ECU control,
+then tabs for DIDs, routines and raw requests, DTCs, and transfers. Results
+go to the pane's own log, shared by every tab."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -20,7 +21,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -53,9 +56,12 @@ from pycangui.uds.dtc import (
 )
 from pycangui.uds.manager import (
     CHECK_MEMORY,
+    COMM_CONTROLS,
+    COMM_MESSAGES,
     ERASE_MEMORY,
     FILE_MODES,
     FILE_MODES_SENDING,
+    LINK_BITRATES,
     RESETS,
     UdsManager,
     parse_bytes,
@@ -199,6 +205,35 @@ def _picker(known: dict[int, str], digits: int, describe=None) -> QComboBox:
     return combo
 
 
+def _narrow(combo: QComboBox, characters: int) -> QComboBox:
+    """Size a combo box to about this many characters, not to its longest entry.
+
+    The list still opens as wide as it needs to. What this stops is one long
+    entry -- a DTC report's full name -- setting the width of the whole pane.
+    """
+    combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(characters)
+    # The open list is otherwise only as wide as the box, and cuts each
+    # entry off -- the name after a DID, the end of a report's title.
+    view = combo.view()
+    view.setMinimumWidth(view.sizeHintForColumn(0) + view.verticalScrollBar().sizeHint().width())
+    return combo
+
+
+def _row(*items) -> QHBoxLayout:
+    """A row packed to the left: labels as text, widgets as they are, ints as space."""
+    row = QHBoxLayout()
+    for item in items:
+        if isinstance(item, str):
+            row.addWidget(QLabel(item))
+        elif isinstance(item, int):
+            row.addSpacing(item)
+        else:
+            row.addWidget(item)
+    row.addStretch()
+    return row
+
+
 def _picked(combo: QComboBox) -> int:
     """The number out of a picker, whether it was chosen or typed.
 
@@ -207,6 +242,27 @@ def _picked(combo: QComboBox) -> int:
     """
     text = combo.currentText().strip().split()
     return int(text[0], 16) if text else 0
+
+
+class _FittedScroll(QScrollArea):
+    """A scroll area that asks for the whole height of what it holds.
+
+    A QScrollArea asks for no more than a couple of dozen lines, whatever it
+    holds, so it scrolls when there is room to show everything. This one
+    asks for all of it, grows no further, and still scrolls once the pane is
+    made smaller than that.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+
+    def sizeHint(self) -> QSize:
+        inner = self.widget()
+        if inner is None:
+            return super().sizeHint()
+        wanted = inner.sizeHint()
+        return QSize(wanted.width(), wanted.height() + 2 * self.frameWidth())
 
 
 class UdsView(QWidget):
@@ -247,13 +303,15 @@ class UdsView(QWidget):
         self.p2_star.setToolTip(P2_TIP)
 
         # --- addressing ----------------------------------------------------
-        addr = QGroupBox("ECU")
-        # A row, packed left, rather than a grid. The grid spread the boxes
+        addr = QGroupBox("ECU config")
+        # Rows packed left rather than a grid. The grid spread the boxes
         # across the whole width of the pane and put each label a long way
         # from what it labels, and its columns were counted by hand: adding
         # the functional address shifted everything after it, which landed
-        # "Pad" on top of "Transport".
-        g = QHBoxLayout(addr)
+        # "Pad" on top of "Transport". Two rows rather than one, since one
+        # made the pane as wide as all twelve boxes together: which ECU, then
+        # how the transport carries the conversation with it.
+        g = QVBoxLayout(addr)
         self.tx_id = _hex_edit(_id_text(cfg.tx_id))
         self.tx_id.setToolTip(ADDRESS_TIP)
         self.rx_id = _hex_edit(_id_text(cfg.rx_id))
@@ -332,26 +390,38 @@ class UdsView(QWidget):
         self.open_btn = QPushButton("Open")
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
-        for label, widget in (
-            ("Addressing", self.addressing),
-            ("ECU", self.ecu_address),
-            ("Tester", self.tester_address),
-            ("Func TA", self.functional_target),
-            ("Tx ID", self.tx_id),
-            ("Rx ID", self.rx_id),
-            ("Func ID", self.functional_id),
-            ("Pad", self.padding),
-            ("Transport", self.transport),
-            ("CAN-DL", self.can_dl),
-            ("", self.brs),
-            ("", self.open_btn),
+        for boxes in (
+            (
+                ("Addressing", self.addressing),
+                ("ECU", self.ecu_address),
+                ("Tester", self.tester_address),
+                ("Func TA", self.functional_target),
+                ("Tx ID", self.tx_id),
+                ("Rx ID", self.rx_id),
+                ("Func ID", self.functional_id),
+            ),
+            (
+                ("Pad", self.padding),
+                ("Transport", self.transport),
+                ("CAN-DL", self.can_dl),
+                ("", self.brs),
+                ("", self.open_btn),
+            ),
         ):
-            if label:
-                named = QLabel(label)
-                self.address_labels[widget] = named
-                g.addWidget(named)
-            g.addWidget(widget)
-        g.addStretch()  # everything to the left, rather than spread out
+            line = QHBoxLayout()
+            for label, widget in boxes:
+                if widget is self.open_btn:
+                    # At the right-hand edge: it is what the rest of the box is
+                    # filled in for, and the one control used every time.
+                    line.addStretch()
+                if label:
+                    named = QLabel(label)
+                    self.address_labels[widget] = named
+                    line.addWidget(named)
+                line.addWidget(widget)
+            if widget is not self.open_btn:
+                line.addStretch()  # everything to the left, rather than spread out
+            g.addLayout(line)
         self._addressing_changed()
         # One tester on the bus, not two. If the J1939 pane has claimed an
         # address, that is this tool's address, and typing a different one
@@ -363,7 +433,9 @@ class UdsView(QWidget):
 
         # --- session / security ----------------------------------------------
         sess = QGroupBox("Session and security")
-        h = QHBoxLayout(sess)
+        sess_rows = QVBoxLayout(sess)
+        h = QHBoxLayout()
+        sess_rows.addLayout(h)
         self.session = QComboBox()
         self.session.setToolTip(
             "DiagnosticSessionControl (0x10). Most services are only allowed\n"
@@ -423,41 +495,87 @@ class UdsView(QWidget):
             "unlock with it, after a few seconds of quiet."
         )
         self.tp.toggled.connect(self.manager.set_tester_present)
-        h.addWidget(self.tp)
-        h.addSpacing(12)
-        # Whose timing a request waits for. Beside the session, because that
-        # is where the ECU gives its own and the log line says what it gave.
+        h.addStretch()
+        # The second row is keeping the session and how long to wait in it:
+        # tester present, and whose timing a request waits for. Beside the
+        # session, because that is where the ECU gives its own timing and the
+        # log line says what it gave.
         self.timing.currentIndexChanged.connect(lambda _i: self._timing_changed())
         self.p2.valueChanged.connect(lambda _v: self._timing_changed())
         self.p2_star.valueChanged.connect(lambda _v: self._timing_changed())
-        for label, widget in (("Timing", self.timing), ("P2", self.p2), ("P2*", self.p2_star)):
-            h.addWidget(QLabel(label))
-            h.addWidget(widget)
+        sess_rows.addLayout(
+            _row(self.tp, 12, "Timing", self.timing, "P2", self.p2, "P2*", self.p2_star)
+        )
         self.manager.set_timing(cfg.timing, cfg.p2_timeout_s, cfg.p2_star_timeout_s)
-        h.addStretch()
 
-        # --- reset ---------------------------------------------------------------
-        # Its own box: a reset is not part of getting into a session, it is the
-        # one control here that interrupts whatever the ECU was doing.
-        reset_box = QGroupBox("ECU reset")
-        r = QHBoxLayout(reset_box)
+        # --- ECU control -------------------------------------------------------------
+        # Its own box, above the tabs: none of these is part of getting into a
+        # session, and each changes how the ECU behaves on the bus -- restart
+        # it, quieten it, move it to another bitrate. Kept in view rather than
+        # in a tab because they are what somebody reaches for in a hurry.
+        control_box = QGroupBox("ECU control")
+        r = QGridLayout(control_box)
         self.reset_type = QComboBox()
         for code, name in RESETS.items():
-            self.reset_type.addItem(name, code)
-        r.addWidget(QLabel("Type"))
-        r.addWidget(self.reset_type)
+            self.reset_type.addItem(name.capitalize(), code)
         reset = QPushButton("Reset")
         reset.setToolTip(
             "ECUReset (0x11). The ECU restarts, so the session and any\n"
             "security unlock are lost with it."
         )
         reset.clicked.connect(lambda: self.manager.ecu_reset(self.reset_type.currentData()))
-        r.addWidget(reset)
-        r.addStretch()
+        r.addWidget(QLabel("Reset"), 0, 0)
+        r.addWidget(self.reset_type, 0, 1)
+        r.addWidget(reset, 0, 2, alignment=Qt.AlignLeft)  # beside its choice
+
+        self.comm_control = QComboBox()
+        for code, name in COMM_CONTROLS.items():
+            self.comm_control.addItem(name[0].upper() + name[1:], code)
+        self.comm_control.setToolTip(
+            "CommunicationControl (0x28): whether the ECU sends and listens.\n"
+            "Disabling Tx of normal messages is how a flash is usually made\n"
+            "quiet for the rest of the bus. The ECU puts it back itself when\n"
+            "the session ends, or when asked to enable Rx and Tx."
+        )
+        self.comm_messages = QComboBox()
+        for code, name in COMM_MESSAGES.items():
+            self.comm_messages.addItem(name.capitalize(), code)
+        self.comm_messages.setToolTip("Which messages it applies to")
+        comm = QPushButton("Send")
+        comm.setToolTip("Send CommunicationControl with the choices on the left")
+        comm.clicked.connect(self._communication_control)
+        r.addWidget(QLabel("Communication"), 1, 0)
+        r.addWidget(self.comm_control, 1, 1)
+        r.addWidget(self.comm_messages, 1, 2)
+        r.addWidget(comm, 1, 3)
+
+        self.link_bitrate = QComboBox()
+        for bitrate in LINK_BITRATES:
+            self.link_bitrate.addItem(f"{bitrate // 1000} kbit/s", bitrate)
+        self.link_bitrate.setToolTip(
+            "LinkControl (0x87): move the ECU to another bitrate. It is asked\n"
+            "whether it can first, then told to. After that it is on the new\n"
+            "rate and this channel is not: reconnect the channel at that rate.\n"
+            "There is no request to put it back. The new rate lasts for the\n"
+            "session it was set in, so ending the session -- a reset, a return\n"
+            "to the default session, or letting it time out -- restores the\n"
+            "ECU's own rate; or change it back the same way."
+        )
+        change_rate = QPushButton("Change")
+        change_rate.setToolTip("Ask the ECU to move to the bitrate on the left")
+        change_rate.clicked.connect(self._change_bitrate)
+        r.addWidget(QLabel("Baud rate"), 2, 0)
+        r.addWidget(self.link_bitrate, 2, 1)
+        r.addWidget(change_rate, 2, 2, alignment=Qt.AlignLeft)
+        r.setColumnStretch(4, 1)
 
         # --- data ----------------------------------------------------------------
-        data = QGroupBox("Data and routines")
-        g = QGridLayout(data)
+        # A box each for DIDs and routines, rather than one grid. In a grid
+        # the two rows shared columns, so the identifier list was as narrow as
+        # the routine buttons beside it allowed, and "F190  VIN" with its
+        # description could not be read.
+        did_box = QGroupBox("DID")
+        routine_box = QGroupBox("Routine")
         self.did = _picker(manager.did_choices(), 4, manager.did_description)
         self.did.setToolTip(
             "The identifier to read or write. The list is what ISO 14229-1\n"
@@ -478,11 +596,12 @@ class UdsView(QWidget):
         write_did.clicked.connect(
             lambda: self.manager.write_did(_picked(self.did), self.did_value.text())
         )
-        g.addWidget(QLabel("DID"), 0, 0)
-        g.addWidget(self.did, 0, 1)
-        g.addWidget(read_did, 0, 2)
-        g.addWidget(self.did_value, 0, 3)
-        g.addWidget(write_did, 0, 4)
+        # The list has the most room: it is what has to be read.
+        did_row = QHBoxLayout(did_box)
+        did_row.addWidget(self.did, 3)
+        did_row.addWidget(read_did)
+        did_row.addWidget(self.did_value, 2)
+        did_row.addWidget(write_did)
 
         self.routine = _picker(manager.routine_choices(), 4, manager.routine_description)
         self.routine.setToolTip(
@@ -507,10 +626,12 @@ class UdsView(QWidget):
                 )
             )
             rbox.addWidget(b)
-        g.addWidget(QLabel("Routine"), 1, 0)
-        g.addWidget(self.routine, 1, 1)
-        g.addLayout(rbox, 1, 2)
-        g.addWidget(self.routine_data, 1, 3, 1, 2)
+        routine_row = QHBoxLayout(routine_box)
+        routine_row.addWidget(self.routine, 3)
+        routine_row.addLayout(rbox)
+        routine_row.addWidget(self.routine_data, 2)
+        for picker in (self.did, self.routine):
+            _narrow(picker, 22)
 
         # Its own box, because it is not one of these. DID and Routine are
         # services with their parameters laid out for them; this is the
@@ -536,8 +657,9 @@ class UdsView(QWidget):
         # and each takes a different set of parameters. Choosing the report
         # first and letting it decide which boxes are live is the only way to
         # offer all of them without offering nonsense.
-        dtc_box = QGroupBox("DTCs")
+        dtc_box = QWidget()
         d = QGridLayout(dtc_box)
+        d.setContentsMargins(0, 0, 0, 0)
 
         self.report = QComboBox()
         self.report.setToolTip(
@@ -550,13 +672,34 @@ class UdsView(QWidget):
             if report.note:
                 self.report.setItemData(self.report.count() - 1, report.note, Qt.ToolTipRole)
         self.report.currentIndexChanged.connect(self._on_report)
+        _narrow(self.report, 30)  # the report names are long
         read_dtc = QPushButton("Read")
         read_dtc.setToolTip("Send the report chosen on the left")
         read_dtc.clicked.connect(self._read_dtcs)
+        read_all = QPushButton("Read all")
+        read_all.setToolTip(
+            "Everything the ECU holds about its faults, as one report: how many\n"
+            "and which DTCs match the status mask, each one's extended data and\n"
+            "severity, every snapshot, the first and most recent failed and\n"
+            "confirmed DTCs, the fault detection counters and the permanent\n"
+            "ones. A report the ECU does not offer is one line in the log.\n"
+            "Extended data records are split and named by\n"
+            "hooks/uds.py::extended_data_record; a snapshot's DIDs are named and\n"
+            "decoded like any other DID."
+        )
+        read_all.clicked.connect(self._read_all_dtcs)
+        self.read_all_supported = QCheckBox("Supported DTCs too")
+        self.read_all_supported.setToolTip(
+            "Add every DTC the ECU supports, with its status (report 0x0A). It\n"
+            "can run to hundreds of lines, so it is left out unless asked for."
+        )
         top = QHBoxLayout()
         top.addWidget(QLabel("Report"))
         top.addWidget(self.report, 1)
         top.addWidget(read_dtc)
+        top.addSpacing(12)
+        top.addWidget(read_all)
+        top.addWidget(self.read_all_supported)
         d.addLayout(top, 0, 0, 1, 7)
 
         self.dtc_mask = _hex_edit("FF", 50)
@@ -664,6 +807,7 @@ class UdsView(QWidget):
             ("uds.dtc.report", self.report),
             ("uds.dtc.status", self.dtc_mask),
             ("uds.dtc.standard", self.standard),
+            ("uds.dtc.read_all_supported", self.read_all_supported),
         ):
             remember(ctx, key, widget)
         self._on_report()
@@ -671,8 +815,7 @@ class UdsView(QWidget):
         # --- transfer -------------------------------------------------------------
         # Its own box because it is the one thing here that runs for minutes
         # rather than milliseconds, and the only one with something to cancel.
-        xfer = QGroupBox("Transfer")
-        x = QGridLayout(xfer)
+        xfer = QWidget()
 
         self.operation = QComboBox()
         self.operation.setToolTip(
@@ -686,8 +829,6 @@ class UdsView(QWidget):
         for mode, name in FILE_MODES.items():
             self.operation.addItem(f"{name.capitalize()} (0x38)", mode)
         self.operation.currentIndexChanged.connect(self._on_operation)
-        x.addWidget(QLabel("Operation"), 0, 0)
-        x.addWidget(self.operation, 0, 1, 1, 2)
 
         self.block = QSpinBox()
         self.block.setRange(0, 4095)
@@ -697,8 +838,6 @@ class UdsView(QWidget):
             "maxNumberOfBlockLength is used, less the two bytes the service id\n"
             "and the block counter take out of it."
         )
-        x.addWidget(QLabel("Block"), 0, 3)
-        x.addWidget(self.block, 0, 4)
 
         self.width_bits = QComboBox()
         self.width_bits.addItems(("auto", "8", "16", "24", "32"))
@@ -707,8 +846,6 @@ class UdsView(QWidget):
             "Auto uses the narrowest that fits; bootloaders that insist on a\n"
             "fixed width answer anything else with NRC 0x13."
         )
-        x.addWidget(QLabel("Width"), 0, 5)
-        x.addWidget(self.width_bits, 0, 6)
 
         self.dfi = _hex_edit("00", 40)
         self.dfi.setToolTip(
@@ -716,8 +853,6 @@ class UdsView(QWidget):
             "encryption. 00 is plain bytes, which is what most bootloaders\n"
             "want and all of them understand."
         )
-        x.addWidget(QLabel("DFI"), 0, 7)
-        x.addWidget(self.dfi, 0, 8)
 
         self.local = QLineEdit()
         self.local.setPlaceholderText("Intel HEX, S-record or raw binary")
@@ -725,9 +860,6 @@ class UdsView(QWidget):
         browse = QPushButton("Browse...")
         browse.setToolTip("Choose the file on this computer")
         browse.clicked.connect(self._browse)
-        x.addWidget(QLabel("File"), 1, 0)
-        x.addWidget(self.local, 1, 1, 1, 7)
-        x.addWidget(browse, 1, 8)
 
         self.address = _hex_edit("", 90)
         self.address.setToolTip(
@@ -738,10 +870,6 @@ class UdsView(QWidget):
         self.address.editingFinished.connect(self._reload_image)
         self.byte_count = _hex_edit("", 90)
         self.byte_count.setToolTip("How many bytes to read out of the ECU, in hex")
-        x.addWidget(QLabel("Address"), 2, 0)
-        x.addWidget(self.address, 2, 1)
-        x.addWidget(QLabel("Size"), 2, 2)
-        x.addWidget(self.byte_count, 2, 3, 1, 2)
 
         self.ecu_path = QLineEdit()
         self.ecu_path.setPlaceholderText("path on the ECU")
@@ -749,8 +877,6 @@ class UdsView(QWidget):
             "The name the file has on the ECU. This is what 0x38 transfers\n"
             "by, in place of an address."
         )
-        x.addWidget(QLabel("On ECU"), 2, 5)
-        x.addWidget(self.ecu_path, 2, 6, 1, 3)
 
         # A flash sequence is an erase, then the blocks, then something that
         # has the ECU check what it was given. Only the erase is standardised.
@@ -775,9 +901,6 @@ class UdsView(QWidget):
         self.check_routine.setToolTip("Which routine to run afterwards")
         self.erase.toggled.connect(self._on_operation)
         self.check.toggled.connect(self._on_operation)
-        x.addWidget(self.erase, 3, 0, 1, 2)
-        x.addWidget(self.check, 3, 2)
-        x.addWidget(self.check_routine, 3, 3)
 
         self.start = QPushButton("Download")
         self.start.clicked.connect(self._start)
@@ -791,9 +914,33 @@ class UdsView(QWidget):
         )
         self.stop.setEnabled(False)
         self.stop.clicked.connect(manager.cancel_transfer)
-        x.addWidget(self.start, 4, 0, 1, 2)
-        x.addWidget(self.bar, 4, 2, 1, 6)
-        x.addWidget(self.stop, 4, 8)
+
+        _narrow(self.operation, 24)
+        # A row each, packed left. The nine-column grid made the pane as wide
+        # as its widest row laid across all nine, and a tab is as wide as its
+        # widest page.
+        x = QVBoxLayout(xfer)
+        x.setContentsMargins(0, 0, 0, 0)
+        file_row = _row("File", self.local, browse)
+        file_row.setStretch(1, 1)  # the path, rather than the space after it
+        file_row.takeAt(file_row.count() - 1)
+        where_row = _row(
+            "Address", self.address, "Size", self.byte_count, 8, "On ECU", self.ecu_path
+        )
+        where_row.setStretch(6, 1)
+        where_row.takeAt(where_row.count() - 1)
+        progress_row = _row(self.start, self.bar, self.stop)
+        progress_row.setStretch(1, 1)
+        progress_row.takeAt(progress_row.count() - 1)
+        for row in (
+            _row("Operation", self.operation),
+            file_row,
+            where_row,
+            _row("Block", self.block, "Width", self.width_bits, "DFI", self.dfi),
+            _row(self.erase, self.check, self.check_routine),
+            progress_row,
+        ):
+            x.addLayout(row)
 
         for key, widget in (
             ("uds.transfer.block", self.block),
@@ -815,23 +962,44 @@ class UdsView(QWidget):
 
         # Scrolled for the same reason as the LSS pane: the controls must not
         # dictate how small the dock can be made.
+        # The ECU, the session and ECU control stay in view: every tab depends
+        # on them, and one hidden behind a tab is how a request goes to the
+        # wrong ECU or fails for a session nobody could see. The rest is in
+        # tabs, which is what kept the pane from being taller than a screen.
+        self.tabs = QTabWidget()
+        for title, parts in (
+            ("DIDs, routines and raw", (did_box, routine_box, raw_box)),
+            ("DTCs", (dtc_box,)),
+            ("Transfer", (xfer,)),
+        ):
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            for part in parts:
+                page_layout.addWidget(part)
+            page_layout.addStretch()
+            self.tabs.addTab(page, title)
+        remember(ctx, "uds.tab", self.tabs)
+
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        for w in (addr, sess, reset_box, data, raw_box, dtc_box, xfer):
+        for w in (addr, sess, control_box, self.tabs):
             controls_layout.addWidget(w)
         controls_layout.addStretch()
-        scroll = QScrollArea()
+        scroll = _FittedScroll()
         scroll.setWidget(controls)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setMinimumHeight(0)
 
+        # The controls take the height they need and the log takes the rest.
+        # The other way round left a gap under the tabs that the log could
+        # have used, since the scroll area was the one that stretched.
         self.output.setMinimumHeight(40)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
-        layout.addWidget(scroll, 1)
-        layout.addWidget(self.output)
+        layout.addWidget(scroll)
+        layout.addWidget(self.output, 1)
 
         manager.result.connect(self._append)
         manager.opened.connect(self._on_opened)
@@ -1037,6 +1205,36 @@ class UdsView(QWidget):
         self.tp.setChecked(False)
         self._append(why)
         self.ctx.error(why)
+
+    def _read_all_dtcs(self) -> None:
+        mask = self._int(self.dtc_mask)
+        self.manager.read_all_dtcs(
+            0xFF if mask == NO_ID else mask & 0xFF, self.read_all_supported.isChecked()
+        )
+
+    def _communication_control(self) -> None:
+        """CommunicationControl, after asking: it changes what the ECU puts on the bus."""
+        control, messages = self.comm_control.currentData(), self.comm_messages.currentData()
+        what = f"{COMM_CONTROLS[control]}, {COMM_MESSAGES[messages]}"
+        text = (
+            f"Ask the ECU to {what}. Other nodes may stop hearing from it, or it "
+            "from them, until it is enabled again or the session ends."
+        )
+        if self.confirm.ask(
+            self, f"uds.comm_control.{control}", "Change what the ECU sends?", text
+        ):
+            self.manager.communication_control(control, messages)
+
+    def _change_bitrate(self) -> None:
+        """LinkControl, after asking: the ECU leaves this channel's bitrate."""
+        bitrate = self.link_bitrate.currentData()
+        text = (
+            f"Ask the ECU to change to {bitrate // 1000} kbit/s. Once it has, it no "
+            "longer hears this channel, or anything else on the bus at the old rate, "
+            "until the channel is reconnected at the new one."
+        )
+        if self.confirm.ask(self, "uds.link_control", "Change the ECU's bitrate?", text):
+            self.manager.change_bitrate(bitrate)
 
     def _send_raw(self) -> None:
         try:

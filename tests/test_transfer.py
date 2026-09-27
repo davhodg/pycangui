@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import bincopy
 import pytest
 from PySide6.QtWidgets import QMessageBox
+from udsoncan.connections import BaseConnection
 
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
@@ -747,3 +748,200 @@ def test_the_timing_choice_is_remembered_and_used(view):
     again = UdsView(view.manager, view.ctx)
     assert again.timing.currentData() == "at least"
     assert again.p2.value() == 800
+
+
+# --- ECU control ---------------------------------------------------------------------------
+class Answering(BaseConnection):
+    """A udsoncan connection that records each request and answers it positively."""
+
+    def __init__(self) -> None:
+        super().__init__("test")
+        self.sent: list[bytes] = []
+        self._reply: bytes | None = None
+        self._open = False
+
+    def open(self):
+        self._open = True
+        return self
+
+    def close(self) -> None:
+        self._open = False
+
+    def is_open(self) -> bool:
+        return self._open
+
+    def specific_send(self, payload: bytes) -> None:
+        self.sent.append(bytes(payload))
+        self._reply = bytes([payload[0] + 0x40]) + bytes(payload[1:2])
+
+    def specific_wait_frame(self, timeout: float = 2) -> bytes | None:
+        reply, self._reply = self._reply, None
+        return reply
+
+    def empty_rxqueue(self) -> None:
+        pass
+
+
+@pytest.fixture
+def ecu_on_the_wire(manager):
+    from udsoncan.client import Client
+
+    wire = Answering()
+    manager.client = Client(wire)
+    manager.client.open()
+    return wire
+
+
+def test_communication_control_sends_the_control_and_the_messages(manager, ecu_on_the_wire):
+    lines = []
+    manager.result.connect(lines.append)
+    manager.communication_control(1, 1)  # enable Rx, disable Tx, normal messages
+    assert ecu_on_the_wire.sent[-1] == bytes([0x28, 0x01, 0x01])
+    assert lines[-1] == "CommunicationControl: enable Rx, disable Tx, normal messages"
+
+
+def test_a_bitrate_change_is_verified_before_it_is_made(manager, ecu_on_the_wire):
+    lines = []
+    manager.result.connect(lines.append)
+    manager.change_bitrate(500_000)
+    # 0x12 is the fixed identifier ISO 14229-1 gives 500 kbit/s on CAN.
+    assert ecu_on_the_wire.sent == [bytes([0x87, 0x01, 0x12]), bytes([0x87, 0x03])]
+    assert "Reconnect the channel" in lines[-1]
+
+
+@pytest.mark.parametrize("button", ["_communication_control", "_change_bitrate"])
+def test_ecu_control_asks_before_it_changes_the_bus(view, monkeypatch, button):
+    sent = []
+    monkeypatch.setattr(view.manager, "communication_control", lambda *a: sent.append(a))
+    monkeypatch.setattr(view.manager, "change_bitrate", lambda *a: sent.append(a))
+    monkeypatch.setattr(view.confirm, "ask", lambda *a: False)
+    getattr(view, button)()
+    assert sent == [], "declined, so nothing goes out"
+    monkeypatch.setattr(view.confirm, "ask", lambda *a: True)
+    getattr(view, button)()
+    assert len(sent) == 1
+
+
+def test_the_pane_is_in_tabs_and_remembers_which(view):
+    titles = [view.tabs.tabText(i) for i in range(view.tabs.count())]
+    assert titles == ["DIDs, routines and raw", "DTCs", "Transfer"]
+    view.tabs.setCurrentIndex(2)
+    again = UdsView(view.manager, view.ctx)
+    assert again.tabs.currentIndex() == 2
+
+
+def test_the_log_has_the_space_the_controls_do_not_need(app, view):
+    """The scroll area stretched and left a gap under the tabs; the log should."""
+    from PySide6.QtWidgets import QScrollArea
+
+    view.resize(900, 1600)
+    view.show()
+    app.processEvents()
+    scroll = view.findChild(QScrollArea)
+    assert scroll.height() <= scroll.widget().sizeHint().height() + 4
+    assert view.output.height() > 400
+    open_right = view.open_btn.geometry().right()
+    assert open_right > view.open_btn.parentWidget().width() - 40, "Open is at the right"
+    view.hide()
+
+
+def test_dids_and_routines_have_a_box_each_and_a_readable_list(view):
+    """In one grid they shared columns, and the list was too narrow to read."""
+    assert view.did.parentWidget().title() == "DID"
+    assert view.routine.parentWidget().title() == "Routine"
+    for picker in (view.did, view.routine, view.report):
+        listing = picker.view()
+        assert listing.minimumWidth() >= listing.sizeHintForColumn(0), "entries are not cut off"
+
+
+# --- Read all DTCs --------------------------------------------------------------------------
+class ScriptedEcu(Answering):
+    """Answers the requests it has a reply for, and NRC 0x12 to everything else."""
+
+    def __init__(self, replies: dict[str, str]) -> None:
+        super().__init__()
+        self.replies = {bytes.fromhex(k): bytes.fromhex(v) for k, v in replies.items()}
+
+    def specific_send(self, payload: bytes) -> None:
+        self.sent.append(bytes(payload))
+        self._reply = self.replies.get(bytes(payload), bytes([0x7F, payload[0], 0x12]))
+
+
+FAULTY_ECU = {
+    "19 01 FF": "59 01 FF 01 00 02",  # two DTCs match
+    "19 02 FF": "59 02 FF 012345 09 C01001 2F",
+    # Extended data: record 01 one byte, record 02 two bytes.
+    "19 06 012345 FF": "59 06 012345 09 01 03 02 0064",
+    "19 06 C01001 FF": "59 06 C01001 2F 01 01 02 000A",
+    "19 03": "59 03 012345 01",  # one snapshot, record 01 of the first
+    # The snapshot: record 01, two DIDs -- F190 three bytes, 0102 one byte.
+    "19 04 012345 01": "59 04 012345 09 01 02 F190 414243 0102 05",
+    "22 F1 90": "62 F1 90 414243",
+    "22 01 02": "62 01 02 05",
+    "19 0B": "59 0B FF 012345 09",
+    "19 14": "59 14 012345 05",
+    "19 15": "59 15 FF",
+}
+
+
+@pytest.fixture
+def faulty(manager, monkeypatch):
+    from udsoncan.client import Client
+
+    ecu = ScriptedEcu(FAULTY_ECU)
+    manager.client = Client(ecu)
+    manager.client.open()
+    real = manager._hooks.call
+
+    def call(module, name, *args, **kwargs):
+        if name == "extended_data_record":
+            return {1: (1, "Occurrence counter"), 2: (2, "Operating hours")}.get(args[0])
+        return real(module, name, *args, **kwargs)
+
+    monkeypatch.setattr(manager._hooks, "call", call)
+    lines: list[str] = []
+    manager.result.connect(lines.append)
+    return ecu, lines
+
+
+def test_read_all_gives_every_fault_its_records_and_snapshots(manager, faulty):
+    _ecu, lines = faulty
+    manager.read_all_dtcs(0xFF)
+    report = "\n".join(lines)
+
+    assert "2 DTCs match status mask 0xFF" in report
+    assert "01 Occurrence counter = 03" in report and "02 Operating hours = 00 64" in report
+    assert "02 Operating hours = 00 0A" in report, "the second DTC's records too"
+    assert "1 snapshot stored" in report
+    assert 'F190 (VIN) = 41 42 43  "ABC"' in report, "a snapshot's DIDs named and decoded"
+    assert "0102" in report and "= 05" in report
+    assert lines[-1] == "End of DTC data"
+
+
+def test_a_report_the_ecu_does_not_offer_is_one_line_and_the_rest_goes_on(manager, faulty):
+    ecu, lines = faulty
+    manager.read_all_dtcs(0xFF)
+    report = "\n".join(lines)
+    asked_severity = [r for r in ecu.sent if r[:2] == bytes([0x19, 0x09])]
+    assert len(asked_severity) == 1, "not asked again for the second DTC"
+    assert "First confirmed DTC: not supported by this ECU (NRC 0x12)" in report
+    assert "Fault detection counters" in report, "and the reports after it still come"
+    assert not any(r[:2] == bytes([0x19, 0x0A]) for r in ecu.sent), "supported DTCs only if asked"
+
+
+def test_the_single_extended_data_report_works_without_udsoncan_s_sizes(manager, faulty):
+    """udsoncan refuses report 0x06 unless told every record's size first."""
+    _ecu, lines = faulty
+    manager.read_dtc_information(0x06, dtc=0x012345, extended_data_record_number=0xFF)
+    assert "01 Occurrence counter = 03" in lines[-1]
+
+
+def test_records_of_unknown_size_are_shown_rather_than_guessed():
+    from pycangui.uds.manager import split_extended, split_snapshots
+
+    assert split_extended(bytes.fromhex("01 03 02 0064"), lambda n: None) == [
+        "01 onwards, not split = 01 03 02 00 64 (sizes from EXTENDED_DATA_RECORDS in hooks/uds.py)"
+    ]
+    assert split_extended(bytes.fromhex("07 AABB"), lambda n: None, single=True) == ["07 = AA BB"]
+    lines = split_snapshots(bytes.fromhex("01 01 F190 414243"), lambda d: None, None)
+    assert lines == ["record 01", '  F190 onwards, not split = 41 42 43  "ABC"']

@@ -14,7 +14,16 @@ from typing import Any
 
 import udsoncan
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
-from udsoncan import DataFormatIdentifier, Filesize, MemoryLocation, Request, Response, services
+from udsoncan import (
+    Baudrate,
+    CommunicationType,
+    DataFormatIdentifier,
+    Filesize,
+    MemoryLocation,
+    Request,
+    Response,
+    services,
+)
 from udsoncan.client import Client
 from udsoncan.connections import BaseConnection
 from udsoncan.exceptions import NegativeResponseException, TimeoutException
@@ -26,7 +35,7 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
 from pycangui.uds import NO_ID, TIMING_AT_LEAST, TIMING_FORCED, UdsConfig
-from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD
+from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD, DTC, EXTENDED, SNAPSHOT
 from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
 from pycangui.uds.standard import SESSIONS, memory_record, security_pair, seed_subfunction
@@ -101,6 +110,27 @@ ERASE_MEMORY = 0xFF00
 CHECK_MEMORY = 0x0202
 
 RESETS = {1: "hard reset", 2: "key off/on", 3: "soft reset", 4: "enable rapid power shutdown"}
+#: CommunicationControl (0x28) control types, as ISO 14229-1 numbers them.
+#: 4 and 5 add enhanced address information, which a request from here has
+#: no way to give, so they are left out.
+COMM_CONTROLS = {
+    0: "enable Rx and Tx",
+    1: "enable Rx, disable Tx",
+    2: "disable Rx, enable Tx",
+    3: "disable Rx and Tx",
+}
+#: Which messages CommunicationControl acts on: the communicationType bits.
+COMM_MESSAGES = {1: "normal messages", 2: "network management", 3: "both"}
+#: The bitrates LinkControl can name by a fixed identifier on CAN, the ones
+#: ISO 14229-1 lists; anything else would need a specific-rate request.
+LINK_BITRATES = (125_000, 250_000, 500_000, 1_000_000)
+#: Negative responses that mean an ECU does not offer a report at all, as
+#: against one it offers and refused this time. Read all says so in one line
+#: and goes on to the next report.
+NOT_OFFERED = {0x11, 0x12, 0x7E, 0x7F}
+#: The reports Read all adds after the everyday ones: which failed first and
+#: last, what is building up, and what a clear cannot remove.
+READ_ALL_EXTRAS = (0x0B, 0x0C, 0x0D, 0x0E, 0x14, 0x15)
 
 
 class UdsManager(QObject):
@@ -127,6 +157,10 @@ class UdsManager(QObject):
         #: What a transfer is waiting on, so a timeout can say which request
         #: it was: "Download: timeout" alone does not say where it stopped.
         self._step = ""
+        #: How long each DID's value is, learned by reading it, for splitting
+        #: snapshots -- which carry DIDs and not their lengths. Kept for the
+        #: session: None for one the ECU would not read, so it is not asked again.
+        self._did_sizes: dict[int, int | None] = {}
         #: (P2, P2*) as the ECU last gave them in a session response, in
         #: seconds, or None before it has. Kept apart from what is in use, so
         #: changing the timing choice can go back to them.
@@ -178,6 +212,7 @@ class UdsManager(QObject):
         )
         self.client = Client(conn, config=cfg)
         self._ecu_timing = None
+        self._did_sizes = {}
         self._apply_timing(self.client)
         self.client.open()
         ids = f"tx {config.tx_id:X} rx {config.rx_id:X}"
@@ -418,6 +453,47 @@ class UdsManager(QObject):
 
         self._run("ECUReset", fn)
 
+    def communication_control(self, control: int, messages: int) -> None:
+        """CommunicationControl (0x28): what the ECU sends and listens to.
+
+        Usually to quieten the rest of the bus before a flash -- disable Tx of
+        normal messages -- and to give it back afterwards. The subnet is 0,
+        the one every tester uses: the network the request arrives on.
+        """
+
+        def fn(c: Client) -> str:
+            kind = CommunicationType(
+                subnet=0, normal_msg=bool(messages & 1), network_management_msg=bool(messages & 2)
+            )
+            c.communication_control(control, kind)
+            return (
+                f"CommunicationControl: {COMM_CONTROLS.get(control, control)}, "
+                f"{COMM_MESSAGES.get(messages, messages)}"
+            )
+
+        self._run("CommunicationControl", fn)
+
+    def change_bitrate(self, bitrate: int) -> None:
+        """LinkControl (0x87): ask the ECU to move to another bitrate.
+
+        Verify first, then transition, as ISO 14229-1 has it: the ECU says
+        whether it can before anything changes. After the transition it is
+        on the new rate and this channel is not, so the answer says to
+        reconnect; pycangui does not do that by itself, since reconnecting a
+        channel is the connect bar's question, with its own confirmation.
+        """
+        kbit = f"{bitrate // 1000} kbit/s"
+
+        def fn(c: Client) -> str:
+            c.link_control(1, Baudrate(bitrate, Baudrate.Type.Fixed))
+            c.link_control(3)
+            return (
+                f"LinkControl: the ECU is changing to {kbit}. Reconnect the channel "
+                "at that rate to carry on talking to it."
+            )
+
+        self._run("LinkControl", fn)
+
     def did_label(self, did: int) -> str:
         """ "F190 (VIN)" -- the number, and what the identifier is called."""
         name = self._hooks.call("uds", "did_label", did)
@@ -485,6 +561,18 @@ class UdsManager(QObject):
         name = report.name if report else f"subfunction 0x{subfunction:02X}"
 
         def fn(c: Client) -> str:
+            if subfunction == 0x06:
+                record = params.get(EXTENDED, 0xFF)
+                lines = self._extended_data(c, params[DTC], record)
+                return "\n".join(
+                    [f"{name} ({dtc_code(params[DTC])}, record {record:02X}):", *lines]
+                )
+            if subfunction == 0x04:
+                record = params.get(SNAPSHOT, 0xFF)
+                lines = self._snapshots(c, params[DTC], record)
+                return "\n".join(
+                    [f"{name} ({dtc_code(params[DTC])}, record {record:02X}):", *lines]
+                )
             r = c.read_dtc_information(subfunction, **params)
             return self._describe_dtc_report(name, r.service_data, params)
 
@@ -549,6 +637,162 @@ class UdsManager(QObject):
         for record in getattr(d, "extended_data", None) or []:
             lines.append(f"    extended data {_record_text(record)}")
         return lines
+
+    # --- the reports whose records the ECU sizes -----------------------------------
+    def _dtc_records(self, c: Client, subfunction: int, dtc: int, record: int) -> bytes:
+        """The records of a 0x04 or 0x06 answer, after the DTC and its status.
+
+        Asked for and read here rather than through udsoncan, which will only
+        split them if it is told every record's size beforehand, and fails
+        otherwise.
+        """
+        request = Request(
+            services.ReadDTCInformation,
+            subfunction=subfunction,
+            data=dtc.to_bytes(3, "big") + bytes([record]),
+        )
+        answer = bytes(c.send_request(request).data)
+        return answer[5:]  # the sub-function echo, the DTC and its status
+
+    def _extended_data(self, c: Client, dtc: int, record: int = 0xFF) -> list[str]:
+        """One line per extended data record, named where hooks/uds.py names it."""
+        data = self._dtc_records(c, 0x06, dtc, record)
+        return split_extended(
+            data,
+            lambda number: self._hooks.call("uds", "extended_data_record", number),
+            single=record != 0xFF,
+        )
+
+    def _snapshots(self, c: Client, dtc: int, record: int = 0xFF) -> list[str]:
+        """Each snapshot record, with every DID in it named and decoded."""
+        data = self._dtc_records(c, 0x04, dtc, record)
+        # One record asked for is already named by whoever asked.
+        return split_snapshots(
+            data, lambda did: self._did_size(c, did), self._did_text, headed=record == 0xFF
+        )
+
+    def _did_size(self, c: Client, did: int) -> int | None:
+        """How long a DID's value is, from reading it once.
+
+        A snapshot holds DIDs, the same ones ReadDataByIdentifier reads, but
+        not their lengths; the answer to reading one has the length in it.
+        """
+        if did not in self._did_sizes:
+            size = None
+            try:
+                answer = c.send_request(
+                    Request(services.ReadDataByIdentifier, data=struct.pack(">H", did))
+                )
+                if bytes(answer.data[:2]) == struct.pack(">H", did):
+                    size = len(answer.data) - 2
+            except (NegativeResponseException, TimeoutException):
+                pass
+            self._did_sizes[did] = size
+        return self._did_sizes[did]
+
+    def _did_text(self, did: int, data: bytes) -> str:
+        text = self._hooks.call("uds", "did_decode", did, data)
+        return f"{self.did_label(did)} = {text if text is not None else describe_bytes(data)}"
+
+    def read_all_dtcs(self, status_mask: int = 0xFF, supported: bool = False) -> None:
+        """Everything the ECU holds about its faults, as one report.
+
+        How many and which DTCs match the status mask, every extended data
+        record of each, its severity, then which snapshots there are and each
+        of them, then the first and most recent failed and confirmed DTCs,
+        the fault detection counters and the permanent ones -- and, asked for,
+        every DTC the ECU supports. Each part goes to the log as it arrives.
+        A report the ECU does not offer is one line, and the rest carries on.
+        """
+
+        def section(title: str, lines: list[str]) -> None:
+            self.result.emit("\n".join([title, *lines]) if lines else title)
+
+        def report(c: Client, subfunction: int, **params: int) -> None:
+            name = BY_SUBFUNCTION[subfunction].name
+            try:
+                r = c.read_dtc_information(subfunction, **params)
+            except NegativeResponseException as exc:
+                section(_refused(name, exc), [])
+                return
+            if subfunction == 0x14:
+                # A counter per DTC and no status: the status the list would
+                # otherwise print is a zero the ECU never sent.
+                counted = r.service_data.dtcs or []
+                section(
+                    f"{name}: {len(counted)} DTC(s)",
+                    [f"  {dtc_code(d.id)} ({d.id:06X}) counter {d.fault_counter}" for d in counted],
+                )
+                return
+            # Which status bits the ECU supports was said with the list, and
+            # is the same answer under every report after it.
+            text = self._describe_dtc_report(name, r.service_data)
+            kept = [
+                line for line in text.splitlines() if "status bits the ECU supports" not in line
+            ]
+            section("\n".join(kept), [])
+
+        def fn(c: Client) -> str:
+            self.result.emit("Read all DTC data")
+            try:
+                count = c.read_dtc_information(0x01, status_mask=status_mask)
+                found = count.service_data.dtc_count
+                plural = "" if found == 1 else "s"
+                section(f"{found} DTC{plural} match status mask 0x{status_mask:02X}", [])
+            except NegativeResponseException as exc:
+                section(_refused("Number of DTCs", exc), [])
+
+            try:
+                listed = c.read_dtc_information(0x02, status_mask=status_mask).service_data.dtcs
+            except NegativeResponseException as exc:
+                section(_refused("DTCs by status mask", exc), [])
+                listed = []
+            extended, severity = True, True
+            for index, d in enumerate(listed):
+                first, *rest = self._describe_dtc(d)
+                lines = list(rest)
+                if extended:
+                    try:
+                        lines += [f"    {line}" for line in self._extended_data(c, d.id)]
+                    except NegativeResponseException as exc:
+                        extended = exc.response.code not in NOT_OFFERED
+                        lines.append(f"    {_refused('extended data', exc)}")
+                if severity:
+                    try:
+                        found = c.read_dtc_information(0x09, dtc=d.id).service_data.dtcs
+                        for known in found:
+                            byte = known.severity.get_byte_as_int()
+                            lines.append(f"    severity 0x{byte:02X}")
+                    except NegativeResponseException as exc:
+                        severity = exc.response.code not in NOT_OFFERED
+                        if severity:
+                            lines.append(f"    {_refused('severity', exc)}")
+                section(f"Fault {index + 1} of {len(listed)}: {first.strip()}", lines)
+
+            try:
+                identified = c.read_dtc_information(0x03).service_data.dtcs
+            except NegativeResponseException as exc:
+                section(_refused("Snapshot identification", exc), [])
+                identified = []
+            pairs = [(d.id, s) for d in identified for s in getattr(d, "snapshots", [])]
+            section(f"{len(pairs)} snapshot{'' if len(pairs) == 1 else 's'} stored", [])
+            for dtc, number in pairs:
+                number = getattr(number, "record_number", number)
+                title = f"{dtc_code(dtc)} ({dtc:06X}), snapshot record {number:02X}"
+                if desc := self._hooks.call("uds", "dtc_description", dtc):
+                    title += f" - {desc}"
+                try:
+                    section(title, [f"  {line}" for line in self._snapshots(c, dtc, number)])
+                except NegativeResponseException as exc:
+                    section(title, [f"  {_refused('snapshot', exc)}"])
+
+            for subfunction in READ_ALL_EXTRAS:
+                report(c, subfunction)
+            if supported:
+                report(c, 0x0A)
+            return "End of DTC data"
+
+        self._run("Read all DTCs", fn)
 
     def clear_dtcs(self, group: int = 0xFFFFFF) -> None:
         def fn(c: Client) -> str:
@@ -981,6 +1225,75 @@ def _record_text(record: Any) -> str:
     if data := getattr(record, "raw_data", None):
         return f"{head}: {describe_bytes(bytes(data))}"
     return head
+
+
+def _refused(what: str, exc: NegativeResponseException) -> str:
+    """One line for a report the ECU would not give."""
+    code = exc.response.code
+    if code in NOT_OFFERED:
+        return f"{what}: not supported by this ECU (NRC 0x{code:02X})"
+    return f"{what}: NRC 0x{code:02X} {exc.response.code_name}"
+
+
+def split_extended(data: bytes, describe, single: bool = False) -> list[str]:
+    """Extended data records, one per line, as far as their sizes are known.
+
+    Each is a record number and then its bytes, run together; ``describe``
+    gives (size, name) for a number, or None. The first one it does not know
+    ends the splitting, since nothing after it can be found, and the rest is
+    shown as it came. ``single`` is an answer to a request for one record,
+    which is then the whole of what follows its number, known or not.
+    """
+    lines: list[str] = []
+    at = 0
+    while at < len(data):
+        number = data[at]
+        known = describe(number)
+        if known is None:
+            rest = data[at + 1 :]
+            if single:
+                lines.append(f"{number:02X} = {describe_bytes(rest)}")
+            else:
+                lines.append(
+                    f"{number:02X} onwards, not split = {describe_bytes(data[at:])} "
+                    "(sizes from EXTENDED_DATA_RECORDS in hooks/uds.py)"
+                )
+            break
+        size, name = known
+        lines.append(f"{number:02X} {name} = {describe_bytes(data[at + 1 : at + 1 + size])}")
+        at += 1 + size
+    return lines or ["nothing recorded"]
+
+
+def split_snapshots(data: bytes, size_of, text_of, headed: bool = True) -> list[str]:
+    """Snapshot records, each DID in them on a line of its own.
+
+    A record is its number, how many DIDs it holds, and then each DID with its
+    value. ``size_of`` gives a DID's length, or None; ``text_of`` the line
+    for a DID and its value. A DID of unknown length ends the splitting, and
+    the rest is shown as it came. ``headed`` puts each record's number on a
+    line of its own, for an answer that may hold several.
+    """
+    lines: list[str] = []
+    at = 0
+    while at + 2 <= len(data):
+        number, count = data[at], data[at + 1]
+        indent = "  " if headed else ""
+        if headed:
+            lines.append(f"record {number:02X}")
+        at += 2
+        for _ in range(count):
+            if at + 2 > len(data):
+                break
+            did = int.from_bytes(data[at : at + 2], "big")
+            size = size_of(did)
+            if size is None:
+                rest = describe_bytes(data[at + 2 :])
+                lines.append(f"{indent}{did:04X} onwards, not split = {rest}")
+                return lines
+            lines.append(f"{indent}{text_of(did, data[at + 2 : at + 2 + size])}")
+            at += 2 + size
+    return lines or ["nothing recorded"]
 
 
 def as_text(data: bytes) -> str:

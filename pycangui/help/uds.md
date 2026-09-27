@@ -5,8 +5,7 @@
 The **UDS** pane talks ISO 14229 over ISO-TP (udsoncan + can-isotp): set the
 tester/ECU ids, Open, then sessions, SecurityAccess (the seed-to-key algorithm
 is [`hooks/uds.py::security_key`](hooks.md)), tester present, DID read/write, DTC read and
-clear, routines, ECU reset (its own box, since it interrupts whatever the ECU
-was doing) and raw requests. Sessions, identifiers and routines are chosen
+clear, routines, ECU control and raw requests. Sessions, identifiers and routines are chosen
 from dropdowns of the ones somebody has a name for -- ISO 14229-1's, plus
 whatever you add to `DID_NAMES`, `ROUTINE_NAMES` and `SESSION_NAMES` in
 `hooks/uds.py` -- and every one stays typeable, because most of the
@@ -18,6 +17,14 @@ gives its description, which is where "17 characters (ISO 3779)" lives. Data ide
 bytes of a request -- service id first, then whatever that service expects --
 and they go out as they are, for the services with no button of their own and
 for reproducing a sequence out of a trace or a specification.
+
+**How the pane is laid out.** Three boxes stay in view whatever else is open,
+because every request depends on them: **ECU config** -- which ECU, and how the
+transport reaches it -- then **Session and security**, then **ECU control**.
+Below them are three tabs: **DIDs, routines and raw**, **DTCs** and
+**Transfer**, which remembers the tab it was left on. The pane's log is below
+the tabs and shared by all of them, since a transfer's lines and a DID read's
+are one conversation with the ECU.
 
 ## Connecting and the everyday services
 
@@ -92,15 +99,30 @@ even answer, so an unpaired combination cannot be sent anyway. Levels run to
 63, the last pair being 7D and 7E. The log names both, so what went on the
 wire is never inferred: `Security level 2 (req 03 resp 04): unlocked`.
 
-**Reset** restarts the ECU with the chosen **Type**, and the session and any
-unlock go with it. **Read DID** and **Write DID** work on the identifier beside
+**ECU control** is three things that change how the ECU behaves on the bus.
+**Reset** restarts it with the chosen type, and the session and any unlock go
+with it. **Communication** is CommunicationControl (0x28): whether the ECU
+sends and listens, for normal messages, network management or both --
+disabling Tx of normal messages is how a flash is usually made quiet for the
+rest of the bus, and the ECU puts it back itself when the session ends.
+**Baud rate** is LinkControl (0x87): the ECU is asked whether it can move to
+the chosen rate and then told to, and after that it is on the new rate and
+the channel is not, so the log says to reconnect the channel at that rate.
+There is no request to put it back: the new rate lasts for the session it was
+set in, so ending that session -- a reset, a return to the default session,
+or letting it time out -- gives the ECU its own rate again, and so does
+changing it back the same way.
+Communication and Baud rate both ask first, since other nodes can stop
+hearing the ECU.
+
+**Read DID** and **Write DID** work on the identifier beside
 them. A routine has **Start**, **Stop** and **Result** -- RoutineControl
 sub-functions 1, 2 and 3 -- and the option bytes beside them are sent with
 whichever you press.
 
 ## DTCs
 
-**DTCs** have a box to themselves, because ReadDTCInformation (0x19) is
+**DTCs** have a tab to themselves, because ReadDTCInformation (0x19) is
 twenty-odd reports wearing one service number. Choose the report and the
 boxes below light up according to what it takes -- status mask, severity, a
 DTC number, a record number, a user memory, a WWH-OBD functional group -- since
@@ -113,9 +135,32 @@ remembering that the ECU turns it back on itself when the session ends.
 edition of ISO 14229-1 requests are built to; it matters here because the 2020
 edition withdrew the mirror memory reports.
 
+**Read all** asks for everything the ECU holds about its faults and writes it
+to the log as one report, a part at a time: how many DTCs match the status
+mask and which, each one's extended data and severity, which snapshots there
+are and each of them, then the first and most recent failed and confirmed
+DTCs, the fault detection counters -- faults building up that have not failed
+yet -- and the permanent DTCs, which clearing cannot remove. *Supported DTCs
+too* adds every DTC the ECU knows of, which can run to hundreds of lines. A
+report the ECU does not offer is one line saying so, and the rest carries on;
+severity, which many ECUs do not support, is asked about once rather than for
+every DTC.
+
+**Extended data and snapshots** are the two reports whose contents the ECU
+sizes. ISO 14229-1 numbers extended data records and says nothing about how
+long they are, and an answer carrying several runs them together, so they are
+split and named by
+[`hooks/uds.py::extended_data_record`](hooks.md) -- fill in
+`EXTENDED_DATA_RECORDS` with each record's size and name. A record it does not
+know is shown as bytes from there on rather than guessed at. A snapshot holds
+DIDs, the same ones *Read DID* reads, so they are named and decoded the same
+way; the one thing a snapshot does not carry is how long each value is, and
+pycangui finds that out by reading the DID once, keeping the answer for the
+session.
+
 ## Firmware transfer
 
-Its **Transfer** box moves firmware, in either direction. *Download* sends an
+The **Transfer** tab moves firmware, in either direction. *Download* sends an
 Intel HEX, S-record or raw binary to the ECU (0x34, a TransferData per block,
 then 0x37); *Upload* reads memory back into a file of whichever of those
 formats the name you choose asks for. The rest of the list are RequestFileTransfer
@@ -161,7 +206,7 @@ with what the file is, and return a reason to stop. The transfer then says
 *REFUSED* and names the hook, rather than reporting a failure -- nothing went
 wrong, something was prevented. Return None and it goes ahead.
 
-The rest of the box, left to right. **Operation** chooses the transfer.
+The rest of the tab, top to bottom. **Operation** chooses the transfer.
 **Block** is how many data bytes go in each TransferData; left at *from ECU*,
 the ECU's own maximum is used. **Width** is how many bits the address and size
 are written in, where *auto* uses the narrowest that fits. **DFI** is the
