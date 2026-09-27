@@ -35,7 +35,7 @@ A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, X
 - **Simulated nodes**: devices written as Python files, on a virtual bus or standing on a real adapter, and gateways between channels.
 - **Workspaces**: one per product, holding its hooks, EDS files, databases, channels and layout, and exported as one zip.
 
-Full details in [the manual](pycangui/help/manual.md), which is also under **Help > Documentation** in the application.
+Full details in [the manual](pycangui/help/manual.md), which is also under **Help > Documentation** in the application. What each version added, changed and fixed is in [the changelog](pycangui/help/changelog.md), which is part of the manual too.
 
 ## Installing
 

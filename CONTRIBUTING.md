@@ -17,6 +17,10 @@ a pull request.
 **Tests with every change.** A fix comes with a test that fails without it. The full suite and
 the linter must pass.
 
+**A line in the changelog for anything a user would notice**, under *Unreleased* in
+`pycangui/help/changelog.md`, in the group it belongs to: Added, Changed, Deprecated, Removed,
+Fixed or Security. A release's description is taken from it.
+
 **Anything that can disturb equipment asks first.** Joining a bus, transmitting, replaying,
 writing to a device and enabling a drive all go through pycangui's confirmations. A new action of
 that kind does the same.

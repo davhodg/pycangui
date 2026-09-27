@@ -37,3 +37,4 @@
 ## Also
 
 - [About, licences and updates](about.md)
+- [Changes](changelog.md) --- what each version added, changed and fixed

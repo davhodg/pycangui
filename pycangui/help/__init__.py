@@ -62,6 +62,7 @@ PAGES = (
     "plugins.md",
     "components.md",
     "about.md",
+    "changelog.md",
 )
 
 

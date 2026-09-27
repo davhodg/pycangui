@@ -82,6 +82,7 @@ Repository = "https://github.com/davhodg/pycangui"
 Issues = "https://github.com/davhodg/pycangui/issues"
 Discussions = "https://github.com/davhodg/pycangui/discussions"
 Releases = "https://github.com/davhodg/pycangui/releases"
+Changelog = "https://github.com/davhodg/pycangui/blob/master/pycangui/help/changelog.md"
 
 [project.optional-dependencies]
 # Everything optional, which today is the MDF and MF4 reader: measurement
