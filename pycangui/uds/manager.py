@@ -626,7 +626,7 @@ class UdsManager(QObject):
 
     def _describe_dtc(self, d: Any) -> list[str]:
         desc = self._hooks.call("uds", "dtc_description", d.id)
-        status = f" status 0x{d.status.get_byte_as_int():02X} {status_flags(d.status)}"
+        status = f" status 0x{d.status.get_byte_as_int():02X} {status_flags(d.status)}".rstrip()
         lines = [f"  {dtc_code(d.id)} ({d.id:06X}){status}{' - ' + desc if desc else ''}".rstrip()]
         if getattr(d, "severity", None) is not None and d.severity.get_byte_as_int():
             lines.append(f"    severity 0x{d.severity.get_byte_as_int():02X}")

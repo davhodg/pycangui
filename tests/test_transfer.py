@@ -974,3 +974,14 @@ def test_a_snapshot_did_the_ecu_will_not_read_is_split_by_its_size_from_the_hook
     assert "0102 = 05" in lines[-1], "split, named and decoded"
     assert "not split" not in lines[-1]
     assert bytes.fromhex("22 01 02") not in ecu.sent, "the hook answered, so it was not read"
+
+
+def test_a_dtc_with_no_status_bits_set_has_no_gap_before_its_description(manager):
+    """Seen on a real ECU's permanent DTC list: "status 0x00  - Control ..."."""
+    from udsoncan import Dtc
+
+    d = Dtc(0x060742)
+    d.status.set_byte(0x00)
+    manager._hooks.call = lambda *a, **k: "Control Module Performance"
+    line = manager._describe_dtc(d)[0]
+    assert "status 0x00 - Control Module Performance" in line
