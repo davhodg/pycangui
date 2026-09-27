@@ -2,5 +2,5 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """pycangui — a graphical CAN bus tool."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 APP_NAME = "pycangui"  # single place to change the display name

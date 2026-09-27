@@ -9,55 +9,31 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-27
+
 ### Added
 
-- **ECU control** in the UDS pane: CommunicationControl (0x28), to quieten an ECU on the bus
-  or give it back, and a baud rate change (LinkControl, 0x87), verified before it is made.
-  Both ask first. ECU reset is there too.
-- **Read all** in the UDS DTC tab: every DTC matching the status mask with its extended data
-  and severity, every snapshot, the first and most recent failed and confirmed DTCs, the fault
-  detection counters and the permanent DTCs, as one report. Supported DTCs on request.
-- **J1939 requests from a list**: DM1, DM2, DM3, DM4, DM5, DM11 and ECU, software and
-  component identification, or any PGN typed, to every node or one seen. Every request says
-  in the Event Log what came of it: each node's answer decoded, including no faults, a
-  refusal, or no answer at all after 1.25 s. DM2 also goes into the fault table as previously
-  active. DM3 and DM11 ask first.
-- **Request address claims** in the J1939 pane, and **Stop broadcasts** (DM13), held until
-  started again.
-- The demo engine answers every request in that list.
-- `hooks/uds.py::extended_data_record` and `EXTENDED_DATA_RECORDS`, for the size and name of
-  each DTC extended data record, and `did_size` and `DID_SIZES`, for the length of a DID in a
-  snapshot where the ECU will not read it to say.
-- **Check for updates** asks PyPI for a pip installation, and gives the pip command that
-  updates it and the environment to run it in. The Windows build still asks for the latest
-  release, and a source folder for newer commits.
-- The PyPI page has the README's badges, tags, classifiers, and links to the manual, the
-  discussions, the releases and these notes.
+- UDS **ECU control**: CommunicationControl and a baud rate change (LinkControl), beside reset.
+- UDS **Read all DTC data**, with extended data records and snapshot DIDs sized and named by
+  `hooks/uds.py`.
+- J1939 **requests from a list** -- DM1 to DM5, DM11 and identification -- each answer, or none,
+  reported in the Event Log, and a warning when a node answers against the standard.
+- J1939 **Request address claims**, and **Stop broadcasts** (DM13), held until started.
+- **Check for updates** asks PyPI when pycangui was installed with pip.
+- Badges, tags, classifiers and more links on the PyPI page.
 
 ### Changed
 
-- The UDS pane is in tabs -- DIDs, routines and raw; DTCs; Transfer -- below the ECU config,
-  the session and ECU control, which stay in view. It needs a good deal less width.
-- The Windows installer shows the third-party notices on the page after the licence, before
-  anything is installed, rather than after installing.
-- On the PyPI page, the link to the Windows installer is under *More*.
+- The UDS pane is in tabs, and needs much less width.
+- J1939 messages are sent from the tester's address, claiming it first if need be, not 0xFE.
+- The Windows installer shows the third-party notices before installing, not after.
 
 ### Fixed
 
-- A mistake typed in the Python Console -- a misspelt name -- was reported in the Event Log
-  as a bug in pycangui. It is shown in the console as Python shows it, and nowhere else.
-- J1939 requests, Send PGN and DM13 went out from the null address 0xFE until an address was
-  claimed, whatever the tester's address was set to. The address is claimed first, and they
-  are sent from it.
-- A J1939 node answering a request with a transfer to 0xFE, which J1939-21 does not allow, was
-  reported as no answer. It is now a warning saying it answered and is not decoded.
-- A UDS DTC with no status bits set was printed with two spaces before its description.
-- A J1939 DM2 answer was shown in the active faults table as though its faults were active.
-- The UDS reports for a DTC's extended data (0x06) and snapshots (0x04) are read and split by
-  pycangui, where udsoncan refused them without every record's size given first. A snapshot's
-  DIDs are named and decoded like any other DID.
-- A development build, such as `0.1.0.dev5` from TestPyPI, is no longer taken as newer than the
-  release it leads to.
+- UDS extended data (0x06) and snapshot (0x04) reports, which could not be read.
+- J1939 DM2 answers were shown as active faults.
+- A mistake typed in the Python Console was reported as a bug in pycangui.
+- A development build from TestPyPI was taken as newer than the release it leads to.
 
 ## [0.1.0] - 2026-09-27
 
@@ -89,5 +65,6 @@ The first release, on PyPI (`pip install pycangui`) and as a Windows installer.
 - **Simulated nodes** on a virtual bus or a real adapter, and gateways between channels.
 - **Workspaces**, one per product, exported and imported as one zip.
 
-[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/davhodg/pycangui/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/davhodg/pycangui/releases/tag/v0.1.0
