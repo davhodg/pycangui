@@ -22,6 +22,16 @@ def wait_until(app, pred, timeout=5.0):
         time.sleep(0.005)
 
 
+class Seen(can.Listener):
+    """Keeps every frame the bus hands it."""
+
+    def __init__(self) -> None:
+        self.messages: list[can.Message] = []
+
+    def on_message_received(self, msg: can.Message) -> None:
+        self.messages.append(msg)
+
+
 @pytest.fixture
 def bus(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
@@ -53,10 +63,18 @@ def test_record_then_replay_round_trip(app, channels, tmp_path, suffix):
     assert recorder.start(path)
     assert recorder.is_recording and states[0][0] is True
     sent = [(0x123, b"\x01\x02\x03"), (0x7FF, b"\xaa" * 8), (0x18DAF110, b"\x10\x20")]
+    # The recorder is handed each frame by the bus's notifier thread, so the
+    # last one can still be on its way when stop() closes the file -- which
+    # a busy machine showed, now and then, as a replay one frame short. A
+    # listener added after the recorder's is called after it for every frame,
+    # so once this one has seen them all, the recorder has written them all.
+    counter = Seen()
+    bus.add_listener(counter)
     for can_id, data in sent:
         bus.send(can_id, data, extended=can_id > 0x7FF)
         time.sleep(0.01)
-    wait_until(app, lambda: True, 0.1)
+    wait_until(app, lambda: len(counter.messages) >= len(sent))
+    bus.remove_listener(counter)
     recorder.stop()
     assert not recorder.is_recording and states[-1][0] is False
     assert path.is_file() and path.stat().st_size > 0
@@ -121,10 +139,14 @@ def test_recording_survives_switching_the_selected_channel(app, channels, tmp_pa
     app.processEvents()
 
     assert recorder.is_recording, "selecting another channel must not stop the recording"
+    # Added after the recorder's, so called after it for each frame: once
+    # these have seen a frame, the recorder has written it.
+    counters = [Seen(), Seen()]
+    channels.get("CAN 1").add_listener(counters[0])
+    second.add_listener(counters[1])
     first.send(0x100, b"\x01")  # the channel we are no longer looking at
     second.send(0x200, b"\x02")
-    time.sleep(0.05)
-    wait_until(app, lambda: True, 0.1)
+    wait_until(app, lambda: sum(len(c.messages) for c in counters) >= 2)
     assert set(recorder.channels_recorded) == {"CAN 1", "CAN 2"}
     recorder.stop()
 

@@ -19,6 +19,14 @@ def wait_until(app, pred, timeout=4.0):
         time.sleep(0.005)
 
 
+def settle(app, seconds: float) -> None:
+    """Keep the event loop turning for this long, so late arrivals arrive."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
+
+
 @pytest.fixture
 def channels(app):
     c = Channels()
@@ -118,7 +126,7 @@ def test_active_bus_follows_the_selection(app, channels, active_bus):
     # and traffic on the channel we left no longer reaches them
     count = len(frames)
     one.send(0x222, b"\x02")
-    wait_until(app, lambda: True, 0.2)
+    settle(app, 0.2)  # long enough for it to have come, had it been coming
     assert len(frames) == count
 
     # switching to a connected channel looks like a connect
@@ -153,5 +161,5 @@ def test_sending_on_one_channel_does_not_reach_the_other(app, channels):
 
     one.send(0x321, b"\xaa")
     wait_until(app, lambda: merged)
-    wait_until(app, lambda: True, 0.2)
+    settle(app, 0.2)  # and nothing more after it, on either channel
     assert [f.channel for f in merged if f.can_id == 0x321] == [DEFAULT_CHANNEL]
