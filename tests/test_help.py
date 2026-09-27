@@ -3,6 +3,7 @@
 """The Help menu: version, licences, and the update check."""
 
 import json
+import sys
 import urllib.error
 import urllib.request
 
@@ -39,6 +40,11 @@ def test_parse_version(text, expected):
         ("0.0.1", "0.0.2", False),
         ("1.2", "1.2.0", False),  # the same version written two ways
         ("1.2.1", "1.2", True),
+        # A dev build, as TestPyPI has, is before the release it leads to.
+        ("0.1.0", "0.1.0.dev5", True),
+        ("0.1.0.dev5", "0.1.0", False),
+        ("0.1.0.dev6", "0.1.0.dev5", True),
+        ("0.1.1.dev1", "0.1.0", True),
     ],
 )
 def test_is_newer(candidate, current, newer):
@@ -569,3 +575,43 @@ def test_diagnostics_are_information_whatever_came_before(app, window):
     cursor = QTextCursor(window.log.document())
     cursor.movePosition(QTextCursor.End)
     assert not cursor.charFormat().font().bold(), "the last line is not the error's format"
+
+
+# --- a pip installation asks PyPI --------------------------------------------------------
+def test_pypi_s_latest_version_is_read(monkeypatch):
+    github(monkeypatch, {"/pypi/pycangui/json": {"info": {"version": "0.2.0"}}})
+    release, problem = updates.latest_on_pypi()
+    assert problem == ""
+    assert (release.version, release.pip) == ("0.2.0", True)
+    assert release.url == "https://pypi.org/project/pycangui/0.2.0/"
+
+
+@pytest.mark.parametrize(
+    ("frozen", "asks"),
+    [(False, "pypi.org/pypi/pycangui/json"), (True, "/releases/latest")],
+)
+def test_each_installation_asks_its_own_question(app, window, monkeypatch, frozen, asks):
+    """pip is updated with pip, and the Windows build with the installer."""
+    from pycangui.core import checkout
+
+    monkeypatch.setattr(checkout, "head", lambda root=None: None)
+    monkeypatch.setattr(sys, "frozen", frozen, raising=False)
+    asked = github(
+        monkeypatch,
+        {
+            "/pypi/pycangui/json": {"info": {"version": "99.0.0"}},
+            "/releases/latest": {"tag_name": "v99.0.0", "html_url": "https://example/99"},
+        },
+    )
+    questions = []
+    monkeypatch.setattr(
+        messages,
+        "question",
+        lambda _p, _t, text, *a, **k: (questions.append(text), QMessageBox.No)[1],
+    )
+    window.help_menu._worker.submit = lambda job, done: done(job(), None)
+
+    window.help_menu._check_for_updates()
+
+    assert len(asked) == 1 and asks in asked[0]
+    assert ("pip install --upgrade pycangui" in questions[0]) is not frozen

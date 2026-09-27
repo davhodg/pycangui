@@ -10,7 +10,7 @@ The report names the version, and -- when pycangui is being run from a source ch
 
 **Help > Diagnostics...** writes a report of the versions, each channel's adapter, state, load and error count, and any panes out on their own, to the [Event Log](event-log.md) and copies it to the clipboard -- ready to paste into a bug report.
 
-**Help > Check for updates...** asks GitHub whether there is a newer release. If there is one, it offers to open the releases page. Run from a source folder, it asks about commits instead, since a release is behind everything pulled since: how many newer commits GitHub has on the branch this folder is on, and it offers to open the list of them. A branch GitHub does not have is compared with master.
+**Help > Check for updates...** asks the question that fits how pycangui was installed. The Windows installer's build asks GitHub whether there is a newer release, and offers to open the releases page. A pip installation asks PyPI for its newest version, and says the pip command that updates it. Run from a source folder, it asks about commits instead, since a release is behind everything pulled since: how many newer commits GitHub has on the branch this folder is on, and it offers to open the list of them. A branch GitHub does not have is compared with master.
 
 **Help > Licences...** shows pycangui's own Apache-2.0 licence, the NOTICE attributions and the full third-party licence text, all shipped with the application.
 

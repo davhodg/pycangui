@@ -43,6 +43,7 @@ from pycangui.core.updates import (
     Release,
     Standing,
     checkout_standing,
+    latest_on_pypi,
     latest_release,
 )
 from pycangui.core.updates import is_newer as version_is_newer
@@ -556,13 +557,17 @@ class HelpMenu(QObject):
         self._checking = True
         self.check_action.setText("Checking for updates...")
         self.check_action.setEnabled(False)
-        # Run from a source folder, the question is whether there is more to
-        # pull: a release is behind every commit made since it.
+        # Each kind of installation has its own question. Run from a source
+        # folder, it is whether there is more to pull: a release is behind
+        # every commit made since it. The Windows build is updated by the
+        # installer on the releases page, and a pip installation by pip.
         if (found := checkout.head()) is not None:
             branch, commit = found
             self._worker.submit(lambda: checkout_standing(branch, commit), self._on_checked)
-        else:
+        elif getattr(sys, "frozen", False):
             self._worker.submit(latest_release, self._on_checked)
+        else:
+            self._worker.submit(latest_on_pypi, self._on_checked)
 
     def _on_checked(self, result, error: str | None) -> None:
         self._checking = False
@@ -623,6 +628,20 @@ class HelpMenu(QObject):
                 "Check for updates",
                 f"{problem}\n\nYou are running {APP_NAME} {__version__}.",
             )
+        elif release.pip and version_is_newer(release.version, __version__):
+            answer = messages.question(
+                self.window,
+                "Update available",
+                f"{APP_NAME} {release.version} is on PyPI. You are running {__version__}.\n\n"
+                "To update, run this in the Python environment it is installed in "
+                f"({sys.prefix}), then start {APP_NAME} again:\n\n"
+                f"    pip install --upgrade {APP_NAME}\n\n"
+                "Open its page on PyPI?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if answer == QMessageBox.Yes:
+                QDesktopServices.openUrl(QUrl(release.url))
         elif version_is_newer(release.version, __version__):
             answer = messages.question(
                 self.window,

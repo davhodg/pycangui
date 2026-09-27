@@ -28,6 +28,8 @@ RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 PROJECT_PAGE = f"https://github.com/{REPO}"
 README_PAGE = f"{PROJECT_PAGE}#readme"
 COMMITS_PAGE = f"{PROJECT_PAGE}/commits"
+PYPI_API = "https://pypi.org/pypi/pycangui/json"
+PYPI_PAGE = "https://pypi.org/project/pycangui/"
 #: What a checkout on a branch GitHub has never heard of is compared against.
 DEFAULT_BRANCH = "master"
 SHORT = 7
@@ -44,15 +46,31 @@ def parse_version(text: str) -> tuple[int, ...]:
 
 
 def is_newer(candidate: str, current: str) -> bool:
-    a, b = parse_version(candidate), parse_version(current)
-    length = max(len(a), len(b))  # 1.2 is not newer than 1.2.0
-    return a + (0,) * (length - len(a)) > b + (0,) * (length - len(b))
+    """Whether ``candidate`` is a later version than ``current``.
+
+    A development build comes *before* the release it is numbered for:
+    0.1.0.dev5 is on its way to 0.1.0, so 0.1.0 is newer, although its
+    digits alone would say the opposite.
+    """
+
+    def key(text: str, length: int) -> tuple:
+        release, dev, number = text.lower().partition("dev")
+        parts = parse_version(release)
+        padded = parts + (0,) * (length - len(parts))  # 1.2 is not newer than 1.2.0
+        # A release sorts after every dev build of itself.
+        return padded, (0, *parse_version(number)) if dev else (1,)
+
+    length = max(len(parse_version(v.lower().partition("dev")[0])) for v in (candidate, current))
+    return key(candidate, length) > key(current, length)
 
 
 @dataclass
 class Release:
     version: str
     url: str
+    #: True for a version on PyPI, which is updated with pip rather than by
+    #: downloading anything.
+    pip: bool = False
 
 
 def _get(url: str, timeout: float) -> tuple[dict | None, int, str]:
@@ -92,6 +110,23 @@ def latest_release(timeout: float = TIMEOUT_S) -> tuple[Release | None, str]:
     if not tag:
         return None, "GitHub reported a release with no version."
     return Release(version=tag.lstrip("vV"), url=payload.get("html_url") or RELEASES_PAGE), ""
+
+
+def latest_on_pypi(timeout: float = TIMEOUT_S) -> tuple[Release | None, str]:
+    """Return (release, problem) for the newest version on PyPI.
+
+    For a pip installation: the release on GitHub is the Windows installer,
+    which is the wrong download for somebody who installed with pip.
+    """
+    payload, status, problem = _get(PYPI_API, timeout)
+    if status == 404:
+        return None, "pycangui is not on PyPI."
+    if payload is None:
+        return None, problem
+    version = str((payload.get("info") or {}).get("version") or "").strip()
+    if not version:
+        return None, "PyPI's reply could not be read."
+    return Release(version=version, url=f"{PYPI_PAGE}{version}/", pip=True), ""
 
 
 @dataclass
