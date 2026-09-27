@@ -565,6 +565,10 @@ class MainWindow(QMainWindow):
         # modal dialog in front of a window that has not been shown yet is a
         # dialog with nothing behind it.
         QTimer.singleShot(0, self._run_startup_hook)
+        # The detached windows were put back before this one was shown, so
+        # it came up in front of them: a pane left on a second screen, hidden
+        # behind the main window, might as well have been closed.
+        QTimer.singleShot(0, self.panes.raise_detached)
 
     # --- helpers -------------------------------------------------------------
     def _run_startup_hook(self) -> None:

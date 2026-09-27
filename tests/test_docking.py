@@ -527,3 +527,22 @@ def test_a_hand_edited_size_that_makes_no_sense_is_ignored(app, window):
 
     assert window.panes.detached["j1939"].width() >= 600, "and it falls back to a usable size"
     window.panes.attach("j1939")
+
+
+def test_detached_windows_come_up_in_front_of_the_main_one(app, tmp_path, monkeypatch):
+    """They were restored before the main window was shown, which then covered them."""
+    from pycangui.ui.detached import DetachedPane
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = restart(app, tmp_path)
+    float_out(app, first.panes.docks["canopen"])
+    first.panes.detach("canopen")
+    settle(app)
+
+    raised = []
+    real = DetachedPane.raise_
+    monkeypatch.setattr(DetachedPane, "raise_", lambda self: (raised.append(self), real(self)))
+    second = restart(app, tmp_path, first)
+    assert second.panes.detached["canopen"] in raised
+    second.close()

@@ -780,6 +780,12 @@ class Panes(QObject):
             f"Docked {len(floating)} pane(s)." if floating else "No panes are undocked."
         )
 
+    def raise_detached(self) -> None:
+        """Bring every detached window in front of the main one, without focus."""
+        for window in self.detached.values():
+            if window.isVisible():
+                window.raise_()
+
     def close_detached(self) -> None:
         """On the way out: they are parentless windows and would outlive us."""
         for name in list(self.detached):
