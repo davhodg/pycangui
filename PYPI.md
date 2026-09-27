@@ -23,8 +23,6 @@ To include everything optional up front -- today that is the reader for MDF and 
 pip install "pycangui[all]"
 ```
 
-Without Python, on Windows: the [installer on the releases page](https://github.com/davhodg/pycangui/releases) is a self-contained application.
-
 ## What it does
 
 - **Live trace** of every connected channel on one clock, CAN FD included, with filtering that hides rather than discards, recording to six log formats, and replay of a log onto a bus.
@@ -52,6 +50,7 @@ No hardware is needed to try it: the `virtual` interface's *Demo device* channel
 ## More
 
 - [Source, issues and releases](https://github.com/davhodg/pycangui)
+- [Standalone Windows installer](https://github.com/davhodg/pycangui/releases)
 - [Questions and ideas](https://github.com/davhodg/pycangui/discussions)
 - [Manual](https://github.com/davhodg/pycangui/blob/master/pycangui/help/manual.md)
 
