@@ -718,3 +718,22 @@ def test_the_security_level_is_remembered(view):
     again = UdsView(view.manager, view.ctx)
     assert again.level.value() == 4
     assert "07" in again.level_pair.text(), "and the bytes beside it follow the level"
+
+
+def test_a_timeout_says_which_request_it_was_waiting_on(manager, images_dir):
+    """ "Download: timeout" alone said nothing about where it had got to."""
+    from udsoncan.exceptions import TimeoutException
+
+    class StopsAnswering(FakeEcu):
+        def transfer_data(self, sequence_number, data=None):
+            if sequence_number == 3:
+                raise TimeoutException("no answer")
+            return super().transfer_data(sequence_number, data)
+
+    manager.client = StopsAnswering(max_length=6)
+    lines = []
+    manager.result.connect(lines.append)
+
+    manager.download(images.read(images_dir("a.hex", (0x1000, bytes(20)))))
+
+    assert lines[-1] == "Download: timeout (no response to TransferData block 3 of 5)"

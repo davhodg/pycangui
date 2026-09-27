@@ -19,7 +19,7 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.uds import CAN_DL, UdsConfig
 from pycangui.uds.manager import UdsManager
-from pycangui.uds.transport import CanIsoTpTransport
+from pycangui.uds.transport import CanIsoTpTransport, SendFailedError
 from pycangui.ui.connect_bar import DATA_BITRATES
 from pycangui.ui.uds_view import UdsView
 
@@ -152,7 +152,10 @@ def test_a_classic_transport_still_sends_eight(app):
     # is told the channel's truth rather than the pane's wish.
     transport = CanIsoTpTransport(bus, UdsConfig(can_fd=False, tx_data_length=64))
     transport.open()
-    transport.send(bytes(range(40)))
+    # Nothing on this bus sends flow control, so the send waits for it and
+    # then says so: a request is sent whole or it is an error.
+    with pytest.raises(SendFailedError, match="FlowControl"):
+        transport.send(bytes(range(40)))
     wait_for(app, lambda: seen)
     transport.close()
     bus.disconnect_bus()
@@ -191,3 +194,57 @@ def test_a_refused_frame_is_the_request_s_error_and_the_transport_carries_on(app
         transport.close()
         bus.disconnect_bus()
     assert bytes(grab.seen[0].data[1:3]) == b"\x10\x01", "the thread is still sending"
+
+
+def test_p2_counts_from_the_end_of_a_request_not_from_queuing_it(app, tmp_path, monkeypatch):
+    """A programming session's P2 of 50 ms ran out while a 258-byte TransferData
+    was still going out -- the ECU answered 10 ms after the last frame, and the
+    download had already given up."""
+    import threading
+
+    import isotp
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    config = UdsConfig(p2_timeout_s=0.05, padding=None)
+    bus = BusManager()
+    bus.connect_bus("virtual", "vcan_isotp_p2", 500_000, False)
+
+    # The ECU, on a bus of its own on the same channel. It asks for 10 ms
+    # between frames, so the request takes several times P2 to arrive.
+    ecu_bus = can.Bus(interface="virtual", channel="vcan_isotp_p2")
+    ecu_notifier = can.Notifier(ecu_bus, [])
+    ecu = isotp.NotifierBasedCanStack(
+        ecu_bus,
+        ecu_notifier,
+        address=isotp.Address(
+            isotp.AddressingMode.Normal_11bits, txid=config.rx_id, rxid=config.tx_id
+        ),
+        params={"stmin": 10, "tx_padding": None},
+    )
+    ecu.start()
+    stop = threading.Event()
+
+    def answer():
+        while not stop.is_set():
+            if (request := ecu.recv(block=True, timeout=0.1)) is not None:
+                ecu.send(bytes([request[0] + 0x40, request[1]]))
+
+    threading.Thread(target=answer, daemon=True).start()
+
+    ctx = Context(log=print)
+    manager = UdsManager(bus, Hooks(ctx), ctx)
+    manager.open(config)
+    try:
+        began = time.monotonic()
+        response = manager.client.transfer_data(1, bytes(256))
+        took = time.monotonic() - began
+    finally:
+        manager.close()
+        stop.set()
+        ecu.stop()
+        ecu_notifier.stop()
+        ecu_bus.shutdown()
+        bus.disconnect_bus()
+
+    assert response.positive
+    assert took > 5 * config.p2_timeout_s, "the request really did outlast P2"

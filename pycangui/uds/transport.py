@@ -30,8 +30,19 @@ from pycangui.core.components import register_component
 from pycangui.uds import UdsConfig
 
 
-class FrameRefusedError(Exception):
+class FrameRefusedError(OSError):
     """The adapter would not put a frame of the request on the bus."""
+
+
+class SendFailedError(OSError):
+    """A request could not be sent whole: no flow control came back, say."""
+
+
+#: Time allowed per CAN frame of a request before a send is given up as stuck:
+#: well over the longest separation time an ECU can ask for (127 ms), plus a
+#: margin, so it only ever catches a transport that has stopped.
+SEND_S_PER_FRAME = 0.25
+SEND_S_MARGIN = 5.0
 
 
 class IsoTpTransport(ABC):
@@ -88,8 +99,17 @@ class CanIsoTpTransport(IsoTpTransport):
                 # frame is eight times fewer flow control rounds.
                 "tx_data_length": config.tx_data_length if config.can_fd else 8,
                 "bitrate_switch": config.bitrate_switch and config.can_fd,
+                # Wait until the last frame of a request has gone. udsoncan
+                # starts P2 when send returns, and without this that was the
+                # moment the request was queued: a 258-byte TransferData takes
+                # 70 ms to send, and a programming session's P2 of 50 ms ran
+                # out before the ECU had the whole request.
+                "blocking_send": True,
             },
+            error_handler=self._on_error,
         )
+        #: What can-isotp last complained of, for a send that failed.
+        self._error: Exception | None = None
         # can-isotp sends frames from a thread of its own. An adapter that
         # refuses one -- its transmit queue full, because nothing on the bus
         # is acknowledging -- raised there, which ended the thread and UDS
@@ -115,9 +135,18 @@ class CanIsoTpTransport(IsoTpTransport):
         if self.stack.started:
             self.stack.stop()
 
+    def _on_error(self, error: Exception) -> None:
+        self._error = error
+
     def send(self, payload: bytes) -> None:
         self._refused = None  # an earlier request's, and nothing to do with this one
-        self.stack.send(payload)
+        self._error = None
+        frames = len(payload) // 7 + 1
+        try:
+            self.stack.send(payload, send_timeout=frames * SEND_S_PER_FRAME + SEND_S_MARGIN)
+        except (isotp.errors.BlockingSendFailure, isotp.errors.BlockingSendTimeout) as exc:
+            reason = self._error or self._refused or exc
+            raise SendFailedError(f"the request could not be sent: {reason}") from exc
 
     def recv(self, timeout: float) -> bytes | None:
         data = self.stack.recv(block=True, timeout=timeout)

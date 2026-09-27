@@ -124,6 +124,9 @@ class UdsManager(QObject):
         self._worker = Worker()  # starts itself the first time it is used
         self._cancel = threading.Event()
         self._busy = False
+        #: What a transfer is waiting on, so a timeout can say which request
+        #: it was: "Download: timeout" alone does not say where it stopped.
+        self._step = ""
         self.standard_version = DEFAULT_STANDARD
         self._tp_timer = QTimer(self, timeout=self._tester_present_tick)
         bus.disconnected.connect(self.close)
@@ -607,6 +610,7 @@ class UdsManager(QObject):
         self.transferring.emit(True)
 
         def job() -> str:
+            self._step = ""
             try:
                 return fn(client)
             except TransferCancelledError as exc:
@@ -621,7 +625,8 @@ class UdsManager(QObject):
                 r = exc.response
                 return f"{label}: NRC 0x{r.code:02X} {r.code_name}"
             except TimeoutException:
-                return f"{label}: timeout (no response)"
+                waiting = f" to {self._step}" if self._step else ""
+                return f"{label}: timeout (no response{waiting})"
             except OSError as exc:
                 return f"{label}: {exc}"
 
@@ -677,10 +682,12 @@ class UdsManager(QObject):
     ) -> int:
         """TransferData until the bytes run out. Returns the new running total."""
         sequence = 1  # ISO 14229: the first block is 1, and 0xFF is followed by 0
+        blocks = -(-len(data) // size)
         for start in range(0, len(data), size):
             if self._cancel.is_set():
                 raise TransferCancelledError(f" after {done} of {total} bytes")
             block = data[start : start + size]
+            self._step = f"TransferData block {start // size + 1} of {blocks}"
             c.transfer_data(sequence, block)
             sequence = (sequence + 1) % 256
             done += len(block)
@@ -695,6 +702,7 @@ class UdsManager(QObject):
         while got < expected:
             if self._cancel.is_set():
                 raise TransferCancelledError(f" after {got} of {expected} bytes")
+            self._step = f"TransferData after {got} of {expected} bytes"
             r = c.transfer_data(sequence)
             block = bytes(r.service_data.parameter_records or b"")
             if not block:
@@ -726,6 +734,7 @@ class UdsManager(QObject):
             f"Erase {segment.address:08X}+{len(segment)}: "
             f"routine {self.routine_label(ERASE_MEMORY)}"
         )
+        self._step = f"the erase of {segment.address:08X}"
         c.routine_control(ERASE_MEMORY, 1, record or None)
 
     def _check(self, c: Client, routine: int, segment: Segment, width: int | None) -> str:
@@ -738,6 +747,7 @@ class UdsManager(QObject):
             if options is not None
             else memory_record(segment.address, len(segment), width)
         )
+        self._step = f"routine {routine:04X} over {segment.address:08X}"
         r = c.routine_control(routine, 1, record or None)
         status = bytes(r.service_data.routine_status_record or b"")
         return f"Check {segment.address:08X}: routine {self.routine_label(routine)} " + (
@@ -790,11 +800,13 @@ class UdsManager(QObject):
                 self.result.emit(
                     f"RequestDownload {segment.address:08X}: {len(segment)} bytes{which}"
                 )
+                self._step = f"RequestDownload {segment.address:08X}"
                 r = c.request_download(self._memory(segment.address, len(segment), width), dfi=fmt)
                 size = self._block_size(r.service_data.max_length, block_size)
                 address = f"{segment.address:08X}"
                 self.result.emit(f"RequestDownload {address}: accepted, blocks of {size}")
                 done = self._send_blocks(c, segment.data, size, "Download", done, total)
+                self._step = "RequestTransferExit"
                 c.request_transfer_exit()
                 if check:
                     self.result.emit(self._check(c, check, segment, width))
@@ -820,10 +832,12 @@ class UdsManager(QObject):
 
         def fn(c: Client) -> str:
             self.result.emit(f"RequestUpload {address:08X}: {size} bytes")
+            self._step = f"RequestUpload {address:08X}"
             r = c.request_upload(self._memory(address, size, width), dfi=fmt)
             block = self._block_size(r.service_data.max_length, block_size)
             self.result.emit(f"RequestUpload {address:08X}: accepted, blocks of {block}")
             data = self._receive_blocks(c, size, "Upload")
+            self._step = "RequestTransferExit"
             c.request_transfer_exit()
             written = write_image(path, address, data)
             return f"Upload complete: {len(data)} bytes to {Path(path).name} ({written})"
@@ -849,6 +863,7 @@ class UdsManager(QObject):
         def fn(c: Client) -> str:
             payload = Path(local_path).read_bytes() if mode in FILE_MODES_SENDING else b""
             size_arg = Filesize(uncompressed=len(payload)) if mode in FILE_MODES_SENDING else None
+            self._step = f"RequestFileTransfer {ecu_path}"
             r = c.request_file_transfer(moop=mode, path=ecu_path, dfi=fmt, filesize=size_arg)
             data = r.service_data
             if mode == 2:  # delete: there is nothing to transfer
@@ -864,6 +879,7 @@ class UdsManager(QObject):
                 rest = payload[start:]
                 self.result.emit(f"{name} {ecu_path}: {len(rest)} bytes in blocks of {size}")
                 self._send_blocks(c, rest, size, name, start, len(payload))
+                self._step = "RequestTransferExit"
                 c.request_transfer_exit()
                 return f"{name} complete: {len(payload)} bytes to {ecu_path}"
 
@@ -874,6 +890,7 @@ class UdsManager(QObject):
             ) or 0
             self.result.emit(f"{name} {ecu_path}: {expected} bytes in blocks of {size}")
             content = self._receive_blocks(c, expected, name)
+            self._step = "RequestTransferExit"
             c.request_transfer_exit()
             if not local_path:  # a directory listing is read here, not saved
                 return f"{ecu_path}:\n{as_text(content)}"
