@@ -36,7 +36,15 @@ from PySide6.QtWidgets import (
 from pycangui import APP_NAME, __version__
 from pycangui import help as help_pages
 from pycangui.core import checkout, known_ids, packages, timing
-from pycangui.core.updates import PROJECT_PAGE, README_PAGE, RELEASES_PAGE, Release, latest_release
+from pycangui.core.updates import (
+    PROJECT_PAGE,
+    README_PAGE,
+    RELEASES_PAGE,
+    Release,
+    Standing,
+    checkout_standing,
+    latest_release,
+)
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
 from pycangui.help import manual_text
@@ -548,7 +556,13 @@ class HelpMenu(QObject):
         self._checking = True
         self.check_action.setText("Checking for updates...")
         self.check_action.setEnabled(False)
-        self._worker.submit(latest_release, self._on_checked)
+        # Run from a source folder, the question is whether there is more to
+        # pull: a release is behind every commit made since it.
+        if (found := checkout.head()) is not None:
+            branch, commit = found
+            self._worker.submit(lambda: checkout_standing(branch, commit), self._on_checked)
+        else:
+            self._worker.submit(latest_release, self._on_checked)
 
     def _on_checked(self, result, error: str | None) -> None:
         self._checking = False
@@ -557,8 +571,50 @@ class HelpMenu(QObject):
         if error is not None:
             messages.information(self.window, "Check for updates", error)
             return
-        release, problem = result
-        self._report(release, problem)
+        found, problem = result
+        if isinstance(found, Standing) or (found is None and checkout.head() is not None):
+            self._report_standing(found, problem)
+        else:
+            self._report(found, problem)
+
+    def _report_standing(self, standing: Standing | None, problem: str) -> None:
+        """How a source folder compares with the same branch on GitHub."""
+        running = f"You are running {APP_NAME} from source, at {checkout.describe()}."
+        if standing is None:
+            messages.information(self.window, "Check for updates", f"{problem}\n\n{running}")
+            return
+        on_github = f"GitHub's {standing.branch} is at {standing.latest}"
+        if not standing.known:
+            messages.information(
+                self.window,
+                "Check for updates",
+                f"This folder is at {standing.here}, which GitHub does not have: a "
+                f"commit made here and not pushed, or one from a fork.\n\n{on_github}.",
+            )
+        elif standing.behind:
+            n = standing.behind
+            commits = f"{n} newer commit{'s' if n != 1 else ''}"
+            answer = messages.question(
+                self.window,
+                "Update available",
+                f"{on_github}, {commits} than this folder ({standing.here}).\n\n"
+                "To update, pull them into this folder (git pull) and start pycangui "
+                "again; the launcher installs any new libraries.\n\n"
+                "Open the list of commits?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if answer == QMessageBox.Yes:
+                QDesktopServices.openUrl(QUrl(standing.url))
+        else:
+            own = ""
+            if n := standing.ahead:
+                own = f" This folder also has {n} commit{'s' if n != 1 else ''} not on GitHub."
+            messages.information(
+                self.window,
+                "Check for updates",
+                f"Up to date with GitHub's {standing.branch} ({standing.latest}).{own}",
+            )
 
     def _report(self, release: Release | None, problem: str) -> None:
         if release is None:

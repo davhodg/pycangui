@@ -179,6 +179,95 @@ def test_a_newer_release_offers_the_download_page(app, window, monkeypatch):
     assert asked and "99.0.0" in asked[0]
 
 
+# --- a source folder: commits, not releases -------------------------------------------
+HERE = "a" * 40
+TIP = "b" * 40
+
+
+def github(monkeypatch, answers):
+    """urlopen that answers by URL: a dict is the reply, an int is an HTTP error."""
+    asked = []
+
+    def urlopen(request, timeout=None):
+        url = request.full_url
+        asked.append(url)
+        for tail, answer in answers.items():
+            if url.endswith(tail):
+                if isinstance(answer, int):
+                    raise urllib.error.HTTPError(url, answer, "Not Found", {}, None)
+                return _Response(answer)
+        raise AssertionError(f"not expected: {url}")
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    return asked
+
+
+def test_a_checkout_behind_github_is_told_how_far(monkeypatch):
+    github(
+        monkeypatch,
+        {
+            "/commits/master": {"sha": TIP},
+            f"/compare/{HERE}...{TIP}": {"ahead_by": 3, "behind_by": 0},
+        },
+    )
+    standing, problem = updates.checkout_standing("master", HERE)
+    assert problem == ""
+    assert (standing.behind, standing.ahead, standing.latest) == (3, 0, TIP[:7])
+    assert standing.url.endswith("/commits/master")
+
+
+def test_a_checkout_at_github_s_tip_is_up_to_date_in_one_request(monkeypatch):
+    asked = github(monkeypatch, {"/commits/master": {"sha": HERE}})
+    standing, _ = updates.checkout_standing("master", HERE)
+    assert standing.behind == 0 and standing.known
+    assert len(asked) == 1, "nothing to compare"
+
+
+def test_a_branch_github_does_not_have_is_compared_with_master(monkeypatch):
+    github(
+        monkeypatch,
+        {
+            "/commits/my-idea": 404,
+            "/commits/master": {"sha": TIP},
+            f"/compare/{HERE}...{TIP}": {"ahead_by": 0, "behind_by": 2},
+        },
+    )
+    standing, _ = updates.checkout_standing("my-idea", HERE)
+    assert standing.branch == "master"
+    assert (standing.behind, standing.ahead) == (0, 2), "two of its own, nothing to pull"
+
+
+def test_a_commit_github_has_never_seen_is_said_so(monkeypatch):
+    github(monkeypatch, {"/commits/master": {"sha": TIP}, f"/compare/{HERE}...{TIP}": 404})
+    standing, _ = updates.checkout_standing(None, HERE)
+    assert not standing.known
+
+
+def test_a_source_folder_is_checked_against_commits_not_releases(app, window, monkeypatch):
+    from pycangui.core import checkout
+
+    monkeypatch.setattr(checkout, "head", lambda root=None: ("master", HERE))
+    asked = github(
+        monkeypatch,
+        {
+            "/commits/master": {"sha": TIP},
+            f"/compare/{HERE}...{TIP}": {"ahead_by": 2, "behind_by": 0},
+        },
+    )
+    questions = []
+    monkeypatch.setattr(
+        messages,
+        "question",
+        lambda _p, _t, text, *a, **k: (questions.append(text), QMessageBox.No)[1],
+    )
+    window.help_menu._worker.submit = lambda job, done: done(job(), None)
+
+    window.help_menu._check_for_updates()
+
+    assert not any("releases" in url for url in asked)
+    assert questions and "2 newer commits" in questions[0] and "git pull" in questions[0]
+
+
 # --- the shipped manual ----------------------------------------------------------------
 def test_the_manual_ships_with_the_package():
     """Package data, which is exactly the kind of file a build drops silently."""

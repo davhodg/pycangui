@@ -10,11 +10,11 @@ The report names the version, and -- when pycangui is being run from a source ch
 
 **Help > Diagnostics...** writes a report of the versions, each channel's adapter, state, load and error count, and any panes out on their own, to the [Event Log](event-log.md) and copies it to the clipboard -- ready to paste into a bug report.
 
-**Help > Check for updates...** asks GitHub whether there is a newer release. If there is one, it offers to open the releases page.
+**Help > Check for updates...** asks GitHub whether there is a newer release. If there is one, it offers to open the releases page. Run from a source folder, it asks about commits instead, since a release is behind everything pulled since: how many newer commits GitHub has on the branch this folder is on, and it offers to open the list of them. A branch GitHub does not have is compared with master.
 
 **Help > Licences...** shows pycangui's own Apache-2.0 licence, the NOTICE attributions and the full third-party licence text, all shipped with the application.
 
-**Help > About pycangui** shows the version alongside the Python, PySide6, python-can and canopen versions and the platform, in a form you can copy.
+**Help > About pycangui** shows the version alongside Python, every package pycangui runs on and the platform, in a form you can copy.
 
 ## If pycangui will not start
 
@@ -22,4 +22,4 @@ Started from the source folder, `pycangui.cmd` and `pycangui.sh` install anythin
 
 **If pycangui is slow to start**, the diagnostics report says where the seconds went: starting is measured on every run, step by step and package by package, so the breakdown is already there when somebody thinks to ask. It covers each step -- Qt, the libraries, the workspace's hooks and simulated nodes, the panes, the databases, the A2L, the plugins, the layout -- and the packages that took longest to import, since "the libraries" on its own says nothing about which one. The launchers stamp the time before they start Python, so there is also a line for the dependency check and the interpreter's own start, and the wait for the start-up notice to be answered is a line of its own rather than being charged to the step after it.
 
-A start that takes longer than usual says so in the [Event Log](event-log.md) and points to *Help > Diagnostics*. The first start after an update is the usual one: Python compiles every changed file again, so that start says how many and that the next will be quicker. To have the whole report in the Event Log after every start, and in `startup-timing.txt` in [pycangui's own folder](files.md), start pycangui with `--timing` -- `pycangui.cmd --timing`, or `pycangui.sh --timing` -- or set `PYCANGUI_TIMING=1`. The report then says it is there because of that option, so one left in a shortcut is easy to find.
+A start that takes longer than usual says so in the [Event Log](event-log.md) and points to *Help > Diagnostics*. The first start after an update is the usual one: Python compiles every changed file again, and that start says how many it compiled. To have the whole report in the Event Log after every start, and in `startup-timing.txt` in [pycangui's own folder](files.md), start pycangui with `--timing` -- `pycangui.cmd --timing`, or `pycangui.sh --timing` -- or set `PYCANGUI_TIMING=1`. The report then says it is there because of that option, so one left in a shortcut is easy to find.

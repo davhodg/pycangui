@@ -93,6 +93,29 @@ def _tag_for(git: Path, commit: str) -> str | None:
     return None
 
 
+def head(root: Path | None = None) -> tuple[str | None, str] | None:
+    """(branch, full commit) this checkout is on, or None outside a checkout.
+
+    The branch is None when the checkout is on a commit rather than
+    following a branch -- a tag, or an old commit checked out.
+    """
+    root = Path(__file__).resolve().parents[2] if root is None else Path(root)
+    git = _git_dir(root)
+    if git is None:
+        return None
+    try:
+        said = (git / "HEAD").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if said.startswith("ref:"):
+        ref = said.split(":", 1)[1].strip()
+        commit = _resolve(git, ref)
+        branch = ref.removeprefix("refs/heads/")
+    else:
+        commit, branch = said, None
+    return (branch, commit) if commit else None
+
+
 def describe(root: Path | None = None) -> str | None:
     """The branch or tag and the short hash, or None outside a checkout.
 
@@ -100,21 +123,12 @@ def describe(root: Path | None = None) -> str | None:
     no repository to ask and a version number that means something anyway.
     """
     root = Path(__file__).resolve().parents[2] if root is None else Path(root)
+    if (found := head(root)) is None:
+        return None
+    branch, commit = found
     git = _git_dir(root)
-    if git is None:
-        return None
-    try:
-        head = (git / "HEAD").read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-    if head.startswith("ref:"):
-        ref = head.split(":", 1)[1].strip()
-        commit = _resolve(git, ref)
-        name = ref.rsplit("/", 1)[-1]
-    else:
-        # Detached: sitting on a commit rather than following a branch,
-        # which is what checking out a tag or an old commit leaves.
-        commit, name = head, "detached"
-    if not commit:
-        return None
-    return f"{_tag_for(git, commit) or name} {commit[:SHORT]}"
+    tag = _tag_for(git, commit) if git is not None else None
+    # Detached: sitting on a commit rather than following a branch, which is
+    # what checking out a tag or an old commit leaves.
+    name = tag or (branch.rsplit("/", 1)[-1] if branch else "detached")
+    return f"{name} {commit[:SHORT]}"
