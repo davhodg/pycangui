@@ -37,7 +37,10 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 LicenseFile=..\LICENSE
-InfoAfterFile=..\THIRD-PARTY-NOTICES.txt
+; The third-party notices on the page after the licence, before anything is
+; installed: what comes with pycangui is worth reading before it is on the
+; machine, not on the way to Finish.
+InfoBeforeFile=..\THIRD-PARTY-NOTICES.txt
 OutputDir=..\dist
 OutputBaseFilename=pycangui-{#AppVersion}-setup
 Compression=lzma2
