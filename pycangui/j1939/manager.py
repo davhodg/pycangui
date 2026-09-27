@@ -21,11 +21,31 @@ if TYPE_CHECKING:  # annotations only, which are strings at run time
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.hooks import Hooks
 from pycangui.j1939 import (
+    CLEARING,
+    DM13_HOLD,
+    DM13_HOLD_S,
+    DM13_START,
+    DM13_STOP,
     GLOBAL,
+    PGN_ACKNOWLEDGEMENT,
+    PGN_COMPONENT_ID,
+    PGN_DM1,
+    PGN_DM2,
+    PGN_DM4,
+    PGN_DM5,
+    PGN_DM13,
+    PGN_ECU_ID,
+    PGN_SOFTWARE_ID,
+    REQUESTABLE,
     Name,
     build_id,
+    identification,
+    parse_acknowledgement,
     parse_dm1,
+    parse_dm4,
+    parse_dm5,
     parse_id,
+    pgn_label,
 )
 
 
@@ -45,8 +65,6 @@ class _RxOnlyListener(can.Listener):
 
 PGN_ADDRESS_CLAIM = 60928
 PGN_REQUEST = 59904
-PGN_DM1 = 65226
-PGN_DM2 = 65227
 
 
 def tester_name():
@@ -76,7 +94,13 @@ class J1939Manager(QObject):
         int, int, int, float, bytes
     )  # priority, pgn, sa, timestamp, data (reassembled)
     node_seen = Signal(int, object)  # sa, Name | None (None = seen without a claim yet)
-    dm1 = Signal(int, object)  # sa, Dm1
+    dm1 = Signal(int, object)  # sa, Dm1: active faults
+    #: sa, Dm1: previously active faults. The same layout as DM1 and a
+    #: different meaning, so a signal of its own: they used to arrive on dm1
+    #: and were shown as active.
+    dm2 = Signal(int, object)
+    #: Whether pycangui is holding the network's broadcasts stopped (DM13).
+    broadcasts_stopped = Signal(bool)
     claimed = Signal(int)  # our address after a successful claim (0xFE = lost)
     log = Signal(str)
 
@@ -100,6 +124,10 @@ class J1939Manager(QObject):
         #: so it goes when the manager does.
         self._claim_timer = QTimer(self, interval=self.CLAIM_POLL_MS, timeout=self._check_claim)
         self._claim_deadline = 0.0
+        #: Repeats the DM13 hold while broadcasts are stopped: nodes start
+        #: again by themselves 6 s after the last one.
+        self._hold_timer = QTimer(self, interval=int(DM13_HOLD_S * 1000), timeout=self._hold)
+        self._hold_to = GLOBAL
         self.nodes: dict[int, Name | None] = {}
         self.last_seen: dict[int, float] = {}
         bus.connected.connect(self._on_bus_connected)
@@ -122,6 +150,9 @@ class J1939Manager(QObject):
 
     @Slot()
     def _on_bus_disconnected(self) -> None:
+        if self._hold_timer.isActive():
+            self._hold_timer.stop()
+            self.broadcasts_stopped.emit(False)
         self.release_address()
         if self.ecu is not None:
             for listener in self._rx_only:
@@ -161,8 +192,45 @@ class J1939Manager(QObject):
     def _on_message(self, priority: int, pgn: int, sa: int, timestamp: float, data) -> None:
         payload = bytes(data)
         self.message.emit(priority, pgn, sa, timestamp, payload)
-        if pgn in (PGN_DM1, PGN_DM2):
+        if pgn == PGN_DM1:
             self.dm1.emit(sa, parse_dm1(payload))
+        elif pgn == PGN_DM2:
+            self.dm2.emit(sa, parse_dm1(payload))
+        elif (said := self.describe_answer(pgn, sa, payload)) is not None:
+            self.log.emit(said)
+
+    def describe_answer(self, pgn: int, sa: int, data: bytes) -> str | None:
+        """The answer to one of the requests the pane offers, in words, or None."""
+        who = f"J1939 {sa:02X}"
+        if pgn in (PGN_ECU_ID, PGN_SOFTWARE_ID, PGN_COMPONENT_ID):
+            title = dict(REQUESTABLE)[pgn]
+            fields = "\n".join(f"  {name}: {text}" for name, text in identification(pgn, data))
+            return f"{who} {title}:\n{fields}" if fields else f"{who} {title}: empty"
+        if pgn == PGN_DM5:
+            r = parse_dm5(data)
+            return (
+                f"{who} DM5 readiness: {r.active} active, {r.previously_active} previously "
+                f"active, OBD compliance {r.obd_compliance}, monitors {r.monitors.hex(' ').upper()}"
+            )
+        if pgn == PGN_DM4:
+            frames = parse_dm4(data)
+            if not frames:
+                return f"{who} DM4 freeze frames: none"
+            lines = [f"{who} DM4 freeze frames:"]
+            for dtc, values in frames:
+                name = self.spn_description(dtc.spn)
+                spn = f"SPN {dtc.spn} {name}".rstrip()
+                recorded = values.hex(" ").upper() or "(nothing recorded)"
+                lines.append(f"  {spn} FMI {dtc.fmi} OC {dtc.occurrence}: {recorded}")
+            return "\n".join(lines)
+        if pgn == PGN_ACKNOWLEDGEMENT:
+            said, about = parse_acknowledgement(data)
+            what = CLEARING.get(about)
+            about_text = (
+                f"clearing {what} faults" if what else self.pgn_name(about) or pgn_label(about)
+            )
+            return f"{who}: {about_text} {said}"
+        return None
 
     # --- labelling ------------------------------------------------------------------
     def pgn_name(self, pgn: int) -> str:
@@ -252,6 +320,32 @@ class J1939Manager(QObject):
             self._bus.send(
                 build_id(PGN_REQUEST, 0xFE, destination), pgn.to_bytes(3, "little"), extended=True
             )
+
+    def request_address_claims(self) -> None:
+        """Ask every node to say who it is (a request for Address Claimed)."""
+        self.request_pgn(PGN_ADDRESS_CLAIM, GLOBAL)
+
+    # --- DM13 -----------------------------------------------------------------------
+    def stop_broadcasts(self, destination: int = GLOBAL) -> None:
+        """Stop the broadcasts on this network, and keep them stopped until start."""
+        self._hold_to = destination
+        self.send_pgn(PGN_DM13, DM13_STOP, destination)
+        self._hold_timer.start()
+        self.log.emit(f"J1939: broadcasts stopped (DM13 to {destination:02X}), held until started")
+        self.broadcasts_stopped.emit(True)
+
+    def start_broadcasts(self) -> None:
+        self._hold_timer.stop()
+        self.send_pgn(PGN_DM13, DM13_START, self._hold_to)
+        self.log.emit("J1939: broadcasts started again (DM13)")
+        self.broadcasts_stopped.emit(False)
+
+    @property
+    def holding_broadcasts(self) -> bool:
+        return self._hold_timer.isActive()
+
+    def _hold(self) -> None:
+        self.send_pgn(PGN_DM13, DM13_HOLD, self._hold_to)
 
     def send_pgn(self, pgn: int, data: bytes, destination: int = GLOBAL, priority: int = 6) -> None:
         """Single frame from 0xFE, or any length via TP when we hold an address."""

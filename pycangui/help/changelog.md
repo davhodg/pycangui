@@ -17,6 +17,13 @@ since the last version, and comes out in the next one.
 - **Read all** in the UDS DTC tab: every DTC matching the status mask with its extended data
   and severity, every snapshot, the first and most recent failed and confirmed DTCs, the fault
   detection counters and the permanent DTCs, as one report. Supported DTCs on request.
+- **J1939 requests from a list**: DM1, DM2, DM3, DM4, DM5, DM11 and ECU, software and
+  component identification, or any PGN typed, to every node or one seen. Answers are
+  decoded: DM2 into the fault table as previously active, DM4, DM5 and the identification
+  field by field, and the acknowledgement to a clear. DM3 and DM11 ask first.
+- **Request address claims** in the J1939 pane, and **Stop broadcasts** (DM13), held until
+  started again.
+- The demo engine answers every request in that list.
 - `hooks/uds.py::extended_data_record` and `EXTENDED_DATA_RECORDS`, for the size and name of
   each DTC extended data record.
 - **Check for updates** asks PyPI for a pip installation, and gives the pip command that
@@ -35,6 +42,7 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- A J1939 DM2 answer was shown in the active faults table as though its faults were active.
 - The UDS reports for a DTC's extended data (0x06) and snapshots (0x04) are read and split by
   pycangui, where udsoncan refused them without every record's size given first. A snapshot's
   DIDs are named and decoded like any other DID.

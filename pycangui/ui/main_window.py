@@ -754,7 +754,7 @@ class MainWindow(QMainWindow):
                 "j1939",
                 "J1939",
                 Qt.RightDockWidgetArea,
-                lambda _name: J1939View(self.j1939, self.ctx),
+                lambda _name: J1939View(self.j1939, self.ctx, self.confirm),
                 floating_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),

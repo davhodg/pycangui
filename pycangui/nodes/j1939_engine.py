@@ -17,9 +17,11 @@ first and defends it, and until that succeeds nothing it sends means
 anything -- which is why ``poll`` checks before it broadcasts.
 
 It sends EEC1 (engine speed), CCVS1 (wheel speed) and a DM1 fault, and
-answers a request for ComponentID with a multi-packet BAM transfer -- the
-one message here that does not fit in eight bytes, and the reason the
-library is worth having.
+answers requests: its identification -- component, ECU and software, sent
+as multi-packet BAM transfers because they do not fit in eight bytes, the
+reason the library is worth having -- a previously active fault (DM2), its
+readiness (DM5), and the two requests that clear faults (DM3, DM11), which
+it acknowledges.
 
 To make it yours: change ``ADDRESS``, ``MANUFACTURER`` and ``IDENTITY`` to
 your ECU's, and broadcast the parameter groups it broadcasts.
@@ -47,7 +49,13 @@ EEC1 = (0xF0, 0x04)  # electronic engine controller 1: engine speed
 CCVS1 = (0xFE, 0xF1)  # cruise control / vehicle speed
 DM1 = (0xFE, 0xCA)  # active diagnostic trouble codes
 COMPONENT_ID = 65259
-COMPONENT_ID_PGN = (0xFE, 0xEB)
+ECU_ID = 64965
+SOFTWARE_ID = 65242
+DM2 = 65227  # previously active diagnostic trouble codes
+DM3 = 65228  # clear previously active
+DM5 = 65230  # diagnostic readiness
+DM11 = 65235  # clear active
+ACKNOWLEDGEMENT = 59392  # to everybody: it names who asked inside
 
 #: Every N polls. EEC1 is a fast message and the others are not, and a node
 #: that sent all three at the fastest rate is one that fills somebody's trace.
@@ -55,6 +63,10 @@ EVERY_CCVS1 = 2
 EVERY_DM1 = 10
 
 WHAT_IT_IS = b"PYCANGUI*DEMO ENGINE*SN0001*UNIT1*"
+#: Part number, serial number, location, type -- each ended by '*'.
+ECU_IS = b"PN-1000*SN0001*ENGINE BAY*DEMO ECU*"
+#: How many software identifiers, then each ended by '*'.
+SOFTWARE_IS = b"\x02APP 1.0.0*BOOT 2.1*"
 
 
 def ecu_name():
@@ -95,7 +107,7 @@ def start(node, *, ctx):
         node.listen(listener)
 
     application = ecu.add_ca(name=name, device_address=ADDRESS)
-    application.subscribe_request(lambda src, dest, pgn: _requested(node, pgn))
+    application.subscribe_request(lambda src, dest, pgn: _requested(node, pgn, src))
     application.start()  # begins the address claim
 
     node.state.library = library
@@ -103,6 +115,7 @@ def start(node, *, ctx):
     node.state.ca = application
     node.state.polls = 0
     node.state.rpm = 800.0
+    node.state.previous_cleared = False
 
 
 def poll(node, *, ctx):
@@ -139,15 +152,38 @@ def _send(node, can_id: int, extended: bool, data) -> None:
     node.send(can_id, bytes(data), extended=extended)
 
 
-def _requested(node, pgn: int) -> None:
-    """Answer a request for what this ECU is.
+def _requested(node, pgn: int, asker: int) -> None:
+    """Answer a request for what this ECU is, or what is wrong with it.
 
-    Thirty-four bytes, so the library breaks it into a broadcast
-    announcement and a run of data frames. Nothing here has to know that,
-    which is the point of using a stack rather than composing frames.
+    The identification is more than eight bytes, so the library breaks it
+    into a broadcast announcement and a run of data frames. Nothing here has
+    to know that, which is the point of using a stack rather than composing
+    frames.
     """
     if pgn == COMPONENT_ID:
-        node.state.ca.send_pgn(0, *COMPONENT_ID_PGN, 6, list(WHAT_IT_IS))
+        _answer(node, COMPONENT_ID, WHAT_IT_IS)
+    elif pgn == ECU_ID:
+        _answer(node, ECU_ID, ECU_IS)
+    elif pgn == SOFTWARE_ID:
+        _answer(node, SOFTWARE_ID, SOFTWARE_IS)
+    elif pgn == DM2:
+        _answer(node, DM2, _dm2(node))
+    elif pgn == DM5:
+        # One active, one or none previously active, not built to OBD rules (5).
+        previous = 0 if node.state.previous_cleared else 1
+        _answer(node, DM5, bytes([1, previous, 5, 0, 0, 0, 0, 0]))
+    elif pgn in (DM3, DM11):
+        if pgn == DM3:
+            node.state.previous_cleared = True
+        # Acknowledged: control byte 0, then the asker's address and the PGN.
+        answer = bytes([0x00, 0xFF, 0xFF, 0xFF, asker]) + pgn.to_bytes(3, "little")
+        _answer(node, ACKNOWLEDGEMENT, answer, to=0xFF)
+
+
+def _answer(node, pgn: int, data: bytes, to: int | None = None) -> None:
+    """Send a parameter group; ``to`` is the address, for one that takes one."""
+    low = pgn & 0xFF if to is None else to
+    node.state.ca.send_pgn(0, (pgn >> 8) & 0xFF, low, 6, list(data))
 
 
 def _eec1(rpm: float) -> bytes:
@@ -163,6 +199,15 @@ def _eec1(rpm: float) -> bytes:
 def _ccvs1(kph: float) -> bytes:
     """Wheel-based speed at bytes 2-3, 1/256 km/h per bit."""
     return b"\xff" + struct.pack("<H", int(kph * 256)) + b"\xff\xff\xff\xff\xff"
+
+
+def _dm2(node) -> bytes:
+    """One fault that was active once and is not now, until DM3 clears it."""
+    from pycangui.j1939 import Dtc, encode_dm1
+
+    if node.state.previous_cleared:
+        return encode_dm1([])
+    return encode_dm1([Dtc(spn=190, fmi=2, occurrence=4, conversion_method=0)])
 
 
 def _dm1(occurrences: int) -> bytes:

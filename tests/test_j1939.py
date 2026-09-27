@@ -193,3 +193,76 @@ def test_manager_against_demo_engine(stack):
 
     manager.release_address()
     assert claimed[-1] == 0xFE
+
+
+# --- requests from the list, their answers, and DM13 ---------------------------------------
+def test_the_listed_requests_are_answered_and_decoded(stack):
+    """DM2 used to arrive on the dm1 signal and be shown as active."""
+    from pycangui.j1939 import PGN_DM2, PGN_DM3, PGN_DM5, PGN_ECU_ID, PGN_SOFTWARE_ID
+
+    _bus, manager, _demo = stack
+    active, previous, said, claimed = [], [], [], []
+    manager.dm1.connect(lambda sa, d: active.append(d))
+    manager.dm2.connect(lambda sa, d: previous.append(d))
+    manager.log.connect(said.append)
+    manager.claimed.connect(claimed.append)
+    manager.claim_address(0xF9)
+    wait_until(lambda: claimed, timeout=manager.CLAIM_DEADLINE_S + 2)
+
+    manager.request_pgn(PGN_DM2, 0x00)
+    wait_until(lambda: previous)
+    assert previous[0].dtcs[0].spn == 190, "a previously active fault, and not on dm1"
+    assert all(d.dtcs[0].spn == 110 for d in active if d.dtcs)
+
+    manager.request_pgn(PGN_ECU_ID, 0x00)
+    wait_until(lambda: any("Part number: PN-1000" in line for line in said))
+    manager.request_pgn(PGN_SOFTWARE_ID, 0x00)
+    wait_until(lambda: any("Software 2: BOOT 2.1" in line for line in said))
+    manager.request_pgn(PGN_DM5, 0x00)
+    wait_until(lambda: any("DM5 readiness: 1 active, 1 previously active" in s for s in said))
+
+    manager.request_pgn(PGN_DM3, 0x00)
+    wait_until(lambda: any("clearing previously active faults accepted" in s for s in said))
+    previous.clear()
+    manager.request_pgn(PGN_DM2, 0x00)
+    wait_until(lambda: previous)
+    assert previous[0].dtcs == (), "and it really did clear them"
+
+
+def test_stopping_broadcasts_holds_until_started(app, tmp_path, monkeypatch):
+    from pycangui.j1939 import DM13_HOLD, DM13_START, DM13_STOP
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    manager = J1939Manager(bus, Hooks(Context(log=print)))
+    sent: list[bytes] = []
+    monkeypatch.setattr(bus, "send", lambda can_id, data, **k: sent.append(bytes(data)))
+    manager._hold_timer.setInterval(20)
+    states = []
+    manager.broadcasts_stopped.connect(states.append)
+
+    manager.stop_broadcasts()
+    assert sent == [DM13_STOP] and manager.holding_broadcasts
+    wait_until(lambda: sent.count(DM13_HOLD) >= 2, timeout=2)
+    manager.start_broadcasts()
+    assert sent[-1] == DM13_START and not manager.holding_broadcasts
+    assert states == [True, False]
+
+
+def test_a_clear_asks_first_whether_picked_or_typed(app, tmp_path, monkeypatch):
+    from pycangui.ui.j1939_view import J1939View
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    manager = J1939Manager(BusManager(), Hooks(ctx))
+    view = J1939View(manager, ctx)
+    asked, requested = [], []
+    monkeypatch.setattr(view.confirm, "ask", lambda *a: asked.append(a) or False)
+    monkeypatch.setattr(manager, "request_pgn", lambda *a: requested.append(a))
+
+    view.req_pgn.setCurrentText("FED3")  # DM11, typed rather than chosen
+    view._request()
+    assert asked and requested == [], "declined, so nothing is sent"
+    view.req_pgn.setCurrentIndex(0)  # DM1 reads, and does not ask
+    view._request()
+    assert requested == [(0xFECA, 0xFF)]
