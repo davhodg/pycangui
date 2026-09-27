@@ -215,6 +215,7 @@ class J1939View(QWidget):
         manager.message.connect(self._on_message)
         manager.claimed.connect(self._on_claimed)
         manager.log.connect(ctx.log)
+        manager.problem.connect(ctx.warn)
         manager._bus.disconnected.connect(self.clear)
         self._age_timer = QTimer(self, interval=1000, timeout=self._refresh_ages)
         self._age_timer.start()
@@ -250,7 +251,10 @@ class J1939View(QWidget):
             )
             if not self.confirm.ask(self, f"j1939.clear.{pgn}", "Clear faults?", text):
                 return
-        self.manager.request_pgn(pgn, destination)
+        # From the tester's own address, claimed first if it is not yet.
+        self.manager.as_tester(
+            self.address.value(), lambda: self.manager.request_pgn(pgn, destination)
+        )
 
     def _toggle_broadcasts(self, stop: bool) -> None:
         if not stop:
@@ -266,10 +270,12 @@ class J1939View(QWidget):
             "stopped until Start. Anything relying on their messages -- other "
             "controllers, a dashboard -- goes without them until then."
         )
+        # Up until it has happened: the manager says when it has.
+        self._on_broadcasts_stopped(False)
         if self.confirm.ask(self, "j1939.dm13", "Stop broadcasts?", text):
-            self.manager.stop_broadcasts(destination)
-        else:
-            self._on_broadcasts_stopped(False)
+            self.manager.as_tester(
+                self.address.value(), lambda: self.manager.stop_broadcasts(destination)
+            )
 
     @Slot(bool)
     def _on_broadcasts_stopped(self, stopped: bool) -> None:
@@ -281,11 +287,11 @@ class J1939View(QWidget):
     def _send(self) -> None:
         try:
             data = bytes.fromhex(self.send_data.text().replace(",", " "))
-            self.manager.send_pgn(
-                int(self.send_pgn.text(), 16),
-                data,
-                int(self.send_dest.text(), 16),
-                self.send_prio.value(),
+            pgn, destination = int(self.send_pgn.text(), 16), int(self.send_dest.text(), 16)
+            priority = self.send_prio.value()
+            self.manager.as_tester(
+                self.address.value(),
+                lambda: self.manager.send_pgn(pgn, data, destination, priority),
             )
         except ValueError as exc:
             self.ctx.log(f"J1939 send: {exc}")

@@ -44,6 +44,11 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- J1939 requests, Send PGN and DM13 went out from the null address 0xFE until an address was
+  claimed, whatever the tester's address was set to. The address is claimed first, and they
+  are sent from it.
+- A J1939 node answering a request with a transfer to 0xFE, which J1939-21 does not allow, was
+  reported as no answer. It is now a warning saying it answered and is not decoded.
 - A J1939 DM2 answer was shown in the active faults table as though its faults were active.
 - The UDS reports for a DTC's extended data (0x06) and snapshots (0x04) are read and split by
   pycangui, where udsoncan refused them without every record's size given first. A snapshot's

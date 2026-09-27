@@ -259,6 +259,8 @@ def test_a_clear_asks_first_whether_picked_or_typed(app, tmp_path, monkeypatch):
     asked, requested = [], []
     monkeypatch.setattr(view.confirm, "ask", lambda *a: asked.append(a) or False)
     monkeypatch.setattr(manager, "request_pgn", lambda *a: requested.append(a))
+    # As the tester, which here is already so: no claim to wait for.
+    monkeypatch.setattr(manager, "as_tester", lambda address, action: action())
 
     view.req_pgn.setCurrentText("FED3")  # DM11, typed rather than chosen
     view._request()
@@ -308,3 +310,47 @@ def test_a_request_nothing_answers_says_so(stack, monkeypatch):
     manager.request_pgn(0xFEE5, 0x55)  # nobody at 55
     wait_until(lambda: said, timeout=2)
     assert said[-1].startswith("J1939: no answer to") and said[-1].endswith("from 55")
+
+
+def test_a_request_goes_out_from_the_tester_address_claiming_it_first(stack):
+    """It went out from FE until the address was claimed, whatever the pane said."""
+    from pycangui.j1939 import PGN_ECU_ID, parse_id
+
+    bus, manager, _demo = stack
+    sent, said = [], []
+    bus.frames.connect(lambda frames: sent.extend(f for f in frames if not f.rx))
+    manager.log.connect(said.append)
+
+    manager.as_tester(0xF9, lambda: manager.request_pgn(PGN_ECU_ID, 0x00))
+    wait_until(lambda: any("Part number: PN-1000" in s for s in said), timeout=6)
+    requests = [parse_id(f.can_id) for f in sent if parse_id(f.can_id).pgn == 59904]
+    assert requests and all(r.source == 0xF9 for r in requests), "not from FE"
+    assert any("claiming F9 first" in s for s in said)
+
+
+def test_an_answer_sent_to_fe_is_reported_but_not_decoded(app, tmp_path, monkeypatch):
+    """Seen on a real ECU: a request from FE answered with a transfer to FE,
+    which J1939-21 does not allow. It is the ECU's bug, but it did answer."""
+    from pycangui.core.bus import Frame
+    from pycangui.j1939 import PGN_ECU_ID
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    monkeypatch.setattr(bus, "send", lambda *a, **k: None)
+    manager = J1939Manager(bus, Hooks(Context(log=print)))
+    monkeypatch.setattr(manager, "RESPONSE_S", 0.2)
+    said, problems = [], []
+    manager.log.connect(said.append)
+    manager.problem.connect(problems.append)
+    manager.request_pgn(PGN_ECU_ID, 0x71)
+
+    announce = Frame(0.0, "CAN 1", 0x1CECFE71, True, False, True, bytes.fromhex("1040000AFFC5FD00"))
+    packet = Frame(0.0, "CAN 1", 0x1CEBFE71, True, False, True, bytes.fromhex("012A313831323130"))
+    manager._on_frames([announce, packet])
+    wait_until(lambda: problems)
+    time.sleep(0.3)
+    QCoreApplication.processEvents()
+
+    assert "answered ECU identification with 64 bytes addressed to FE" in problems[0]
+    assert not any("no answer" in s for s in said), "it did answer"
+    assert not any("Part number" in s for s in said), "and it is not decoded"

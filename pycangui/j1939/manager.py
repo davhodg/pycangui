@@ -65,6 +65,8 @@ class _RxOnlyListener(can.Listener):
 
 PGN_ADDRESS_CLAIM = 60928
 PGN_REQUEST = 59904
+PGN_TP_CM = 60416  # transport: the announcement of a multi-packet message
+NULL = 0xFE
 
 
 def tester_name():
@@ -103,6 +105,9 @@ class J1939Manager(QObject):
     broadcasts_stopped = Signal(bool)
     claimed = Signal(int)  # our address after a successful claim (0xFE = lost)
     log = Signal(str)
+    #: A node doing something J1939 does not allow: said as a warning, so it
+    #: stands out from the answers, since it is the node's maker to tell.
+    problem = Signal(str)
 
     #: How long a node has to answer a request, from J1939-21. After it, a
     #: request nothing answered is reported as unanswered.
@@ -137,6 +142,8 @@ class J1939Manager(QObject):
         #: PGN, the latest: asking again starts it afresh.
         self._asked: dict[int, tuple[int, set[int], int]] = {}
         self._requests_made = 0
+        #: What is waiting to be sent once the tester's address is claimed.
+        self._after_claim: list = []
         self.nodes: dict[int, Name | None] = {}
         self.last_seen: dict[int, float] = {}
         bus.connected.connect(self._on_bus_connected)
@@ -162,6 +169,7 @@ class J1939Manager(QObject):
 
     @Slot()
     def _on_bus_disconnected(self) -> None:
+        self._after_claim.clear()
         if self._hold_timer.isActive():
             self._hold_timer.stop()
             self.broadcasts_stopped.emit(False)
@@ -190,6 +198,8 @@ class J1939Manager(QObject):
             if not f.extended or not f.rx:
                 continue
             mid = parse_id(f.can_id)
+            if mid.destination == NULL and mid.pgn == PGN_TP_CM:
+                self._to_null_address(mid.source, bytes(f.data))
             if mid.source in (0xFE, GLOBAL):
                 continue
             name = None
@@ -201,6 +211,28 @@ class J1939Manager(QObject):
             if name is not None:
                 self._answered(PGN_ADDRESS_CLAIM, mid.source, bytes(f.data))
             self.last_seen[mid.source] = time.monotonic()
+
+    def _to_null_address(self, sa: int, data: bytes) -> None:
+        """Say that a node answered a request with a transfer to 0xFE, and no more.
+
+        A request sent from the null address can be answered that way by an
+        ECU that gets it wrong: J1939-21 does not allow a transfer to 0xFE,
+        and nobody holds that address to tell it to go ahead. The answer is
+        not decoded -- it is the ECU's fault, and one to report -- but it did
+        answer, and saying there was no answer would be wrong as well.
+        """
+        if len(data) < 8 or data[0] not in (0x10, 0x20):  # an RTS or BAM announces one
+            return
+        pgn = int.from_bytes(data[5:8], "little")
+        if not self._expected(pgn, sa):
+            return
+        self._asked[pgn][1].add(sa)
+        size = data[1] | (data[2] << 8)
+        self.problem.emit(
+            f"J1939 {sa:02X}: answered {self.request_name(pgn)} with {size} bytes addressed "
+            "to FE, the null address, which J1939-21 does not allow, so it is not decoded. "
+            "Claim an address and ask again."
+        )
 
     # --- callbacks on the ECU job thread: emit only ----------------------------
     def _on_message(self, priority: int, pgn: int, sa: int, timestamp: float, data) -> None:
@@ -355,12 +387,18 @@ class J1939Manager(QObject):
             self._claim_timer.stop()
             self.log.emit(f"J1939: address {self.ca.device_address:02X} claimed")
             self.claimed.emit(self.ca.device_address)
+            waiting, self._after_claim = self._after_claim, []
+            for action in waiting:
+                action()
         elif (
             state == j1939lib.ControllerApplication.State.CANNOT_CLAIM
             or time.monotonic() >= self._claim_deadline
         ):
             self._claim_timer.stop()
             self.log.emit("J1939: address claim failed (address in use?)")
+            if self._after_claim:
+                self._after_claim.clear()
+                self.log.emit("J1939: not sent, since the tester has no address to send from")
             self.release_address()
 
     def release_address(self) -> None:
@@ -373,6 +411,28 @@ class J1939Manager(QObject):
                 pass
             self.ca = None
             self.claimed.emit(0xFE)
+
+    def as_tester(self, address: int, action) -> None:
+        """Do something as the tester at this address, claiming it first if need be.
+
+        Requests went out from the null address 0xFE until an address was
+        claimed, whatever the pane said the tester's address was -- and a node
+        answering one with more than eight bytes addresses its answer to the
+        requester, which nobody can hold a conversation as at 0xFE.
+        """
+        if self.own_address == address:
+            action()
+            return
+        if self.ecu is None:
+            self.log.emit("J1939: not connected")
+            return
+        self._after_claim.append(action)
+        claiming = self._claim_timer.isActive() and self.ca is not None
+        if not (claiming and self.ca.device_address == address):
+            self.log.emit(f"J1939: claiming {address:02X} first, to send from it")
+            waiting = self._after_claim
+            self.claim_address(address)
+            self._after_claim = waiting
 
     @property
     def own_address(self) -> int | None:
