@@ -157,7 +157,12 @@ class UdsManager(QObject):
             {
                 "p2_timeout": config.p2_timeout_s,
                 "p2_star_timeout": config.p2_star_timeout_s,
-                "request_timeout": config.p2_star_timeout_s + 1,
+                # No cap on the whole request. Each 0x78 "response pending"
+                # starts P2* again, and ISO 14229 has the client wait for as
+                # long as they keep coming: an erase of a large flash keeps an
+                # ECU busy for many times P2*. A cap of P2* + 1 s cut one off
+                # at 6 s, a second before its positive response.
+                "request_timeout": None,
                 "security_algo": self._security_algo,
                 "exception_on_negative_response": True,
                 "exception_on_unexpected_response": False,
@@ -779,13 +784,16 @@ class UdsManager(QObject):
                 for segment in image.segments:
                     self._erase(c, segment, width)
             for index, segment in enumerate(image.segments, 1):
-                r = c.request_download(self._memory(segment.address, len(segment), width), dfi=fmt)
-                size = self._block_size(r.service_data.max_length, block_size)
+                # Said as it goes out, not once it is accepted: a request the
+                # ECU never answers should still be in the log as asked.
                 which = f" (segment {index} of {count})" if count > 1 else ""
                 self.result.emit(
-                    f"RequestDownload {segment.address:08X}: "
-                    f"{len(segment)} bytes in blocks of {size}{which}"
+                    f"RequestDownload {segment.address:08X}: {len(segment)} bytes{which}"
                 )
+                r = c.request_download(self._memory(segment.address, len(segment), width), dfi=fmt)
+                size = self._block_size(r.service_data.max_length, block_size)
+                address = f"{segment.address:08X}"
+                self.result.emit(f"RequestDownload {address}: accepted, blocks of {size}")
                 done = self._send_blocks(c, segment.data, size, "Download", done, total)
                 c.request_transfer_exit()
                 if check:
@@ -811,9 +819,10 @@ class UdsManager(QObject):
         fmt = DataFormatIdentifier(compression=(dfi >> 4) & 0xF, encryption=dfi & 0xF)
 
         def fn(c: Client) -> str:
+            self.result.emit(f"RequestUpload {address:08X}: {size} bytes")
             r = c.request_upload(self._memory(address, size, width), dfi=fmt)
             block = self._block_size(r.service_data.max_length, block_size)
-            self.result.emit(f"RequestUpload {address:08X}: {size} bytes in blocks of {block}")
+            self.result.emit(f"RequestUpload {address:08X}: accepted, blocks of {block}")
             data = self._receive_blocks(c, size, "Upload")
             c.request_transfer_exit()
             written = write_image(path, address, data)

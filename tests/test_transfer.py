@@ -635,3 +635,78 @@ def test_the_pane_unticks_the_box_and_logs_it_as_an_error(app, tmp_path, monkeyp
     assert not view.tp.isChecked()
     assert "queue is full" in view.output.toPlainText()
     assert (ERROR, "Tester present stopped: queue is full") in posted
+
+
+# --- an ECU that stays busy for many times P2* -------------------------------------------
+def test_a_request_is_waited_for_as_long_as_the_ecu_says_pending(manager):
+    """Each 0x78 starts P2* again. An overall cap of P2* + 1 s cut a flash erase
+    off a second before its positive response, and the download with it."""
+    import time as clock
+
+    from pycangui.core.components import register_component
+    from pycangui.uds import UdsConfig
+    from pycangui.uds.transport import IsoTpTransport
+
+    @register_component("isotp", "busy-ecu", "answers 0x78 for a while, then yes")
+    class BusyEcu(IsoTpTransport):
+        def open(self):
+            self.queue = []
+
+        def close(self):
+            pass
+
+        def send(self, payload):
+            now = clock.monotonic()
+            pending = bytes([0x7F, payload[0], 0x78])
+            # Pending every 0.25 s for 1.6 s: P2* is 0.4 s, so the old cap
+            # was 1.4 s and gave up before the answer.
+            self.queue = [(now + 0.25 * n, pending) for n in range(7)]
+            self.queue.append((now + 1.6, bytes([payload[0] + 0x40]) + payload[1:4] + b"\x00"))
+
+        def recv(self, timeout):
+            if not self.queue:
+                clock.sleep(timeout)
+                return None
+            due, data = self.queue[0]
+            wait = due - clock.monotonic()
+            if wait > timeout:
+                clock.sleep(timeout)
+                return None
+            clock.sleep(max(wait, 0))
+            self.queue.pop(0)
+            return data
+
+    manager._bus.connect_bus("virtual", "vcan_busy_ecu", 500_000, False)
+    manager.component_name = "busy-ecu"
+    results = []
+    manager.result.connect(results.append)
+    manager.open(UdsConfig(p2_timeout_s=0.1, p2_star_timeout_s=0.4))
+    try:
+        manager.routine(1, 0xFF00, b"\x34\x0c\x02\x00\x00\x06\x00\x00")
+    finally:
+        manager.close()
+        manager._bus.disconnect_bus()
+
+    answer = next(line for line in results if line.startswith("Routine"))
+    assert "timeout" not in answer.lower(), answer
+    assert "FF00" in answer
+
+
+def test_a_download_request_is_logged_as_it_goes_out(manager, images_dir):
+    """Logged only once accepted, a request the ECU never answered left
+    "Download: timeout" with nothing to say what had been asked."""
+    from udsoncan.exceptions import TimeoutException
+
+    class Silent(FakeEcu):
+        def request_download(self, memory_location, dfi=None):
+            raise TimeoutException("no answer")
+
+    manager.client = Silent()
+    lines = []
+    manager.result.connect(lines.append)
+
+    manager.download(images.read(images_dir("a.hex", (0x1000, b"\xaa" * 8))))
+
+    asked = lines.index("RequestDownload 00001000: 8 bytes")
+    assert "timeout" in lines[asked + 1]
+    assert not any("accepted" in line for line in lines)
