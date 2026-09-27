@@ -354,6 +354,8 @@ class UdsView(QWidget):
         self.level_pair.setToolTip(LEVEL_TIP)
         self.level.valueChanged.connect(self._say_pair)
         self._say_pair(self.level.value())
+        # After the pair is connected, so a restored level shows its bytes.
+        remember(ctx, "uds.security.level", self.level)
         h.addWidget(self.level_pair)
         unlock = QPushButton("Unlock")
         unlock.setToolTip(

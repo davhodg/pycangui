@@ -710,3 +710,11 @@ def test_a_download_request_is_logged_as_it_goes_out(manager, images_dir):
     asked = lines.index("RequestDownload 00001000: 8 bytes")
     assert "timeout" in lines[asked + 1]
     assert not any("accepted" in line for line in lines)
+
+
+def test_the_security_level_is_remembered(view):
+    """Every other choice in the pane came back; the level went back to 1."""
+    view.level.setValue(4)
+    again = UdsView(view.manager, view.ctx)
+    assert again.level.value() == 4
+    assert "07" in again.level_pair.text(), "and the bytes beside it follow the level"
