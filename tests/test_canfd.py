@@ -205,12 +205,16 @@ def test_p2_counts_from_the_end_of_a_request_not_from_queuing_it(app, tmp_path, 
     import isotp
 
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
-    config = UdsConfig(p2_timeout_s=0.05, padding=None)
+    # P2 short enough that a request timed from being queued runs out long
+    # before it has been sent, and long enough that a busy machine cannot
+    # make the ECU's thread late with its answer: it failed at 50 ms under load.
+    config = UdsConfig(p2_timeout_s=0.4, padding=None)
     bus = BusManager()
     bus.connect_bus("virtual", "vcan_isotp_p2", 500_000, False)
 
-    # The ECU, on a bus of its own on the same channel. It asks for 10 ms
-    # between frames, so the request takes several times P2 to arrive.
+    # The ECU, on a bus of its own on the same channel. It asks for 25 ms
+    # between frames, so the 36 frames of the request take at least 0.9 s:
+    # more than twice P2.
     ecu_bus = can.Bus(interface="virtual", channel="vcan_isotp_p2")
     ecu_notifier = can.Notifier(ecu_bus, [])
     ecu = isotp.NotifierBasedCanStack(
@@ -219,7 +223,7 @@ def test_p2_counts_from_the_end_of_a_request_not_from_queuing_it(app, tmp_path, 
         address=isotp.Address(
             isotp.AddressingMode.Normal_11bits, txid=config.rx_id, rxid=config.tx_id
         ),
-        params={"stmin": 10, "tx_padding": None},
+        params={"stmin": 25, "tx_padding": None},
     )
     ecu.start()
     stop = threading.Event()
@@ -247,7 +251,7 @@ def test_p2_counts_from_the_end_of_a_request_not_from_queuing_it(app, tmp_path, 
         bus.disconnect_bus()
 
     assert response.positive
-    assert took > 5 * config.p2_timeout_s, "the request really did outlast P2"
+    assert took > 2 * config.p2_timeout_s, "the request really did outlast P2"
 
 
 # --- whose timing a request waits for ----------------------------------------------------
