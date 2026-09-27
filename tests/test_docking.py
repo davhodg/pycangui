@@ -164,7 +164,8 @@ def test_closing_a_detached_pane_closes_it(app, window):
     assert dock.widget() is not None, "the pane went home even so"
 
 
-def test_the_view_menu_can_show_it_again_after_that(app, window):
+def test_the_view_menu_shows_it_again_in_its_own_window(app, window):
+    """Closed while detached, it came back docked: the detaching was forgotten."""
     float_out(app, window.panes.docks["canopen"])
     window.panes.detach("canopen")
     settle(app)
@@ -174,8 +175,44 @@ def test_the_view_menu_can_show_it_again_after_that(app, window):
     dock = window.panes.docks["canopen"]
     dock.toggleViewAction().trigger()
     settle(app)
+    assert "canopen" in window.panes.detached
+    assert window.panes.detached["canopen"].isVisible()
+    assert window.panes.detached["canopen"].pane.isVisible(), "the pane, not a blank window"
+    assert not dock.isVisible(), "and no empty dock beside it"
+
+
+def test_a_pane_closed_detached_opens_detached_after_a_restart(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = restart(app, tmp_path)
+    float_out(app, first.panes.docks["canopen"])
+    first.panes.detach("canopen")
+    settle(app)
+    first.panes.detached["canopen"].close()
+    settle(app)
+
+    second = restart(app, tmp_path, first)
+    assert "canopen" not in second.panes.detached, "closed, so it does not open by itself"
+    second.panes.show("canopen")
+    settle(app)
+    assert "canopen" in second.panes.detached
+    second.close()
+
+
+def test_attach_puts_it_back_in_the_window_for_good(app, window):
+    float_out(app, window.panes.docks["canopen"])
+    window.panes.detach("canopen")
+    settle(app)
+    window.panes.bars["canopen"].move_button.click()  # Attach
+    settle(app)
+    dock = window.panes.docks["canopen"]
+    dock.toggleViewAction().trigger()  # put away
+    settle(app)
+
+    dock.toggleViewAction().trigger()  # and brought back
+    settle(app)
+    assert "canopen" not in window.panes.detached
     assert dock.isVisible()
-    assert dock.widget().isVisible(), "and the pane inside it, not a blank dock"
 
 
 def test_attaching_from_the_button_shows_it(app, window):

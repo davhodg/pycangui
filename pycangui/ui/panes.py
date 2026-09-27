@@ -131,6 +131,10 @@ class Panes(QObject):
         self.detached: dict[str, DetachedPane] = {}
         #: Panes asked to stay above other windows.
         self.on_top: set[str] = set()
+        #: Panes whose window was closed while they were detached. Closing a
+        #: window puts the pane away, not back in the main window, so opening
+        #: it again gives it its window back. Attach is how it goes back in.
+        self.closed_detached: set[str] = set(ctx.settings.get("panes.closed_detached", []))
         self._views: dict[str, QWidget] = {}
         self._kind_of: dict[str, str] = {}
         #: Panes that have been on screen at least once, and so have a place
@@ -331,6 +335,7 @@ class Panes(QObject):
         dock = self.docks.pop(name)
         self.bars.pop(name, None)
         self.on_top.discard(name)
+        self.closed_detached.discard(name)
         self._suspended.discard(name)
         self._came_from.pop(name, None)
         self._kind_of.pop(name, None)
@@ -514,6 +519,7 @@ class Panes(QObject):
         dock.setWidget(container)
         dock.topLevelChanged.connect(lambda floating, d=dock: self._on_dock_floated(d, floating))
         dock.visibilityChanged.connect(lambda _v, n=name: self.note_shown(n))
+        dock.visibilityChanged.connect(lambda v, n=name: self._reopen_detached(n, v))
         dock.installEventFilter(self)
         self.window.addDockWidget(area, dock)
         return dock
@@ -691,6 +697,21 @@ class Panes(QObject):
         width, height = NEW_PANE_SIZE
         window.resize(max(width, wanted.width() + 24), max(height, wanted.height() + 48))
 
+    def _reopen_detached(self, name: str, visible: bool) -> None:
+        """A pane closed in a window of its own opens in one again.
+
+        Caught as its dock appears, since the View menu shows the dock itself.
+        Deferred, because Qt is still showing it; and asked again then, because
+        Attach shows the dock too, a moment before it says the pane is staying.
+        """
+        if visible and name in self.closed_detached and name not in self._moving:
+            QTimer.singleShot(0, lambda: self._detach_again(name))
+
+    def _detach_again(self, name: str) -> None:
+        if name in self.closed_detached and name not in self.detached:
+            self.closed_detached.discard(name)
+            self.detach(name)
+
     def _remember_detached(self) -> None:
         """Note where each detached window is, while there is one to ask."""
         for name, window in self.detached.items():
@@ -710,10 +731,13 @@ class Panes(QObject):
         nobody asked. The widget goes home either way, so the View menu can
         show it again.
         """
+        self._remember_detached()  # where it was, so it opens there again
         window = self.detached.pop(name, None)
         dock = self.docks.get(name)
         if window is None or dock is None:
             return
+        if not show:
+            self.closed_detached.add(name)
         self._moving.add(name)
         try:
             if (widget := window.release()) is not None:
@@ -734,7 +758,9 @@ class Panes(QObject):
         """Bring a detached pane back into the window, and show it."""
         if (window := self.detached.get(name)) is not None:
             window.close()  # its closed signal hands the widget back
+        self.closed_detached.discard(name)  # back in the window is where it stays
         self._reattach(name, show=True)
+        self._save_pane_state()
         if (dock := self.docks.get(name)) is not None:
             dock.show()
 
@@ -797,6 +823,7 @@ class Panes(QObject):
         """
         self.ctx.settings.set("panes.detached", sorted(self.detached))
         self.ctx.settings.set("panes.on_top", sorted(self.on_top))
+        self.ctx.settings.set("panes.closed_detached", sorted(self.closed_detached))
         self._remember_detached()
 
     def restore_instances(self) -> None:
