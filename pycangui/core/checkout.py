@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Which commit a source checkout is running, for a report to name.
 
-The version number says 0.0.1 for every build between two releases, which is
+The version number is the same for every build between two releases, which is
 no use when somebody is running what they pulled this morning: "it does X" and
 "it did X yesterday" are the same sentence about two different programs. A
 checkout knows exactly what it is, and the answer is in ``.git`` for the

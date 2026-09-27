@@ -64,11 +64,11 @@ There are three options, and which one you want depends on whether you have Pyth
 
    The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does.
 
-3. **With pip** -- if you already have a Python environment and would rather pycangui went in it, install the wheel and ignore the launcher entirely:
+3. **With pip** -- if you already have a Python environment and would rather pycangui went in it, install it from PyPI and ignore the launcher entirely:
 
    ```
-   pip install pycangui-0.0.1-py3-none-any.whl    # from the releases page
-   pycangui                                        # installs a command of that name
+   pip install pycangui
+   pycangui               # installs a command of that name
    ```
 
    or from a checkout, `pip install -e .` for the same thing reading the source. Nothing about pycangui needs the launcher: it is an ordinary Python package with an ordinary entry point, and this path leaves the choice of environment to you.
