@@ -672,13 +672,18 @@ class UdsManager(QObject):
         )
 
     def _did_size(self, c: Client, did: int) -> int | None:
-        """How long a DID's value is, from reading it once.
+        """How long a DID's value is: hooks/uds.py::did_size, else read it once.
 
         A snapshot holds DIDs, the same ones ReadDataByIdentifier reads, but
-        not their lengths; the answer to reading one has the length in it.
+        not their lengths. The hook is somebody's knowledge of the ECU and
+        costs nothing to ask; failing it, the answer to reading the DID has
+        the length in it -- if the ECU will read that DID in this session.
         """
         if did not in self._did_sizes:
-            size = None
+            size = self._hooks.call("uds", "did_size", did)
+            if size is not None:
+                self._did_sizes[did] = size
+                return size
             try:
                 answer = c.send_request(
                     Request(services.ReadDataByIdentifier, data=struct.pack(">H", did))

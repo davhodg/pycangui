@@ -154,9 +154,12 @@ split and named by
 `EXTENDED_DATA_RECORDS` with each record's size and name. A record it does not
 know is shown as bytes from there on rather than guessed at. A snapshot holds
 DIDs, the same ones *Read DID* reads, so they are named and decoded the same
-way; the one thing a snapshot does not carry is how long each value is, and
-pycangui finds that out by reading the DID once, keeping the answer for the
-session.
+way. The one thing a snapshot does not carry is how long each value is.
+[`hooks/uds.py::did_size`](hooks.md) is asked first -- fill in `DID_SIZES` --
+and failing it pycangui reads the DID once to find out, keeping the answer for
+the session. The hook is for a DID the ECU will not read in the session you
+are in, or one that only ever appears in a snapshot; without either, the rest
+of the snapshot is shown as bytes.
 
 ## Firmware transfer
 

@@ -72,6 +72,16 @@ EXTENDED_DATA_RECORDS: dict[int, tuple[int, str]] = {
     # 0x02: (2, "Operating hours at first failure"),
 }
 
+#: How many bytes each of your DIDs holds. A DTC snapshot carries DIDs with
+#: their values run together and no lengths, so each one's length has to be
+#: known to split them. Without an entry here pycangui reads the DID once to
+#: find out, which works for any DID the ECU will read in the session you are
+#: in; this is for the others -- one it will not read there, or one that only
+#: ever appears in a snapshot.
+DID_SIZES: dict[int, int] = {
+    # 0x0102: 2,
+}
+
 #: Your names for routines, tried before the ISO ones. ISO 14229-1 names only
 #: four routines: erase memory (0xFF00), check programming dependencies
 #: (0xFF01), erase mirror memory DTCs (0xFF02) and the deploy loop (0xE200).
@@ -219,6 +229,16 @@ def dtc_description(dtc: int, *, ctx) -> str | None:
     unknown DTC shows its code and nothing else.
     """
     return DTC_DESCRIPTIONS.get(dtc >> 8) or DTC_DESCRIPTIONS.get(dtc)
+
+
+@hook
+def did_size(did: int, *, ctx) -> int | None:
+    """How many bytes a DID's value is, or None to have pycangui find out.
+
+    DID_SIZES above by default. Used to split a DTC snapshot into its DIDs;
+    each is then named and decoded like any other DID.
+    """
+    return DID_SIZES.get(did)
 
 
 @hook

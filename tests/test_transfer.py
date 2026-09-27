@@ -945,3 +945,32 @@ def test_records_of_unknown_size_are_shown_rather_than_guessed():
     assert split_extended(bytes.fromhex("07 AABB"), lambda n: None, single=True) == ["07 = AA BB"]
     lines = split_snapshots(bytes.fromhex("01 01 F190 414243"), lambda d: None, None)
     assert lines == ["record 01", '  F190 onwards, not split = 41 42 43  "ABC"']
+
+
+def test_a_snapshot_did_the_ecu_will_not_read_is_split_by_its_size_from_the_hook(
+    manager, monkeypatch
+):
+    """Reading the DID is how its length is learned, and an ECU need not allow
+    that in the session a snapshot is read in."""
+    from udsoncan.client import Client
+
+    replies = {k: v for k, v in FAULTY_ECU.items() if k != "22 01 02"}  # refused
+    ecu = ScriptedEcu(replies)
+    manager.client = Client(ecu)
+    manager.client.open()
+    real = manager._hooks.call
+    monkeypatch.setattr(
+        manager._hooks,
+        "call",
+        lambda module, name, *a, **k: (
+            {0x0102: 1}.get(a[0]) if name == "did_size" else real(module, name, *a, **k)
+        ),
+    )
+    lines = []
+    manager.result.connect(lines.append)
+
+    manager.read_dtc_information(0x04, dtc=0x012345, snapshot_record_number=0x01)
+
+    assert "0102 = 05" in lines[-1], "split, named and decoded"
+    assert "not split" not in lines[-1]
+    assert bytes.fromhex("22 01 02") not in ecu.sent, "the hook answered, so it was not read"

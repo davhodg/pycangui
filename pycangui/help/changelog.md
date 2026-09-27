@@ -26,7 +26,8 @@ since the last version, and comes out in the next one.
   started again.
 - The demo engine answers every request in that list.
 - `hooks/uds.py::extended_data_record` and `EXTENDED_DATA_RECORDS`, for the size and name of
-  each DTC extended data record.
+  each DTC extended data record, and `did_size` and `DID_SIZES`, for the length of a DID in a
+  snapshot where the ECU will not read it to say.
 - **Check for updates** asks PyPI for a pip installation, and gives the pip command that
   updates it and the environment to run it in. The Windows build still asks for the latest
   release, and a source folder for newer commits.
