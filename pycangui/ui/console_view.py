@@ -24,6 +24,7 @@ import code
 import contextlib
 import io
 import sys
+import traceback
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -50,6 +51,26 @@ BANNER = """pycangui console -- Python {ver}
 Anything slow: canopen.background(job, done) / uds.background(...), which run
 off this thread so the window keeps up. done(result, error), or print.
 Type help(bus), help(canopen) or dir() to explore."""
+
+
+class _Console(code.InteractiveConsole):
+    """An interactive console whose errors are shown in it, as Python shows them.
+
+    The standard one hands an error to ``sys.excepthook`` whenever a program
+    has replaced it, and pycangui has: its hook reports what escapes its own
+    code as a bug in pycangui. So a name mistyped here was announced as one.
+    A mistake in what was typed is the typist's, and belongs under the line
+    that made it.
+    """
+
+    def showtraceback(self) -> None:
+        kind, value, tb = sys.exc_info()
+        # The first entry is this console's own call into the typed code.
+        self.write("".join(traceback.format_exception(kind, value, tb.tb_next if tb else None)))
+
+    def showsyntaxerror(self, filename=None, **_kwargs) -> None:
+        kind, value, _tb = sys.exc_info()
+        self.write("".join(traceback.format_exception_only(kind, value)))
 
 
 class _HistoryLineEdit(QLineEdit):
@@ -83,7 +104,7 @@ class ConsoleView(QWidget):
         super().__init__()
         self.ctx = ctx
         self.namespace = namespace
-        self.console = code.InteractiveConsole(namespace)
+        self.console = _Console(namespace)
         mono = QFont("Consolas", 9)
 
         self.output = QPlainTextEdit()

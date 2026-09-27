@@ -44,6 +44,8 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- A mistake typed in the Python Console -- a misspelt name -- was reported in the Event Log
+  as a bug in pycangui. It is shown in the console as Python shows it, and nowhere else.
 - J1939 requests, Send PGN and DM13 went out from the null address 0xFE until an address was
   claimed, whatever the tester's address was set to. The address is claimed first, and they
   are sent from it.
