@@ -18,9 +18,10 @@ since the last version, and comes out in the next one.
   and severity, every snapshot, the first and most recent failed and confirmed DTCs, the fault
   detection counters and the permanent DTCs, as one report. Supported DTCs on request.
 - **J1939 requests from a list**: DM1, DM2, DM3, DM4, DM5, DM11 and ECU, software and
-  component identification, or any PGN typed, to every node or one seen. Answers are
-  decoded: DM2 into the fault table as previously active, DM4, DM5 and the identification
-  field by field, and the acknowledgement to a clear. DM3 and DM11 ask first.
+  component identification, or any PGN typed, to every node or one seen. Every request says
+  in the Event Log what came of it: each node's answer decoded, including no faults, a
+  refusal, or no answer at all after 1.25 s. DM2 also goes into the fault table as previously
+  active. DM3 and DM11 ask first.
 - **Request address claims** in the J1939 pane, and **Stop broadcasts** (DM13), held until
   started again.
 - The demo engine answers every request in that list.

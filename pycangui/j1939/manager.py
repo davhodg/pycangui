@@ -104,6 +104,10 @@ class J1939Manager(QObject):
     claimed = Signal(int)  # our address after a successful claim (0xFE = lost)
     log = Signal(str)
 
+    #: How long a node has to answer a request, from J1939-21. After it, a
+    #: request nothing answered is reported as unanswered.
+    RESPONSE_S = 1.25
+
     #: How long a claim may stay undecided before it is reported as failed.
     #: The library sends the claim half a second after it starts and then waits a
     #: quarter of a second for anybody to contest it, so no answer exists before
@@ -128,11 +132,19 @@ class J1939Manager(QObject):
         #: again by themselves 6 s after the last one.
         self._hold_timer = QTimer(self, interval=int(DM13_HOLD_S * 1000), timeout=self._hold)
         self._hold_to = GLOBAL
+        #: What has been asked for and not yet timed out: PGN -> (who was
+        #: asked, which nodes have answered, which request this is). One per
+        #: PGN, the latest: asking again starts it afresh.
+        self._asked: dict[int, tuple[int, set[int], int]] = {}
+        self._requests_made = 0
         self.nodes: dict[int, Name | None] = {}
         self.last_seen: dict[int, float] = {}
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
         bus.frames.connect(self._on_frames)
+        # Emitted on the library's thread and handled on this one, where the
+        # record of what was asked lives.
+        self.message.connect(self._on_answer)
 
     # --- bus lifecycle ---------------------------------------------------------
     @Slot(str)
@@ -186,6 +198,8 @@ class J1939Manager(QObject):
             if name is not None or mid.source not in self.nodes:
                 self.nodes[mid.source] = name
                 self.node_seen.emit(mid.source, name)
+            if name is not None:
+                self._answered(PGN_ADDRESS_CLAIM, mid.source, bytes(f.data))
             self.last_seen[mid.source] = time.monotonic()
 
     # --- callbacks on the ECU job thread: emit only ----------------------------
@@ -196,12 +210,74 @@ class J1939Manager(QObject):
             self.dm1.emit(sa, parse_dm1(payload))
         elif pgn == PGN_DM2:
             self.dm2.emit(sa, parse_dm1(payload))
-        elif (said := self.describe_answer(pgn, sa, payload)) is not None:
-            self.log.emit(said)
 
-    def describe_answer(self, pgn: int, sa: int, data: bytes) -> str | None:
-        """The answer to one of the requests the pane offers, in words, or None."""
+    # --- the answers to requests ----------------------------------------------------
+    def request_name(self, pgn: int) -> str:
+        """What a request is called: its entry in the list, else the PGN's name."""
+        listed = dict(REQUESTABLE).get(pgn)
+        if listed:
+            return listed
+        if pgn == PGN_ADDRESS_CLAIM:
+            return "Address claim"
+        return self.pgn_name(pgn) or pgn_label(pgn)
+
+    @Slot(int, int, int, float, bytes)
+    def _on_answer(self, _priority: int, pgn: int, sa: int, _ts: float, data: bytes) -> None:
+        if pgn == PGN_ACKNOWLEDGEMENT:
+            # An acknowledgement answers the request for the PGN it names:
+            # the clear it carried out, or a request the node will not answer.
+            said, about = parse_acknowledgement(data)
+            if self._expected(about, sa):
+                self._asked[about][1].add(sa)
+                what = CLEARING.get(about)
+                subject = f"clearing {what} faults" if what else f"{self.request_name(about)}"
+                self.log.emit(f"J1939 {sa:02X}: {subject} {said}")
+            return
+        self._answered(pgn, sa, data)
+
+    def _expected(self, pgn: int, sa: int) -> bool:
+        """Whether this is an answer to a request still waiting, not yet had from sa."""
+        asked = self._asked.get(pgn)
+        if asked is None:
+            return False
+        destination, answered, _serial = asked
+        return (destination == GLOBAL or destination == sa) and sa not in answered
+
+    def _answered(self, pgn: int, sa: int, data: bytes) -> None:
+        """Say what a node answered, once per request: a node that broadcasts
+        the same PGN every second is reported for the answer, not the rest."""
+        if not self._expected(pgn, sa):
+            return
+        self._asked[pgn][1].add(sa)
+        self.log.emit(self.describe_answer(pgn, sa, data))
+
+    def _no_answer(self, pgn: int, serial: int) -> None:
+        asked = self._asked.get(pgn)
+        if asked is None or asked[2] != serial:
+            return  # asked again since, and that request has its own timer
+        destination, answered, _serial = self._asked.pop(pgn)
+        if not answered:
+            who = "any node" if destination == GLOBAL else f"{destination:02X}"
+            self.log.emit(f"J1939: no answer to {self.request_name(pgn)} from {who}")
+
+    def describe_answer(self, pgn: int, sa: int, data: bytes) -> str:
+        """A node's answer to a request, in words."""
         who = f"J1939 {sa:02X}"
+        if pgn in (PGN_DM1, PGN_DM2):
+            kind = "active" if pgn == PGN_DM1 else "previously active"
+            dm = parse_dm1(data)
+            title = f"{who} {self.request_name(pgn)}"
+            if not dm.dtcs:
+                return f"{title}: no {kind} faults"
+            lamps = f", lamps {dm.lamps()}" if dm.lamps() else ""
+            lines = [f"{title}: {len(dm.dtcs)} {kind} fault(s){lamps}"]
+            for d in dm.dtcs:
+                spn = f"SPN {d.spn} {self.spn_description(d.spn)}".rstrip()
+                fmi = f"FMI {d.fmi} {self.fmi_description(d.fmi)}".rstrip()
+                lines.append(f"  {spn}, {fmi}, occurred {d.occurrence}")
+            return "\n".join(lines)
+        if pgn == PGN_ADDRESS_CLAIM:
+            return f"{who} claims its address: NAME {Name.from_bytes(data).summary()}"
         if pgn in (PGN_ECU_ID, PGN_SOFTWARE_ID, PGN_COMPONENT_ID):
             title = dict(REQUESTABLE)[pgn]
             fields = "\n".join(f"  {name}: {text}" for name, text in identification(pgn, data))
@@ -223,14 +299,8 @@ class J1939Manager(QObject):
                 recorded = values.hex(" ").upper() or "(nothing recorded)"
                 lines.append(f"  {spn} FMI {dtc.fmi} OC {dtc.occurrence}: {recorded}")
             return "\n".join(lines)
-        if pgn == PGN_ACKNOWLEDGEMENT:
-            said, about = parse_acknowledgement(data)
-            what = CLEARING.get(about)
-            about_text = (
-                f"clearing {what} faults" if what else self.pgn_name(about) or pgn_label(about)
-            )
-            return f"{who}: {about_text} {said}"
-        return None
+        shown = data.hex(" ").upper() or "(empty)"
+        return f"{who} {self.request_name(pgn)}: {shown}"
 
     # --- labelling ------------------------------------------------------------------
     def pgn_name(self, pgn: int) -> str:
@@ -313,7 +383,16 @@ class J1939Manager(QObject):
         return None
 
     def request_pgn(self, pgn: int, destination: int = GLOBAL) -> None:
-        """Send a Request (PGN 59904) for *pgn*; from our claimed address or 0xFE."""
+        """Send a Request (PGN 59904) for *pgn*; from our claimed address or 0xFE.
+
+        What comes back is said in the Event Log -- each node's answer,
+        decoded, or that it refused -- and so is silence, once the time a node
+        has to answer is up.
+        """
+        self._requests_made += 1
+        serial = self._requests_made
+        self._asked[pgn] = (destination, set(), serial)
+        QTimer.singleShot(int(self.RESPONSE_S * 1000), lambda: self._no_answer(pgn, serial))
         if self.ca is not None and self.own_address is not None:
             self.ca.send_request(0, pgn, destination)
         else:

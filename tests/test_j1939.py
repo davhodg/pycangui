@@ -266,3 +266,45 @@ def test_a_clear_asks_first_whether_picked_or_typed(app, tmp_path, monkeypatch):
     view.req_pgn.setCurrentIndex(0)  # DM1 reads, and does not ask
     view._request()
     assert requested == [(0xFECA, 0xFF)]
+
+
+def test_every_request_says_what_came_of_it(stack, monkeypatch):
+    """An empty DM2 changed nothing on screen, so an answer and no answer
+    looked the same."""
+    from pycangui.j1939 import PGN_DM1, PGN_DM2, PGN_DM3
+
+    _bus, manager, _demo = stack
+    said, claimed = [], []
+    manager.log.connect(said.append)
+    manager.claimed.connect(claimed.append)
+    manager.claim_address(0xF9)
+    wait_until(lambda: claimed, timeout=manager.CLAIM_DEADLINE_S + 2)
+
+    manager.request_pgn(PGN_DM3, 0x00)
+    wait_until(lambda: any("clearing previously active faults accepted" in s for s in said))
+    manager.request_pgn(PGN_DM2, 0x00)
+    wait_until(
+        lambda: any("DM2 previously active faults: no previously active faults" in s for s in said)
+    )
+
+    # Answered once, though the engine broadcasts DM1 every second.
+    manager.request_pgn(PGN_DM1, 0x00)
+    wait_until(lambda: any("DM1 active faults: 1 active fault(s)" in s for s in said))
+    deadline = time.monotonic() + manager.RESPONSE_S + 0.3
+    while time.monotonic() < deadline:
+        QCoreApplication.processEvents()
+        time.sleep(0.01)
+    assert sum("DM1 active faults:" in s for s in said) == 1
+
+    manager.request_address_claims()
+    wait_until(lambda: any("J1939 00 claims its address" in s for s in said))
+
+
+def test_a_request_nothing_answers_says_so(stack, monkeypatch):
+    _bus, manager, _demo = stack
+    monkeypatch.setattr(manager, "RESPONSE_S", 0.3)
+    said = []
+    manager.log.connect(said.append)
+    manager.request_pgn(0xFEE5, 0x55)  # nobody at 55
+    wait_until(lambda: said, timeout=2)
+    assert said[-1].startswith("J1939: no answer to") and said[-1].endswith("from 55")
