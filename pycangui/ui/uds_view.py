@@ -27,7 +27,16 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
-from pycangui.uds import CAN_DL, NO_ID, UdsConfig, fixed_addressing, images
+from pycangui.uds import (
+    CAN_DL,
+    NO_ID,
+    TIMING_AT_LEAST,
+    TIMING_ECU,
+    TIMING_FORCED,
+    UdsConfig,
+    fixed_addressing,
+    images,
+)
 from pycangui.uds.dtc import (
     DEFAULT_STANDARD,
     DTC,
@@ -126,6 +135,21 @@ LEVEL_TIP = (
     "An ECU document that quotes a sub-function rather than a level is\n"
     "naming the request half: 11 and 12 is level 9."
 )
+TIMING_TIP = (
+    "How long a request waits for its answer.\n"
+    "ECU's: the P2 and P2* the ECU gives when a session starts, which is\n"
+    "the one to test an ECU with -- an answer later than it promised is a\n"
+    "timeout. Until it gives them, the two boxes to the right.\n"
+    "At least: the longer of the ECU's and the boxes. For a bootloader\n"
+    "that takes longer than it says, finishing a flash write.\n"
+    "Forced: the boxes, whatever the ECU says.\n"
+    "Applies from the next request, on a session already open too."
+)
+P2_TIP = (
+    "P2: how long to wait for an answer. P2*: how long to wait after the\n"
+    "ECU says it is still working (0x78, response pending). How they are\n"
+    "used depends on Timing to the left."
+)
 PADDING_TIP = (
     "The byte every frame is padded out to 8 bytes with. Some ECUs require\n"
     "padding and ignore anything shorter; others do not mind either way.\n"
@@ -199,6 +223,28 @@ class UdsView(QWidget):
         self.confirm = confirm or Confirmations()
         self._image: images.Image | None = None
         cfg = UdsConfig.from_dict(ctx.settings.get("uds.config", {}))
+        # Made here, before anything else: the boxes below save the whole
+        # configuration as they are filled in, and these are part of it.
+        # Placed in the session row further down.
+        self.timing = QComboBox()
+        self.timing.setToolTip(TIMING_TIP)
+        for label, value in (
+            ("ECU's", TIMING_ECU),
+            ("At least", TIMING_AT_LEAST),
+            ("Forced", TIMING_FORCED),
+        ):
+            self.timing.addItem(label, value)
+        self.timing.setCurrentIndex(max(self.timing.findData(cfg.timing), 0))
+        self.p2 = QSpinBox()
+        self.p2.setRange(1, 60_000)
+        self.p2.setSuffix(" ms")
+        self.p2.setValue(round(cfg.p2_timeout_s * 1000))
+        self.p2.setToolTip(P2_TIP)
+        self.p2_star = QSpinBox()
+        self.p2_star.setRange(1, 600_000)
+        self.p2_star.setSuffix(" ms")
+        self.p2_star.setValue(round(cfg.p2_star_timeout_s * 1000))
+        self.p2_star.setToolTip(P2_TIP)
 
         # --- addressing ----------------------------------------------------
         addr = QGroupBox("ECU")
@@ -378,6 +424,16 @@ class UdsView(QWidget):
         )
         self.tp.toggled.connect(self.manager.set_tester_present)
         h.addWidget(self.tp)
+        h.addSpacing(12)
+        # Whose timing a request waits for. Beside the session, because that
+        # is where the ECU gives its own and the log line says what it gave.
+        self.timing.currentIndexChanged.connect(lambda _i: self._timing_changed())
+        self.p2.valueChanged.connect(lambda _v: self._timing_changed())
+        self.p2_star.valueChanged.connect(lambda _v: self._timing_changed())
+        for label, widget in (("Timing", self.timing), ("P2", self.p2), ("P2*", self.p2_star)):
+            h.addWidget(QLabel(label))
+            h.addWidget(widget)
+        self.manager.set_timing(cfg.timing, cfg.p2_timeout_s, cfg.p2_star_timeout_s)
         h.addStretch()
 
         # --- reset ---------------------------------------------------------------
@@ -898,6 +954,13 @@ class UdsView(QWidget):
         self._addresses_changed()  # nothing is waiting now, so no tint
         self._save()
 
+    def _timing_changed(self) -> None:
+        """Saved, and used from the next request on, on a session already open too."""
+        self._save()
+        self.manager.set_timing(
+            self.timing.currentData(), self.p2.value() / 1000, self.p2_star.value() / 1000
+        )
+
     def _padding(self) -> int | None:
         """The pad byte, or None for a box left empty."""
         value = self._int(self.padding)
@@ -929,6 +992,9 @@ class UdsView(QWidget):
             can_fd=self.manager.bus.fd,
             tx_data_length=self.can_dl.currentData() or 8,
             bitrate_switch=self.brs.isChecked(),
+            p2_timeout_s=self.p2.value() / 1000,
+            p2_star_timeout_s=self.p2_star.value() / 1000,
+            timing=self.timing.currentData(),
         )
 
     @Slot(bool)

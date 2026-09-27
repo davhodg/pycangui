@@ -737,3 +737,13 @@ def test_a_timeout_says_which_request_it_was_waiting_on(manager, images_dir):
     manager.download(images.read(images_dir("a.hex", (0x1000, bytes(20)))))
 
     assert lines[-1] == "Download: timeout (no response to TransferData block 3 of 5)"
+
+
+def test_the_timing_choice_is_remembered_and_used(view):
+    view.timing.setCurrentIndex(view.timing.findData("at least"))
+    view.p2.setValue(800)
+    assert (view.manager.config.timing, view.manager.config.p2_timeout_s) == ("at least", 0.8)
+
+    again = UdsView(view.manager, view.ctx)
+    assert again.timing.currentData() == "at least"
+    assert again.p2.value() == 800

@@ -25,7 +25,7 @@ from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
-from pycangui.uds import NO_ID, UdsConfig
+from pycangui.uds import NO_ID, TIMING_AT_LEAST, TIMING_FORCED, UdsConfig
 from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD
 from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
@@ -127,6 +127,10 @@ class UdsManager(QObject):
         #: What a transfer is waiting on, so a timeout can say which request
         #: it was: "Download: timeout" alone does not say where it stopped.
         self._step = ""
+        #: (P2, P2*) as the ECU last gave them in a session response, in
+        #: seconds, or None before it has. Kept apart from what is in use, so
+        #: changing the timing choice can go back to them.
+        self._ecu_timing: tuple[float, float] | None = None
         self.standard_version = DEFAULT_STANDARD
         self._tp_timer = QTimer(self, timeout=self._tester_present_tick)
         bus.disconnected.connect(self.close)
@@ -173,6 +177,8 @@ class UdsManager(QObject):
             }
         )
         self.client = Client(conn, config=cfg)
+        self._ecu_timing = None
+        self._apply_timing(self.client)
         self.client.open()
         ids = f"tx {config.tx_id:X} rx {config.rx_id:X}"
         ext = " (29-bit)" if config.extended_id else ""
@@ -281,14 +287,62 @@ class UdsManager(QObject):
         self._worker.submit(job, done)
 
     # --- services ----------------------------------------------------------------------
+    # --- timing ------------------------------------------------------------------------
+    def set_timing(self, timing: str, p2_s: float, p2_star_s: float) -> None:
+        """Whose P2 and P2* to wait for, from now on, on an open session too."""
+        self.config.timing = timing
+        self.config.p2_timeout_s = p2_s
+        self.config.p2_star_timeout_s = p2_star_s
+        if self.client is not None:
+            self._apply_timing(self.client)
+
+    def _apply_timing(self, c: Client) -> None:
+        """Put the chosen timing into udsoncan's client.
+
+        udsoncan waits for its session timing whenever it has one, whether or
+        not it was told to use the server's, so that is set here outright:
+        the ECU's values, the larger of theirs and the tester's, or none at
+        all so that the tester's own are what it falls back on.
+        """
+        cfg = self.config
+        c.config["p2_timeout"] = cfg.p2_timeout_s
+        c.config["p2_star_timeout"] = cfg.p2_star_timeout_s
+        c.config["use_server_timing"] = cfg.timing != TIMING_FORCED
+        ecu, now = self._ecu_timing, c.session_timing
+        if ecu is None or cfg.timing == TIMING_FORCED:
+            now.p2_server_max = now.p2_star_server_max = None
+        elif cfg.timing == TIMING_AT_LEAST:
+            now.p2_server_max = max(ecu[0], cfg.p2_timeout_s)
+            now.p2_star_server_max = max(ecu[1], cfg.p2_star_timeout_s)
+        else:
+            now.p2_server_max, now.p2_star_server_max = ecu
+
+    def timing_in_use(self) -> tuple[float, float]:
+        """(P2, P2*) in seconds that a request is waiting for now."""
+        if self.client is None:
+            return self.config.p2_timeout_s, self.config.p2_star_timeout_s
+        now = self.client.session_timing
+        return (
+            self.client.config["p2_timeout"] if now.p2_server_max is None else now.p2_server_max,
+            self.client.config["p2_star_timeout"]
+            if now.p2_star_server_max is None
+            else now.p2_star_server_max,
+        )
+
     def change_session(self, session: int) -> None:
         def fn(c: Client) -> str:
             r = c.change_session(session)
             timing = ""
             sd = r.service_data
             if sd.p2_server_max is not None:
+                self._ecu_timing = (sd.p2_server_max, sd.p2_star_server_max)
+                self._apply_timing(c)
                 p2, p2s = sd.p2_server_max * 1000, sd.p2_star_server_max * 1000
-                timing = f" (P2 {p2:.0f} ms, P2* {p2s:.0f} ms)"
+                timing = f"P2 {p2:.0f} ms, P2* {p2s:.0f} ms"
+                used = tuple(round(t * 1000) for t in self.timing_in_use())
+                if used != (round(p2), round(p2s)):
+                    timing += f"; waiting {used[0]} ms and {used[1]} ms ({self.config.timing})"
+                timing = f" ({timing})"
             return f"Session -> {SESSIONS.get(session, session)}{timing}"
 
         self._run("DiagnosticSessionControl", fn)

@@ -248,3 +248,98 @@ def test_p2_counts_from_the_end_of_a_request_not_from_queuing_it(app, tmp_path, 
 
     assert response.positive
     assert took > 5 * config.p2_timeout_s, "the request really did outlast P2"
+
+
+# --- whose timing a request waits for ----------------------------------------------------
+class Inline:
+    """A worker that runs each job where it was submitted."""
+
+    def submit(self, fn, callback):
+        try:
+            callback(fn(), None)
+        except Exception as exc:
+            callback(None, f"{type(exc).__name__}: {exc}")
+
+    def stop(self):
+        pass
+
+
+@pytest.fixture
+def slow_ecu(app, tmp_path, monkeypatch):
+    """An ECU that promises P2 50 ms in its session response, then takes 300 ms
+    to answer TesterPresent -- a bootloader finishing a flash write, in short."""
+    import threading
+
+    import isotp
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ids = UdsConfig()
+    bus = BusManager()
+    bus.connect_bus("virtual", "vcan_isotp_timing", 500_000, False)
+    ecu_bus = can.Bus(interface="virtual", channel="vcan_isotp_timing")
+    ecu_notifier = can.Notifier(ecu_bus, [])
+    ecu = isotp.NotifierBasedCanStack(
+        ecu_bus,
+        ecu_notifier,
+        address=isotp.Address(isotp.AddressingMode.Normal_11bits, txid=ids.rx_id, rxid=ids.tx_id),
+        params={"tx_padding": None},
+    )
+    ecu.start()
+    stop = threading.Event()
+
+    def answer():
+        while not stop.is_set():
+            request = ecu.recv(block=True, timeout=0.1)
+            if request is None:
+                continue
+            if request[0] == 0x10:  # P2 0x0032 = 50 ms, P2* 0x01F4 x 10 ms = 5 s
+                ecu.send(bytes([0x50, request[1], 0x00, 0x32, 0x01, 0xF4]))
+            elif request[0] == 0x3E:
+                time.sleep(0.3)
+                ecu.send(bytes([0x7E, 0x00]))
+
+    threading.Thread(target=answer, daemon=True).start()
+    ctx = Context(log=print)
+    manager = UdsManager(bus, Hooks(ctx), ctx)
+    manager._worker = Inline()
+    results = []
+    manager.result.connect(results.append)
+    yield manager, results
+    manager.close()
+    stop.set()
+    ecu.stop()
+    ecu_notifier.stop()
+    ecu_bus.shutdown()
+    bus.disconnect_bus()
+
+
+def test_the_ecu_s_timing_is_kept_to_by_default(slow_ecu):
+    """Testing an ECU includes whether it answers when it said it would."""
+    from udsoncan.exceptions import TimeoutException
+
+    manager, results = slow_ecu
+    manager.open(UdsConfig(padding=None))
+    manager.change_session(3)
+    assert results[-1].endswith("(P2 50 ms, P2* 5000 ms)")
+    with pytest.raises(TimeoutException):
+        manager.client.tester_present()
+
+
+@pytest.mark.parametrize("timing", ["at least", "forced"])
+def test_a_relaxed_or_overridden_p2_waits_for_a_late_answer(slow_ecu, timing):
+    manager, results = slow_ecu
+    manager.open(UdsConfig(padding=None, timing=timing, p2_timeout_s=1.0))
+    manager.change_session(3)
+    assert f"waiting 1000 ms and 5000 ms ({timing})" in results[-1]
+    assert manager.client.tester_present().positive
+
+
+def test_timing_can_be_changed_on_an_open_session(slow_ecu):
+    manager, _results = slow_ecu
+    manager.open(UdsConfig(padding=None))
+    manager.change_session(3)
+    assert manager.timing_in_use() == (0.05, 5.0)
+    manager.set_timing("at least", 1.0, 5.0)
+    assert manager.timing_in_use() == (1.0, 5.0)
+    manager.set_timing("ecu", 1.0, 5.0)
+    assert manager.timing_in_use() == (0.05, 5.0), "and back to the ECU's own"

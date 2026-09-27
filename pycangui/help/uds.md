@@ -63,6 +63,22 @@ nothing on the bus is acknowledging frames, as while the ECU restarts -- the box
 unticks itself and the Event Log says why, rather than it going on failing every
 couple of seconds. Tick it again once the ECU is back.
 
+**Timing** says how long a request waits for its answer. An ECU gives its own
+P2 (the answer) and P2\* (the answer after a 0x78, response pending) when a
+session starts, and the log line for the session says what they were.
+
+- *ECU's*, the default, keeps to them: an answer later than the ECU promised is
+  a timeout, which is what testing an ECU wants. Until a session has given
+  them, the P2 and P2\* boxes are used.
+- *At least* waits for the longer of the ECU's values and the boxes. It is for
+  a bootloader that takes longer than it says -- 447 ms to answer the end of a
+  transfer, with 50 ms promised, while it finishes writing flash.
+- *Forced* uses the boxes and nothing else, shorter or longer.
+
+A change applies from the next request, on a session that is already open too.
+Every request waits until its last frame has gone before P2 starts, so a long
+TransferData is not timed out while it is still being sent.
+
 **Level is a level**, counting from 1, and beside it pycangui shows the two
 sub-functions that will actually go out -- `req 03  resp 04` for level 2.
 SecurityAccess works in pairs: an odd sub-function asks for the seed and the

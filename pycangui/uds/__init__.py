@@ -57,6 +57,16 @@ def fixed_addressing(ecu: int, tester: int, functional_target: int = OBD_FUNCTIO
     )
 
 
+#: Whose P2 and P2* a request waits for. The ECU's by default: whether an ECU
+#: keeps to the timing it gives is part of testing it. A bootloader finishing a
+#: flash write is the usual one that does not -- 447 ms to answer a transfer
+#: exit, with 50 ms promised -- and there the tester's own values are the ones
+#: to use, as a floor or instead.
+TIMING_ECU = "ecu"
+TIMING_AT_LEAST = "at least"
+TIMING_FORCED = "forced"
+
+
 @dataclass
 class UdsConfig:
     """Addressing and timing for one ECU. Saved in settings "uds.config"."""
@@ -82,8 +92,11 @@ class UdsConfig:
     #: Without it an FD frame runs end to end at the arbitration bitrate, so
     #: the data rate chosen on the toolbar never gets used.
     bitrate_switch: bool = False
+    #: The tester's own P2 and P2*: used until the ECU gives its own, and,
+    #: as ``timing`` says, as a floor under the ECU's or in place of them.
     p2_timeout_s: float = 1.0
     p2_star_timeout_s: float = 5.0
+    timing: str = TIMING_ECU
     tester_present_s: float = 2.0
 
     @property
