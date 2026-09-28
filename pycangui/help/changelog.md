@@ -9,22 +9,7 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
-### Added
-
-- A recording shows the frames written and the file's size in the status bar, and says both
-  in the Event Log when it stops. The status bar's frame count is now labelled *Total frames*.
-
-### Changed
-
-- Recording and exporting signals suggest a file name with the date and time in it, such as
-  `capture_2026-09-25_143012.blf`, rather than the same name every time.
-
-### Fixed
-
-- Installing the MDF reader on first use froze the window for the whole download, which
-  looked like a crash. pip runs in the background, says what it is doing, and can be cancelled.
-
-## [0.1.1] - 2026-09-27
+## [0.1.1] - 2026-09-28
 
 ### Added
 
@@ -34,6 +19,8 @@ since the last version, and comes out in the next one.
 - J1939 **requests from a list** -- DM1 to DM5, DM11 and identification -- each answer, or none,
   reported in the Event Log, and a warning when a node answers against the standard.
 - J1939 **Request address claims**, and **Stop broadcasts** (DM13), held until started.
+- A recording shows the frames written and the file's size in the status bar, and says both
+  in the Event Log when it stops. The status bar's frame count is now labelled *Total frames*.
 - **Check for updates** asks PyPI when pycangui was installed with pip.
 - Badges, tags, classifiers and more links on the PyPI page.
 
@@ -41,12 +28,16 @@ since the last version, and comes out in the next one.
 
 - The UDS pane is in tabs, and needs much less width.
 - J1939 messages are sent from the tester's address, claiming it first if need be, not 0xFE.
+- Recording and exporting signals suggest a file name with the date and time in it, such as
+  `capture_2026-09-25_143012.blf`, rather than the same name every time.
 - The Windows installer shows the third-party notices before installing, not after.
 
 ### Fixed
 
 - UDS extended data (0x06) and snapshot (0x04) reports, which could not be read.
 - J1939 DM2 answers were shown as active faults.
+- Installing the MDF reader on first use froze the window for the whole download, which
+  looked like a crash. pip runs in the background, says what it is doing, and can be cancelled.
 - A mistake typed in the Python Console was reported as a bug in pycangui.
 - A development build from TestPyPI was taken as newer than the release it leads to.
 
