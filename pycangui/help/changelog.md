@@ -9,6 +9,11 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Added
+
+- A recording shows the frames written and the file's size in the status bar, and says both
+  in the Event Log when it stops. The status bar's frame count is now labelled *Total frames*.
+
 ### Fixed
 
 - Installing the MDF reader on first use froze the window for the whole download, which

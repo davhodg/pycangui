@@ -34,8 +34,13 @@ frames seen and the configured bitrate, including nominal bit stuffing --
 beside a coloured dot for how its controller is doing (see *Controller state
 and bus off* below). An asterisk marks the channel selected in the toolbar,
 and after the channels come the recording in progress, if there is one, and
-the number of frames seen. The trace's *Channel* column says which bus a
-frame came from.
+the total number of frames seen. A recording shows, in brackets, how long it
+has run, the frames written to the file and the file's size. The size is
+what is on disk, which grows in steps rather than frame by frame, because
+frames are written out in blocks, and it is left out until the first block
+is written, which on a quiet bus can take a while. The frame count shows the
+recording is working in the meantime.
+When it stops, the Event Log says the final figures. The trace's *Channel* column says which bus a frame came from.
 
 The trace, the recorder and the decoders always see **every** connected
 channel, on one shared clock, so an ECU forwarding messages between two buses

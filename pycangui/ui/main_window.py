@@ -1941,7 +1941,12 @@ class MainWindow(QMainWindow):
         self.record_action.setChecked(recording)
         self.record_action.setText("Recording..." if recording else "Record")
         self.record_action.blockSignals(False)
-        self.events.information(f"Recording to {path}" if recording else "Recording stopped")
+        if recording:
+            self.events.information(f"Recording to {path}")
+        else:
+            self.events.information(
+                f"Recording stopped: {self.recorder.path}, {self.recorder.summary()}"
+            )
 
     # --- DBC / signals -------------------------------------------------------
     def _dbc_entries(self) -> list[tuple[str, str, bool]]:
@@ -2130,6 +2135,6 @@ class MainWindow(QMainWindow):
         self.connect_bar.refresh_filter()
         parts = []
         if self.recorder.is_recording:
-            parts.append(f"recording {self.recorder.path.name} ({self.recorder.elapsed:.0f} s)")
-        parts.append(f"frames: {self._frame_count}")
+            parts.append(f"Recording {self.recorder.path.name} ({self.recorder.summary()})")
+        parts.append(f"Total frames: {self._frame_count:,}")
         self.bus_status.summary.setText("  |  ".join(parts))

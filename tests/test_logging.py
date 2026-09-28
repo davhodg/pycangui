@@ -10,7 +10,7 @@ import pytest
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
-from pycangui.core.logging import Player, Recorder
+from pycangui.core.logging import Player, Recorder, file_size
 
 
 def wait_until(app, pred, timeout=5.0):
@@ -170,6 +170,52 @@ def test_recording_continues_when_a_channel_drops(app, channels, tmp_path):
     assert notes, "and it should say so"
     recorder.stop()
     assert path.is_file()
+
+
+def test_recorder_counts_frames_written_and_knows_the_file_size(app, channels, tmp_path):
+    """What the status bar shows while recording, and the log once stopped."""
+    first = channels.active_bus()
+    second = channels.add("CAN 2")
+    second.connect_bus("virtual", "vcan_count", 500000, False)
+    recorder = Recorder(channels)
+    recorder.error.connect(lambda text: pytest.fail(text))
+    assert recorder.start(tmp_path / "count.asc")
+    assert recorder.frames == 0
+
+    counters = [Seen(), Seen()]
+    channels.get("CAN 1").add_listener(counters[0])
+    second.add_listener(counters[1])
+    for n in range(3):
+        first.send(0x100, bytes([n]))
+    second.send(0x200, b"\x02")
+    wait_until(app, lambda: sum(len(c.messages) for c in counters) >= 4)
+    assert recorder.frames == 4
+    if recorder.size == 0:  # still in the file buffer
+        assert "bytes" not in recorder.summary(), "no size until there is one on disk"
+
+    second.disconnect_bus()  # its frames are still in the file, so still counted
+    app.processEvents()
+    first.send(0x100, b"\x09")
+    wait_until(app, lambda: len(counters[0].messages) >= 4)
+    assert recorder.frames == 5
+
+    recorder.stop()
+    assert recorder.frames == 5, "kept after stopping, for saying what was recorded"
+    assert recorder.size == (tmp_path / "count.asc").stat().st_size > 0
+    assert recorder.elapsed > 0, "and how long it ran"
+    assert "5 frames" in recorder.summary()
+
+    assert recorder.start(tmp_path / "again.asc")
+    assert recorder.frames == 0, "a new recording counts afresh"
+    recorder.stop()
+
+
+def test_file_size_picks_a_unit():
+    assert file_size(900) == "900 bytes"
+    assert file_size(1536).endswith("KB")
+    assert file_size(5 * 1024 * 1024).endswith("MB")
+    assert file_size(3 * 1024**3).endswith("GB")
+    assert file_size(5000 * 1024**3).endswith("GB"), "no unit past GB"
 
 
 def test_recorder_needs_a_bus_and_reports_bad_paths(app, tmp_path, monkeypatch):

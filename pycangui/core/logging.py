@@ -60,10 +60,14 @@ class _StampedWriter(can.Listener):
     def __init__(self, writer: can.Listener, channel: str) -> None:
         self._writer = writer
         self._channel = "_".join(channel.split()) or "CAN"
+        #: Frames handed to the file. Each channel's notifier thread counts
+        #: its own, so two channels never add to the same number at once.
+        self.count = 0
 
     def on_message_received(self, msg: can.Message) -> None:
         msg.channel = self._channel
         self._writer.on_message_received(msg)
+        self.count += 1
 
     def stop(self) -> None:
         """Does nothing: the file belongs to the recorder, which closes it once."""
@@ -90,6 +94,9 @@ class Recorder(QObject):
         self._attached: dict[str, _StampedWriter] = {}
         self.path: Path | None = None
         self._started = 0.0
+        self._ended = 0.0
+        #: Frames written by channels no longer attached.
+        self._counted = 0
         channels.state_changed.connect(self._on_channel_state)
 
     @property
@@ -111,6 +118,7 @@ class Recorder(QObject):
             self.error.emit(f"Record: cannot write {path}: {exc}")
             self._writer = None
             return False
+        self._counted = 0
         for name in self._channels.names():
             self._attach(name)
         self.path = Path(path)
@@ -124,6 +132,7 @@ class Recorder(QObject):
             return
         for name in list(self._attached):
             self._detach(name)
+        self._ended = time.monotonic()
         writer, self._writer = self._writer, None
         try:
             writer.stop()  # flushes and closes the file
@@ -145,6 +154,8 @@ class Recorder(QObject):
         bus = self._channels.get(name)
         if listener is not None and bus is not None:
             bus.remove_listener(listener)
+        if listener is not None:
+            self._counted += listener.count
 
     @Slot(str, bool)
     def _on_channel_state(self, name: str, connected: bool) -> None:
@@ -164,7 +175,54 @@ class Recorder(QObject):
 
     @property
     def elapsed(self) -> float:
-        return time.monotonic() - self._started if self.is_recording else 0.0
+        """How long the recording has run, or ran for once it has stopped."""
+        if not self._started:
+            return 0.0
+        return (time.monotonic() if self.is_recording else self._ended) - self._started
+
+    @property
+    def frames(self) -> int:
+        """Frames written to the file, from every channel it has recorded."""
+        return self._counted + sum(listener.count for listener in self._attached.values())
+
+    @property
+    def size(self) -> int:
+        """The file's size on disk.
+
+        While recording it trails what has been written: frames are held back
+        and written in blocks -- by Python's file buffer for the text formats,
+        a compressed block at a time for .blf -- so it grows in steps, and on
+        a quiet bus can say 0 bytes for a while. Asking the writer instead
+        would mean touching its file from this thread while the notifier
+        writes to it. The frame count is the live figure; this is exact once
+        stopped.
+        """
+        try:
+            return self.path.stat().st_size if self.path else 0
+        except OSError:
+            return 0
+
+    def summary(self) -> str:
+        """How long, how many frames and how big, for the status bar and the log.
+
+        The size is left out while nothing has reached the disk: "0 bytes"
+        beside a count of frames reads as frames being lost, when they are
+        only still in the buffer.
+        """
+        size = self.size
+        said = f"{self.elapsed:.0f} s, {self.frames:,} frames"
+        return said if self.is_recording and not size else f"{said}, {file_size(size)}"
+
+
+def file_size(size: int) -> str:
+    """A size in bytes as a person would say it: 900 bytes, 1.2 MB."""
+    if size < 1024:
+        return f"{size} bytes"
+    for unit in ("KB", "MB"):
+        size /= 1024
+        if size < 1024:
+            return f"{size:.1f} {unit}"
+    return f"{size / 1024:.1f} GB"
 
 
 class Player(QThread):
