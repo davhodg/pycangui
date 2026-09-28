@@ -198,3 +198,91 @@ def test_asking_for_a_signal_the_file_does_not_have_is_said_rather_than_silent(
 
     window._read_signals(path, ["Real", "Imaginary"])
     assert "1 held nothing readable" in window.log.toPlainText()
+
+
+# --- fetching asammdf on demand ------------------------------------------------------------
+def fake_pip(script: str) -> list[str]:
+    """A stand-in for pip: this interpreter running a few lines, slowly."""
+    import sys
+
+    return [sys.executable, "-u", "-c", script]
+
+
+@pytest.fixture
+def installing(app, monkeypatch):
+    from pycangui.core import mdf
+    from pycangui.core.context import Context
+
+    monkeypatch.setattr(mdf, "available", lambda: True)
+    ctx = Context(log=print)
+    posted: list[tuple[str, str]] = []
+    ctx.events.posted.connect(lambda text, level: posted.append((level, text)))
+    return ctx, posted
+
+
+def test_the_window_keeps_running_while_pip_does(app, installing):
+    """pip ran on the window's thread: minutes of a frozen window and a dead
+    progress box, which looked like a crash."""
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication, QProgressDialog
+
+    from pycangui.ui.import_signals import _install
+
+    ctx, posted = installing
+    ticks, labels = [], []
+
+    def look() -> None:
+        ticks.append(1)
+        box = next(
+            (w for w in QApplication.topLevelWidgets() if isinstance(w, QProgressDialog)), None
+        )
+        if box is not None and box.isVisible():
+            labels.append(box.labelText())
+
+    timer = QTimer(interval=50, timeout=look)
+    timer.start()
+    script = (
+        "import time; print('Collecting asammdf'); time.sleep(0.4); "
+        "print('Downloading asammdf-9.0-py3-none-any.whl (2.1 MB)'); time.sleep(0.4); "
+        "print('Successfully installed asammdf-9.0')"
+    )
+    assert _install(None, ctx, fake_pip(script))
+    timer.stop()
+
+    assert len(ticks) >= 5, "the event loop kept turning"
+    assert any("Downloading asammdf" in label for label in labels), "and said what pip was doing"
+    assert posted[-1][1].startswith("asammdf installed")
+
+
+def test_cancel_stops_pip(app, installing):
+    import time
+
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication, QProgressDialog, QPushButton
+
+    from pycangui.ui.import_signals import _install
+
+    ctx, posted = installing
+
+    def cancel() -> None:
+        # The button, as somebody would: cancel() hides the box without the
+        # signal that stops pip.
+        for widget in QApplication.topLevelWidgets():
+            if isinstance(widget, QProgressDialog) and widget.isVisible():
+                widget.findChild(QPushButton).click()
+
+    QTimer.singleShot(300, cancel)
+    began = time.monotonic()
+    assert not _install(None, ctx, fake_pip("import time; time.sleep(30)"))
+    assert time.monotonic() - began < 10, "stopped, not waited out"
+    assert "cancelled" in posted[-1][1]
+
+
+def test_a_failed_install_says_what_pip_said(app, installing):
+    from pycangui.ui.import_signals import _install
+
+    ctx, posted = installing
+    script = "import sys; print('ERROR: No matching distribution found for asammdf'); sys.exit(1)"
+    assert not _install(None, ctx, fake_pip(script))
+    level, text = posted[-1]
+    assert level == "error" and "No matching distribution" in text

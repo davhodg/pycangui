@@ -85,7 +85,10 @@ to whatever is plotted, wherever it is.
 
 Reading MDF needs the `asammdf` library. The Windows installer includes it,
 and a `pip` installation offers to fetch it the first time you open a file that
-needs it, or you can ask for it up front with `pip install pycangui[all]`.
+needs it, or you can ask for it up front with `pip install pycangui[all]`. The
+download takes a while on a slow connection -- asammdf brings other libraries with
+it -- so the window stays usable meanwhile, says what pip is doing, and has a
+Cancel that stops it.
 
 **File > Export signals...** writes what has been decoded to a CSV: DBC
 signals, CANopen PDO values and XCP measurements alike. [Recording](channels.md) writes raw

@@ -9,6 +9,11 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Fixed
+
+- Installing the MDF reader on first use froze the window for the whole download, which
+  looked like a crash. pip runs in the background, says what it is doing, and can be cancelled.
+
 ## [0.1.1] - 2026-09-27
 
 ### Added

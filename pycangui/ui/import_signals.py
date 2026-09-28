@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QProgressDialog,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -37,7 +36,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core import mdf
-from pycangui.ui import messages
+from pycangui.ui import messages, pip_install
 
 #: Past this, reading everything at once is a wait with no warning attached.
 #: The number is not a limit -- it is when the question gets asked.
@@ -193,31 +192,9 @@ def ensure_available(parent: QWidget, ctx, frozen: bool = False) -> bool:
     return _install(parent, ctx)
 
 
-def _install(parent: QWidget, ctx) -> bool:
-    """pip, in this interpreter, with something on screen while it runs."""
-    import subprocess
-    import sys
-
-    waiting = QProgressDialog(f"Installing {mdf.PACKAGE}...", "", 0, 0, parent)
-    waiting.setWindowTitle(INSTALL_TITLE)
-    waiting.setCancelButton(None)
-    waiting.setWindowModality(Qt.ApplicationModal)
-    waiting.show()
-    try:
-        done = subprocess.run(
-            [sys.executable, "-m", "pip", "install", mdf.PACKAGE],
-            capture_output=True,
-            text=True,
-            timeout=900,
-        )
-    except Exception as exc:  # no pip, no network, no patience
-        waiting.close()
-        ctx.error(f"Installing {mdf.PACKAGE} failed: {exc}")
-        return False
-    waiting.close()
-    if done.returncode != 0:
-        tail = (done.stderr or done.stdout or "").strip().splitlines()[-3:]
-        ctx.error(f"Installing {mdf.PACKAGE} failed:\n" + "\n".join(tail))
+def _install(parent: QWidget, ctx, command: list[str] | None = None) -> bool:
+    """Fetch asammdf with pip, then make sure it can be imported."""
+    if not pip_install.install(parent, ctx, [mdf.PACKAGE], command):
         return False
     if not mdf.available():
         ctx.error(f"{mdf.PACKAGE} installed but will not import; restart pycangui.")
