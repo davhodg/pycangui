@@ -14,6 +14,11 @@ since the last version, and comes out in the next one.
 - A recording shows the frames written and the file's size in the status bar, and says both
   in the Event Log when it stops. The status bar's frame count is now labelled *Total frames*.
 
+### Changed
+
+- Recording and exporting signals suggest a file name with the date and time in it, such as
+  `capture_2026-09-25_143012.blf`, rather than the same name every time.
+
 ### Fixed
 
 - Installing the MDF reader on first use froze the window for the whole download, which

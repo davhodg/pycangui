@@ -27,6 +27,7 @@ caller passes for a particular dialog.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtWidgets import QFileDialog, QWidget
@@ -131,6 +132,16 @@ def open_file(
     if path:
         remember(ctx, kind, path, chosen_type)
     return path
+
+
+def stamped(stem: str, suffix: str, now: datetime | None = None) -> str:
+    """A name with the date and time in it: ``capture_2026-09-25_143012.blf``.
+
+    For files made over and over -- recordings, exports -- where one fixed
+    name meant each save offered to overwrite the last. Local time, as the
+    clock on the wall says it, in an order that sorts by name alone.
+    """
+    return f"{stem}_{(now or datetime.now()):%Y-%m-%d_%H%M%S}{suffix}"
 
 
 def named_for(suggested: str, file_type: str) -> str:

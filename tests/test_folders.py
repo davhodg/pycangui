@@ -295,6 +295,29 @@ def test_the_suggested_name_matches_the_type_it_opens_on(app, ctx, picked, tmp_p
     assert picked.opened[-1].endswith("capture.asc")
 
 
+def test_a_stamped_name_sorts_by_when_it_was_made():
+    from datetime import datetime
+
+    earlier = folders.stamped("capture", ".blf", datetime(2026, 9, 25, 14, 30, 12))
+    later = folders.stamped("capture", ".blf", datetime(2026, 10, 1, 9, 5, 0))
+    assert earlier.startswith("capture") and earlier.endswith(".blf")
+    assert "2026" in earlier and earlier != later
+    assert sorted([later, earlier]) == [earlier, later]
+    assert not set(earlier) & set('<>:"/\\|?*'), "a name any file system takes"
+
+
+def test_a_stamped_name_keeps_its_time_when_the_type_changes(app, ctx, picked, tmp_path):
+    picked.answer[0] = str(tmp_path / "trace.asc")
+    picked.answer_type[0] = "ASC (*.asc)"
+    folders.save_file(None, ctx, folders.LOG, "Record", LOGS, tmp_path, suggested="capture.blf")
+
+    picked.answer[0] = ""
+    name = folders.stamped("capture", ".blf")
+    folders.save_file(None, ctx, folders.LOG, "Record", LOGS, tmp_path, suggested=name)
+
+    assert picked.opened[-1].endswith(name.removesuffix(".blf") + ".asc")
+
+
 def test_all_files_leaves_the_suggested_name_alone(app, ctx, picked, tmp_path):
     picked.answer[0] = str(tmp_path / "trace.blf")
     picked.answer_type[0] = "All files (*)"

@@ -1550,7 +1550,7 @@ class MainWindow(QMainWindow):
             "Export signals",
             "CSV (*.csv);;All files (*)",
             self.ctx.user_dir,
-            suggested="signals.csv",
+            suggested=folders.stamped("signals", ".csv"),
         )
         if not path:
             return
@@ -1930,7 +1930,7 @@ class MainWindow(QMainWindow):
             "Record to a log file",
             WRITE_FILTER,
             self.ctx.user_dir,
-            suggested="capture.blf",
+            suggested=folders.stamped("capture", ".blf"),
         )
         if not path or not self.recorder.start(path):
             self.record_action.setChecked(False)

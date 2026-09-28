@@ -51,6 +51,10 @@ time. The folders live in the workspace, since which folder a product's
 files are in is a fact about that product and should not follow you into the
 next one.
 
+A recording and a signals export suggest a name with the date and time in it,
+such as `capture_2026-09-25_143012.blf`, so saving another never offers to
+overwrite the last, and the files sort in the order they were made.
+
 A remembered folder that no longer exists -- a memory stick unplugged, a folder
 deleted -- is ignored, and the dialog opens at its default instead; so is a
 remembered type that the dialog no longer offers. *Tools >
