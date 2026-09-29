@@ -93,7 +93,7 @@ def test_with_no_bus_there_is_nothing_to_add_it_to(app):
     said = []
     manager.message.connect(lambda text, _level: said.append(text))
     assert not manager.add_node(12)
-    assert said and "not connected" in said[0]
+    assert said and "channel is not connected" in said[0]
     manager.shutdown()
 
 
@@ -196,6 +196,7 @@ def seen_by_hand(window, node_id):
 
 def test_add_node_puts_it_in_the_list_and_selects_it(window, monkeypatch):
     view = window.canopen_view
+    window.channels.active_bus().connect_bus("virtual", "vcan_add_node", 500000, False)
     monkeypatch.setattr(QInputDialog, "getInt", lambda *a, **k: (12, True))
     monkeypatch.setattr(
         window.canopen,
@@ -206,6 +207,18 @@ def test_add_node_puts_it_in_the_list_and_selects_it(window, monkeypatch):
     item = view._node_item(12)
     assert item is not None and item.text(2) == ADDED_BY_HAND
     assert view.selected_node() == 12
+
+
+def test_add_node_with_no_channel_connected_says_so_before_asking(window, monkeypatch):
+    """Reported: the warning came after the node id had been typed, and said
+    the node was not connected when it was the adapter."""
+    asked = []
+    monkeypatch.setattr(QInputDialog, "getInt", lambda *a, **k: (asked.append(1), (0, False))[1])
+    warned = []
+    monkeypatch.setattr(window.canopen_view.ctx, "warn", warned.append)
+    window.canopen_view._add_node()
+    assert not asked, "no node id asked for"
+    assert warned and "channel" in warned[0]
 
 
 def test_login_hands_the_level_and_password_on_and_remembers_only_the_level(window, monkeypatch):

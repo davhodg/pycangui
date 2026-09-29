@@ -60,6 +60,9 @@ MIN_HEARTBEAT_TIMEOUT_S = 1.0
 
 #: The state shown for a node put in the list by hand, until it is heard from.
 ADDED_BY_HAND = "added by hand"
+#: What CANopen works through is the channel selected in the toolbar. "Node 5:
+#: not connected" read as the node being the thing that was not connected.
+NOT_CONNECTED = "the selected CAN channel is not connected; connect it first"
 
 #: SDO timing as the ``canopen`` package ships it: 300 ms for each answer and
 #: no second try. Settable in the CANopen pane, because a slow node or a busy
@@ -332,9 +335,7 @@ class CanopenManager(QObject):
         it was added.
         """
         if self.network is None:
-            self.message.emit(
-                f"Node {node_id}: not connected, so there is nothing to add it to", WARNING
-            )
+            self.message.emit(f"Add node: {NOT_CONNECTED}", WARNING)
             return False
         if not 1 <= node_id <= 127:
             self.message.emit(f"{node_id} is not a node id (1 to 127)", WARNING)
@@ -538,7 +539,7 @@ class CanopenManager(QObject):
 
     def _node_for_hooks(self, node_id: int):
         if self.network is None:
-            self.message.emit(f"Node {node_id}: not connected", WARNING)
+            self.message.emit(f"Node {node_id}: {NOT_CONNECTED}", WARNING)
             return None
         if self._hooks is None:
             self.message.emit(f"Node {node_id}: no hooks are loaded", WARNING)
@@ -1050,7 +1051,7 @@ class CanopenManager(QObject):
         """Transmit SYNC (COB-ID 0x80) so synchronous PDOs are exchanged."""
         self.stop_sync()
         if self.network is None:
-            self.message.emit("SYNC: not connected", WARNING)
+            self.message.emit(f"SYNC: {NOT_CONNECTED}", WARNING)
             return
         self.network.sync.start(period_s)  # returns None; it keeps its own task
         self._sync_on = True
@@ -1074,7 +1075,7 @@ class CanopenManager(QObject):
 
     def _lss_job(self, label: str, fn) -> None:
         if self._lss() is None:
-            self.lss_result.emit("LSS: not connected")
+            self.lss_result.emit(f"LSS: {NOT_CONNECTED}")
             return
 
         def job() -> str:

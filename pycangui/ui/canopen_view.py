@@ -50,7 +50,7 @@ from pycangui.canopen.display import (
     out_of_range,
 )
 from pycangui.canopen.display import text as value_text
-from pycangui.canopen.manager import CanopenManager, od_entries, type_name
+from pycangui.canopen.manager import NOT_CONNECTED, CanopenManager, od_entries, type_name
 from pycangui.core import workspace_files
 from pycangui.core.context import Context
 from pycangui.core.events import ERROR, GOOD
@@ -482,6 +482,9 @@ class CanopenView(QWidget):
         return menu
 
     def _add_node(self) -> None:
+        if self.manager.network is None:  # said before a node id is asked for, not after
+            self.ctx.warn(f"Add node: {NOT_CONNECTED}")
+            return
         node_id, chose = QInputDialog.getInt(
             self, "Add node", "Node id, 1 to 127:", self.selected_node() or 1, 1, 127
         )

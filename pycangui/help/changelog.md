@@ -9,7 +9,7 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-09-28
+## [0.1.1] - 2026-09-29
 
 ### Added
 
@@ -22,6 +22,9 @@ since the last version, and comes out in the next one.
 - A recording shows the frames written and the file's size in the status bar, and says both
   in the Event Log when it stops. The status bar's frame count is now labelled *Total frames*.
 - **Check for updates** asks PyPI when pycangui was installed with pip.
+- **About** says where pycangui is running from: the Python, its environment, and where the
+  package came from -- including a source folder's copy running in an environment that does
+  not have pycangui installed.
 - Badges, tags, classifiers and more links on the PyPI page.
 
 ### Changed
@@ -31,6 +34,8 @@ since the last version, and comes out in the next one.
 - Recording and exporting signals suggest a file name with the date and time in it, such as
   `capture_2026-09-25_143012.blf`, rather than the same name every time.
 - The Windows installer shows the third-party notices before installing, not after.
+- CANopen *Add node*, LSS and SYNC with no channel connected say it is the channel that is
+  not connected, and *Add node* says so before asking for a node id.
 
 ### Fixed
 
