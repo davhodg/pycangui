@@ -14,7 +14,7 @@ The report names the version, and -- when pycangui is being run from a source ch
 
 **Help > Licences...** shows pycangui's own Apache-2.0 licence, the NOTICE attributions and the full third-party licence text, all shipped with the application.
 
-**Help > About pycangui** shows the version alongside Python, every package pycangui runs on and the platform, in a form you can copy.
+**Help > About pycangui** shows the version alongside Python, every package pycangui runs on and the platform, in a form you can copy. It also says where it is running from: the Python it started with, that Python's environment, the folder the pycangui package was loaded from, and how it got there -- pip, an editable install of a source folder, or the Windows installer. On a computer with more than one Python that answers which one it is. Started from inside a source folder, Python loads pycangui from that folder even when the environment has no pycangui installed, or a different one; About says so.
 
 ## If pycangui will not start
 

@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui import help as help_pages
-from pycangui.core import checkout, known_ids, packages, timing
+from pycangui.core import checkout, installation, known_ids, packages, timing
 from pycangui.core.updates import (
     PROJECT_PAGE,
     README_PAGE,
@@ -371,10 +371,12 @@ def _label_width(names) -> int:
 
 
 def environment_report() -> str:
-    """What a bug report needs: pycangui, Python, and every package it runs on."""
+    """What a bug report needs: pycangui, Python, where both are, and every package."""
     direct = packages.declared()
-    width = _label_width(r.name for r in direct)
+    where = installation.report()
+    width = _label_width([*(r.name for r in direct), *(label for label, _ in where)])
     lines = [f"{APP_NAME} {__version__}", f"{'Python':{width}}{sys.version.split()[0]}"]
+    lines += [f"{label:{width}}{value}" for label, value in where]
     for requirement in direct:
         found = packages.version(requirement.name)
         if found is None:
