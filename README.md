@@ -39,11 +39,20 @@ Full details in [the manual](pycangui/help/manual.md), which is also under **Hel
 
 ## Installing
 
-There are three options, and which one you want depends on whether you have Python:
+There are three options:
 
-1. **The Windows installer** -- `pycangui-<version>-setup.exe` from the releases page. Nothing else is needed: **not even Python.** It installs a self-contained application, offers a desktop shortcut, and uninstalls cleanly. This is the one to give somebody who wants a CAN tool rather than a Python package. Your hooks, EDS files and settings stay in `%APPDATA%\pycangui`, and upgrades and uninstalling leave them alone.
+1. **With pip** -- from PyPI, into whichever Python environment you choose. Python 3.12 or newer is needed.
 
-2. **From the source folder** -- either clone with Git or download as zip, double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux). Python 3.12 or newer must be on the PATH.
+   ```
+   pip install pycangui
+   pycangui               # installs a command of that name
+   ```
+
+   It is an ordinary Python package with an ordinary entry point, so the choice of environment is yours, and `pip install --upgrade pycangui` updates it.
+
+2. **The Windows installer** -- `pycangui-<version>-setup.exe` from the releases page. Nothing else is needed: **not even Python.** It installs a self-contained application, offers a desktop shortcut, and uninstalls cleanly. This is the one to give somebody who wants a CAN tool rather than a Python package. Your hooks, EDS files and settings stay in `%APPDATA%\pycangui`, and upgrades and uninstalling leave them alone.
+
+3. **From a Git clone** -- clone the repository, then double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux). This is the way to have the latest changes before they are released, or to contribute. Python 3.12 or newer must be on the PATH.
 
    The first run sets itself up: it creates a *virtual environment* -- a folder called `.venv` holding its own copy of Python and only the libraries pycangui needs, so nothing else on the machine is touched -- and downloads a couple of hundred megabytes into it. That takes a few minutes once; every later start is immediate, and deleting `.venv` undoes the whole thing. If `uv` is installed it is used instead of pip, which makes rebuilding that folder a matter of seconds.
 
@@ -63,16 +72,7 @@ There are three options, and which one you want depends on whether you have Pyth
 
    At the end of the first run it offers to add pycangui to the Start menu, or to the applications menu on Linux, and *Tools > Add to Start menu* does the same later. The entry starts the launcher, so a start from the menu after a pull still picks up new libraries.
 
-   The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does.
-
-3. **With pip** -- if you already have a Python environment and would rather pycangui went in it, install it from PyPI and ignore the launcher entirely:
-
-   ```
-   pip install pycangui
-   pycangui               # installs a command of that name
-   ```
-
-   or from a checkout, `pip install -e .` for the same thing reading the source. Nothing about pycangui needs the launcher: it is an ordinary Python package with an ordinary entry point, and this path leaves the choice of environment to you.
+   The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does. To run a checkout in an environment of your own instead, `pip install -e .` installs it there, reading the source.
 
 ## Supported systems
 
