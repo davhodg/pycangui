@@ -30,9 +30,6 @@ keywords = [
 # and setuptools refuses both.
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Environment :: MacOS X",
-    "Environment :: Win32 (MS Windows)",
-    "Environment :: X11 Applications :: Qt",
     "Intended Audience :: Developers",
     "Intended Audience :: Manufacturing",
     "Intended Audience :: Science/Research",
