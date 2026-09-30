@@ -11,6 +11,9 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- Custom panes: **Write all** writes every change held on the pane, and **Read all** reads
+  again, asking first before it throws unwritten changes away. Dropdowns, ticks and map cells
+  now hold a change until it is written, as typed boxes did.
 - UDS **functional requests**: a *Functional* choice in ECU config sends each ticked service --
   session, reset, clear DTCs, CommunicationControl, tester present, DTC setting, baud rate, a
   one-frame raw request -- to every ECU at once, and says which ECUs objected.

@@ -183,7 +183,9 @@ def test_a_dropdown_offers_what_the_file_named(app):
 
     widget.box.setCurrentIndex(2)
     widget.box.activated.emit(2)
-    assert written == [(0x2001, 0, 2)]
+    assert written == [] and widget.pending, "held, not written"
+    widget.write_pending()
+    assert written == [(0x2001, 0, 2)] and not widget.pending
 
 
 def test_a_value_nobody_named_is_admitted_rather_than_hidden(app):
@@ -213,6 +215,8 @@ def test_ticking_one_flag_keeps_the_rest_of_the_word(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="flags", bits={0: "Ready", 3: "Fault"}))
     widget.set_value(0x2001, 0, 0b1010_0001, None)
     widget.boxes[3].click()
+    assert written == [] and widget.pending, "held, not written"
+    widget.write_pending()
     assert written == [(0x2001, 0, 0b1010_1001)], "the bits nobody is showing are still there"
 
 
@@ -318,6 +322,8 @@ def test_editing_a_point_writes_that_sub_index(app):
     widget.set_value(0x2100, 2, 20, None)
 
     widget.table.item(1, 1).setText("25")
+    assert written == [] and widget.pending, "held, not written"
+    widget.write_pending()
     assert written == [(0x2100, 2, 25)], "row two is sub-index two"
 
 
@@ -343,6 +349,7 @@ def test_a_map_is_scaled_the_way_a_number_is(app):
     assert widget.table.item(0, 1).text() == "123.4"
 
     widget.table.item(0, 1).setText("50")
+    widget.write_pending()
     assert written == [(0x2100, 1, 500)]
 
 
@@ -574,3 +581,47 @@ def test_leaving_a_bits_box_does_not_write_it(app):
     assert widget.edit.text() == "2", "not replaced while it waits"
     press(widget.edit, Qt.Key_Escape)
     assert widget.edit.text() == "0", "bits 4..6 of 0x0F"
+
+
+# --- held until Write all, thrown away by Read all ------------------------------------------
+def test_a_held_tick_goes_on_top_of_the_newest_word(app):
+    """A read arriving while a tick is held moves the rest of the word on; the
+    write puts the tick on the newest value, not on the one it was made over."""
+    widget, written, _a, _s = made(Field(index=0x2001, kind="flags", bits={0: "Ready", 3: "Fault"}))
+    widget.set_value(0x2001, 0, 0b0000_0001, None)
+    widget.boxes[3].click()
+    widget.set_value(0x2001, 0, 0b0100_0001, None)  # polled meanwhile
+    assert widget.boxes[3].isChecked(), "the held tick stays on screen"
+    widget.write_pending()
+    assert written == [(0x2001, 0, 0b0100_1001)]
+
+
+def test_a_held_choice_survives_polling_and_can_be_thrown_away(app):
+    widget, written, _a, _s = made(Field(index=0x2001, kind="enum", choices={0: "Off", 1: "Run"}))
+    widget.set_value(0x2001, 0, 0, None)
+    widget.box.setCurrentIndex(1)
+    widget.box.activated.emit(1)
+    widget.set_value(0x2001, 0, 0, None)  # polled meanwhile
+    assert widget.box.currentData() == 1, "polling does not replace a held choice"
+    widget.discard()
+    assert widget.box.currentData() == 0 and not widget.pending and written == []
+
+
+def test_choosing_what_was_read_is_not_a_change(app):
+    widget, _w, _a, _s = made(Field(index=0x2001, kind="enum", choices={0: "Off", 1: "Run"}))
+    widget.set_value(0x2001, 0, 1, None)
+    widget.box.setCurrentIndex(1)
+    widget.box.activated.emit(1)
+    assert not widget.pending
+
+
+def test_a_held_map_point_is_kept_through_a_redraw_and_thrown_away_on_discard(app):
+    widget, written, _a, _s = made(Field(index=0x2100, kind="map"))
+    widget.refresh()
+    widget.set_value(0x2100, 0, 2, None)
+    widget.set_value(0x2100, 1, 10, None)
+    widget.table.item(0, 1).setText("15")
+    widget.set_value(0x2100, 1, 10, None)  # polled meanwhile
+    assert widget.table.item(0, 1).text() == "15"
+    widget.discard()
+    assert widget.table.item(0, 1).text() == "10" and written == []

@@ -47,7 +47,7 @@ on with that DCF.
 
 ## Polling
 
-*Read* reads the pane once. **Poll** reads it over and over, so the values
+*Read all* reads the pane once. **Poll** reads it over and over, so the values
 follow the controller -- which is the only way to watch an object that is not
 mapped to a PDO. The box beside it is how often, at most.
 
@@ -100,21 +100,36 @@ object, part of an object cannot be written, and a word made mostly of zeroes
 would clear every bit the pane is not showing. They are there to catch
 mistakes, not to replace knowing what a value will do.
 
+## Changing values: Read all and Write all
+
+A change is held on the pane until it is written, whatever sort of field it
+is in: typed into a box, chosen from a dropdown, ticked, or edited in a map.
+Held, it is tinted amber, and a value arriving from polling does not replace
+it.
+
+- **Write all** writes every change held on the pane, each checked against its
+  limits first. It says how many are waiting -- *Write all (3)* -- and is
+  greyed out when there are none.
+- **Read all** reads every object again, and throws away what has not been
+  written. If anything is held it asks first, so nothing typed is lost without
+  a question; *Cancel* keeps the changes.
+- Choosing another source, removing the pane, switching workspace or closing
+  pycangui with changes held offers to write them, throw them away, or cancel.
+
+A ticked bit is written on top of the newest value read, so a bit that changed
+in the rest of the word while yours was held is not put back.
+
 ## Typing a value
 
-A `number`, `hex` or `bits` box writes when you press **Enter** or
-**Ctrl+Enter**, and only then. Clicking somewhere else or tabbing away leaves
-what you typed in the box without sending it. Until it is written the box is
-tinted amber, and a value arriving from polling does not replace it. **Esc**
-puts back the value last read.
+A `number`, `hex` or `bits` box can also be written on its own with **Enter**
+or **Ctrl+Enter**. Clicking somewhere else or tabbing away leaves what you typed
+in the box, held like any other change. **Esc** puts back the value last read.
 
 In a `number` box, **Ctrl+Up** doubles the value and **Ctrl+Down** halves it,
 without writing, so a gain can be walked up or down a step at a time and sent
 with Enter. It works in the units shown. A value the object holds as a whole
 number halves towards zero. The limits are checked when it is written, the
 same as for anything typed. On macOS these are Cmd rather than Ctrl.
-
-Dropdowns, ticks and map cells still write as soon as they are changed.
 
 Custom panes are JSON in `workspaces\<name>\custom_panes\`, beside the hooks, and meant to
 be edited: named bits, map axes and anything else the dialog does not cover

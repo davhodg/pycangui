@@ -28,7 +28,7 @@ from typing import Any
 
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -60,10 +60,14 @@ from pycangui.custom_panes.model import Field, display_for
 REFUSED = QColor(200, 40, 40)
 UNREAD = QColor(140, 140, 140)
 
-#: A box holding a value that has been typed and not written. Translucent, so
-#: it reads on a light theme and a dark one alike.
+#: A value that has been changed and not written. Translucent, so it reads on
+#: a light theme and a dark one alike.
+PENDING_COLOUR = QColor(230, 150, 0, 70)
 PENDING = "QLineEdit { background-color: rgba(230, 150, 0, 70); }"
+PENDING_BOX = "QComboBox { background-color: rgba(230, 150, 0, 70); }"
+PENDING_TICK = "QCheckBox { background-color: rgba(230, 150, 0, 70); }"
 KEYS_HINT = "Enter writes what is typed; Esc puts back the value last read."
+STAGED_HINT = "A change is held, tinted, until Write all sends it or Read all discards it."
 STEP_HINT = "Ctrl+Up doubles it and Ctrl+Down halves it, without writing."
 
 #: An array's sub 0 is how many entries it has, which is where a map starts.
@@ -87,9 +91,13 @@ class FieldWidget(QWidget):
     write_requested = Signal(int, int, object)
     #: Something the user should be told: a refusal, mostly.
     message = Signal(str)
+    #: It started or stopped holding a change that has not been written.
+    pending_changed = Signal()
 
     #: Whether Ctrl+Up and Ctrl+Down double and halve what is typed.
     can_step = False
+    #: Whether it can be changed on screen at all: a value field cannot.
+    edits = True
 
     def __init__(self, item: Field, display: Display) -> None:
         super().__init__()
@@ -99,7 +107,7 @@ class FieldWidget(QWidget):
         self._raw: Any = None
         #: The box typed into, for the sorts that have one.
         self._typed: QLineEdit | None = None
-        #: Something is typed in it that has not been written.
+        #: It holds a change that has not been written: typed, chosen, ticked.
         self.pending = False
 
     # --- what the pane asks of it ---------------------------------------------------
@@ -116,6 +124,16 @@ class FieldWidget(QWidget):
     def set_writable(self, on: bool) -> None:
         self.writable = on
         self._apply_writable()
+
+    def write_pending(self) -> None:
+        """Send the change it holds, checked as Enter would check it. Nothing if none."""
+        if self.pending and self.writable:
+            self._write_staged()
+
+    def discard(self) -> None:
+        """Throw away the change it holds, and show the value last read."""
+        if self.pending:
+            self._put_back()
 
     # --- what each sort fills in --------------------------------------------------------
     def _show(self, raw: Any, error: Any) -> None:
@@ -138,6 +156,8 @@ class FieldWidget(QWidget):
             lines.append(KEYS_HINT)
             if self.can_step:
                 lines.append(STEP_HINT)
+        elif self.writable and self.edits:
+            lines.append(STAGED_HINT)
         return "\n".join(lines)
 
     def _refuse(self, why: str) -> None:
@@ -186,9 +206,19 @@ class FieldWidget(QWidget):
         self._set_pending(self._typed.text() != self._box_text(self._raw))
 
     def _set_pending(self, on: bool) -> None:
-        self.pending = on
+        was, self.pending = self.pending, on
         if self._typed is not None:
             self._typed.setStyleSheet(PENDING if on else "")
+        self._tint(on)
+        if was != on:
+            self.pending_changed.emit()
+
+    def _tint(self, on: bool) -> None:
+        """Mark the parts that hold the change, where they are not a typed box."""
+
+    def _write_staged(self) -> None:
+        """Write the change held. A typed box writes what is typed, as Enter does."""
+        self._on_entered()
 
     def _put_back(self) -> None:
         """The value last read, over whatever was typed."""
@@ -222,6 +252,8 @@ class FieldWidget(QWidget):
 
 class ValueWidget(FieldWidget):
     """Read only. What the object says, in the terms it is understood in."""
+
+    edits = False
 
     def __init__(self, item: Field, display: Display) -> None:
         super().__init__(item, display)
@@ -389,8 +421,8 @@ class EnumWidget(FieldWidget):
 
     def _show(self, raw: Any, error: Any) -> None:
         self.box.setToolTip(str(error) if error else self._tooltip())
-        if self.box.hasFocus():
-            return  # being chosen from; see the note in _EntryWidget
+        if self.box.hasFocus() or self.pending:
+            return  # being chosen from, or holding a choice; see _busy
         if error or raw is None:
             self.box.setCurrentIndex(-1)
             return
@@ -404,8 +436,22 @@ class EnumWidget(FieldWidget):
         self.box.setCurrentIndex(at)
 
     def _on_chosen(self, _at: int) -> None:
+        """Held, not written: a choice is a change like a typed one."""
         if self.writable and (data := self.box.currentData()) is not None:
-            self.write_requested.emit(self.field.index, self.field.sub, int(data))
+            self._set_pending(self._raw is None or int(data) != int(self._raw))
+
+    def _tint(self, on: bool) -> None:
+        self.box.setStyleSheet(PENDING_BOX if on else "")
+
+    def _write_staged(self) -> None:
+        if (data := self.box.currentData()) is None:
+            return
+        self._set_pending(False)
+        self.write_requested.emit(self.field.index, self.field.sub, int(data))
+
+    def _put_back(self) -> None:
+        self._set_pending(False)
+        self._show(self._raw, None)
 
 
 class FlagsWidget(FieldWidget):
@@ -415,6 +461,11 @@ class FlagsWidget(FieldWidget):
     def __init__(self, item: Field, display: Display) -> None:
         super().__init__(item, display)
         self.boxes: dict[int, QCheckBox] = {}
+        #: The bits ticked and unticked here and not written. Kept as changes
+        #: rather than a word, so a read arriving meanwhile moves the rest of
+        #: the word on and the write puts these on top of the newest value.
+        self._set_bits = 0
+        self._cleared_bits = 0
         grid = QGridLayout(self)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(12)
@@ -432,10 +483,12 @@ class FlagsWidget(FieldWidget):
     def _show(self, raw: Any, error: Any) -> None:
         known = not error and raw is not None
         for bit, box in self.boxes.items():
+            box.setToolTip(f"Bit {bit}" if known else str(error or "not read yet"))
+            if self.pending:
+                continue  # holding ticks not written; see _busy
             box.blockSignals(True)
             box.setChecked(bool(known and int(raw) >> bit & 1))
             box.blockSignals(False)
-            box.setToolTip(f"Bit {bit}" if known else str(error or "not read yet"))
         self.setToolTip(self._tooltip())
 
     def _on_toggled(self, bit: int, checked: bool) -> None:
@@ -448,8 +501,33 @@ class FlagsWidget(FieldWidget):
             self.boxes[bit].setChecked(not checked)
             self.read_requested.emit(self.field.index, self.field.sub)
             return
-        word = int(self._raw) | (1 << bit) if checked else int(self._raw) & ~(1 << bit)
+        mask = 1 << bit
+        if checked:
+            self._set_bits, self._cleared_bits = self._set_bits | mask, self._cleared_bits & ~mask
+        else:
+            self._set_bits, self._cleared_bits = self._set_bits & ~mask, self._cleared_bits | mask
+        self._set_pending(self._word() != int(self._raw))
+
+    def _word(self) -> int:
+        """The newest value read, with the ticks held here on top of it."""
+        return (int(self._raw) | self._set_bits) & ~self._cleared_bits
+
+    def _tint(self, on: bool) -> None:
+        for box in self.boxes.values():
+            box.setStyleSheet(PENDING_TICK if on else "")
+
+    def _write_staged(self) -> None:
+        if self._raw is None:
+            return
+        word = self._word()
+        self._set_bits = self._cleared_bits = 0
+        self._set_pending(False)
         self.write_requested.emit(self.field.index, self.field.sub, word)
+
+    def _put_back(self) -> None:
+        self._set_bits = self._cleared_bits = 0
+        self._set_pending(False)
+        self._show(self._raw, None)
 
 
 class BitsWidget(FieldWidget):
@@ -470,7 +548,7 @@ class BitsWidget(FieldWidget):
             self.box = QComboBox()
             for raw, name in sorted(self.display.choices.items()):
                 self.box.addItem(f"{name} ({raw})", raw)
-            self.box.activated.connect(lambda _at: self._send(self.box.currentData()))
+            self.box.activated.connect(self._on_chosen)
             layout.addWidget(self.box)
         else:
             self.edit = QLineEdit()
@@ -491,8 +569,8 @@ class BitsWidget(FieldWidget):
 
     def _show(self, raw: Any, error: Any) -> None:
         self.setToolTip(str(error) if error else self._tooltip())
-        if (self.box is not None and self.box.hasFocus()) or self._busy():
-            return  # being edited; see _busy
+        if (self.box is not None and self.box.hasFocus()) or self._busy() or self.pending:
+            return  # being edited, or holding a change; see _busy
         known = not error and raw is not None
         part = self.field.extract(int(raw)) if known else None
         if self.box is not None:
@@ -506,6 +584,30 @@ class BitsWidget(FieldWidget):
 
     def _box_text(self, raw: Any) -> str:
         return "" if raw is None else str(self.field.extract(int(raw)))
+
+    def _on_chosen(self, _at: int) -> None:
+        """Held, not written, as a dropdown of a whole object is."""
+        if not self.writable or (value := self.box.currentData()) is None:
+            return
+        read = None if self._raw is None else self.field.extract(int(self._raw))
+        self._set_pending(value != read)
+
+    def _tint(self, on: bool) -> None:
+        if self.box is not None:
+            self.box.setStyleSheet(PENDING_BOX if on else "")
+
+    def _write_staged(self) -> None:
+        if self.box is not None:
+            self._send(self.box.currentData())
+        else:
+            self._on_entered()
+
+    def _put_back(self) -> None:
+        if self.box is None:
+            super()._put_back()
+            return
+        self._set_pending(False)
+        self._show(self._raw, None)
 
     def _on_entered(self) -> None:
         if not self.writable:
@@ -559,6 +661,9 @@ class MapWidget(FieldWidget):
         self._points = 0
         self._y: dict[int, float] = {}
         self._x: dict[int, float] = {}
+        #: Points edited and not written, (index, sub) -> raw: the Y array's,
+        #: and the X array's where the pane names one.
+        self._staged: dict[tuple[int, int], Any] = {}
 
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(
@@ -643,13 +748,19 @@ class MapWidget(FieldWidget):
             row = point - 1
             if row >= self.table.rowCount():
                 continue
-            if point in self._y:
+            if (self.field.index, point) in self._staged:
+                pass  # holding an edit; see _busy
+            elif point in self._y:
                 self.table.item(row, 1).setText(
                     format_number(self.display.physical(self._y[point]), self.display.decimals)
                     if self.display.scaled
                     else format_number(self._y[point], self.display.decimals)
                 )
-            if self.field.x_index is not None and point in self._x:
+            if (
+                self.field.x_index is not None
+                and point in self._x
+                and (self.field.x_index, point) not in self._staged
+            ):
                 self.table.item(row, 0).setText(format_number(self._x[point], None))
         self._updating = False
         xs = [self._x.get(p, float(p)) for p in sorted(self._y)]
@@ -676,14 +787,43 @@ class MapWidget(FieldWidget):
             self._redraw()
             return
         if item.column() == 0 and self.field.x_index is not None:
-            self.write_requested.emit(self.field.x_index, point, _wire(value))
+            self._hold(item, (self.field.x_index, point), _wire(value))
             return
         raw = self.display.raw(value) if self.display.scaled else value
         if why := out_of_range(self.display, raw):
             self._refuse(f"point {point}: {typed} is {why}")
             self._redraw()
             return
-        self.write_requested.emit(self.field.index, point, _wire(raw))
+        self._hold(item, (self.field.index, point), _wire(raw))
+
+    def _hold(self, item: QTableWidgetItem, where: tuple[int, int], raw: Any) -> None:
+        """Keep an edited point, tinted, until Write all or Read all."""
+        self._staged[where] = raw
+        self._updating = True
+        item.setBackground(PENDING_COLOUR)
+        self._updating = False
+        self._set_pending(True)
+
+    def _write_staged(self) -> None:
+        staged, self._staged = self._staged, {}
+        self._untint()
+        self._set_pending(False)
+        for (index, sub), raw in staged.items():
+            self.write_requested.emit(index, sub, raw)
+
+    def _put_back(self) -> None:
+        self._staged.clear()
+        self._untint()
+        self._set_pending(False)
+        self._redraw()
+
+    def _untint(self) -> None:
+        self._updating = True
+        for row in range(self.table.rowCount()):
+            for column in (0, 1):
+                if (cell := self.table.item(row, column)) is not None:
+                    cell.setBackground(QBrush())
+        self._updating = False
 
 
 def _wire(value: float) -> Any:

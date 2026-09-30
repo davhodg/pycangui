@@ -6,7 +6,14 @@ The pane is thin on purpose. It builds a widget per field, points every one
 of them at whatever source the pane is bound to, and gets out of the way --
 the refusing, the scaling and the read-modify-write all belong to the widgets,
 and where the values come from belongs to the source. What is left here is
-the layout, the source selector, and Read.
+the layout, the source selector, Read all and Write all.
+
+**Changes are held until Write all.** Typed, chosen from a dropdown, ticked
+or edited in a map, a change is tinted and stays on screen -- safe from
+polling -- until Write all sends every one of them, or Read all throws them
+away and reads again. Enter still writes a typed box on its own. Nothing
+held is lost without a question: Read all, choosing another source and
+closing all ask first.
 
 Which source is the one thing on screen that a pane does not carry in its
 file. A custom pane is a statement about a *product*, and which controller you are
@@ -57,7 +64,15 @@ MAX_WAITING = 8
 #: Offered in the source selector, above whatever nodes are on the bus.
 FILE_ENTRY = "Open a DCF or EDS..."
 
-READ_TIP = "Read every object on this pane again."
+READ_TIP = (
+    "Read every object on this pane again. Changes not yet written are\n"
+    "thrown away -- after asking, if there are any."
+)
+WRITE_TIP = (
+    "Write every change on this pane that has not been written: the tinted\n"
+    "values, typed, chosen, ticked or edited in a map. Each is checked\n"
+    "against its limits first, as Enter checks one."
+)
 EDIT_TIP = (
     "Add objects to this pane, and change their labels, their order and\n"
     "how each one is shown. Objects can also be picked in the CANopen\n"
@@ -128,9 +143,12 @@ class CustomPaneView(QWidget):
         self.sources.setToolTip(SOURCE_TIP)
         self.sources.activated.connect(self._on_source_chosen)
 
-        read_all = QPushButton("Read")
+        read_all = QPushButton("Read all")
         read_all.setToolTip(READ_TIP)
-        read_all.clicked.connect(self.refresh)
+        read_all.clicked.connect(self.read_all)
+        self.write_all_button = QPushButton("Write all")
+        self.write_all_button.setToolTip(WRITE_TIP)
+        self.write_all_button.clicked.connect(self.write_all)
         edit = QPushButton("Edit...")
         edit.setToolTip(EDIT_TIP)
         edit.clicked.connect(self._edit)
@@ -158,6 +176,7 @@ class CustomPaneView(QWidget):
         bar.addWidget(QLabel("Values from:"))
         bar.addWidget(self.sources, 1)
         bar.addWidget(read_all)
+        bar.addWidget(self.write_all_button)
         bar.addWidget(self.poll)
         bar.addWidget(self.poll_hz)
         bar.addWidget(self.poll_rate)
@@ -222,15 +241,61 @@ class CustomPaneView(QWidget):
             widget.read_requested.connect(self._on_read_requested)
             widget.write_requested.connect(self._on_write_requested)
             widget.message.connect(self.ctx.warn)
+            widget.pending_changed.connect(self._show_unsent)
             self.form.addRow(QLabel(widget.label_text() + ":"), widget)
             self._widgets.append(widget)
         self._apply_writable()
+        self._show_unsent()
         self.poller.set_objects(f.where for f in self.pane.fields)
         self._fill_sources()
 
     def refresh(self) -> None:
         for widget in self._widgets:
             widget.refresh()
+
+    # --- read all, write all -------------------------------------------------------------
+    @property
+    def unsent(self) -> int:
+        """How many fields hold a change that has not been written."""
+        return sum(1 for widget in self._widgets if widget.pending)
+
+    def _show_unsent(self) -> None:
+        count = self.unsent
+        self.write_all_button.setText(f"Write all ({count})" if count else "Write all")
+        self.write_all_button.setEnabled(bool(count))
+
+    def read_all(self) -> bool:
+        """Read every object again, throwing away what has not been written.
+
+        Asks first when there is anything to throw away. False if it was not
+        read -- somebody kept the changes.
+        """
+        if count := self.unsent:
+            answer = messages.question(
+                self,
+                "Throw away the changes not written?",
+                f"{count} value(s) on {self.pane.title or self.name} have been changed and "
+                "not written. Reading again throws them away.",
+                messages.Button.Discard | messages.Button.Cancel,
+                messages.Button.Cancel,
+            )
+            if answer != messages.Button.Discard:
+                return False
+            self.discard_all()
+        self.refresh()
+        return True
+
+    def write_all(self) -> None:
+        """Write every change held on this pane, each checked as Enter checks it."""
+        if self.source is None:
+            self.ctx.warn(f"{self.pane.title or self.name}: no node or file selected")
+            return
+        for widget in self._widgets:
+            widget.write_pending()
+
+    def discard_all(self) -> None:
+        for widget in self._widgets:
+            widget.discard()
 
     # --- where the values come from ----------------------------------------------------
     def _on_node_seen(self, _node_id: int, _state: str) -> None:
@@ -364,10 +429,27 @@ class CustomPaneView(QWidget):
         return True
 
     def may_discard(self) -> bool:
-        """Whether the file's edits can go: saved, thrown away, or none to lose.
+        """Whether the pane's changes can go: written or saved, thrown away, or none.
 
-        False is Cancel -- whatever was about to replace them should not.
+        Two sorts: values changed on the form and not written, and values
+        written into a file and not saved. False is Cancel -- whatever was
+        about to replace them should not.
         """
+        if count := self.unsent:
+            answer = messages.question(
+                self,
+                "Write the changes?",
+                f"{count} value(s) on {self.pane.title or self.name} have been changed and "
+                "not written. Discard throws them away.",
+                messages.Button.Save | messages.Button.Discard | messages.Button.Cancel,
+                messages.Button.Save,
+            )
+            if answer == messages.Button.Cancel:
+                return False
+            if answer == messages.Button.Save:
+                self.write_all()
+            else:
+                self.discard_all()
         if not self.unsaved:
             return True
         answer = messages.question(

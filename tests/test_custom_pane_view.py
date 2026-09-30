@@ -711,3 +711,78 @@ def press_enter(edit):
     from PySide6.QtWidgets import QApplication
 
     QApplication.sendEvent(edit, QKeyEvent(QEvent.KeyPress, Qt.Key_Return, Qt.NoModifier))
+
+
+# --- Read all and Write all ----------------------------------------------------------------
+def held_pane(app, window):
+    """A pane bound to a fake source, with a number typed and a choice made, neither sent."""
+    model.save(
+        "battery",
+        CustomPane(
+            title="Battery limits",
+            node=5,
+            fields=[
+                Field(index=0x2001, kind="number", label="Motor current"),
+                Field(index=0x2002, kind="enum", label="Mode", choices={0: "Off", 1: "Run"}),
+            ],
+        ),
+    )
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
+    source = _Fake([])
+    view.bind(source)
+    source.value.emit(0x2001, 0, 10, None)
+    source.value.emit(0x2002, 0, 0, None)
+    settle(app)
+    number, mode = view._widgets
+    number.edit.setText("42")
+    number.edit.textEdited.emit("42")
+    mode.box.setCurrentIndex(mode.box.findData(1))
+    mode.box.activated.emit(mode.box.currentIndex())
+    return view, source
+
+
+def test_write_all_sends_every_held_change(app, window):
+    view, source = held_pane(app, window)
+    assert view.unsent == 2 and source.written == [], "held, not sent"
+    assert view.write_all_button.isEnabled()
+    view.write_all()
+    assert sorted(source.written) == [(0x2001, 0, 42), (0x2002, 0, 1)]
+    assert view.unsent == 0 and not view.write_all_button.isEnabled()
+
+
+def test_read_all_asks_before_it_throws_changes_away(app, window, monkeypatch):
+    view, source = held_pane(app, window)
+    asked = []
+
+    def answer(button):
+        monkeypatch.setattr(messages, "question", lambda *a, **k: (asked.append(1), button)[1])
+
+    answer(messages.Button.Cancel)
+    source.asked.clear()
+    assert not view.read_all()
+    assert view.unsent == 2 and source.asked == [], "kept, and not read"
+
+    answer(messages.Button.Discard)
+    assert view.read_all()
+    assert view.unsent == 0 and source.written == [], "thrown away, never sent"
+    assert (0x2001, 0) in source.asked, "and read again"
+    assert len(asked) == 2
+
+
+def test_read_all_with_nothing_held_just_reads(app, window, monkeypatch):
+    model.save("battery", sample())
+    window.open_custom_pane("battery")
+    view = window._custom_pane_view("battery")
+    asked = []
+    view.bind(_Fake(asked))
+    monkeypatch.setattr(messages, "question", lambda *a, **k: pytest.fail("nothing to lose"))
+    asked.clear()
+    assert view.read_all() and asked
+
+
+def test_leaving_with_changes_held_offers_to_write_them(app, window, monkeypatch):
+    view, source = held_pane(app, window)
+    monkeypatch.setattr(messages, "question", lambda *a, **k: messages.Button.Save)
+    assert view.may_discard()
+    assert len(source.written) == 2, "written rather than lost"
