@@ -1,0 +1,183 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
+"""A DCF or EDS as a row of the CANopen node list: its dictionary in the tree,
+read and changed with no node and no bus, and saved as a DCF."""
+
+from pathlib import Path
+
+import pytest
+from PySide6.QtCore import Qt
+
+from pycangui.canopen.manager import CanopenManager
+from pycangui.core.bus import BusManager
+from pycangui.core.context import Context
+from pycangui.core.hooks import Hooks
+from pycangui.ui import folders, messages
+from pycangui.ui.canopen_view import COL_VALUE, EDITED_COLOUR, ROLE_FILE, CanopenView
+
+EDS = """[FileInfo]
+FileName=drive.eds
+EDSVersion=4.0
+[DeviceInfo]
+VendorNumber=0x42
+ProductNumber=0x1234
+[MandatoryObjects]
+SupportedObjects=1
+1=0x1000
+[1000]
+ParameterName=Device type
+ObjectType=0x7
+DataType=0x0007
+AccessType=ro
+DefaultValue=0x00020192
+[ManufacturerObjects]
+SupportedObjects=2
+1=0x2001
+2=0x2002
+[2001]
+ParameterName=Current limit
+ObjectType=0x7
+DataType=0x0003
+AccessType=rw
+DefaultValue=250
+LowLimit=0
+HighLimit=1000
+[2002]
+ParameterName=Drive name
+ObjectType=0x7
+DataType=0x0009
+AccessType=rw
+DefaultValue=left
+"""
+
+
+@pytest.fixture
+def eds(tmp_path):
+    path = tmp_path / "drive.eds"
+    path.write_text(EDS, encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def ctx(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path / "home"))
+    return Context(log=print)
+
+
+@pytest.fixture
+def view(ctx):
+    bus = BusManager()
+    manager = CanopenManager(bus)
+    widget = CanopenView(manager, Hooks(ctx), ctx)
+    yield widget
+    manager.shutdown()
+
+
+def value_of(view, index, sub=0):
+    return view._od_item(index, sub).text(COL_VALUE)
+
+
+def edit(view, index, text, sub=0):
+    view._od_item(index, sub).setText(COL_VALUE, text)
+
+
+def test_a_file_is_a_row_whose_dictionary_is_in_the_tree(view, eds):
+    source = view.open_file(eds)
+    row = view.nodes.currentItem()
+    assert row.data(0, ROLE_FILE), "selected, as a file"
+    assert view.selected_node() is None, "and not a node: nothing goes on the bus for it"
+    assert source.current(0x2001, 0) == (250, None), "the file's value, with no node and no bus"
+    assert value_of(view, 0x2001) and value_of(view, 0x2002), "shown in the tree"
+
+
+def test_a_value_changed_in_the_tree_changes_the_file_in_memory(app, view, eds):
+    source = view.open_file(eds)
+    edit(view, 0x2001, "400")
+    app.processEvents()
+    assert source.edited == {(0x2001, 0): 400}
+    assert source.unsaved and eds.read_text(encoding="utf-8") == EDS, "not on disk yet"
+    assert view._od_item(0x2001, 0).background(COL_VALUE).color() == EDITED_COLOUR
+    assert view.save_file_btn.isVisible() or view.save_file_btn.isEnabled()
+
+
+def test_a_value_the_file_will_not_take_is_refused_and_put_back(app, view, eds):
+    source = view.open_file(eds)
+    shown = value_of(view, 0x2001)
+    edit(view, 0x2001, "5000")  # above HighLimit
+    app.processEvents()
+    assert source.edited == {} and value_of(view, 0x2001) == shown, "refused, and put back"
+    edit(view, 0x2001, "twelve")
+    app.processEvents()
+    assert source.edited == {}
+
+
+def test_text_goes_in_as_text(app, view, eds):
+    source = view.open_file(eds)
+    edit(view, 0x2002, "right")
+    app.processEvents()
+    assert source.edited == {(0x2002, 0): "right"}
+
+
+def test_an_eds_is_saved_as_a_new_dcf_and_the_row_follows(app, view, eds, tmp_path, monkeypatch):
+    source = view.open_file(eds)
+    edit(view, 0x2001, "400")
+    app.processEvents()
+    target = tmp_path / "drive.dcf"
+    monkeypatch.setattr(folders, "save_file", lambda *a, **k: str(target))
+    assert view.save_file(source), "an EDS keeps its defaults: saved under a new name"
+    assert target.is_file() and "ParameterValue=400" in target.read_text(encoding="utf-8")
+    assert not source.unsaved and source.path == target
+    assert view.nodes.currentItem().data(0, ROLE_FILE) == str(target.resolve())
+
+
+def test_disconnecting_the_bus_keeps_the_files(view, eds):
+    view.open_file(eds)
+    view.clear()
+    assert view.nodes.topLevelItemCount() == 1 and view.selected_file() is not None
+
+
+def test_closing_an_edited_file_asks_and_cancel_keeps_it(app, view, eds, monkeypatch):
+    source = view.open_file(eds)
+    edit(view, 0x2001, "400")
+    app.processEvents()
+    monkeypatch.setattr(messages, "question", lambda *a, **k: messages.Button.Cancel)
+    assert not view.close_file(source) and view.selected_file() is source
+    assert not view.may_discard(), "and quitting asks the same"
+    monkeypatch.setattr(messages, "question", lambda *a, **k: messages.Button.Discard)
+    assert view.close_file(source) and view.nodes.topLevelItemCount() == 0
+
+
+def test_open_files_come_back_with_the_workspace(ctx, eds):
+    first = CanopenView(CanopenManager(BusManager()), Hooks(ctx), ctx)
+    first.open_file(eds)
+    again = CanopenView(CanopenManager(BusManager()), Hooks(ctx), ctx)
+    rows = [again.nodes.topLevelItem(i) for i in range(again.nodes.topLevelItemCount())]
+    assert [Path(r.data(0, ROLE_FILE)).name for r in rows] == ["drive.eds"]
+
+
+def test_a_file_row_offers_what_a_file_can_do(view, eds):
+    source = view.open_file(eds)
+    actions = [a.text() for a in view.file_menu(source).actions() if a.text()]
+    assert actions == ["Save", "Save as...", "Close file"]
+    assert all(not b.isEnabled() for b in view._node_buttons), "nothing to ask of a file"
+
+
+def test_something_that_is_not_a_dictionary_is_said_rather_than_listed(view, tmp_path):
+    junk = tmp_path / "notes.eds"
+    junk.write_text("hello", encoding="utf-8")
+    assert view.open_file(junk) is None and view.nodes.topLevelItemCount() == 0
+
+
+@pytest.mark.parametrize("typed", ["", " "])
+def test_nothing_typed_is_not_a_value(app, view, eds, typed):
+    source = view.open_file(eds)
+    edit(view, 0x2001, typed)
+    app.processEvents()
+    assert source.edited == {}
+
+
+def test_the_watch_column_is_not_offered_for_a_file(view, eds):
+    view.open_file(eds)
+    from pycangui.ui.canopen_view import COL_WATCH
+
+    assert view._od_item(0x2001, 0).data(COL_WATCH, Qt.CheckStateRole) is None

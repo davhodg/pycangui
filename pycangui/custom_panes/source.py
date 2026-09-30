@@ -194,20 +194,35 @@ class FileSource(Source):
             )
         return with_overrides(base, overrides if isinstance(overrides, dict) else None)
 
-    def request(self, index: int, sub: int) -> None:
+    def extras(self, index: int, sub: int) -> dict[str, str]:
+        """What the file says about this object that the ``canopen`` package dropped."""
+        return dict(self._extras.get((index, sub), {}))
+
+    @property
+    def object_dictionary(self):
+        """The file's dictionary, for a tree of all of it; None if it would not read."""
+        return self._od
+
+    def current(self, index: int, sub: int) -> tuple[Any, str | None]:
+        """(value, error) as it stands now: edited, the file's, or its default.
+
+        Answered at once, for a view filling fifteen hundred rows; ``request``
+        is the same answer the way every source gives one.
+        """
         if (index, sub) in self._values:
-            self._answer(index, sub, self._values[(index, sub)], None)
-            return
+            return self._values[(index, sub)], None
         var = self._variable(index, sub)
         if var is None:
-            self._answer(index, sub, None, "not in this file")
-            return
+            return None, "not in this file"
         # A DCF's ParameterValue where it has one, the EDS default otherwise.
         # ``canopen`` puts both on the variable, the value winning.
         raw = getattr(var, "value", None)
         if raw is None:
             raw = getattr(var, "default", None)
-        self._answer(index, sub, raw, None if raw is not None else "no value in this file")
+        return raw, None if raw is not None else "no value in this file"
+
+    def request(self, index: int, sub: int) -> None:
+        self._answer(index, sub, *self.current(index, sub))
 
     def write(self, index: int, sub: int, raw: Any) -> None:
         if self._variable(index, sub) is None:
@@ -235,6 +250,11 @@ class FileSource(Source):
     def unsaved(self) -> bool:
         """Whether there are edits the file on disk does not have."""
         return self._values != self._saved
+
+    def unsaved_at(self, index: int, sub: int) -> bool:
+        """Whether this one object holds an edit the file on disk does not have."""
+        key = (index, sub)
+        return key in self._values and self._saved.get(key, object()) != self._values[key]
 
     @property
     def needs_new_name(self) -> bool:

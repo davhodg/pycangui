@@ -57,6 +57,7 @@ from pycangui.core.events import ERROR, GOOD
 from pycangui.core.hooks import Hooks
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
+from pycangui.custom_panes.source import FileSource
 from pycangui.ui import canopen_login, canopen_settings, folders, keep_file, messages
 from pycangui.ui.canopen_log_view import CanopenLogView
 from pycangui.ui.faults_view import FaultsView
@@ -67,6 +68,18 @@ ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
 #: The text a row is filtered on, built once when the tree is filled.
 ROLE_SEARCH = Qt.UserRole + 2
+#: On a node-list row that is a DCF or EDS rather than a node: its path.
+ROLE_FILE = Qt.UserRole + 3
+#: The files open in the list, reopened with the workspace.
+FILES_KEY = "canopen.files"
+#: A value changed in a file and not saved yet. Translucent, as elsewhere.
+EDITED_COLOUR = QColor(230, 150, 0, 70)
+OPEN_FILE_TIP = (
+    "Open a DCF or EDS as a row of the list, with no node and no bus needed:\n"
+    "its object dictionary in the tree below, with the file's values -- or the\n"
+    "EDS defaults where it has none -- to read and change. Changes stay in\n"
+    "memory, tinted, until Save writes a DCF through the file's own text."
+)
 
 # --- columns of the object dictionary tree ---
 COL_NAME = 1
@@ -161,6 +174,9 @@ class CanopenView(QWidget):
         #: selection: the rows belong to whoever they were filled for, and
         #: a tick has to be recorded against that device and no other.
         self._od_node: int | None = None
+        #: The files open in the node list, by path, and the one the tree holds.
+        self._files: dict[str, FileSource] = {}
+        self._od_file: FileSource | None = None
         self._updating = False  # guard against itemChanged during programmatic edits
         self._pdo_items: dict[tuple[str, str], QTreeWidgetItem] = {}
         #: Nodes whose heartbeat has stopped arriving. Still in the list,
@@ -231,6 +247,10 @@ class CanopenView(QWidget):
         # it acts on the list rather than on a row of it.
         nmt_bar = QHBoxLayout()
         nmt_bar.addWidget(add_node)
+        open_file = QPushButton("Open DCF/EDS...")
+        open_file.setToolTip(OPEN_FILE_TIP)
+        open_file.clicked.connect(self._open_file_dialog)
+        nmt_bar.addWidget(open_file)
         nmt_bar.addSpacing(16)
         nmt_bar.addWidget(QLabel("NMT command:"))
         self.nmt_command = QComboBox()
@@ -296,6 +316,24 @@ class CanopenView(QWidget):
         for b in (self.read_pdos_btn, store_btn, restore_btn, save_dcf, apply_dcf):
             file_bar.addWidget(b)
             self._node_buttons.append(b)
+        # In place of the node's buttons when the row is a file: what can be
+        # done to a file is save it or put it away.
+        self.save_file_btn = QPushButton("Save")
+        self.save_file_btn.setToolTip(
+            "Write the changed values into the file, as a DCF, through its own\n"
+            "text so its comments are kept. An EDS is saved under a new name."
+        )
+        self.save_file_btn.clicked.connect(lambda: self.save_file(self.selected_file()))
+        self.save_file_as_btn = QPushButton("Save as...")
+        self.save_file_as_btn.setToolTip("Write the values to a new DCF, and go on with that one.")
+        self.save_file_as_btn.clicked.connect(lambda: self.save_file_as(self.selected_file()))
+        self.close_file_btn = QPushButton("Close file")
+        self.close_file_btn.setToolTip("Take the file out of the list; asks first if edited.")
+        self.close_file_btn.clicked.connect(lambda: self.close_file(self.selected_file()))
+        self._file_buttons = [self.save_file_btn, self.save_file_as_btn, self.close_file_btn]
+        for b in self._file_buttons:
+            file_bar.addWidget(b)
+            b.hide()
         file_bar.addStretch()
         self._offer_node_buttons()
 
@@ -467,6 +505,7 @@ class CanopenView(QWidget):
         manager.emcy.connect(self.on_emcy)
         manager.message.connect(ctx.log)
         manager._bus.disconnected.connect(self.clear)
+        self.reopen_files()
 
     # --- node list -------------------------------------------------------------
     def _node_item(self, node_id: int) -> QTreeWidgetItem | None:
@@ -480,6 +519,182 @@ class CanopenView(QWidget):
         item = self.nodes.currentItem()
         return None if item is None else item.data(0, ROLE_INDEX)
 
+    def selected_file(self) -> FileSource | None:
+        """The DCF or EDS on the selected row, if the row is a file rather than a node."""
+        item = self.nodes.currentItem()
+        path = None if item is None else item.data(0, ROLE_FILE)
+        return self._files.get(path) if path else None
+
+    # --- a DCF or EDS as a row of the list ----------------------------------------------
+    def _open_file_dialog(self) -> None:
+        path = folders.open_file(
+            self,
+            self.ctx,
+            folders.EDS,
+            "Open a device configuration",
+            "Device configuration (*.dcf *.eds);;All files (*)",
+            self.ctx.eds_dir,
+        )
+        if path:
+            self.open_file(path)
+
+    def open_file(self, path: str | Path, select: bool = True) -> FileSource | None:
+        """Put a DCF or EDS in the list and, by default, show it in the tree."""
+        key = str(Path(path).resolve())
+        if key not in self._files:
+            if not Path(key).is_file():
+                self.ctx.warn(f"Configuration file not found: {path}")
+                return None
+            source = FileSource(key, hooks=self.hooks)
+            if source.object_dictionary is None:
+                self.ctx.warn(f"{Path(key).name}: not a DCF or EDS pycangui can read")
+                return None
+            self._files[key] = source
+            item = QTreeWidgetItem(["File", source.label, "", Path(key).name])
+            item.setData(0, ROLE_FILE, key)
+            item.setToolTip(3, key)
+            self.nodes.addTopLevelItem(item)
+            source.modified.connect(lambda _on, s=source: self._show_file_state(s))
+            source.value.connect(
+                lambda index, sub, raw, error, s=source: self._on_file_value(
+                    s, index, sub, raw, error
+                )
+            )
+            self._show_file_state(source)
+            self._remember_files()
+        if select:
+            self.nodes.setCurrentItem(self._file_item(self._files[key]))
+        return self._files[key]
+
+    def _file_item(self, source: FileSource) -> QTreeWidgetItem | None:
+        for i in range(self.nodes.topLevelItemCount()):
+            item = self.nodes.topLevelItem(i)
+            if item.data(0, ROLE_FILE) and self._files.get(item.data(0, ROLE_FILE)) is source:
+                return item
+        return None
+
+    def _show_file_state(self, source: FileSource) -> None:
+        if (item := self._file_item(source)) is not None:
+            item.setText(1, source.label)
+            item.setText(2, "edited" if source.unsaved else "offline")
+        if source is self.selected_file():
+            self.save_file_btn.setEnabled(source.unsaved)
+
+    def _remember_files(self) -> None:
+        self.ctx.settings.set(FILES_KEY, [str(s.path) for s in self._files.values()])
+
+    def reopen_files(self) -> None:
+        """The files open when the workspace was last closed, those still there."""
+        for path in self.ctx.settings.get(FILES_KEY, []) or []:
+            if Path(path).is_file():
+                self.open_file(path, select=False)
+
+    def save_file(self, source: FileSource | None) -> bool:
+        """Write the file's changes. False if they were not written."""
+        if source is None:
+            return True
+        if source.needs_new_name:
+            return self.save_file_as(source)
+        return self._save_file_to(source, None)
+
+    def save_file_as(self, source: FileSource | None) -> bool:
+        if source is None:
+            return True
+        path = folders.save_file(
+            self,
+            self.ctx,
+            folders.EDS,
+            "Save configuration as",
+            "Device configuration (*.dcf);;All files (*)",
+            self.ctx.eds_dir,
+            suggested=source.path.stem + ".dcf",
+        )
+        return bool(path) and self._save_file_to(source, path)
+
+    def _save_file_to(self, source: FileSource, path: str | None) -> bool:
+        old = next((k for k, s in self._files.items() if s is source), None)
+        item = self._file_item(source)  # found by its old path, so before it changes
+        try:
+            written = source.save(path)
+        except OSError as exc:
+            messages.warning(self, "The configuration was not saved", str(exc))
+            return False
+        new = str(Path(written).resolve())
+        if old is not None and new != old:
+            # Saved as another file, the row is that file now.
+            self._files[new] = self._files.pop(old)
+            if item is not None:
+                item.setData(0, ROLE_FILE, new)
+                item.setText(3, Path(new).name)
+                item.setToolTip(3, new)
+            self._remember_files()
+        self._show_file_state(source)
+        if source is self._od_file:
+            self._populate_od(None, source)
+        self.ctx.log(f"Saved {written}")
+        return True
+
+    def _may_drop(self, source: FileSource) -> bool:
+        """Whether a file's changes can go: saved, thrown away, or none. False is Cancel."""
+        if not source.unsaved:
+            return True
+        answer = messages.question(
+            self,
+            f"Save the changes to {source.label}?",
+            f"Values changed in {source.label} have not been saved. Discard throws them away.",
+            messages.Button.Save | messages.Button.Discard | messages.Button.Cancel,
+            messages.Button.Save,
+        )
+        if answer == messages.Button.Save:
+            return self.save_file(source)
+        return answer == messages.Button.Discard
+
+    def close_file(self, source: FileSource | None) -> bool:
+        if source is None or not self._may_drop(source):
+            return False
+        item = self._file_item(source)
+        self._files = {k: s for k, s in self._files.items() if s is not source}
+        if item is not None:
+            self.nodes.takeTopLevelItem(self.nodes.indexOfTopLevelItem(item))
+        if self._od_file is source:
+            self._od_file = None
+            self.od.clear()
+        self._remember_files()
+        return True
+
+    def may_discard(self) -> bool:
+        """Whether every open file's changes can go, asking about each. False is Cancel."""
+        return all(self._may_drop(source) for source in list(self._files.values()))
+
+    def _on_file_value(self, source: FileSource, index: int, sub: int, raw, error) -> None:
+        if source is not self._od_file:
+            return
+        if (item := self._od_item(index, sub)) is not None:
+            self._show_file_value(item, source, index, sub, raw, error)
+
+    def _show_file_value(self, item, source: FileSource, index: int, sub: int, raw, error) -> None:
+        was, self._updating = self._updating, True
+        display = source.display(index, sub)
+        item.setText(COL_VALUE, str(error) if error else value_text(display, raw))
+        edited = source.unsaved_at(index, sub)
+        for column in range(COL_VALUE + 1):
+            item.setBackground(column, EDITED_COLOUR if edited else QBrush())
+        tip = self._describe(display, source.extras(index, sub), index, sub, None if error else raw)
+        item.setToolTip(COL_VALUE, tip)
+        item.setToolTip(COL_NAME, tip)
+        self._updating = was
+
+    def _file_write(self, source: FileSource, item, text: str) -> None:
+        """A value typed into the tree, into the file: checked, then held in memory."""
+        index, sub = item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0
+        var = source._variable(index, sub)
+        raw, why = _typed_value(var, source.display(index, sub), text)
+        if why:
+            self.ctx.warn(f"{source.label}: {index:04X}:{sub:02X} not changed, {why}")
+            self._show_file_value(item, source, index, sub, *source.current(index, sub))
+            return
+        source.write(index, sub, raw)
+
     # --- a node by hand, and its access level --------------------------------------
     def _node_menu(self, at) -> None:
         """Everything the buttons under the list do, on the node clicked.
@@ -490,8 +705,20 @@ class CanopenView(QWidget):
         below -- getting at the node, then its parameters.
         """
         item = self.nodes.itemAt(at)
+        if item is not None and item.data(0, ROLE_FILE):
+            self.nodes.setCurrentItem(item)
+            self.file_menu(self.selected_file()).exec(self.nodes.viewport().mapToGlobal(at))
+            return
         node_id = None if item is None else item.data(0, ROLE_INDEX)
         self.node_menu(node_id).exec(self.nodes.viewport().mapToGlobal(at))
+
+    def file_menu(self, source: FileSource) -> QMenu:
+        menu = QMenu(self.nodes)
+        menu.addAction("Save", lambda: self.save_file(source)).setEnabled(source.unsaved)
+        menu.addAction("Save as...", lambda: self.save_file_as(source))
+        menu.addSeparator()
+        menu.addAction("Close file", lambda: self.close_file(source))
+        return menu
 
     def node_menu(self, node_id: int | None) -> QMenu:
         """Built apart from being shown, so what it offers can be looked at."""
@@ -851,8 +1078,12 @@ class CanopenView(QWidget):
 
     @Slot()
     def clear(self) -> None:
-        self.nodes.clear()
-        self.od.clear()
+        """The bus went: its nodes go from the list. Files stay -- they were never on it."""
+        for i in reversed(range(self.nodes.topLevelItemCount())):
+            if not self.nodes.topLevelItem(i).data(0, ROLE_FILE):
+                self.nodes.takeTopLevelItem(i)
+        if self._od_file is None:
+            self.od.clear()
         self.clear_live_pdos()
         self.clear_emergencies()
         self._identities.clear()
@@ -978,10 +1209,15 @@ class CanopenView(QWidget):
         return node_id is not None and node_id not in self._lost
 
     def _offer_node_buttons(self) -> None:
-        """Only with a node to act on. See _node_buttons."""
+        """Only with a node to act on. See _node_buttons. A file has its own."""
         on_a_node = self._can_act_on(self.selected_node())
         for button in self._node_buttons:
             button.setEnabled(on_a_node)
+        source = self.selected_file() if hasattr(self, "_file_buttons") else None
+        for button in getattr(self, "_file_buttons", []):
+            button.setVisible(source is not None)
+        if source is not None:
+            self.save_file_btn.setEnabled(source.unsaved)
 
     def _show_nmt_target(self) -> None:
         node_id = self.selected_node()
@@ -994,20 +1230,28 @@ class CanopenView(QWidget):
         if hasattr(self, "log"):  # made after the list, which can select a node first
             self.log.node_changed()
         self._offer_node_buttons()
-        self.faults.set_node(None if current is None else current.data(0, ROLE_INDEX))
+        node_id = None if current is None else current.data(0, ROLE_INDEX)
+        self.faults.set_node(node_id)
         self.clear_live_pdos()
-        self.pdo_config.set_node(None if current is None else current.data(0, ROLE_INDEX))
-        self._populate_od(None if current is None else current.data(0, ROLE_INDEX))
+        self.pdo_config.set_node(node_id)
+        self._populate_od(node_id, self.selected_file())
 
-    def _populate_od(self, node_id: int | None) -> None:
+    def _populate_od(self, node_id: int | None, source: FileSource | None = None) -> None:
+        """The dictionary of the selected node -- or of the selected file, with its values."""
         self._updating = True
         self._od_node = node_id
+        self._od_file = source
         self.od.clear()
         node = None if node_id is None else self.manager.node(node_id)
+        od = (
+            source.object_dictionary
+            if source is not None
+            else getattr(node, "object_dictionary", None)
+        )
         watched = self._watched(node_id)
-        if node is not None:
+        if od is not None:
             parent_items: dict[int, QTreeWidgetItem] = {}
-            for index, sub, var, name in od_entries(node.object_dictionary):
+            for index, sub, var, name in od_entries(od):
                 if sub is None:
                     item = QTreeWidgetItem([f"{index:04X}", name, type_name(var), _access(var), ""])
                     self.od.addTopLevelItem(item)
@@ -1028,13 +1272,17 @@ class CanopenView(QWidget):
                     ROLE_SEARCH,
                     f"{index:04X} {sub_text} {name} {parent_name}".lower(),
                 )
-                if var is not None:
+                if var is not None and source is None:
+                    # Watching is about a device, and a file is not one.
                     item.setCheckState(
                         COL_WATCH,
                         Qt.Checked if (index, sub or 0) in watched else Qt.Unchecked,
                     )
                 if var is not None and var.writable:
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
+                if var is not None and source is not None:
+                    where = (index, sub or 0)
+                    self._show_file_value(item, source, *where, *source.current(*where))
         self._updating = False
         self._apply_od_filter()
 
@@ -1167,6 +1415,9 @@ class CanopenView(QWidget):
     def _on_od_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         if column == 4 and item.flags() & Qt.ItemIsEditable:
             return  # editing the value column, not a read request
+        if self._od_file is not None and item.childCount() == 0:
+            self._od_file.request(item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+            return
         node_id = self.selected_node()
         if node_id is not None and item.childCount() == 0:
             self.manager.sdo_read(node_id, item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
@@ -1178,6 +1429,9 @@ class CanopenView(QWidget):
             self._on_watch_toggled(item)
             return
         if column != COL_VALUE:
+            return
+        if self._od_file is not None:
+            self._file_write(self._od_file, item, item.text(COL_VALUE))
             return
         node_id = self.selected_node()
         if node_id is None:
@@ -1216,7 +1470,17 @@ class CanopenView(QWidget):
         hooks/canopen.py::object_display; without it the mechanism is only
         usable by whoever already knew the answer.
         """
-        display = self.manager.display(node_id, index, sub)
+        return self._describe(
+            self.manager.display(node_id, index, sub),
+            self.manager.extras(node_id, index, sub),
+            index,
+            sub,
+            raw,
+        )
+
+    @staticmethod
+    def _describe(display, extras: dict, index: int, sub: int, raw=None) -> str:
+        """The tooltip for one object, from a node or from a file alike."""
         lines = [f"{index:04X}:{sub:02X}  {display.name}".rstrip()]
         if display.description:
             lines.append(display.description)
@@ -1226,13 +1490,16 @@ class CanopenView(QWidget):
             lines.append(f"Range: {limits}")
         for value, meaning in sorted(display.choices.items()):
             lines.append(f"  {value} = {meaning}")
-        if extras := self.manager.extras(node_id, index, sub):
+        if extras:
             lines.append("")
             lines.append("From the EDS:")
             lines += [f"  {key} = {value}" for key, value in extras.items()]
         return "\n".join(lines)
 
     def _read_all(self) -> None:
+        if self._od_file is not None:
+            self._populate_od(None, self._od_file)  # from the file, as it stands
+            return
         node_id = self.selected_node()
         node = None if node_id is None else self.manager.node(node_id)
         if node is None:
@@ -1309,3 +1576,35 @@ def _hex(value: int | None) -> str:
 
 def _access(var) -> str:
     return "" if var is None else var.access_type
+
+
+def _typed_value(var, display, text: str):
+    """(raw value, None) for what was typed into a file's tree, or (None, why not).
+
+    What a node would be sent, checked the way a write to a node is: in the
+    units shown, and against the limits the file itself declares.
+    """
+    from canopen.objectdictionary import datatypes
+
+    if var is None:
+        return None, "not in this file"
+    kind = var.data_type
+    text = text.strip()
+    if kind in (datatypes.VISIBLE_STRING, datatypes.UNICODE_STRING):
+        return text, None
+    if kind in (datatypes.OCTET_STRING, datatypes.DOMAIN):
+        try:
+            return bytes.fromhex(text.replace(" ", "")), None
+        except ValueError:
+            return None, f"{text!r} is not hex bytes"
+    number = as_number(text.split()[0]) if text else None
+    if number is None:
+        return None, f"{text!r} is not a number"
+    raw = display.raw(number) if display.scaled else number
+    if why := out_of_range(display, raw):
+        return None, why
+    if kind in datatypes.FLOAT_TYPES:
+        return float(raw), None
+    if not float(raw).is_integer():
+        return None, f"{text} is not a whole number"
+    return int(raw), None

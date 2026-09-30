@@ -850,20 +850,22 @@ class MainWindow(QMainWindow):
         return view if isinstance(view, CustomPaneView) else None
 
     def _custom_panes_may_close(self) -> bool:
-        """Ask about every custom pane holding edits to a file, one at a time.
+        """Ask about every pane holding changes it has not written, one at a time.
 
-        Cancel on any of them is Cancel for the whole close: the answer to
-        "save these?" was "wait", and closing the rest anyway is not waiting.
+        Custom panes, with values not written or a file not saved, and the
+        CANopen pane, with a DCF or EDS edited and not saved. Cancel on any of
+        them is Cancel for the whole close: the answer to "save these?" was
+        "wait", and closing the rest anyway is not waiting.
         """
-        for name in self.panes.instances(CUSTOM_KIND):
+        for name in self.panes.names():
             view = self.panes.view(name)
-            if isinstance(view, CustomPaneView) and not view.may_discard():
+            if callable(getattr(view, "may_discard", None)) and not view.may_discard():
                 return False
         return True
 
     def _remove_pane(self, name: str) -> None:
         view = self.panes.view(name)
-        if isinstance(view, CustomPaneView) and not view.may_discard():
+        if callable(getattr(view, "may_discard", None)) and not view.may_discard():
             return
         self.panes.remove(name)
 

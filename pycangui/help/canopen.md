@@ -107,6 +107,32 @@ the objects you were using on the last one. **Read all** reads every readable
 entry, one SDO at a time, which takes a while on a large node. Select some
 entries and right-click to add them to a [custom pane](custom-panes.md).
 
+## A DCF or EDS with no node
+
+**Open DCF/EDS...**, beside *Add node...*, puts a configuration file in the node
+list as a row of its own -- *File* in the Node column -- with no node on the
+bus and no channel connected. Selecting it fills the object dictionary from the
+file: a DCF's values, and an EDS's defaults where there are none. It is how a
+configuration is built at a desk, and how a colleague's is reviewed without a
+machine.
+
+Edit a value in the tree to change it. It is checked the way a write to a node
+is -- in the units shown, and against the limits the file declares -- and held
+in memory, tinted, until it is saved; the row says *edited* meanwhile.
+Double-click an entry, or press *Read all*, to show the file's value again.
+
+With a file row selected, **Save**, **Save as...** and **Close file** take the
+place of the node's buttons, which are greyed: there is nothing on the bus to
+ask. Save writes a DCF through the file's own text, so its comments -- often
+where the units and descriptions are -- survive. An EDS is saved under a new
+name, as a DCF, so it keeps the defaults it came with. Closing a file, the pane
+or pycangui with changes not saved asks first. The files open when pycangui
+closes are opened again next time, and disconnecting the bus leaves them in the
+list.
+
+A [custom pane](custom-panes.md) can work from a DCF or EDS too, with *Open a DCF or
+EDS...* in its own selector.
+
 ## PDOs, emergencies and DCFs
 
 The lower half of the pane is a row of tabs, the **Object dictionary** first:

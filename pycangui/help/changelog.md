@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen **Open DCF/EDS...**: a configuration file as a row of the node list, its object
+  dictionary in the tree with no node or bus, values changed there and saved as a DCF.
 - Custom panes: **Write all** writes every change held on the pane, and **Read all** reads
   again, asking first before it throws unwritten changes away. Dropdowns, ticks and map cells
   now hold a change until it is written, as typed boxes did.
