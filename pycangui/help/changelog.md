@@ -9,6 +9,34 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Added
+
+- A **CANopen log** tab in the CANopen pane: every SDO read and write pycangui makes, whatever
+  asked for it, with the data, how long it took, and an abort code and its meaning if it failed;
+  NMT sent and SYNC started and stopped; node state changes, boot-up and heartbeats lost; each
+  emergency; each LSS step. A tick per kind chooses what is shown.
+
+### Changed
+
+- CANopen *Read RPDO config* is **Read PDO config**, and reads both directions: TPDOs for
+  Signals and Plot as well as RPDOs for CAN Transmit.
+- The CAN Trace's top row is shorter: Pause and Slow refresh are one choice -- Live, Slow
+  refresh or Paused -- and Columns is on the table's right-click, as it was on the header's.
+  The plot has the same choice in place of its two ticks.
+- The NMT send button says who it goes to -- *Send NMT to node 5* or *to all nodes*.
+- The README and PyPI page list every adapter python-can supports.
+
+### Fixed
+
+- About wrapped its paths under the column of names. It is as wide as its longest line, up to
+  most of the screen, and scrolls sideways past that.
+- Removing a DBC left its signals in Signals and Plot, as though still decoded. They go with it.
+- A CANopen TPDO that a loaded DBC also describes was in Signals and Plot twice, the DBC's
+  scaled values beside the PDO's raw ones. The DBC's decode is used, and the PDO's left out.
+- Once any CANopen node was listed, NMT could not be sent to all nodes: a node stayed selected.
+  Clicking an empty part of the node list, or Esc, now selects none.
+- A TPDO enabled after its node was first read was never decoded into Signals and Plot.
+
 ## [0.1.1] - 2026-09-29
 
 ### Added
