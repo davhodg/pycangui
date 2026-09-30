@@ -2,19 +2,25 @@
 
 # CAN Trace
 
-The trace narrows down in three ways, none of which discard anything: the
+The first menu chooses the view: *Chronological*, every frame as it arrives,
+or *Latest per ID* (below). The second chooses how the display keeps up with
+the bus, and none of the three loses anything -- frames go on being captured,
+decoded and recorded:
+
+- **Live** adds rows as they arrive.
+- **Slow refresh** repaints four times a second instead of twenty, for a bus
+  busy enough that the rows are a blur. The frames are added in one go at the
+  end of each quarter second rather than a dribble at a time, which is also
+  why it costs less to draw. Kept per pane, so a trace opened on a quiet bus
+  need not have it.
+- **Paused** holds the display still; what arrives meanwhile appears when you
+  go back to Live or Slow refresh.
+
+The trace narrows down in two ways, neither of which discards anything: the
 **filter box** matches text against the id, the decoded name, the channel and
 the data (`185`, `txpdo`, `drive bus`, `de ad`; several words must all match),
-the **Filter** menu hides whole protocol groups or channels, and **Pause**
-holds the display still while capture and recording carry on. The row count
+and the **Filter** menu hides whole protocol groups or channels. The row count
 next to the buttons reads *shown of captured*.
-
-**Slow refresh** is the fourth, and it narrows nothing at all: it repaints
-four times a second instead of twenty, for a bus busy enough that the rows
-are a blur. The frames still arrive, are classified, recorded and exported
-exactly as before -- they are added in one go at the end of each quarter
-second rather than a dribble at a time, which is also why it costs less to
-draw. Kept per pane, so a trace opened on a quiet bus need not have it.
 
 ## What names a frame
 
@@ -45,16 +51,16 @@ id" and "this id is not where it was expected".
 The **Filter** menu lists the protocol groups -- NMT, SYNC/TIME, EMCY, PDO,
 SDO, Heartbeat, LSS, UDS, J1939, XCP, Bus errors and Other -- and every
 channel that has been seen, with *Show all* to bring everything back.
-**Columns** chooses which columns show, in either view, and a right-click on
-the header does the same. **Autoscroll** keeps the newest frame in view, and
-**Clear** empties the pane.
+Right-click the table, or its header, for **Columns**: which columns show, in
+either view. **Autoscroll** keeps the newest frame in view, and **Clear**
+empties the pane.
 
 Select rows and press Ctrl+C, or right-click and choose *Copy*, to copy them as
 text with the column headings, ready to paste into a report or a spreadsheet.
 
 ## Latest per ID, and what its numbers mean
 
-*View: Latest per ID* keeps one row per identifier rather than one per frame:
+*Latest per ID* keeps one row per identifier rather than one per frame:
 the newest data, how many have been seen, and how fast they are arriving.
 
 **Rate** and **Period** are the same measurement written two ways, taken over
@@ -72,7 +78,7 @@ were averaged into stillness would be hiding the thing worth seeing. A row
 that has just appeared, or one that has started again after stopping, shows
 its rate at once rather than waiting for the next redraw.
 
-So the **Columns** button offers five more that do not forget:
+So **Columns**, on the right-click, offers five more that do not forget:
 
 | Column | What it is |
 | --- | --- |

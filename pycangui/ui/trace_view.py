@@ -48,12 +48,30 @@ from pycangui.ui.latest_model import (
 )
 from pycangui.ui.persist import remember, remember_columns
 from pycangui.ui.refresh import LABEL as SLOW_LABEL
-from pycangui.ui.refresh import SLOW_MS
-from pycangui.ui.refresh import TIP as SLOW_TIP
+from pycangui.ui.refresh import SLOW_MS, display_choice
 from pycangui.ui.trace_model import COLUMNS as TRACE_COLUMNS
 from pycangui.ui.trace_model import TraceModel
 
 MODES = ("Chronological", "Latest per ID")
+DISPLAY_TIP = (
+    "Only what this trace shows. A recording, the decoding, the other panes\n"
+    "and anything being sent carry on at full rate whatever is chosen here:\n"
+    "pausing the trace does not pause the bus, and does not pause a recording.\n"
+    "\n"
+    "Live adds rows as frames arrive.\n"
+    f"{SLOW_LABEL} adds them four times a second rather than twenty, for a\n"
+    "bus busy enough that the screen is a blur.\n"
+    "Paused holds the display still; frames that arrive meanwhile are kept\n"
+    "and appear when it is back to Live or Slow refresh."
+)
+#: Each choice's own tooltip, for when it is hovered in the list.
+DISPLAY_ITEM_TIPS = (
+    "Rows are added as frames arrive.",
+    "Rows are added four times a second. Display only: every frame is still\n"
+    "captured, decoded and recorded as it arrives.",
+    "The display holds still. Display only: frames are still captured,\n"
+    "decoded and recorded, and appear when it is back to Live or Slow refresh.",
+)
 MAX_PENDING = 200_000  # frames held while paused, oldest dropped beyond this
 
 
@@ -159,22 +177,20 @@ class TraceView(QWidget):
         self.mode.currentIndexChanged.connect(self._on_mode_changed)
         self.autoscroll = QCheckBox("Autoscroll")
         self.autoscroll.setChecked(True)
-        self.pause = QCheckBox("Pause")
-        self.pause.setToolTip(
-            "Hold the display still. Frames carry on being captured and recorded,\n"
-            "and appear when you unpause."
-        )
+        # Two ticks, shown as one menu -- Live, Slow refresh or Paused; see
+        # refresh.display_choice.
+        self.pause = QCheckBox("Pause", self)
         self.pause.toggled.connect(self._on_pause)
         #: Rows are held and added in one go rather than as they arrive. The
         #: same queue Pause fills, because it is the same thing done for a
         #: quarter of a second at a time.
-        self.slow = QCheckBox(SLOW_LABEL)
-        self.slow.setToolTip(SLOW_TIP)
+        self.slow = QCheckBox(SLOW_LABEL, self)
         #: Runs only while Slow refresh is ticked; see _on_slow. Built before
         #: the box is connected, because remember() restoring a ticked one
         #: fires toggled from inside this constructor.
         self._slow_timer = QTimer(self, interval=SLOW_MS, timeout=self._flush)
         self.slow.toggled.connect(self._on_slow)
+        self.display = display_choice(self.pause, self.slow, DISPLAY_TIP, DISPLAY_ITEM_TIPS)
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("filter: id, name, channel or data...")
@@ -211,22 +227,14 @@ class TraceView(QWidget):
         self._apply_filter(save=False)
 
         # Which columns, per mode: the two tables answer different questions
-        # and have nothing in common but the word column. On a button as
-        # well as on the header, because right-clicking a header is a
-        # convention rather than something anybody can see.
+        # and have nothing in common but the word column. On the header's
+        # right-click, and on the table's own beside Copy -- right-clicking a
+        # header is a convention rather than something anybody can see, and
+        # a button for it had made the row too long to read.
         self._column_menus = {
             0: remember_columns(ctx, f"{key}.trace_columns", self.table),
             1: remember_columns(ctx, f"{key}.latest_columns", self.latest_table, STATISTICS),
         }
-        self.columns_button = QToolButton()
-        self.columns_button.setText("Columns")
-        self.columns_button.setToolTip(
-            "Which columns this view shows. The timing statistics -- first\n"
-            "seen, shortest, average and longest gap, and jitter -- start\n"
-            "hidden, because fifteen columns at once is a table nobody reads."
-        )
-        self.columns_button.setPopupMode(QToolButton.InstantPopup)
-        self.columns_button.setMenu(self._column_menus[self.mode.currentIndex()])
 
         # Settled choices about how to read the trace, not what is in it.
         # Last of the three, and it has to stay last: restoring a saved mode
@@ -243,14 +251,11 @@ class TraceView(QWidget):
         clear.clicked.connect(self.clear)
 
         bar = QHBoxLayout()
-        bar.addWidget(QLabel("View:"))
         bar.addWidget(self.mode)
+        bar.addWidget(self.display)
         bar.addWidget(self.autoscroll)
-        bar.addWidget(self.pause)
-        bar.addWidget(self.slow)
         bar.addWidget(self.search)
         bar.addWidget(self.filter_button)
-        bar.addWidget(self.columns_button)
         bar.addStretch()
         bar.addWidget(self.count_label)
         bar.addWidget(clear)
@@ -265,13 +270,16 @@ class TraceView(QWidget):
         if self.slow.isChecked():
             self._slow_timer.start()
 
-        for table in (self.table, self.latest_table):
+        for mode, table in enumerate((self.table, self.latest_table)):
             table.setSelectionBehavior(QAbstractItemView.SelectRows)
             copy = QAction("Copy", table)
             copy.setShortcut(QKeySequence.Copy)
             copy.setShortcutContext(Qt.WidgetShortcut)
             copy.triggered.connect(self.copy_selection)
             table.addAction(copy)
+            columns = QAction("Columns", table)
+            columns.setMenu(self._column_menus[mode])
+            table.addAction(columns)
             table.setContextMenuPolicy(Qt.ActionsContextMenu)
 
     # --- filtering -----------------------------------------------------------------
@@ -396,7 +404,6 @@ class TraceView(QWidget):
     def _on_mode_changed(self, index: int) -> None:
         self.stack.setCurrentIndex(index)
         self.autoscroll.setEnabled(index == 0)
-        self.columns_button.setMenu(self._column_menus[index])
         self._update_count()
 
     @Slot(list)

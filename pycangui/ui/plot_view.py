@@ -27,10 +27,28 @@ from PySide6.QtWidgets import (
 from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
 from pycangui.ui.persist import remember
-from pycangui.ui.refresh import FAST_MS, SLOW_MS
+from pycangui.ui.refresh import FAST_MS, SLOW_MS, display_choice
 from pycangui.ui.refresh import LABEL as SLOW_LABEL
-from pycangui.ui.refresh import TIP as SLOW_TIP
 
+DISPLAY_TIP = (
+    "Only what this plot shows. Samples go on being collected, a recording\n"
+    "goes on recording and the other panes go on updating, whatever is\n"
+    "chosen here: pausing the plot does not pause the data.\n"
+    "\n"
+    "Live redraws twenty times a second.\n"
+    f"{SLOW_LABEL} redraws four times a second, for data changing so fast\n"
+    "that the curve is a shimmer.\n"
+    "Paused holds the plot still, to look at; what arrives meanwhile is\n"
+    "collected, and there when it is back to Live or Slow refresh."
+)
+#: Each choice's own tooltip, for when it is hovered in the list.
+DISPLAY_ITEM_TIPS = (
+    "The plot redraws twenty times a second.",
+    "The plot redraws four times a second. Display only: every sample is\n"
+    "still collected as it arrives.",
+    "The plot holds still. Display only: samples are still collected, and\n"
+    "drawn when it is back to Live or Slow refresh.",
+)
 COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
 
 
@@ -55,8 +73,9 @@ class PlotView(QWidget):
         self.window_s.setRange(0.5, 3600)
         self.window_s.setValue(10)
         self.window_s.setSuffix(" s")
-        self.pause = QCheckBox("Pause")
-        self.pause.setToolTip("Hold the plot still. Samples carry on being collected.")
+        # Two ticks, shown as one menu -- Live, Slow refresh or Paused; see
+        # refresh.display_choice.
+        self.pause = QCheckBox("Pause", self)
         self.follow = QCheckBox("Follow")
         self.follow.setToolTip(
             "Keep the newest samples in view as they arrive. The plot\n"
@@ -68,9 +87,9 @@ class PlotView(QWidget):
             "than at the clock this window is running on."
         )
         self.follow.setChecked(True)
-        self.slow = QCheckBox(SLOW_LABEL)
-        self.slow.setToolTip(SLOW_TIP)
+        self.slow = QCheckBox(SLOW_LABEL, self)
         self.slow.toggled.connect(self._on_slow)
+        self.display = display_choice(self.pause, self.slow, DISPLAY_TIP, DISPLAY_ITEM_TIPS)
         self.fit = QPushButton("Fit")
         self.fit.setToolTip("Zoom to everything being plotted, wherever in time it is.")
         self.fit.clicked.connect(self._fit)
@@ -80,9 +99,8 @@ class PlotView(QWidget):
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Window:"))
         bar.addWidget(self.window_s)
-        bar.addWidget(self.pause)
+        bar.addWidget(self.display)
         bar.addWidget(self.follow)
-        bar.addWidget(self.slow)
         bar.addWidget(self.fit)
         bar.addStretch()
         bar.addWidget(clear)

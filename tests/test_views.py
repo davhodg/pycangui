@@ -724,7 +724,13 @@ def test_each_view_has_its_own_columns(app, tmp_path, monkeypatch):
     view = TraceView(Hooks(ctx), ctx)
     assert [a.text() for a in view._column_menus[0].actions()][:3] == ["Time", "Channel", "Dir"]
     assert [a.text() for a in view._column_menus[1].actions()][:3] == ["ID", "Kind", "Channel"]
-    assert view.columns_button.menu() is view._column_menus[view.mode.currentIndex()]
+    for mode, table in enumerate((view.table, view.latest_table)):
+        assert columns_on(table) is view._column_menus[mode], "each table offers its own"
+
+
+def columns_on(table):
+    """The Columns menu on a table's right-click, where it went from the bar."""
+    return next(a.menu() for a in table.actions() if a.text() == "Columns")
 
 
 def test_a_trace_left_in_latest_mode_opens_again(app, tmp_path, monkeypatch):
@@ -750,7 +756,7 @@ def test_a_trace_left_in_latest_mode_opens_again(app, tmp_path, monkeypatch):
     assert not blew_up, blew_up
     assert again.mode.currentIndex() == 1
     assert again.stack.currentWidget() is again.latest_table
-    assert again.columns_button.menu() is again._column_menus[1]
+    assert again.autoscroll.isEnabled() is False, "the handler ran to the end"
 
 
 # --- slowing the screen down, not the capture -----------------------------------------
@@ -819,6 +825,36 @@ def test_a_trace_left_on_slow_refresh_opens_again(app, tmp_path, monkeypatch):
     assert not blew_up, blew_up
     assert again.slow.isChecked()
     assert again._slow_timer.isActive(), "restored ticked, but nothing was holding rows"
+    assert again.display.currentText() == "Slow refresh", "and the row says so"
+
+
+def test_live_slow_and_paused_are_one_choice(app, tmp_path, monkeypatch):
+    """Pause and Slow refresh were two ticks on a row too long to read, and
+    are two states of one thing: how the display keeps up."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    assert view.display.currentText() == "Live"
+
+    def choose(text):
+        index = view.display.findText(text)
+        view.display.setCurrentIndex(index)
+        view.display.activated.emit(index)
+
+    choose("Slow refresh")
+    assert view.slow.isChecked() and not view.pause.isChecked()
+    choose("Paused")
+    assert view.pause.isChecked()
+    view.on_frames([frame(0x100, b"", 0.0)])
+    assert view.model.rowCount() == 0, "held while paused"
+    choose("Slow refresh")
+    assert not view.pause.isChecked() and view.slow.isChecked()
+    assert view.model.rowCount() == 1, "and shown on the way back"
+    choose("Live")
+    assert not view.slow.isChecked() and not view._slow_timer.isActive()
+
+    view.pause.setChecked(True)  # as the console or a plugin might
+    assert view.display.currentText() == "Paused", "the choice follows, however it was set"
 
 
 # --- how fast a figure is allowed to change -------------------------------------------
