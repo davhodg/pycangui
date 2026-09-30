@@ -46,6 +46,7 @@ class SignalSeries:
 class SignalHub(QObject):
     added = Signal(str)  # key of a signal seen for the first time
     updated = Signal()  # at least one value changed since the last emit (batched by caller)
+    removed = Signal(list)  # keys of signals forgotten, for lists and plots to drop
 
     def __init__(self) -> None:
         super().__init__()
@@ -104,15 +105,24 @@ class SignalHub(QObject):
         return list(dict.fromkeys(s.group for s in self._series.values()))
 
     def forget_group(self, group: str) -> int:
-        """Drop everything from one source. Returns how many series went.
+        """Drop everything from one source. Returns how many series went."""
+        return self.forget_groups([group])
 
-        An imported file is a thing somebody finishes with, and a signals list
-        that only ever grows is one nobody can find anything in.
+    def forget_groups(self, groups) -> int:
+        """Drop everything from these sources. Returns how many series went.
+
+        A database removed, an imported file finished with: a signals list
+        that only ever grows is one nobody can find anything in, and a
+        signal still listed after its database has gone reads as one that is
+        still being decoded. ``removed`` says which, so the list and the plot
+        drop them too.
         """
-        going = [k for k, s in self._series.items() if s.group == group]
+        wanted = set(groups)
+        going = [k for k, s in self._series.items() if s.group in wanted]
         for key in going:
             del self._series[key]
         if going:
+            self.removed.emit(going)
             self.updated.emit()
         return len(going)
 

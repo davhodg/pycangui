@@ -43,6 +43,7 @@ class ScopeView(QWidget):
         self.plot = PlotView(hub, now, ctx)
         self.signals_view.plot_toggled.connect(self.plot.set_plotted)
         self.signals_view.axis_toggled.connect(self.plot.set_right)
+        hub.removed.connect(self._on_removed)
 
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(self.signals_view)
@@ -62,6 +63,17 @@ class ScopeView(QWidget):
 
         if ctx is not None:
             self._remember_plotted(ctx, key)
+
+    @Slot(list)
+    def _on_removed(self, keys: list) -> None:
+        """Take forgotten signals off the plot.
+
+        Straight to the plot rather than by unticking the list, so they stay
+        on the list of what to plot: a database removed and loaded again puts
+        back what was plotted from it, as a restart does.
+        """
+        for key in keys:
+            self.plot.set_plotted(key, False)
 
     # --- what is plotted, and on which axis, kept between runs --------------------------
     def _remember_plotted(self, ctx: Context, key: str) -> None:

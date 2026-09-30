@@ -229,3 +229,60 @@ def test_the_menu_lists_what_is_loaded_and_offers_remove_all(app, tmp_path, dbc_
     assert not window.dbc.loaded, "Remove all unloads everything"
     assert window.ctx.settings.get("dbc.paths") == []
     window.close()
+
+
+def test_removing_a_database_takes_its_signals_away(app, tmp_path, dbc_file, monkeypatch):
+    """Reported: the Signals list still showed a removed database's signals."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    # The first has WithChoices and a message of its own; the second has
+    # WithChoices too.
+    own = 'BO_ 102 OnlyFirst: 8 ECU\n SG_ A : 0|8@1+ (1,0) [0|255] "" ECU\nVAL_ 100'
+    first = dbc_file(NAMED_VALUES.replace("VAL_ 100", own), "first.dbc")
+    second = dbc_file(NAMED_VALUES, "second.dbc")
+    for path in (first, second):
+        assert window._load_dbc(path)
+    for group in ("DBC WithChoices", "DBC OnlyFirst"):
+        window.signals.push(group, "Mode", 0.0, 1.0)
+
+    window._remove_dbc(first, first)
+    assert window.signals.groups() == ["DBC WithChoices"], (
+        "its own message goes; one the other database still has stays"
+    )
+    window._unload_dbcs()
+    assert window.signals.groups() == [], "and with every database gone, all of them go"
+    window.close()
+
+
+def test_a_database_describing_a_tpdo_wins_over_the_pdo_decode(app, tmp_path, monkeypatch):
+    """Reported: a CANopen device's TPDO showed in Signals twice, once from
+    its DBC with scaling and once from the PDO decode raw, and the numbers
+    disagreed. The database was loaded to say what the frame means."""
+    from types import SimpleNamespace
+
+    from pycangui import resources
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    ids = {"TxPDO1": 0x185, "TxPDO2": 0x285}  # demo.dbc has 0x185 and not 0x285
+    monkeypatch.setattr(window.canopen, "tpdo_cob_id", lambda _node, name: ids.get(name))
+    tpdo = [
+        SimpleNamespace(direction="TPDO", name=name, cob_id=cob_id) for name, cob_id in ids.items()
+    ]
+    monkeypatch.setattr(window.canopen, "pdo_configs", lambda _node: tpdo)
+    network = SimpleNamespace(nodes={5: None}, listeners=[])  # listeners, for closing
+    monkeypatch.setattr(window.canopen, "network", network)
+
+    window._on_pdo_update(5, "TxPDO1", {"Odometer": 12345})
+    assert window.signals.groups() == ["CANopen node 5 TxPDO1"], "decoded while no DBC says"
+
+    assert window._load_dbc(resources.path("demo.dbc"))
+    assert window.signals.groups() == [], "listed before the DBC, and dropped once it loads"
+    window._on_pdo_update(5, "TxPDO1", {"Odometer": 12345})
+    window._on_pdo_update(5, "TxPDO2", {"Temperature": 40})
+    assert window.signals.groups() == ["CANopen node 5 TxPDO2"], (
+        "the DBC's TPDO is left to it, and one it does not describe is still decoded"
+    )
+    window.close()

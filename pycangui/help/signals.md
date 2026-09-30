@@ -19,7 +19,11 @@ can be copied into it when you load it, so it travels with the workspace; see
 
 Once loaded: the trace shows the message
 name and the **Signals and Plot** pane lists every signal with its live value.
-CANopen TPDO values appear there too. Tick *Plot Y1* on any signal to draw it
+CANopen TPDO values appear there too -- except a TPDO a loaded database also
+describes, which is listed once, as the database decodes it: the database has
+the names and scaling, and the PDO decode would put the same frame beside it
+with raw numbers. Removing a database takes its signals off the list and the
+plot, and a TPDO it described comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
 alongside the list (rolling window, pause, follow); drag the splitter to give
 the plot the whole pane, or the list. `resources/demo.dbc` matches the demo
 device.
@@ -40,14 +44,15 @@ from one run to the next. A signal comes back onto the plot as soon as it
 appears again: when its first frame is decoded, or when its file is imported.
 
 **Window** is how many seconds of signal the plot shows, from half a second to
-an hour. **Pause** holds the plot still while samples carry on being
-collected, **Fit** zooms to everything plotted, wherever in time it is, and
+an hour. **Fit** zooms to everything plotted, wherever in time it is, and
 **Clear history** throws away the samples collected so far, for every signal.
 
-**Slow refresh** redraws four times a second instead of the usual twenty, for
-a bus busy enough that the curve is a shimmer. It is the same tick box the
-[trace](trace.md) has and makes the same promise: it changes the screen and
+The menu beside the window says how the plot keeps up, the same choice the
+[trace](trace.md) has, with the same promise: it changes the screen and
 nothing else, so every sample is still collected, plotted and exported.
+**Live** redraws twenty times a second; **Slow refresh** four times, for a bus
+busy enough that the curve is a shimmer; **Paused** holds the plot still to be
+looked at, and what arrived meanwhile is there when you go back.
 
 *Follow* keeps the newest samples in view as they arrive. It follows the
 **data**, not the clock, so it stops when the data does: a quiet bus, or a

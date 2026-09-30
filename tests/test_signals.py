@@ -72,3 +72,28 @@ def test_signals_view_and_plot(app):
     assert plot.plotted() == []
     view.search.setText("odo")
     assert item.isHidden()
+
+
+def test_forgotten_signals_leave_the_list_and_the_plot(app):
+    """A database removed left its signals listed, as though still decoded."""
+    from pycangui.ui.scope_view import ScopeView
+
+    hub = SignalHub()
+    scope = ScopeView(hub, lambda: 0.0)
+    hub.push("DBC Gone", "Speed", 0.0, 1.0)
+    hub.push("DBC Gone", "Torque", 0.0, 2.0)
+    hub.push("DBC Kept", "Rpm", 0.0, 3.0)
+    scope.signals_view._items["DBC Gone/Speed"].setCheckState(3, Qt.Checked)
+    assert "DBC Gone/Speed" in scope.plot.plotted()
+    removed = []
+    hub.removed.connect(removed.append)
+
+    assert hub.forget_groups(["DBC Gone"]) == 2
+    assert sorted(removed[0]) == ["DBC Gone/Speed", "DBC Gone/Torque"]
+    tree = scope.signals_view.tree
+    groups = [tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())]
+    assert groups == ["DBC Kept"], "the rows go, and the group with them"
+    assert scope.plot.plotted() == [], "and off the plot"
+
+    hub.push("DBC Gone", "Speed", 1.0, 4.0)
+    assert "DBC Gone/Speed" in scope.signals_view._items, "it comes back when decoded again"

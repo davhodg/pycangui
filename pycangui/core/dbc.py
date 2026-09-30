@@ -68,6 +68,10 @@ class DbcDecoder:
     def loaded(self) -> bool:
         return bool(self._by_id)
 
+    def describes(self, can_id: int, extended: bool = False) -> bool:
+        """Whether a loaded database has a message on this identifier."""
+        return (can_id, extended) in self._by_id
+
     # --- decoding --------------------------------------------------------------------
     def message_for(self, frame: Frame) -> Message | None:
         msg = self._by_id.get((frame.can_id, frame.extended))

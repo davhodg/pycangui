@@ -1996,11 +1996,23 @@ class MainWindow(QMainWindow):
 
     def _remove_dbc(self, remembered: str, resolved: str) -> None:
         """Drop one database, from what is loaded and from what is remembered."""
+        before = {msg.name for msg in self.dbc.messages()}
         self.dbc.unload(resolved)
         paths = [p for p in self.ctx.settings.get("dbc.paths", []) if str(p) != remembered]
         self.ctx.settings.set("dbc.paths", paths)
+        self._forget_decoded(before - {msg.name for msg in self.dbc.messages()})
         self._refresh_transmit_sources()
         self.events.information(f"Removed {Path(resolved).name}")
+
+    def _forget_decoded(self, message_names) -> None:
+        """Take a removed database's signals out of Signals and Plot.
+
+        Only the messages no database still defines: two files can both have
+        a message of one name, and removing one of them leaves it decoded.
+        What was captured goes with them -- it stays in the trace and in any
+        recording, and is decoded again if the database comes back.
+        """
+        self.signals.forget_groups(f"DBC {name}" for name in message_names)
 
     def _load_dbc_dialog(self) -> None:
         path = folders.open_file(
@@ -2064,6 +2076,8 @@ class MainWindow(QMainWindow):
         self.events.information(f"DBC loaded: {where} ({len(db.messages)} messages{how})")
         if hasattr(self, "tx"):
             self._refresh_transmit_sources()
+        if hasattr(self, "canopen"):
+            self._drop_pdos_a_database_decodes()
         return True
 
     def _offer_relaxed_load(self, path: str, exc: Exception) -> bool:
@@ -2085,9 +2099,11 @@ class MainWindow(QMainWindow):
         )
 
     def _unload_dbcs(self) -> None:
+        before = {msg.name for msg in self.dbc.messages()}
         for path in list(self.dbc.databases):
             self.dbc.unload(path)
         self.ctx.settings.set("dbc.paths", [])
+        self._forget_decoded(before)
         self._refresh_transmit_sources()
         self.events.information("DBC databases unloaded")
 
@@ -2103,7 +2119,34 @@ class MainWindow(QMainWindow):
 
     @Slot(int, str, dict)
     def _on_pdo_update(self, node_id: int, pdo_name: str, values: dict) -> None:
+        """A TPDO's values into Signals and Plot -- unless a database decodes it.
+
+        A DBC written for a CANopen device describes its TPDOs as messages,
+        with names and scaling; the PDO decode has the EDS's names and raw
+        values. Both at once put the same frame in the list twice with
+        numbers that disagree, 12.345 km beside 12345. The database was
+        loaded on purpose to say what the frame means, so it wins.
+        """
+        cob_id = self.canopen.tpdo_cob_id(node_id, pdo_name)
+        if cob_id is not None and self.dbc.describes(cob_id):
+            return
         self.signals.push_many(f"CANopen node {node_id} {pdo_name}", self.bus.now(), values)
+
+    def _drop_pdos_a_database_decodes(self) -> None:
+        """Take out TPDOs listed before a database describing them was loaded.
+
+        From then on the database decodes them and the PDO decode stands
+        aside; without this the PDO's rows would stay, stuck at their last
+        raw value, beside the database's live ones.
+        """
+        network = self.canopen.network
+        groups = [
+            f"CANopen node {node_id} {config.name}"
+            for node_id in (list(network.nodes) if network is not None else [])
+            for config in self.canopen.pdo_configs(node_id)
+            if config.direction == "TPDO" and self.dbc.describes(config.cob_id)
+        ]
+        self.signals.forget_groups(groups)
 
     @Slot(list)
     def _count_frames(self, frames: list) -> None:

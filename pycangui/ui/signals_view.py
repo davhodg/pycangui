@@ -71,6 +71,7 @@ class SignalsView(QWidget):
         layout.addWidget(self.tree)
 
         hub.added.connect(self._on_added)
+        hub.removed.connect(self._on_removed)
         self._refresh_timer = QTimer(self, interval=200, timeout=self._refresh_values)
         self._refresh_timer.start()
         for key in hub.keys():
@@ -98,6 +99,20 @@ class SignalsView(QWidget):
         self._items[key] = item
         self._updating = False
         self._apply_search(self.search.text())
+
+    @Slot(list)
+    def _on_removed(self, keys: list) -> None:
+        """Take forgotten signals off the list, and a source left empty with them."""
+        for key in keys:
+            item = self._items.pop(key, None)
+            if item is None:
+                continue
+            group = item.parent()
+            group.removeChild(item)
+            if group.childCount() == 0:
+                name = next((g for g, it in self._groups.items() if it is group), None)
+                self._groups.pop(name, None)
+                self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(group))
 
     def _refresh_values(self) -> None:
         if not self.isVisible():
