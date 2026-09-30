@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 
 #: The frame lengths CAN FD has. There is nothing in between: a message
 #: shorter than the next one up is padded to reach it.
@@ -66,6 +66,24 @@ TIMING_ECU = "ecu"
 TIMING_AT_LEAST = "at least"
 TIMING_FORCED = "forced"
 
+#: The services that can go to every ECU at once, as the pane names them, and
+#: which go that way unless somebody says otherwise. A choice per service
+#: rather than one for all: a flash usually sends tester present,
+#: CommunicationControl and DTC setting to every ECU and everything else to
+#: the one being flashed -- and a baud rate change that half the bus makes is
+#: a broken bus.
+FUNCTIONAL_SERVICES = {
+    "session": "Session change",
+    "reset": "ECU reset",
+    "clear": "Clear DTCs",
+    "comm": "Communication control",
+    "tester": "Tester present",
+    "dtc_setting": "DTC setting",
+    "link": "Baud rate change",
+    "raw": "Raw request (one frame)",
+}
+FUNCTIONAL_DEFAULT = ["tester", "comm", "dtc_setting", "link"]
+
 
 @dataclass
 class UdsConfig:
@@ -98,6 +116,12 @@ class UdsConfig:
     p2_star_timeout_s: float = 5.0
     timing: str = TIMING_ECU
     tester_present_s: float = 2.0
+    #: Which services go to every ECU, by FUNCTIONAL_SERVICES key.
+    functional: list[str] = field(default_factory=lambda: list(FUNCTIONAL_DEFAULT))
+
+    def goes_to_all(self, service: str) -> bool:
+        """Whether this service is sent functionally, to every ECU."""
+        return service in self.functional
 
     @property
     def extended_id(self) -> bool:

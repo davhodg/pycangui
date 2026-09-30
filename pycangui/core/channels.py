@@ -235,6 +235,17 @@ class ActiveBus(QObject):
     def description(self) -> str:
         return self._bound.description if self._bound else ""
 
+    @property
+    def bitrate(self) -> int:
+        return self._bound.bitrate if self._bound else 0
+
+    @property
+    def sets_bitrate(self) -> bool:
+        return bool(self._bound and self._bound.sets_bitrate)
+
+    def reconnect_at(self, bitrate: int) -> bool:
+        return bool(self._bound and self._bound.reconnect_at(bitrate))
+
     def now(self) -> float:
         return self._bound.now() if self._bound else 0.0
 

@@ -50,6 +50,30 @@ than when a session opens. An identifier cleared on purpose stays cleared at
 the next start, instead of the default coming back in its place as though
 nobody had said anything.
 
+### To every ECU at once
+
+**Functional** chooses which services go to every ECU on the bus, on the
+functional address, rather than to the one ECU above -- a tick each, since the
+usual thing is a mixture. Before a flash, for instance, tester present,
+CommunicationControl and DTC setting go to all of them and everything else to
+the ECU being flashed; those three and the baud rate change are ticked to
+start with. The button says how many are ticked. The services that can go this
+way are the session change, ECU reset, clearing DTCs, CommunicationControl,
+tester present, DTC setting, the baud rate change, and a raw request that fits
+in one frame; security, DIDs, DTC reports, routines and transfers always go to
+the one ECU, since they are one ECU's business or answered in more frames than
+a functional request can take.
+
+A functional request is one frame, as ISO 15765-2 requires -- nobody could send
+flow control for a message addressed to everybody -- with the positive answer
+suppressed where the service allows it, so what comes back is which ECU
+objected. The log line says who agreed, who refused and with which code, and
+when nobody objected. An ECU that does not serve a request sent to all of them
+keeps quiet rather than refusing it, so silence is not a failure. On a J1939 bus
+every ECU's answer is recognised by its address; with typed identifiers, only
+the response identifier above is -- and, with the functional identifier `7DF`,
+OBD's `7E8` to `7EF`.
+
 **Open** makes the ISO-TP connection on those identifiers, and nothing
 else on the pane works until it is open. **Pad** is the byte every frame is
 filled out to 8 bytes with, for the ECUs that ignore anything shorter -- `00`
@@ -63,7 +87,8 @@ SecurityAccess at the **Level** beside it: the ECU hands over a seed, and
 pycangui answers with the key from `hooks/uds.py::security_key`, or from the
 seed and key DLL described below where that hook returns None.
 
-**Tester present** sends TesterPresent every couple of seconds. Without it an ECU drops
+**Tester present** sends TesterPresent every couple of seconds -- to every ECU,
+as `3E 80` with no answer expected, when it is ticked under *Functional*. Without it an ECU drops
 back to the default session after a few seconds of quiet, and loses any unlock
 with it. If the adapter will not send it -- its transmit queue full, because
 nothing on the bus is acknowledging frames, as while the ECU restarts -- the box
@@ -105,15 +130,27 @@ with it. **Communication** is CommunicationControl (0x28): whether the ECU
 sends and listens, for normal messages, network management or both --
 disabling Tx of normal messages is how a flash is usually made quiet for the
 rest of the bus, and the ECU puts it back itself when the session ends.
-**Baud rate** is LinkControl (0x87): the ECU is asked whether it can move to
-the chosen rate and then told to, and after that it is on the new rate and
-the channel is not, so the log says to reconnect the channel at that rate.
+**Baud rate** is LinkControl (0x87), and it goes to every ECU unless *Baud
+rate change* is unticked under *Functional*: an ECU left at the old rate sees
+nothing but errors from the rest. Each ECU is asked whether it can move to the
+chosen rate, and nothing changes if any refuses or none answers; then they are
+told to, and the channel follows -- it is closed and opened again at the new
+rate, the session is reopened, and tester present carries on at once, since an
+ECU whose session times out falls back to its own rate. The other panes, and a
+recording, see the channel disconnect and connect. The new rate is not saved as
+the channel's own.
+
 There is no request to put it back: the new rate lasts for the session it was
-set in, so ending that session -- a reset, a return to the default session,
-or letting it time out -- gives the ECU its own rate again, and so does
-changing it back the same way.
+set in. So while the channel is away from its own rate, a **Back to ...** button
+beside *Change* ends the session -- for every ECU, if the change went to every
+ECU -- and reopens the channel at the rate it had before.
+
+On a channel whose bitrate pycangui does not set, the baud rate change sends
+nothing and says why: socketcan's rate is the kernel's, from `ip link`, so the
+channel could not follow.
+
 Communication and Baud rate both ask first, since other nodes can stop
-hearing the ECU.
+hearing the ECUs, and so does Reset when it goes to every ECU.
 
 **Read DID** and **Write DID** work on the identifier beside
 them. A routine has **Start**, **Stop** and **Result** -- RoutineControl

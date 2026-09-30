@@ -11,6 +11,12 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- UDS **functional requests**: a *Functional* choice in ECU config sends each ticked service --
+  session, reset, clear DTCs, CommunicationControl, tester present, DTC setting, baud rate, a
+  one-frame raw request -- to every ECU at once, and says which ECUs objected.
+- The UDS **baud rate change follows the ECUs**: every ECU is asked, then told, and the channel
+  reopens at the new rate with the session and tester present; *Back to ...* returns to the
+  channel's own rate. Behind a confirmation, and not on a channel whose rate pycangui cannot set.
 - A **CANopen log** tab in the CANopen pane: every SDO read and write pycangui makes, whatever
   asked for it, with the data, how long it took, and an abort code and its meaning if it failed;
   NMT sent and SYNC started and stopped; node state changes, boot-up and heartbeats lost; each

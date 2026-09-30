@@ -409,9 +409,9 @@ def test_the_uds_server_refuses_what_it_does_not_know(app, manager):
     tester = can.Bus(interface="virtual", channel="v_uds_no")
     try:
         manager.start("uds_server", "v_uds_no")
-        got = ask_uds(app, tester, b"\x85\x01")  # control DTC setting: not offered
+        got = ask_uds(app, tester, b"\x23\x12\x00\x10\x04")  # read memory: not offered
         assert got is not None
-        assert bytes(got.data)[1:4] == b"\x7f\x85\x11", "service not supported"
+        assert bytes(got.data)[1:4] == b"\x7f\x23\x11", "service not supported"
     finally:
         tester.shutdown()
 

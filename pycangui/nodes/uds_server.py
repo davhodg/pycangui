@@ -11,8 +11,10 @@ one that exists only drains the transport.
 
 Enough of ISO 14229 to exercise the UDS pane properly: sessions, security
 with a seed and key, tester present, a handful of identifiers, stored faults
-with a clear, a routine, ECU reset, and the negative responses a tester needs
-to see when it gets something wrong.
+with a clear, a routine, ECU reset, communication control, DTC setting, a
+baud rate change, and the negative responses a tester needs to see when it
+gets something wrong. It answers functional requests too -- the ones sent to
+every ECU at once -- and keeps quiet when asked to.
 
 **The transport is not hand-rolled.**  ``isotp.NotifierBasedCanStack`` takes
 the channel's bus and its reader and does the segmenting, so a response
@@ -36,6 +38,9 @@ RATE_HZ = 200
 #: 0x7E0 and listens on 0x7E8.
 REQUEST_ID = 0x7E0
 RESPONSE_ID = 0x7E8
+#: Where a tester sends a request meant for every ECU. Always one frame, since
+#: nobody could send flow control for a message addressed to everybody.
+FUNCTIONAL_ID = 0x7DF
 
 #: Negative response codes, from ISO 14229. A tester tells the difference
 #: between "I will not" and "I cannot" by these, so a server that answers
@@ -48,6 +53,21 @@ NRC_REQUEST_OUT_OF_RANGE = 0x31
 NRC_SECURITY_ACCESS_DENIED = 0x33
 NRC_INVALID_KEY = 0x35
 NRC_NOT_SUPPORTED_IN_SESSION = 0x7F
+
+#: The services whose second byte is a sub-function, and whose top bit asks
+#: for no positive answer: the tester only wants to hear an objection.
+SUBFUNCTION_SERVICES = {0x10, 0x11, 0x28, 0x3E, 0x85, 0x87}
+#: The refusals an ECU keeps to itself when the request went to every ECU:
+#: "I do not do that" from each of them is noise, not news.
+QUIET_WHEN_FUNCTIONAL = {
+    NRC_SERVICE_NOT_SUPPORTED,
+    NRC_SUBFUNC_NOT_SUPPORTED,
+    NRC_REQUEST_OUT_OF_RANGE,
+    0x7E,
+    NRC_NOT_SUPPORTED_IN_SESSION,
+}
+#: The bitrates LinkControl can move this ECU to, by ISO 14229-1's fixed ids.
+LINK_RATES = {0x10: 125_000, 0x11: 250_000, 0x12: 500_000, 0x13: 1_000_000}
 
 #: How long a tester should wait for an answer (P2) and for one this ECU has
 #: said is coming (P2*), announced with every session change.
@@ -82,7 +102,13 @@ def start(node, *, ctx):
         node.bus(), node.notifier(), address=address, params={"tx_padding": 0xAA}
     )
     node.state.stack.start()
+    node.state.functional = []
+    node.listen(_Functional(node.state.functional))
     node.state.session = 1
+    node.state.communication = (0, 0)
+    node.state.dtc_setting_on = True
+    node.state.link_rate = None  # verified, waiting for the transition
+    node.state.bitrate = None  # what it was told to change to
     node.state.unlocked = False
     node.state.seed = None
     node.state.identifiers = dict(IDENTIFIERS)
@@ -99,10 +125,32 @@ def poll(node, *, ctx):
     while (request := node.state.stack.recv()) is not None:
         if answer := _answer(node, bytes(request)):
             node.state.stack.send(answer)
+    while node.state.functional:
+        request = node.state.functional.pop(0)
+        answer = _answer(node, request)
+        if answer[:1] == b"\x7f" and answer[2] in QUIET_WHEN_FUNCTIONAL:
+            continue
+        if answer:
+            node.state.stack.send(answer)
 
 
 def stop(node, *, ctx):
     node.state.stack.stop()
+
+
+class _Functional:
+    """Picks the requests sent to every ECU off the bus: one frame each."""
+
+    def __init__(self, queue: list) -> None:
+        self._queue = queue
+
+    def on_message_received(self, msg) -> None:
+        data = bytes(msg.data)
+        if msg.arbitration_id == FUNCTIONAL_ID and data and data[0] >> 4 == 0:
+            self._queue.append(data[1 : 1 + (data[0] & 0x0F)])
+
+    def stop(self) -> None:
+        pass
 
 
 def _answer(node, request: bytes) -> bytes:
@@ -112,7 +160,11 @@ def _answer(node, request: bytes) -> bytes:
     handler = _SERVICES.get(service)
     if handler is None:
         return _no(service, NRC_SERVICE_NOT_SUPPORTED)
-    return handler(node, request)
+    answer = handler(node, request)
+    quiet = service in SUBFUNCTION_SERVICES and len(request) > 1 and request[1] & 0x80
+    if quiet and answer[:1] != b"\x7f":
+        return b""  # done, and asked not to say so
+    return answer
 
 
 # --- the services ------------------------------------------------------------------
@@ -137,9 +189,48 @@ def _session(node, request: bytes) -> bytes:
 
 
 def _tester_present(node, request: bytes) -> bytes:
-    # The suppress-positive-response bit: answer nothing at all when it is
-    # set, which is the whole point of sending it.
-    return b"" if request[1] & 0x80 else bytes([0x7E, 0x00])
+    return bytes([0x7E, request[1] & 0x7F])
+
+
+def _communication(node, request: bytes) -> bytes:
+    if len(request) < 3:
+        return _no(0x28, NRC_INCORRECT_LENGTH)
+    if node.state.session == 1:
+        return _no(0x28, NRC_NOT_SUPPORTED_IN_SESSION)
+    node.state.communication = (request[1] & 0x7F, request[2])
+    return bytes([0x68, request[1] & 0x7F])
+
+
+def _dtc_setting(node, request: bytes) -> bytes:
+    sub = request[1] & 0x7F
+    if sub not in (1, 2):
+        return _no(0x85, NRC_SUBFUNC_NOT_SUPPORTED)
+    if node.state.session == 1:
+        return _no(0x85, NRC_NOT_SUPPORTED_IN_SESSION)
+    node.state.dtc_setting_on = sub == 1
+    return bytes([0xC5, sub])
+
+
+def _link(node, request: bytes) -> bytes:
+    """LinkControl: verify a fixed rate, then move to it on the transition.
+
+    On a virtual bus there is no rate to change, so "moving" is noting it;
+    a real ECU would switch its controller once the answer had gone out.
+    """
+    sub = request[1] & 0x7F
+    if node.state.session == 1:
+        return _no(0x87, NRC_NOT_SUPPORTED_IN_SESSION)
+    if sub == 1:
+        if len(request) != 3 or request[2] not in LINK_RATES:
+            return _no(0x87, NRC_REQUEST_OUT_OF_RANGE)
+        node.state.link_rate = LINK_RATES[request[2]]
+        return bytes([0xC7, 1])
+    if sub == 3:
+        if node.state.link_rate is None:
+            return _no(0x87, 0x24)  # request sequence error: nothing verified
+        node.state.bitrate, node.state.link_rate = node.state.link_rate, None
+        return bytes([0xC7, 3])
+    return _no(0x87, NRC_SUBFUNC_NOT_SUPPORTED)
 
 
 def _reset(node, request: bytes) -> bytes:
@@ -230,8 +321,11 @@ _SERVICES = {
     0x22: _read_did,
     0x27: _security,
     0x2E: _write_did,
+    0x28: _communication,
     0x31: _routine,
     0x3E: _tester_present,
+    0x85: _dtc_setting,
+    0x87: _link,
 }
 
 

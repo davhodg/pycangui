@@ -7,7 +7,7 @@ go to the pane's own log, shared by every tab."""
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, Slot
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QAction, QFont, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -32,6 +34,7 @@ from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.uds import (
     CAN_DL,
+    FUNCTIONAL_SERVICES,
     NO_ID,
     TIMING_AT_LEAST,
     TIMING_ECU,
@@ -121,6 +124,17 @@ TESTER_ADDRESS_TIP = (
 FUNCTIONAL_TARGET_TIP = (
     "Who a functional request is addressed to. 33 is the OBD functional\n"
     "address; a manufacturer's own diagnostics may use another."
+)
+FUNCTIONAL_SERVICES_TIP = (
+    "Which services go to every ECU at once, on the functional address\n"
+    "beside this, rather than to the one ECU above. Each can be ticked on\n"
+    "its own: the usual mixture is tester present, CommunicationControl and\n"
+    "DTC setting to all of them and the rest to the ECU being worked on --\n"
+    "and a baud rate change that only one ECU makes breaks the bus.\n"
+    "\n"
+    "Sent as one frame, with the positive answer suppressed where the service\n"
+    "allows, so what comes back is which ECU objected. Security, DIDs, DTC\n"
+    "reports, routines and transfers always go to the one ECU."
 )
 OPEN_TIP = (
     "Open an ISO-TP session with the ECU at the addresses above.\n"
@@ -316,10 +330,9 @@ class UdsView(QWidget):
         self.tx_id.setToolTip(ADDRESS_TIP)
         self.rx_id = _hex_edit(_id_text(cfg.rx_id))
         self.rx_id.setToolTip(ADDRESS_TIP)
-        # Functional addressing has its own box now. It was a setting with
-        # nowhere to set it: 0x7DF went out on Send functionally and was
-        # named in the trace, and a bus using that id for something else had
-        # no way to say so.
+        # The functional address has its own box: what the services ticked
+        # under Functional are sent to, and what the trace names UDS func. A
+        # bus using 0x7DF for something else can say so by emptying it.
         self.functional_id = _hex_edit(_id_text(cfg.functional_id))
         self.functional_id.setToolTip(FUNCTIONAL_TIP)
         for box in (self.tx_id, self.rx_id, self.functional_id):
@@ -390,6 +403,24 @@ class UdsView(QWidget):
         self.open_btn = QPushButton("Open")
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
+        # Which services go to every ECU: a tick each, behind one button beside
+        # the functional address they are sent to. A choice per service rather
+        # than one switch, because the usual thing is a mixture -- tester
+        # present, CommunicationControl and DTC setting to all of them, the
+        # rest to the ECU being worked on.
+        self.functional = QToolButton()
+        self.functional.setPopupMode(QToolButton.InstantPopup)
+        self.functional.setToolTip(FUNCTIONAL_SERVICES_TIP)
+        menu = QMenu(self.functional)
+        self.functional_actions: dict[str, QAction] = {}
+        for key, name in FUNCTIONAL_SERVICES.items():
+            action = menu.addAction(name)
+            action.setCheckable(True)
+            action.setChecked(cfg.goes_to_all(key))
+            action.toggled.connect(lambda _on: self._functional_changed())
+            self.functional_actions[key] = action
+        self.functional.setMenu(menu)
+        self._show_functional()
         for boxes in (
             (
                 ("Addressing", self.addressing),
@@ -399,6 +430,7 @@ class UdsView(QWidget):
                 ("Tx ID", self.tx_id),
                 ("Rx ID", self.rx_id),
                 ("Func ID", self.functional_id),
+                ("", self.functional),
             ),
             (
                 ("Pad", self.padding),
@@ -490,9 +522,10 @@ class UdsView(QWidget):
         h.addWidget(seed_key)
         self.tp = QCheckBox("Tester present")
         self.tp.setToolTip(
-            "Send TesterPresent (0x3E) every couple of seconds.\n"
-            "Without it the ECU drops back to the default session, and any\n"
-            "unlock with it, after a few seconds of quiet."
+            "Send TesterPresent (0x3E) every couple of seconds -- to every ECU,\n"
+            "as 3E 80 with no answer, when Tester present is ticked under\n"
+            "Functional. Without it an ECU drops back to the default session,\n"
+            "and any unlock with it, after a few seconds of quiet."
         )
         self.tp.toggled.connect(self.manager.set_tester_present)
         h.addStretch()
@@ -523,7 +556,7 @@ class UdsView(QWidget):
             "ECUReset (0x11). The ECU restarts, so the session and any\n"
             "security unlock are lost with it."
         )
-        reset.clicked.connect(lambda: self.manager.ecu_reset(self.reset_type.currentData()))
+        reset.clicked.connect(self._reset)
         r.addWidget(QLabel("Reset"), 0, 0)
         r.addWidget(self.reset_type, 0, 1)
         r.addWidget(reset, 0, 2, alignment=Qt.AlignLeft)  # beside its choice
@@ -553,20 +586,32 @@ class UdsView(QWidget):
         for bitrate in LINK_BITRATES:
             self.link_bitrate.addItem(f"{bitrate // 1000} kbit/s", bitrate)
         self.link_bitrate.setToolTip(
-            "LinkControl (0x87): move the ECU to another bitrate. It is asked\n"
-            "whether it can first, then told to. After that it is on the new\n"
-            "rate and this channel is not: reconnect the channel at that rate.\n"
+            "LinkControl (0x87): move the ECUs to another bitrate -- every ECU\n"
+            "when Baud rate change is ticked under Functional, which is the\n"
+            "usual way, since one left behind breaks the bus. Each is asked\n"
+            "whether it can first, then told to, and this channel follows: it is\n"
+            "reopened at the new rate, with the session and tester present.\n"
             "There is no request to put it back. The new rate lasts for the\n"
-            "session it was set in, so ending the session -- a reset, a return\n"
-            "to the default session, or letting it time out -- restores the\n"
-            "ECU's own rate; or change it back the same way."
+            "session it was set in, which is what the button that appears\n"
+            "beside Change uses to take everything back."
         )
         change_rate = QPushButton("Change")
         change_rate.setToolTip("Ask the ECU to move to the bitrate on the left")
         change_rate.clicked.connect(self._change_bitrate)
+        # Only while the channel is away from its own rate: there is no
+        # request to undo LinkControl, but ending the session does it.
+        self.rate_back = QPushButton()
+        self.rate_back.setToolTip(
+            "Return to the default session, which takes the ECUs back to their\n"
+            "own bitrate, and reopen this channel at the rate it had before."
+        )
+        self.rate_back.clicked.connect(self._back_to_own_rate)
+        self.rate_back.hide()
+        self._own_rate = 0  # the channel's own rate while it is away from it
         r.addWidget(QLabel("Baud rate"), 2, 0)
         r.addWidget(self.link_bitrate, 2, 1)
         r.addWidget(change_rate, 2, 2, alignment=Qt.AlignLeft)
+        r.addWidget(self.rate_back, 2, 3, alignment=Qt.AlignLeft)
         r.setColumnStretch(4, 1)
 
         # --- data ----------------------------------------------------------------
@@ -1011,6 +1056,8 @@ class UdsView(QWidget):
         manager.progress.connect(self._on_progress)
         manager.transferring.connect(self._on_transferring)
         manager.tester_present_stopped.connect(self._on_tester_present_stopped)
+        manager.tester_present_resumed.connect(lambda: self.tp.setChecked(True))
+        manager.rate_moved.connect(self._on_rate_moved)
 
     # --- helpers ----------------------------------------------------------------------
     @staticmethod
@@ -1163,7 +1210,21 @@ class UdsView(QWidget):
             p2_timeout_s=self.p2.value() / 1000,
             p2_star_timeout_s=self.p2_star.value() / 1000,
             timing=self.timing.currentData(),
+            functional=self._functional_chosen(),
         )
+
+    def _functional_chosen(self) -> list[str]:
+        return [key for key, action in self.functional_actions.items() if action.isChecked()]
+
+    def _show_functional(self) -> None:
+        chosen = len(self._functional_chosen())
+        self.functional.setText(f"Functional ({chosen})" if chosen else "Functional")
+
+    def _functional_changed(self) -> None:
+        """From the next request on, on a session already open as well."""
+        self.manager.config.functional = self._functional_chosen()
+        self._show_functional()
+        self._save()
 
     @Slot(bool)
     def _toggle_open(self, on: bool) -> None:
@@ -1212,29 +1273,75 @@ class UdsView(QWidget):
             0xFF if mask == NO_ID else mask & 0xFF, self.read_all_supported.isChecked()
         )
 
+    def _to_all(self, service: str) -> bool:
+        return self.manager.config.goes_to_all(service)
+
+    def _reset(self) -> None:
+        """ECUReset -- after asking, when it goes to every ECU on the bus."""
+        reset_type = self.reset_type.currentData()
+        text = (
+            "Reset every ECU on the bus that serves the functional address. Each "
+            "restarts, and loses its session and any unlock."
+        )
+        if not self._to_all("reset") or self.confirm.ask(
+            self, "uds.reset.all", "Reset every ECU?", text
+        ):
+            self.manager.ecu_reset(reset_type)
+
     def _communication_control(self) -> None:
         """CommunicationControl, after asking: it changes what the ECU puts on the bus."""
         control, messages = self.comm_control.currentData(), self.comm_messages.currentData()
         what = f"{COMM_CONTROLS[control]}, {COMM_MESSAGES[messages]}"
+        everyone = self._to_all("comm")
+        who = "every ECU on the bus" if everyone else "the ECU"
         text = (
-            f"Ask the ECU to {what}. Other nodes may stop hearing from it, or it "
-            "from them, until it is enabled again or the session ends."
+            f"Ask {who} to {what}. Other nodes may stop hearing from them, or they "
+            "from the others, until it is enabled again or the session ends."
         )
-        if self.confirm.ask(
-            self, f"uds.comm_control.{control}", "Change what the ECU sends?", text
-        ):
+        key = f"uds.comm_control.{control}" + (".all" if everyone else "")
+        if self.confirm.ask(self, key, "Change what the ECUs send?", text):
             self.manager.communication_control(control, messages)
 
     def _change_bitrate(self) -> None:
-        """LinkControl, after asking: the ECU leaves this channel's bitrate."""
+        """LinkControl, after asking: the ECUs change rate, and the channel follows."""
         bitrate = self.link_bitrate.currentData()
+        kbit = f"{bitrate // 1000} kbit/s"
+        everyone = self._to_all("link")
+        who = "every ECU on the bus" if everyone else "the ECU"
         text = (
-            f"Ask the ECU to change to {bitrate // 1000} kbit/s. Once it has, it no "
-            "longer hears this channel, or anything else on the bus at the old rate, "
-            "until the channel is reconnected at the new one."
+            f"Ask {who} to change to {kbit}. Each is asked whether it can first, and "
+            f"nothing changes if any says no. Once they have, this channel is closed "
+            f"and opened again at {kbit}, and the session and tester present with it: "
+            "the other panes, and a recording, see it disconnect and connect.\n\n"
+            f"Anything on the bus not told to change stays at the old rate and sees "
+            "only errors from the rest. The new rate lasts until the session ends; "
+            "the button beside Change takes everything back."
         )
-        if self.confirm.ask(self, "uds.link_control", "Change the ECU's bitrate?", text):
+        if not everyone:
+            text += (
+                "\n\nOnly the one ECU is being asked: tick Baud rate change under "
+                "Functional to move every ECU together."
+            )
+        key = "uds.link_control" + (".all" if everyone else "")
+        if self.confirm.ask(self, key, "Change the bus's bitrate?", text):
             self.manager.change_bitrate(bitrate)
+
+    def _back_to_own_rate(self) -> None:
+        own = self._own_rate
+        text = (
+            f"Return {'every ECU' if self._to_all('link') else 'the ECU'} to the default "
+            f"session, which takes them back to their own bitrate, and reopen this "
+            f"channel at {own // 1000} kbit/s. Security and anything the session held "
+            "go with it."
+        )
+        if self.confirm.ask(self, "uds.link_control.back", "Back to the bus's own rate?", text):
+            self.manager.back_to_own_rate()
+
+    @Slot(int, int)
+    def _on_rate_moved(self, now: int, own: int) -> None:
+        self._own_rate = own
+        self.rate_back.setText(f"Back to {own // 1000} kbit/s")
+        self.rate_back.setVisible(bool(own))
 
     def _send_raw(self) -> None:
         try:

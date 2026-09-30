@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import can
 import udsoncan
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from udsoncan import (
@@ -34,7 +35,7 @@ from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.worker import Worker
-from pycangui.uds import NO_ID, TIMING_AT_LEAST, TIMING_FORCED, UdsConfig
+from pycangui.uds import NO_ID, TIMING_AT_LEAST, TIMING_FORCED, UdsConfig, functional
 from pycangui.uds.dtc import BY_SUBFUNCTION, DEFAULT_STANDARD, DTC, EXTENDED, SNAPSHOT
 from pycangui.uds.images import Image, ImageError, Segment
 from pycangui.uds.images import write as write_image
@@ -141,6 +142,12 @@ class UdsManager(QObject):
     transferring = Signal(bool)  # a transfer started or finished
     #: Tester present turned itself off, and why: the adapter would not send it.
     tester_present_stopped = Signal(str)
+    #: The session closed and opened again underneath the pane -- following a
+    #: baud rate change -- with tester present to be carried on.
+    tester_present_resumed = Signal()
+    #: The channel's rate now, and the rate it came from, or 0 when it is back
+    #: on its own: what the pane needs to offer the way back.
+    rate_moved = Signal(int, int)
 
     def __init__(self, bus: BusManager, hooks: Hooks, ctx: Context) -> None:
         super().__init__()
@@ -167,7 +174,13 @@ class UdsManager(QObject):
         self._ecu_timing: tuple[float, float] | None = None
         self.standard_version = DEFAULT_STANDARD
         self._tp_timer = QTimer(self, timeout=self._tester_present_tick)
-        bus.disconnected.connect(self.close)
+        #: The channel's own bitrate while a LinkControl has it somewhere else,
+        #: so the way back knows where back is. None when it is on its own.
+        self._own_rate: int | None = None
+        #: Set while pycangui itself closes and reopens the channel to follow
+        #: a rate change, so that disconnect is not taken for the user's.
+        self._following = False
+        bus.disconnected.connect(self._on_disconnected)
 
     # --- lifecycle -------------------------------------------------------------
     @property
@@ -234,11 +247,21 @@ class UdsManager(QObject):
             self.result.emit("UDS closed")
             self.opened.emit(False)
 
+    @Slot()
+    def _on_disconnected(self) -> None:
+        self.close()
+        if not self._following and self._own_rate is not None:
+            # Disconnected by somebody, not by following the ECUs: the next
+            # connect is at the channel's own rate, so there is no way back
+            # left to offer.
+            self._own_rate = None
+            self.rate_moved.emit(0, 0)
+
     def shutdown(self) -> None:
         self.close()  # stops the ISO-TP threads before the bus disappears
         self._worker.stop()
         try:
-            self._bus.disconnected.disconnect(self.close)
+            self._bus.disconnected.disconnect(self._on_disconnected)
         except (RuntimeError, TypeError):
             pass
 
@@ -321,6 +344,37 @@ class UdsManager(QObject):
 
         self._worker.submit(job, done)
 
+    def _to_all(self, service: str, label: str, payload: bytes, *, suppress: bool = True) -> bool:
+        """Send to every ECU if this service is ticked to go that way. Whether it was.
+
+        Positive answers suppressed unless asked for: most of these are
+        about the whole bus, and what is worth hearing is which ECU objected.
+        On the pane's worker, behind whatever it has already asked, so a
+        functional request never lands in the middle of a physical one.
+        """
+        if not self.config.goes_to_all(service):
+            return False
+        if self.client is None:
+            self.result.emit(f"{label}: UDS not open")
+            return True
+        wire = functional.suppressed(payload) if suppress else payload
+        config, bus, fd = self.config, self._bus, self._fd()
+        p2, p2_star = self.timing_in_use()
+
+        def job() -> str:
+            try:
+                answers = functional.request(bus, config, wire, p2_s=p2, p2_star_s=p2_star, fd=fd)
+            except (can.CanError, ValueError) as exc:
+                return f"{label} (all ECUs): {exc}"
+            return functional.describe(label, answers, quiet_positive=wire != payload)
+
+        self._worker.submit(job, lambda text, error: self.result.emit(error or text))
+        return True
+
+    def _fd(self) -> bool:
+        """Whether a frame this pane sends goes out as CAN FD."""
+        return bool(self.config.can_fd and self._bus.fd)
+
     # --- services ----------------------------------------------------------------------
     # --- timing ------------------------------------------------------------------------
     def set_timing(self, timing: str, p2_s: float, p2_star_s: float) -> None:
@@ -365,6 +419,9 @@ class UdsManager(QObject):
         )
 
     def change_session(self, session: int) -> None:
+        if self._to_all("session", "DiagnosticSessionControl", bytes([0x10, session])):
+            return
+
         def fn(c: Client) -> str:
             r = c.change_session(session)
             timing = ""
@@ -406,6 +463,8 @@ class UdsManager(QObject):
         self._run("SecurityAccess", fn)
 
     def tester_present(self) -> None:
+        if self._to_all("tester", "TesterPresent", bytes([0x3E, 0x00])):
+            return
         self._run("TesterPresent", lambda c: (c.tester_present(), "TesterPresent OK")[1])
 
     def set_tester_present(self, on: bool) -> None:
@@ -419,26 +478,28 @@ class UdsManager(QObject):
             self._tp_timer.stop()
             return
 
-        def fn(c: Client) -> str:
-            c.tester_present()
-            return ""
-
         # quiet: only failures are reported
-        client = self.client
+        client, config, bus, fd = self.client, self.config, self._bus, self._fd()
+        everyone = config.goes_to_all("tester")
 
-        def job() -> str | FrameRefusedError:
+        def job() -> str | Exception:
             try:
-                return fn(client)
+                if everyone:
+                    # 3E 80: every ECU's session kept, and none of them answering.
+                    functional.send_only(bus, config, bytes([0x3E, 0x80]), fd=fd)
+                else:
+                    client.tester_present()
+                return ""
             except (NegativeResponseException, TimeoutException) as exc:
                 return f"TesterPresent: {exc}"
-            except FrameRefusedError as exc:
+            except (FrameRefusedError, can.CanError) as exc:
                 return exc
 
         def done(outcome, error: str | None) -> None:
             # A frame the adapter refuses is a bus nothing is acknowledging.
             # Carrying on would fill its queue again every couple of seconds,
             # so it stops, and says so, rather than going on failing quietly.
-            if isinstance(outcome, FrameRefusedError):
+            if isinstance(outcome, FrameRefusedError | can.CanError):
                 self._tp_timer.stop()
                 self.tester_present_stopped.emit(f"Tester present stopped: {outcome}")
             elif outcome or error:
@@ -447,6 +508,9 @@ class UdsManager(QObject):
         self._worker.submit(job, done)
 
     def ecu_reset(self, reset_type: int) -> None:
+        if self._to_all("reset", "ECUReset", bytes([0x11, reset_type])):
+            return
+
         def fn(c: Client) -> str:
             c.ecu_reset(reset_type)
             return f"ECUReset ({RESETS.get(reset_type, reset_type)}) OK"
@@ -460,6 +524,10 @@ class UdsManager(QObject):
         normal messages -- and to give it back afterwards. The subnet is 0,
         the one every tester uses: the network the request arrives on.
         """
+        # The communication type byte: the message kinds in its low two bits,
+        # the subnet (0) above them.
+        if self._to_all("comm", "CommunicationControl", bytes([0x28, control, messages & 0x03])):
+            return
 
         def fn(c: Client) -> str:
             kind = CommunicationType(
@@ -474,25 +542,131 @@ class UdsManager(QObject):
         self._run("CommunicationControl", fn)
 
     def change_bitrate(self, bitrate: int) -> None:
-        """LinkControl (0x87): ask the ECU to move to another bitrate.
+        """LinkControl (0x87): move the ECUs to another bitrate, and follow them.
 
-        Verify first, then transition, as ISO 14229-1 has it: the ECU says
-        whether it can before anything changes. After the transition it is
-        on the new rate and this channel is not, so the answer says to
-        reconnect; pycangui does not do that by itself, since reconnecting a
-        channel is the connect bar's question, with its own confirmation.
+        Verify first, then transition, as ISO 14229-1 has it: each ECU says
+        whether it can before anything changes. To every ECU when the service
+        is ticked to go that way, which is the usual case -- an ECU left
+        behind at the old rate sees nothing but errors from the rest -- and
+        then the transition goes out with its answer suppressed, since after
+        it nobody at the old rate is listening. To the one ECU otherwise.
+
+        Then the channel follows: it is closed and opened again at the new
+        rate, the session reopened, and tester present carried on at once,
+        because an ECU whose session times out falls back to its own rate.
+        Not on a channel whose rate pycangui does not set -- socketcan's is
+        the kernel's -- where nothing is sent at all.
         """
-        kbit = f"{bitrate // 1000} kbit/s"
-
-        def fn(c: Client) -> str:
-            c.link_control(1, Baudrate(bitrate, Baudrate.Type.Fixed))
-            c.link_control(3)
-            return (
-                f"LinkControl: the ECU is changing to {kbit}. Reconnect the channel "
-                "at that rate to carry on talking to it."
+        label = "LinkControl"
+        if self.client is None:
+            self.result.emit(f"{label}: UDS not open")
+            return
+        if not self._bus.sets_bitrate:
+            self.result.emit(
+                f"{label}: pycangui does not set this channel's bitrate ({self._bus.interface} "
+                "has it from outside), so it could not follow the ECUs to another one. "
+                "Nothing was sent."
             )
+            return
+        kbit = f"{bitrate // 1000} kbit/s"
+        baud = Baudrate(bitrate, Baudrate.Type.Fixed)
+        client, config, bus, fd = self.client, self.config, self._bus, self._fd()
+        everyone = config.goes_to_all("link")
+        p2, p2_star = self.timing_in_use()
 
-        self._run("LinkControl", fn)
+        def job() -> tuple[bool, str]:
+            try:
+                if not everyone:
+                    client.link_control(1, baud)
+                    client.link_control(3)
+                    return True, f"{label}: the ECU is changing to {kbit}"
+                verify = bytes([0x87, 0x01]) + baud.get_bytes()
+                answers = functional.request(bus, config, verify, p2_s=p2, p2_star_s=p2_star, fd=fd)
+                said = functional.describe(f"{label} verify {kbit}", answers, False)
+                if any(a.objected for a in answers) or not any(a.positive for a in answers):
+                    return False, f"{said}. Nothing was changed."
+                functional.send_only(bus, config, functional.suppressed(bytes([0x87, 0x03])), fd=fd)
+                return True, f"{said}; told to change to {kbit}"
+            except NegativeResponseException as exc:
+                return False, f"{label}: NRC 0x{exc.response.code:02X} {exc.response.code_name}"
+            except TimeoutException:
+                return False, f"{label}: timeout (no response). Nothing was changed."
+            except (can.CanError, FrameRefusedError) as exc:
+                return False, f"{label}: {exc}"
+
+        def done(outcome, error: str | None) -> None:
+            if error:
+                self.result.emit(f"{label}: {error}")
+                return
+            moved, text = outcome
+            self.result.emit(text)
+            if moved:
+                if self._own_rate is None:
+                    self._own_rate = self._bus.bitrate
+                self._follow(bitrate)
+
+        self._worker.submit(job, done)
+
+    def back_to_own_rate(self) -> None:
+        """End the session, which takes the ECUs back to their own rate, and follow.
+
+        ISO 14229-1 gives no request to undo LinkControl: the new rate lasts
+        for the session it was set in. So this returns to the default session
+        -- to every ECU if the change went to every ECU -- and reopens the
+        channel at the rate it had before.
+        """
+        own = self._own_rate
+        if own is None or self.client is None:
+            return
+        client, config, bus, fd = self.client, self.config, self._bus, self._fd()
+        everyone = config.goes_to_all("link")
+
+        def job() -> str:
+            try:
+                if everyone:
+                    functional.send_only(bus, config, bytes([0x10, 0x81]), fd=fd)
+                    return "DiagnosticSessionControl (all ECUs): back to the default session"
+                client.change_session(1)
+                return "Session -> default"
+            except (NegativeResponseException, TimeoutException, can.CanError) as exc:
+                return f"DiagnosticSessionControl: {exc}; following back anyway"
+
+        def done(text, error: str | None) -> None:
+            self.result.emit(error or text)
+            self._follow(own)
+
+        self._worker.submit(job, done)
+
+    def _follow(self, bitrate: int) -> None:
+        """Reopen the channel at ``bitrate``, the session with it, and tester present.
+
+        On the GUI thread: the channel is closed and opened like any other,
+        so everything on it -- the other panes, a recording -- sees a
+        disconnect and a connect.
+        """
+        keep_tp = self._tp_timer.isActive()
+        config = self.config
+        self._following = True
+        try:
+            reopened = self._bus.reconnect_at(bitrate)
+        finally:
+            self._following = False
+        if not reopened:
+            self._own_rate = None
+            self.result.emit(
+                f"Could not reopen the channel at {bitrate // 1000} kbit/s; it is disconnected."
+            )
+            self.rate_moved.emit(0, 0)
+            return
+        if self._own_rate == bitrate:
+            self._own_rate = None  # home again
+        self.result.emit(f"Channel reopened at {bitrate // 1000} kbit/s")
+        self.open(config)
+        if keep_tp and self.client is not None:
+            self.set_tester_present(True)
+            self.tester_present_resumed.emit()  # the pane's tick box, which closing cleared
+            self._tester_present_tick()  # now, not in two seconds: S3 is running
+        self.rate_moved.emit(bitrate, self._own_rate or 0)
 
     def did_label(self, did: int) -> str:
         """ "F190 (VIN)" -- the number, and what the identifier is called."""
@@ -800,6 +974,11 @@ class UdsManager(QObject):
         self._run("Read all DTCs", fn)
 
     def clear_dtcs(self, group: int = 0xFFFFFF) -> None:
+        # No sub-function, so no suppressing: each ECU says it has cleared.
+        request = bytes([0x14]) + group.to_bytes(3, "big")
+        if self._to_all("clear", "ClearDiagnosticInformation", request, suppress=False):
+            return
+
         def fn(c: Client) -> str:
             c.clear_dtc(group)
             return f"DTCs cleared (group {group:06X})"
@@ -826,6 +1005,8 @@ class UdsManager(QObject):
         though the setting did not take.
         """
         setting = 1 if on else 2  # ISO 14229-1: on = 1, off = 2
+        if self._to_all("dtc_setting", "ControlDTCSetting", bytes([0x85, setting])):
+            return
 
         def fn(c: Client) -> str:
             c.control_dtc_setting(setting)
@@ -845,6 +1026,10 @@ class UdsManager(QObject):
         self._run(f"RoutineControl {routine_id:04X}", fn)
 
     def raw(self, payload: bytes) -> None:
+        # As typed: a raw request is somebody's exact bytes, suppress bit and all.
+        if self._to_all("raw", "Raw", payload, suppress=False):
+            return
+
         def fn(c: Client) -> str:
             c.conn.send(payload)
             raw = c.conn.wait_frame(timeout=self.config.p2_star_timeout_s)

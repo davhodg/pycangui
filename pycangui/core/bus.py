@@ -353,6 +353,31 @@ class BusManager(QObject):
         self.load_percent = 0.0
         self.health = bus_health.DOWN
 
+    @property
+    def sets_bitrate(self) -> bool:
+        """Whether the bitrate pycangui opens a channel at is the one it runs at.
+
+        Not on socketcan: the kernel's interface has its bitrate from
+        ``ip link``, and python-can passes the one it is given nowhere. The
+        same for socketcand, whose daemon owns the interface, and for UDP
+        multicast, which has no bitrate at all.
+        """
+        return self.interface not in ("socketcan", "socketcand", "udp_multicast")
+
+    def reconnect_at(self, bitrate: int) -> bool:
+        """Close the channel and open it again as before, at another bitrate.
+
+        For following a bus that has been moved -- LinkControl, where the ECUs
+        change rate and pycangui has to go with them. The rest is what the
+        channel was opened with; the rate is not saved as the channel's own,
+        so the next connect is at the configured one again. Everything on the
+        channel sees a disconnect and a connect, as it would for a restart.
+        """
+        if self.bus is None:
+            return False
+        self.connect_bus(**dict(self._opened_with, bitrate=bitrate))
+        return self.is_connected
+
     def add_listener(self, listener: can.Listener) -> None:
         """Let a protocol stack see every frame (canopen.Network etc.)."""
         if self.notifier is not None:
