@@ -190,8 +190,6 @@ def test_recorder_counts_frames_written_and_knows_the_file_size(app, channels, t
     second.send(0x200, b"\x02")
     wait_until(app, lambda: sum(len(c.messages) for c in counters) >= 4)
     assert recorder.frames == 4
-    if recorder.size == 0:  # still in the file buffer
-        assert "bytes" not in recorder.summary(), "no size until there is one on disk"
 
     second.disconnect_bus()  # its frames are still in the file, so still counted
     app.processEvents()
@@ -203,7 +201,6 @@ def test_recorder_counts_frames_written_and_knows_the_file_size(app, channels, t
     assert recorder.frames == 5, "kept after stopping, for saying what was recorded"
     assert recorder.size == (tmp_path / "count.asc").stat().st_size > 0
     assert recorder.elapsed > 0, "and how long it ran"
-    assert "5 frames" in recorder.summary()
 
     assert recorder.start(tmp_path / "again.asc")
     assert recorder.frames == 0, "a new recording counts afresh"

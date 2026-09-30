@@ -40,36 +40,52 @@ def install(folder, editable_from=None):
         )
 
 
+def kind(package):
+    return installation.origin(package)[0]
+
+
 def test_a_pip_install_running_its_own_copy(site_packages):
     install(site_packages)
-    assert installation.how_installed(site_packages / "pycangui") == "pip"
+    assert kind(site_packages / "pycangui") == installation.PIP
 
 
-def test_nothing_installed_is_said(site_packages, tmp_path):
+def test_nothing_installed_is_told_apart(site_packages, tmp_path):
     """The case reported: a test environment without pycangui, started from
     a source folder, ran the folder's copy and nothing said so."""
-    said = installation.how_installed(tmp_path / "clone" / "pycangui")
-    assert "not installed" in said
+    assert kind(tmp_path / "clone" / "pycangui") == installation.NOT_INSTALLED
 
 
-def test_a_source_folder_beside_an_installed_copy_is_said(site_packages, tmp_path):
+def test_a_source_folder_beside_an_installed_copy_is_told_apart(site_packages, tmp_path):
     install(site_packages)
-    said = installation.how_installed(tmp_path / "clone" / "pycangui")
-    assert said != "pip" and "not the pip install" in said
+    assert kind(tmp_path / "clone" / "pycangui") == installation.OTHER_PIP
 
 
-def test_an_editable_install_names_its_source(site_packages, tmp_path):
+def test_an_editable_install_knows_its_source(site_packages, tmp_path):
     clone = tmp_path / "clone"
     (clone / "pycangui").mkdir(parents=True)
     install(site_packages, editable_from=clone)
-    said = installation.how_installed(clone / "pycangui")
-    assert said.startswith("pip, editable") and str(clone) in said
+    found, root, _version = installation.origin(clone / "pycangui")
+    assert found == installation.EDITABLE and root == clone
 
 
-def test_an_editable_install_of_another_folder_is_said(site_packages, tmp_path):
+def test_an_editable_install_of_another_folder_is_told_apart(site_packages, tmp_path):
     install(site_packages, editable_from=tmp_path / "one")
-    said = installation.how_installed(tmp_path / "other" / "pycangui")
-    assert "not the editable install" in said
+    assert kind(tmp_path / "other" / "pycangui") == installation.OTHER_EDITABLE
+
+
+def test_every_kind_can_be_described(site_packages, tmp_path, monkeypatch):
+    """A kind origin() can answer that how_installed() had no words for would
+    throw from About."""
+    for each in (
+        installation.FROZEN,
+        installation.PIP,
+        installation.EDITABLE,
+        installation.NOT_INSTALLED,
+        installation.OTHER_PIP,
+        installation.OTHER_EDITABLE,
+    ):
+        monkeypatch.setattr(installation, "origin", lambda _p, k=each: (k, tmp_path, "1.0"))
+        assert installation.how_installed()
 
 
 def test_a_build_left_in_the_source_folder_is_not_an_install(site_packages, tmp_path):
