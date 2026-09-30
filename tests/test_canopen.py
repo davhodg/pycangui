@@ -137,3 +137,18 @@ def test_failures_are_grouped_by_reason_in_the_order_they_happened():
     )
     assert list(grouped) == ["read only", "out of range"]
     assert grouped["read only"] == [(0x2001, 0), (0x2003, 1)]
+
+
+def test_a_tpdo_is_found_by_the_name_it_is_decoded_under(stack):
+    """What lets a database that describes the same frame take its place."""
+    _bus, manager, _demo = stack
+    loaded, names = [], []
+    manager.eds_loaded.connect(lambda *a: loaded.append(a))
+    manager.pdo_update.connect(lambda _n, name, _values: names.append(name))
+    manager.load_eds(5, str(resources.path("demo.eds")))
+    wait_until(lambda: loaded)
+    manager.nmt(5, "OPERATIONAL")
+    wait_until(lambda: names)
+    assert manager.tpdo_cob_id(5, names[0]) == 0x185, "demo.dbc's DriveStatus"
+    assert manager.tpdo_cob_id(5, "no such PDO") is None
+    assert manager.tpdo_cob_id(99, names[0]) is None, "nor a node nobody knows"

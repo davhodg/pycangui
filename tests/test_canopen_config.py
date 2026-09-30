@@ -165,6 +165,7 @@ def test_the_object_dictionary_is_the_first_tab(app, tmp_path, monkeypatch):
         "Emergencies",
         "Faults",
         "LSS",
+        "CANopen log",
     ]
     window.close()
 

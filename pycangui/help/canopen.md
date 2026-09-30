@@ -22,9 +22,12 @@ choice, the search of the EDS folder and the file dialog are for a node
 nobody has an answer for yet, and a dialog opening every time a heartbeat
 came back would be a way of making people unplug things.
 
-**NMT command**, with **Send NMT** beside it, sends Start, Pre-operational,
+**NMT command**, with the send button beside it, sends Start, Pre-operational,
 Stop, Reset node or Reset communication to the selected node, or to every node
-when none is selected.
+when none is selected, and the button says which: *Send NMT to node 5*, or
+*Send NMT to all nodes*. The first node heard is selected for you, so to send
+to all of them, click an empty part of the node list, or press Esc in it, to
+select none.
 **SYNC producer** transmits SYNC (0x080) for as long as it is ticked, so
 synchronous PDOs are exchanged; how often is under *Settings...*, since a rate
 is a fact about the bus rather than a decision to take each time.
@@ -53,10 +56,11 @@ CANopen has no standard way to log in, so both are done by `login` and
 The password is passed to the hook and is neither logged nor kept.
 
 The second row under the list is what the node holds. **Load EDS...** chooses
-its description by hand, and **Read RPDO config** reads the selected node's
-RPDO mapping from the node itself, so [CAN Transmit](transmit.md) offers the
-RPDOs a remapped node actually receives rather than the ones its EDS started
-with. **Store** and **Restore defaults** are 0x1010 and 0x1011, and **Save
+its description by hand, and **Read PDO config** reads the selected node's
+PDO mapping, both directions, from the node itself -- the same as *Read from
+node* in the PDO tab. The EDS says how a node shipped; this is how it is set up
+now, so [Signals and Plot](signals.md) decode the TPDOs a remapped node
+actually sends, and [CAN Transmit](transmit.md) offers the RPDOs it receives. **Store** and **Restore defaults** are 0x1010 and 0x1011, and **Save
 DCF...** and **Apply DCF...** read every parameter out to a file and write one
 back in.
 
@@ -256,3 +260,35 @@ is laid out in.
 3. **Store and finish.** *Store configuration* makes the node-ID and bit rate
    survive a power cycle, and *Back to waiting state* leaves configuration
    state.
+
+### The CANopen log
+
+The *CANopen log* tab is everything that happens once rather than over and
+over, a line each, on the trace's clock:
+
+- **SDO** -- every read and write pycangui makes, whatever asked for it: the
+  object dictionary, identifying a node, checking an EDS against it, reading
+  its PDO mapping, a DCF, a custom pane polling, a plugin. With the object and
+  its name, what was read or written -- as bytes, and as the number they make
+  when they are one -- and how long it took. One that failed says why: an
+  abort with its code and what CiA 301 says it means, or no answer at all.
+- **NMT** -- each command pycangui sends, to one node or to all of them, and
+  the SYNC producer starting and stopping.
+- **State** -- a node's NMT state when its heartbeat changes it, not every
+  heartbeat that repeats it; boot-up; and its heartbeat stopping and coming
+  back.
+- **EMCY** -- each emergency, as the *Emergencies* tab decodes it.
+- **LSS** -- each step and what came of it.
+
+PDOs, SYNC frames and heartbeats themselves are left out: they repeat, and
+the trace has them. It is a tab of its own rather than lines in the
+[Event Log](event-log.md), because a pane polling a few objects writes
+several SDO lines a second; the Event Log keeps its summary.
+
+The ticks choose what is shown, not what is kept, so hiding SDO to see the rest
+and ticking it back loses nothing. *Selected node only* leaves out the other
+nodes, keeping what went to all of them. *Clear* empties it, and *Save...*
+writes what is shown to a text file. The newest few thousand lines are kept.
+
+A firmware download's block transfer is not in it; the Firmware pane reports
+its own progress.

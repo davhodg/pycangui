@@ -32,11 +32,11 @@ from pycangui.canopen import (
     NodeIdentity,
     PdoConfig,
     PdoEntry,
-    abort_reason,
     eds_extras,
     eds_text,
     faults,
     load_od,
+    sdo_log,
 )
 from pycangui.canopen.dcf import values_from, write_dcf
 from pycangui.canopen.display import Display, from_variable, with_overrides
@@ -132,6 +132,11 @@ class CanopenManager(QObject):
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
     access_level = Signal(int, object)  # node_id, the access level held (None: none known)
     fault_state = Signal(object)  # faults.FaultState: what a node says about itself
+    #: One SDO transfer, for the CANopen log: sdo_log.SdoRecord. Emitted on
+    #: whichever thread made it, so a connection to it is queued.
+    sdo_logged = Signal(object)
+    nmt_sent = Signal(int, str)  # node_id (0: every node), the command
+    sync_changed = Signal(bool, float)  # producing SYNC or not, and the period in seconds
     #: For the Event Log pane, with how much the line matters. The level
     #: belongs at the call site: only the code that knows a read failed
     #: knows that the line is a failure rather than a note.
@@ -696,6 +701,14 @@ class CanopenManager(QObject):
         node.emcy.add_callback(lambda err, n=node_id: self._on_emcy(n, err))
         self._apply_sdo_timing(node)
         self._apply_sdo_channel(node_id, node)
+        if getattr(node, "sdo", None) is not None:
+            sdo_log.watch(
+                node.sdo,
+                node_id,
+                self.sdo_logged.emit,
+                self._bus.now,
+                lambda index, sub, n=node: _object_name(n, index, sub),
+            )
 
     # --- SDO channel --------------------------------------------------------------
     def set_sdo_channels(self, channels: dict[int, tuple[int, int]]) -> None:
@@ -884,6 +897,7 @@ class CanopenManager(QObject):
             self.network.nmt.send_command(code)
         else:
             self._ensure_node(node_id).nmt.send_command(code)
+        self.nmt_sent.emit(node_id, command)
 
     # --- PDO -----------------------------------------------------------------
     def subscribe_pdos(self, node_id: int) -> None:
@@ -894,12 +908,7 @@ class CanopenManager(QObject):
 
         def job() -> list[str]:
             node.tpdo.read()
-            names = []
-            for pdo_map in node.tpdo.values():
-                if pdo_map.cob_id is not None and pdo_map.enabled:
-                    pdo_map.add_callback(lambda m, n=node_id: self._on_pdo(n, m))
-                    names.append(pdo_map.name)
-            return names
+            return self._decode_tpdos(node_id, node)
 
         def done(names: list[str] | None, error: str | None) -> None:
             if error:
@@ -916,6 +925,32 @@ class CanopenManager(QObject):
             self.pdo_config.emit(node_id)
 
         self._worker.submit(job, done)
+
+    def _decode_tpdos(self, node_id: int, node) -> list[str]:
+        """Decode every enabled TPDO into Signals and Plot, each once. Its names.
+
+        Asked after every read of the mapping, not only the first: a TPDO the
+        node had disabled gets no callback, and one enabled since -- in the
+        PDO tab, or by the node's own application -- would never be decoded.
+        The map objects outlive a re-read, so a mark on each keeps a second
+        read from decoding every frame twice.
+        """
+        names = []
+        for pdo_map in node.tpdo.values():
+            if pdo_map.cob_id is None or not pdo_map.enabled:
+                continue
+            if not getattr(pdo_map, "_pycangui_decoded", False):
+                pdo_map.add_callback(lambda m, n=node_id: self._on_pdo(n, m))
+                pdo_map._pycangui_decoded = True
+            names.append(pdo_map.name)
+        return names
+
+    def tpdo_cob_id(self, node_id: int, name: str) -> int | None:
+        """The identifier a node's TPDO of this name is sent on, if it is known."""
+        node = self.node(node_id)
+        if node is None:
+            return None
+        return next((m.cob_id for m in node.tpdo.values() if m.name == name), None)
 
     # --- PDO configuration (both directions) -----------------------------------
     def pdo_configs(self, node_id: int) -> list[PdoConfig]:
@@ -945,7 +980,13 @@ class CanopenManager(QObject):
         return out
 
     def read_pdo_config(self, node_id: int) -> None:
-        """Read the live PDO configuration of a node from the node itself."""
+        """Read the live PDO configuration of a node from the node itself.
+
+        Both directions, and everything that follows from them: the TPDOs
+        are what Signals and Plot decode, the RPDOs what CAN Transmit
+        offers, and the PDO tab shows the two. The EDS says how a node
+        ships; this is how it is set up now.
+        """
         node = self.node(node_id)
         if node is None or not len(node.object_dictionary):
             self.message.emit(f"Node {node_id}: load an EDS first", WARNING)
@@ -954,6 +995,7 @@ class CanopenManager(QObject):
         def job() -> int:
             node.tpdo.read()
             node.rpdo.read()
+            self._decode_tpdos(node_id, node)
             return len(self.pdo_configs(node_id))
 
         def done(count: int | None, error: str | None) -> None:
@@ -1056,6 +1098,7 @@ class CanopenManager(QObject):
         self.network.sync.start(period_s)  # returns None; it keeps its own task
         self._sync_on = True
         self.message.emit(f"SYNC started at {period_s * 1000:.0f} ms", INFORMATION)
+        self.sync_changed.emit(True, period_s)
 
     def stop_sync(self) -> None:
         if not self._sync_on:
@@ -1066,6 +1109,7 @@ class CanopenManager(QObject):
             pass
         self._sync_on = False
         self.message.emit("SYNC stopped", INFORMATION)
+        self.sync_changed.emit(False, 0.0)
 
     # --- LSS, layer setting services (CiA 305) ----------------------------------
     # LSS configures a node's node-ID and bit rate over CAN, before it has a
@@ -1391,28 +1435,6 @@ class CanopenManager(QObject):
             self.message.emit(f"Node {node_id}: {count} RPDO(s) available to transmit", INFORMATION)
             self.rpdos_read.emit(node_id)
 
-    def read_rpdo_config(self, node_id: int) -> None:
-        """Re-read a node's RPDO mapping from the node itself over SDO."""
-        node = self.node(node_id)
-        if node is None or not len(node.object_dictionary):
-            self.message.emit(f"Node {node_id}: load an EDS first", WARNING)
-            return
-
-        def job() -> int:
-            node.rpdo.read()
-            return sum(1 for m in node.rpdo.map.values() if m.cob_id is not None and len(m.map))
-
-        def done(count: int | None, error: str | None) -> None:
-            if error:
-                self.message.emit(
-                    f"Node {node_id}: RPDO configuration read failed ({error})", WARNING
-                )
-            else:
-                self.message.emit(f"Node {node_id}: {count} RPDO(s) configured", INFORMATION)
-                self.rpdos_read.emit(node_id)
-
-        self._worker.submit(job, done)
-
     def encode_rpdo(
         self, node_id: int, number: int, values: dict[str, float]
     ) -> tuple[int, bytes] | None:
@@ -1440,10 +1462,21 @@ def _reason(exc: Exception) -> str:
     the meaning is what tells the person in front of the machine whether they
     have a read-only object or a value out of range.
     """
-    if isinstance(exc, canopen.SdoAbortedError):
-        described = abort_reason(exc.code)
-        return f"abort 0x{exc.code:08X}" + (f", {described}" if described else "")
-    return f"{type(exc).__name__}: {exc}"
+    return sdo_log.reason(exc)
+
+
+def _object_name(node, index: int, sub: int) -> str:
+    """What the node's object dictionary calls an entry, or "" without one."""
+    try:
+        obj = node.object_dictionary[index]
+    except KeyError:
+        return ""
+    if isinstance(obj, ODRecord | ODArray):
+        try:
+            return f"{obj.name}.{obj[sub].name}"
+        except (KeyError, IndexError):
+            return obj.name
+    return obj.name
 
 
 def _by_reason(failures: list[tuple[int, int, str]]) -> dict[str, list[tuple[int, int]]]:

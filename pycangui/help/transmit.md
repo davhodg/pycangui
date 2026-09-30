@@ -15,7 +15,7 @@ open.
 Each **CAN Transmit** pane holds one list of everything it sends, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded
 database and edit its signals in physical units), and **CANopen RPDO** (pick a
-node's RPDO -- press *Read RPDO config* in the CANopen pane first -- and edit
+node's RPDO -- press *Read PDO config* in the CANopen pane first -- and edit
 its mapped variables). All three are behind one *Add* button, since the
 choice is which source rather than which button. Expand a row to see its
 signals; the encoded bytes update as you type, and a message that is already

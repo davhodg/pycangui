@@ -58,6 +58,7 @@ from pycangui.core.hooks import Hooks
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
 from pycangui.ui import canopen_login, canopen_settings, folders, keep_file, messages
+from pycangui.ui.canopen_log_view import CanopenLogView
 from pycangui.ui.faults_view import FaultsView
 from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
@@ -91,6 +92,11 @@ ERROR_COLOUR = QColor(200, 40, 40)
 LOST_COLOUR = QColor(150, 150, 150)
 ALIVE_BRUSH = QBrush()  # an empty brush restores the theme's normal colour
 RESET_COLOUR = QColor(40, 140, 40)
+NMT_TARGET_TIP = (
+    "Send the NMT command to the selected node, or to every node (id 0)\n"
+    "when none is selected. Click an empty part of the node list, or press\n"
+    "Esc in it, to select none."
+)
 NMT_COMMANDS_UI = (
     ("Start (operational)", "OPERATIONAL"),
     ("Pre-operational", "PRE-OPERATIONAL"),
@@ -112,6 +118,32 @@ SYNC_TIP = (
     "is in Settings: a rate is a fact about the bus, agreed once, rather\n"
     "than a decision to take every time this is pressed."
 )
+
+
+class _NodeList(QTreeWidget):
+    """The node list, which can also have no node selected.
+
+    A tree keeps its current row however it is clicked, and the first node
+    heard is selected for you -- so once any node was listed, NMT could only
+    ever go to one of them, never to all. A click on empty space, or Esc,
+    selects none.
+    """
+
+    def mousePressEvent(self, event) -> None:
+        if self.itemAt(event.position().toPoint()) is None:
+            self.select_none()
+            return
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Escape and self.currentItem() is not None:
+            self.select_none()
+            return
+        super().keyPressEvent(event)
+
+    def select_none(self) -> None:
+        self.clearSelection()
+        self.setCurrentItem(None)
 
 
 class CanopenView(QWidget):
@@ -143,7 +175,7 @@ class CanopenView(QWidget):
         mono = QFont("Consolas", 9)
 
         # --- nodes ---------------------------------------------------------
-        self.nodes = QTreeWidget()
+        self.nodes = _NodeList()
         self.nodes.setHeaderLabels(["Node", "Name", "State", "EDS", "Access", "Error"])
         self.nodes.setRootIsDecorated(False)
         self.nodes.currentItemChanged.connect(self._on_node_selected)
@@ -208,13 +240,14 @@ class CanopenView(QWidget):
         nmt_bar.addWidget(self.nmt_command)
         # "Send NMT" rather than "Send": the bar has a second control beside
         # it and several more below, and a bare Send does not say which of
-        # them it belongs to.
-        send_nmt = QPushButton("Send NMT")
-        send_nmt.setToolTip(
-            "Send this NMT command to the selected node, or to every node when none is selected."
-        )
-        send_nmt.clicked.connect(self._send_nmt)
-        nmt_bar.addWidget(send_nmt)
+        # them it belongs to. It says who it goes to as well, since that is
+        # the selection's doing and a reset sent to every node is not the
+        # same thing as one sent to one of them.
+        self.send_nmt = QPushButton()
+        self.send_nmt.setToolTip(NMT_TARGET_TIP)
+        self.send_nmt.clicked.connect(self._send_nmt)
+        nmt_bar.addWidget(self.send_nmt)
+        self._show_nmt_target()
         nmt_bar.addSpacing(16)
         # A tick rather than a button that stays down. It is a state this
         # tool is in -- producing SYNC or not -- and the label no longer has
@@ -252,14 +285,15 @@ class CanopenView(QWidget):
         apply_dcf = QPushButton("Apply DCF...")
         apply_dcf.setToolTip("Write the parameter values from a .dcf file into the node")
         apply_dcf.clicked.connect(self._apply_dcf)
-        self.read_rpdos_btn = QPushButton("Read RPDO config")
-        self.read_rpdos_btn.setToolTip(
-            "Read the selected node's RPDO mapping from the node itself.\n"
-            "The EDS says how a node ships; this is how it is set up now, so\n"
-            "CAN Transmit offers the RPDOs a remapped node actually receives."
+        self.read_pdos_btn = QPushButton("Read PDO config")
+        self.read_pdos_btn.setToolTip(
+            "Read the selected node's PDO mapping, both directions, from the\n"
+            "node itself. The EDS says how a node ships; this is how it is set\n"
+            "up now, so Signals and Plot decode the TPDOs a remapped node\n"
+            "actually sends, and CAN Transmit offers the RPDOs it receives."
         )
-        self.read_rpdos_btn.clicked.connect(self._read_rpdos)
-        for b in (self.read_rpdos_btn, store_btn, restore_btn, save_dcf, apply_dcf):
+        self.read_pdos_btn.clicked.connect(self._read_pdos)
+        for b in (self.read_pdos_btn, store_btn, restore_btn, save_dcf, apply_dcf):
             file_bar.addWidget(b)
             self._node_buttons.append(b)
         file_bar.addStretch()
@@ -408,6 +442,8 @@ class CanopenView(QWidget):
         bottom.addTab(self.faults, "Faults")
         self.lss = LssView(manager, ctx)
         bottom.addTab(self.lss, "LSS")
+        self.log = CanopenLogView(manager, ctx, self.selected_node)
+        bottom.addTab(self.log, "CANopen log")
         self.bottom_tabs = bottom
         splitter = QSplitter(Qt.Vertical)
         for w, stretch in ((top, 1), (bottom, 4)):
@@ -468,7 +504,7 @@ class CanopenView(QWidget):
                 ("Login...", self._login),
                 ("Read access level", self._read_level),
             ),
-            (("Load EDS...", self._load_eds_clicked), ("Read RPDO config", self._read_rpdos)),
+            (("Load EDS...", self._load_eds_clicked), ("Read PDO config", self._read_pdos)),
             (
                 ("Store", self._store),
                 ("Restore defaults", self._restore),
@@ -754,10 +790,10 @@ class CanopenView(QWidget):
     def _send_nmt(self) -> None:
         self._nmt(self.nmt_command.currentData())
 
-    def _read_rpdos(self) -> None:
+    def _read_pdos(self) -> None:
         node_id = self.selected_node()
         if node_id is not None:
-            self.manager.read_rpdo_config(node_id)
+            self.manager.read_pdo_config(node_id)
 
     def _store(self) -> None:
         node_id = self.selected_node()
@@ -947,7 +983,16 @@ class CanopenView(QWidget):
         for button in self._node_buttons:
             button.setEnabled(on_a_node)
 
+    def _show_nmt_target(self) -> None:
+        node_id = self.selected_node()
+        self.send_nmt.setText(
+            "Send NMT to all nodes" if node_id is None else f"Send NMT to node {node_id}"
+        )
+
     def _on_node_selected(self, current: QTreeWidgetItem | None, _previous) -> None:
+        self._show_nmt_target()
+        if hasattr(self, "log"):  # made after the list, which can select a node first
+            self.log.node_changed()
         self._offer_node_buttons()
         self.faults.set_node(None if current is None else current.data(0, ROLE_INDEX))
         self.clear_live_pdos()
