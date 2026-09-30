@@ -132,6 +132,22 @@ def test_about_shows_the_version(app, window):
     dialog.deleteLater()
 
 
+def test_about_fits_its_longest_line_rather_than_wrapping_it(app, window, monkeypatch):
+    """Reported: the paths About shows wrapped under the column of names."""
+    from pycangui.core import installation
+
+    deep = "C:\\" + "\\".join(["a folder"] * 12) + "\\python.exe"
+    monkeypatch.setattr(installation, "report", lambda: [("Interpreter", deep)])
+    dialog = AboutDialog(window)
+    details = dialog.details
+    assert details.lineWrapMode() == QPlainTextEdit.NoWrap
+    longest = max(map(details.fontMetrics().horizontalAdvance, details.toPlainText().splitlines()))
+    widest = int(window.screen().availableGeometry().width() * 0.8)
+    assert details.minimumWidth() >= min(longest, widest - 40), "as wide as the line, to a limit"
+    assert details.minimumWidth() <= widest, "and no wider than most of the screen"
+    dialog.deleteLater()
+
+
 def test_the_licence_window_shows_every_file(app, window):
     """Committed files must load."""
     dialog = LicenceDialog(window)

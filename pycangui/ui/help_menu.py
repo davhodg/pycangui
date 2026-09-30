@@ -351,10 +351,27 @@ class AboutDialog(QDialog):
         details = QPlainTextEdit(environment_report())
         details.setReadOnly(True)
         details.setFont(QFont("Consolas", 9))
-        # Tall enough for the whole report, so nothing has to be scrolled to.
-        lines = details.toPlainText().count("\n") + 1
-        details.setMinimumHeight(details.fontMetrics().lineSpacing() * lines + 16)
-        details.setMinimumWidth(details.fontMetrics().horizontalAdvance("M" * 60))
+        # One report line to one line on screen: wrapped, a path ran on under
+        # the column of names and the table stopped reading as one. Wide
+        # enough for the longest line, up to most of the screen, and a
+        # scroll bar past that -- a deep folder can be longer than any screen.
+        details.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.details = details
+        metrics = details.fontMetrics()
+        text = details.toPlainText().splitlines()
+        frame = 2 * details.frameWidth() + 2 * int(details.document().documentMargin())
+        # The frame and margins are not all of it: the cursor and the
+        # viewport's own edge take a few pixels more, measured at eight.
+        wanted = max(metrics.horizontalAdvance(line) for line in text) + frame + 16
+        screen = (parent.screen() if parent is not None else None) or self.screen()
+        widest = int(screen.availableGeometry().width() * 0.8)
+        details.setMinimumWidth(min(max(wanted, metrics.horizontalAdvance("M" * 60)), widest))
+        # Tall enough for the whole report, so nothing has to be scrolled to,
+        # and for the scroll bar under it when the width ran out.
+        height = metrics.lineSpacing() * len(text) + frame + 8
+        if wanted > widest:
+            height += details.horizontalScrollBar().sizeHint().height()
+        details.setMinimumHeight(height)
         link = QLabel(
             f'<p>Apache License 2.0 &middot; <a href="{PROJECT_PAGE}">{PROJECT_PAGE}</a></p>'
         )
