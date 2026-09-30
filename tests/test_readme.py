@@ -95,3 +95,43 @@ def test_the_python_classifiers_start_at_the_floor():
     ]
     assert listed and listed[0] == floor
     assert "Programming Language :: Python :: 3 :: Only" in PROJECT["classifiers"]
+
+
+#: Each of python-can's interfaces, and the name the pages list it by.
+ADAPTER_NAMES = {
+    "canalystii": "CANalyst-II",
+    "cantact": "CANtact",
+    "etas": "ETAS",
+    "gs_usb": "gs_usb",
+    "iscan": "isCAN",
+    "ixxat": "IXXAT",
+    "kvaser": "Kvaser",
+    "neousys": "Neousys",
+    "neovi": "neoVI",
+    "nican": "NI-CAN",
+    "nixnet": "NI-XNET",
+    "pcan": "PCAN",
+    "robotell": "Robotell",
+    "seeedstudio": "Seeed Studio",
+    "serial": "serial adapters",
+    "slcan": "SLCAN",
+    "socketcan": "SocketCAN",
+    "socketcand": "socketcand",
+    "systec": "SYS TEC",
+    "udp_multicast": "UDP multicast",
+    "usb2can": "USB2CAN",
+    "vector": "Vector",
+    "virtual": "virtual bus",
+}
+
+
+@PAGES
+def test_every_adapter_python_can_supports_is_listed(page):
+    """The pages list the adapters by name, so a new python-can interface
+    has to be added to them, and to ADAPTER_NAMES above, to pass this."""
+    import can
+
+    unnamed = sorted(set(can.interfaces.BACKENDS) - set(ADAPTER_NAMES))
+    assert not unnamed, f"python-can has interfaces the pages do not list: {unnamed}"
+    missing = [name for name in ADAPTER_NAMES.values() if name not in page]
+    assert not missing, f"not on the page: {missing}"

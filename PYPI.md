@@ -11,7 +11,7 @@
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 
-A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP and CCP, and Python scripting, on any adapter supported by python-can.
+A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, XCP and CCP, and Python scripting, on any adapter supported by python-can -- PEAK, Vector, Kvaser, IXXAT, SocketCAN and low-cost SLCAN adapters among them.
 
 ![pycangui on its demo device: the CAN Trace, CAN Transmit and Event Log above, and engine and vehicle speed plotted in Signals and Plot below](https://raw.githubusercontent.com/davhodg/pycangui/master/pycangui/help/main-window.png)
 
@@ -32,6 +32,7 @@ pip install "pycangui[all]"
 
 ## What it does
 
+- **Adapters**: every interface python-can supports -- PEAK PCAN, Vector, Kvaser, IXXAT, ETAS, Intrepid neoVI, NI-CAN and NI-XNET, SYS TEC, Neousys, CANalyst-II, CANtact, candleLight and other gs_usb devices, SLCAN (CANable, Lawicel), 8devices USB2CAN, Seeed Studio, Robotell, isCAN and serial adapters; SocketCAN and socketcand on Linux; UDP multicast between computers; and a virtual bus that needs no hardware at all.
 - **Live trace** of every connected channel on one clock, CAN FD included, with filtering that hides rather than discards, recording to six log formats, and replay of a log onto a bus.
 - **Transmit** raw frames, DBC messages edited by signal, or a CANopen RPDO.
 - **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save and apply.
@@ -50,7 +51,7 @@ The [manual](https://github.com/davhodg/pycangui/blob/master/pycangui/help/manua
 
 ## Adapters
 
-Any adapter [python-can](https://github.com/hardbyte/python-can) supports: PEAK, IXXAT, Kvaser, Vector, socketcan, the low-cost USB dongles and more. Install the vendor's driver and python-can finds it at run time.
+Any adapter [python-can](https://github.com/hardbyte/python-can) supports, as listed above. Install the adapter maker's driver and python-can finds it at run time.
 
 No hardware is needed to try it: the `virtual` interface's *Demo device* channel has a simulated device on it that answers CANopen, UDS, J1939, XCP and CCP.
 
