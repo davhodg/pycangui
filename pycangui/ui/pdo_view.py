@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pycangui.canopen import PdoConfig, PdoEntry
+from pycangui.canopen import PdoConfig, PdoEntry, pdo_file
 from pycangui.canopen.manager import CanopenManager, mappable, mapped_bits, od_entries
 from pycangui.core.classify import predefined_meaning
 from pycangui.core.context import Context
@@ -85,8 +85,13 @@ class ObjectPicker(QDialog):
     """Pick an object from the node's dictionary to map into a PDO."""
 
     def __init__(
-        self, manager: CanopenManager, node_id: int, parent: QWidget | None = None
+        self,
+        manager: CanopenManager,
+        node_id: int | None,
+        parent: QWidget | None = None,
+        dictionary=None,
     ) -> None:
+        """From a node's dictionary, or from ``dictionary`` -- a file's."""
         super().__init__(parent)
         self.setWindowTitle("Map an object")
         self.resize(520, 460)
@@ -97,9 +102,11 @@ class ObjectPicker(QDialog):
         self.list = QListWidget()
         self.list.setFont(QFont("Consolas", 9))
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
-        node = manager.node(node_id)
-        if node is not None:
-            for index, sub, var, name in od_entries(node.object_dictionary):
+        if dictionary is None and node_id is not None:
+            node = manager.node(node_id)
+            dictionary = None if node is None else node.object_dictionary
+        if dictionary is not None:
+            for index, sub, var, name in od_entries(dictionary):
                 if index < 0x2000 or not mappable(var):
                     # Communication-profile objects, the container row an
                     # array or record puts in front of its subs, and
@@ -138,6 +145,8 @@ class PdoConfigView(QWidget):
         self.manager = manager
         self.ctx = ctx
         self.node_id: int | None = None
+        #: A DCF or EDS open with no node, shown in place of one.
+        self._file = None
         self._updating = False
         #: The configuration being edited, which is not the node's until
         #: Write to node. Held here rather than read back from the manager
@@ -154,11 +163,7 @@ class PdoConfigView(QWidget):
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         self.tree.itemChanged.connect(self._on_item_changed)
 
-        read = QPushButton("Read from node")
-        read.setToolTip(
-            "Read what the node is actually configured to send and receive,\n"
-            "rather than what its EDS says it was built with."
-        )
+        self.read_btn = read = QPushButton()
         read.clicked.connect(self._read)
         add = QPushButton("Map object...")
         add.setToolTip("Add an object from the dictionary to this PDO's contents")
@@ -166,14 +171,15 @@ class PdoConfigView(QWidget):
         remove = QPushButton("Unmap object")
         remove.setToolTip("Take the selected object out of this PDO")
         remove.clicked.connect(self._remove_entry)
-        write = QPushButton("Write to node")
-        write.setToolTip("Write the selected PDO's communication and mapping parameters")
+        self.write_btn = write = QPushButton()
         write.clicked.connect(self._write)
+        self.hint = QLabel()
         bar = QHBoxLayout()
         for b in (read, add, remove, write):
             bar.addWidget(b)
         bar.addStretch()
-        bar.addWidget(QLabel("Edit a cell, then Write to node"))
+        bar.addWidget(self.hint)
+        self._name_buttons()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
@@ -186,7 +192,44 @@ class PdoConfigView(QWidget):
     @Slot(int)
     def set_node(self, node_id: int | None) -> None:
         self.node_id = node_id
+        self._file = None
+        self._name_buttons()
         self.refresh()
+
+    def set_file(self, source) -> None:
+        """Show a DCF or EDS's PDOs, with no node: read from its objects, and
+        put back into them, where they wait to be saved like any other edit."""
+        self.node_id = None
+        self._file = source
+        self._name_buttons()
+        self.refresh()
+
+    def _name_buttons(self) -> None:
+        """Say where reading comes from and writing goes: the node, or the file."""
+        if self._file is None:
+            self.read_btn.setText("Read from node")
+            self.read_btn.setToolTip(
+                "Read what the node is actually configured to send and receive,\n"
+                "rather than what its EDS says it was built with."
+            )
+            self.write_btn.setText("Write to node")
+            self.write_btn.setToolTip(
+                "Write the selected PDO's communication and mapping parameters"
+            )
+            self.hint.setText("Edit a cell, then Write to node")
+        else:
+            self.read_btn.setText("Read from file")
+            self.read_btn.setToolTip(
+                "Show the PDOs as the file's objects have them now, dropping\n"
+                "anything changed here and not yet put in the file."
+            )
+            self.write_btn.setText("Put in file")
+            self.write_btn.setToolTip(
+                "Put the selected PDO's communication and mapping parameters into\n"
+                "the file's objects. Held like any other change to the file, and\n"
+                "written to disk when the file is saved."
+            )
+            self.hint.setText("Edit a cell, then Put in file, then Save")
 
     @Slot(int)
     def _on_config_changed(self, node_id: int) -> None:
@@ -195,7 +238,12 @@ class PdoConfigView(QWidget):
 
     def refresh(self) -> None:
         """Ask the node again, losing anything not yet written to it."""
-        self._configs = [] if self.node_id is None else self.manager.pdo_configs(self.node_id)
+        if self._file is not None:
+            self._configs = pdo_file.configs(self._file)
+        elif self.node_id is not None:
+            self._configs = self.manager.pdo_configs(self.node_id)
+        else:
+            self._configs = []
         self._redraw()
 
     def _redraw(self) -> None:
@@ -257,6 +305,12 @@ class PdoConfigView(QWidget):
         item.setCheckState(COL_ENABLED, Qt.Checked if config.enabled else Qt.Unchecked)
         item.setToolTip(COL_TRANS, config.transmission_text())
         item.setToolTip(COL_COBID, cob_id_tip(config.cob_id))
+        if config.cob_id_text:
+            item.setToolTip(
+                COL_COBID,
+                f"The file gives this as {config.cob_id_text}: the node ID is added\n"
+                "by the node, and there is none here. Left as it is unless changed.",
+            )
         for entry in config.entries:
             child = QTreeWidgetItem(
                 [
@@ -311,10 +365,11 @@ class PdoConfigView(QWidget):
 
     def _add_entry(self) -> None:
         item = self._selected_row()
-        if item is None or self.node_id is None:
+        if item is None or (self.node_id is None and self._file is None):
             self.ctx.warn("PDO: select a PDO first")
             return
-        dialog = ObjectPicker(self.manager, self.node_id, self)
+        dictionary = None if self._file is None else self._file.object_dictionary
+        dialog = ObjectPicker(self.manager, self.node_id, self, dictionary)
         if dialog.exec() != QDialog.Accepted or not (entry := dialog.chosen()):
             return
         config = self._config_of(item)
@@ -357,16 +412,26 @@ class PdoConfigView(QWidget):
         self._redraw()
 
     def _read(self) -> None:
-        if self.node_id is None:
-            return
-        self.manager.read_pdo_config(self.node_id)
+        if self._file is not None:
+            self.refresh()
+        elif self.node_id is not None:
+            self.manager.read_pdo_config(self.node_id)
 
     def _write(self) -> None:
         item = self._selected_row()
         if item is None:
             self.ctx.log("PDO: select a PDO to write")
             return
-        self.manager.write_pdo_config(self._config_of(item))
+        config = self._config_of(item)
+        if self._file is None:
+            self.manager.write_pdo_config(config)
+            return
+        if (why_not := pdo_file.apply(self._file, config)) != "":
+            self.ctx.warn(f"PDO: {why_not}")
+            return
+        name = f"{config.direction}{config.number}"
+        self.ctx.log(f"{name} put in {self._file.label}: save the file to keep it")
+        self.refresh()
 
 
 def _optional_int(text: str) -> int | None:

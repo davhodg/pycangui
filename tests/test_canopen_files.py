@@ -181,3 +181,88 @@ def test_the_watch_column_is_not_offered_for_a_file(view, eds):
     from pycangui.ui.canopen_view import COL_WATCH
 
     assert view._od_item(0x2001, 0).data(COL_WATCH, Qt.CheckStateRole) is None
+
+
+# --- the PDO tab, for a file ----------------------------------------------------------------
+@pytest.fixture
+def demo(tmp_path):
+    """The demo device's EDS: a TPDO of three objects and an RPDO of one, their
+    COB-IDs given as the node ID plus a base."""
+    from pycangui import resources
+
+    path = tmp_path / "demo.eds"
+    path.write_bytes(resources.path("demo.eds").read_bytes())
+    return path
+
+
+def pdos(view):
+    return {f"{c.direction}{c.number}": c for c in view.pdo_config._configs}
+
+
+def test_a_files_pdos_are_in_the_pdo_tab(view, demo):
+    view.open_file(demo)
+    found = pdos(view)
+    assert set(found) == {"TPDO1", "RPDO1"}
+    assert found["TPDO1"].cob_id == 0x180 and found["TPDO1"].cob_id_text, "relative to the node"
+    assert [(e.index, e.subindex, e.bits) for e in found["TPDO1"].entries] == [
+        (0x6041, 0, 16),
+        (0x2000, 1, 16),
+        (0x2000, 2, 32),
+    ]
+    assert view.pdo_config.tree.topLevelItemCount() == 2
+
+
+def test_only_what_changed_goes_into_the_file(view, demo):
+    from pycangui.canopen import pdo_file
+
+    source = view.open_file(demo)
+    config = pdos(view)["TPDO1"]
+    assert pdo_file.apply(source, config) == "" and source.edited == {}, "untouched: nothing"
+    config.transmission_type = 1
+    assert pdo_file.apply(source, config) == ""
+    assert source.edited == {(0x1800, 2): 1}, "and the node-relative COB-ID is left as text"
+
+
+def test_unmapping_and_disabling_are_put_in_the_files_objects(app, view, demo):
+    source = view.open_file(demo)
+    tab = view.pdo_config
+    row = tab.tree.topLevelItem(0)
+    config = tab._config_of(row)
+    assert config.direction == "TPDO"
+    del config.entries[-1]
+    config.enabled = False
+    tab.tree.setCurrentItem(row)
+    tab._write()
+    assert source.edited == {(0x1800, 1): 0x8000_0180, (0x1A00, 0): 2}
+    again = pdos(view)["TPDO1"]
+    assert not again.enabled and len(again.entries) == 2 and not again.cob_id_text
+
+
+def test_a_pdo_with_more_objects_than_the_file_has_room_for_is_refused(view, demo):
+    from pycangui.canopen import PdoEntry, pdo_file
+
+    source = view.open_file(demo)
+    config = pdos(view)["RPDO1"]
+    config.entries += [PdoEntry(0x2001, 0, 16)] * 4
+    assert pdo_file.apply(source, config) != "" and source.edited == {}
+
+
+def test_a_saved_dcf_has_the_pdo_it_was_given(view, demo, tmp_path):
+    from pycangui.canopen import pdo_file
+    from pycangui.custom_panes.source import FileSource
+
+    source = view.open_file(demo)
+    config = pdos(view)["TPDO1"]
+    config.cob_id, config.transmission_type = 0x1A5, 10
+    config.entries.reverse()
+    assert pdo_file.apply(source, config) == ""
+    saved = FileSource(source.save(tmp_path / "set.dcf"))
+    read = {f"{c.direction}{c.number}": c for c in pdo_file.configs(saved)}["TPDO1"]
+    assert (read.cob_id, read.transmission_type, read.enabled) == (0x1A5, 10, True)
+    assert [e.index for e in read.entries] == [0x2000, 0x2000, 0x6041]
+
+
+def test_a_node_selected_after_a_file_gets_the_tab_back(view, demo):
+    view.open_file(demo)
+    view.nodes.setCurrentItem(None)
+    assert view.pdo_config._configs == [] and view.pdo_config._file is None

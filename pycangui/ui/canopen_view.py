@@ -1089,7 +1089,8 @@ class CanopenView(QWidget):
         self._identities.clear()
         self._asked.clear()
         self._lost.clear()
-        self.pdo_config.set_node(None)
+        if self.selected_file() is None:  # a file's PDOs are not the bus's to take
+            self.pdo_config.set_node(None)
         self.sync_btn.setChecked(False)
         self._offer_node_buttons()  # nothing in the list, so nothing selected
 
@@ -1233,8 +1234,11 @@ class CanopenView(QWidget):
         node_id = None if current is None else current.data(0, ROLE_INDEX)
         self.faults.set_node(node_id)
         self.clear_live_pdos()
-        self.pdo_config.set_node(node_id)
-        self._populate_od(node_id, self.selected_file())
+        if (source := self.selected_file()) is not None:
+            self.pdo_config.set_file(source)
+        else:
+            self.pdo_config.set_node(node_id)
+        self._populate_od(node_id, source)
 
     def _populate_od(self, node_id: int | None, source: FileSource | None = None) -> None:
         """The dictionary of the selected node -- or of the selected file, with its values."""

@@ -241,6 +241,9 @@ class PdoConfig:
     inhibit_time_us: int | None = None
     event_timer_ms: int | None = None
     entries: list[PdoEntry] = field(default_factory=list)
+    #: For a file with no node: the COB-ID as the file gives it when that is
+    #: relative to the node ID (``$NODEID+0x180``), and ``cob_id`` is its base.
+    cob_id_text: str = ""
 
     @property
     def bits(self) -> int:
