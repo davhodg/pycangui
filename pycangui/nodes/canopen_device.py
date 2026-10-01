@@ -46,6 +46,7 @@ ERROR_REGISTER = 0x1001  # CiA 301: which kinds of fault are active
 #: find out what happened; this device keeps one for the same reason.
 STORED_ERRORS = 0x1003
 MOST_STORED = 4  # what the EDS declares room for
+STORE_EDS = 0x1021  # the EDS itself, for *Read EDS from node*
 
 #: Past this demand the device complains. A device that never faults is a
 #: device you cannot test the fault handling of.
@@ -78,6 +79,10 @@ def start(node, *, ctx):
     rpdo = device.rpdo[1]
     rpdo.read(from_od=True)
     rpdo.add_callback(lambda pdo_map: _apply(device, pdo_map))
+
+    # A device can keep its own EDS for a tool to read (CiA 301, 0x1021), so
+    # that one arriving with no file can still be worked on. This one does.
+    device.set_data(STORE_EDS, 0, EDS.read_bytes())
 
     node.state.device = device
     node.state.tpdo = tpdo

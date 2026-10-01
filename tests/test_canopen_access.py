@@ -297,6 +297,7 @@ def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
     offered = {a.text() for a in view.node_menu(7).actions() if not a.isSeparator()}
     assert offered == {
         "Add node...",
+        "Read EDS from node",
         "Identify",
         "Login...",
         "Read access level",

@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QSplitter,
     QTabWidget,
@@ -40,7 +41,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui import resources
-from pycangui.canopen import NodeIdentity, find_eds
+from pycangui.canopen import NodeIdentity, find_eds, load_od
 from pycangui.canopen import emcy as emcy_mod
 from pycangui.canopen.display import (
     Display,
@@ -50,7 +51,13 @@ from pycangui.canopen.display import (
     out_of_range,
 )
 from pycangui.canopen.display import text as value_text
-from pycangui.canopen.manager import NOT_CONNECTED, CanopenManager, od_entries, type_name
+from pycangui.canopen.manager import (
+    NOT_CONNECTED,
+    STOPPED,
+    CanopenManager,
+    od_entries,
+    type_name,
+)
 from pycangui.core import workspace_files
 from pycangui.core.context import Context
 from pycangui.core.events import ERROR, GOOD
@@ -74,6 +81,11 @@ ROLE_FILE = Qt.UserRole + 3
 FILES_KEY = "canopen.files"
 #: A value changed in a file and not saved yet. Translucent, as elsewhere.
 EDITED_COLOUR = QColor(230, 150, 0, 70)
+READ_EDS_TIP = (
+    "Read the EDS the selected node keeps in itself (object 0x1021), save\n"
+    "it in the workspace's EDS folder and use it for the node. For a node\n"
+    "with no EDS to hand. Few devices keep one; one that does not says so."
+)
 OPEN_FILE_TIP = (
     "Open a DCF or EDS as a row of the list, with no node and no bus needed:\n"
     "its object dictionary in the tree below, with the file's values -- or the\n"
@@ -228,18 +240,21 @@ class CanopenView(QWidget):
             "hooks/canopen.py::eds_for_node."
         )
         load_btn.clicked.connect(self._load_eds_clicked)
+        read_eds_btn = QPushButton("Read EDS from node")
+        read_eds_btn.setToolTip(READ_EDS_TIP)
+        read_eds_btn.clicked.connect(self._read_stored_eds)
         # Being allowed to talk to the node, and what says what its objects
         # are. Login and Read access level are two halves of one question,
         # so they sit together. Add node is not here: it acts on the list
         # rather than on a row of it, which puts it above with the network.
-        for b in (identify, login, read_level, load_btn):
+        for b in (identify, login, read_level, load_btn, read_eds_btn):
             node_bar.addWidget(b)
         node_bar.addStretch()
         #: Everything under the list acts on the node highlighted in it, so
         #: with nothing highlighted there is nothing for them to act on. A
         #: button that looks pressable and then says "no node selected" is a
         #: worse way to find that out than a button that is plainly not.
-        self._node_buttons = [identify, login, read_level, load_btn]
+        self._node_buttons = [identify, login, read_level, load_btn, read_eds_btn]
         # Above the list: the network, and what changes who is on it. NMT and
         # SYNC are not about whichever row happens to be highlighted -- they
         # are services the whole bus hears, and NMT with no node selected
@@ -498,6 +513,9 @@ class CanopenView(QWidget):
         manager.node_back.connect(self.on_node_back)
         manager.identified.connect(self.on_identified)
         manager.eds_loaded.connect(self.on_eds_loaded)
+        manager.stored_eds.connect(self._on_stored_eds)
+        manager.stored_eds_progress.connect(self._on_stored_eds_progress)
+        manager.stored_eds_failed.connect(self._on_stored_eds_failed)
         manager.sdo_result.connect(self.on_sdo_result)
         manager.pdo_update.connect(self.on_pdo_update)
         manager.fault_state.connect(self.on_fault_state)
@@ -731,7 +749,11 @@ class CanopenView(QWidget):
                 ("Login...", self._login),
                 ("Read access level", self._read_level),
             ),
-            (("Load EDS...", self._load_eds_clicked), ("Read PDO config", self._read_pdos)),
+            (
+                ("Load EDS...", self._load_eds_clicked),
+                ("Read EDS from node", self._read_stored_eds),
+                ("Read PDO config", self._read_pdos),
+            ),
             (
                 ("Store", self._store),
                 ("Restore defaults", self._restore),
@@ -997,6 +1019,112 @@ class CanopenView(QWidget):
         )
         if path:
             self.manager.load_eds(node_id, path)
+
+    # --- the EDS a node keeps (0x1021) ------------------------------------------
+    def _read_stored_eds(self) -> None:
+        node_id = self.selected_node()
+        if node_id is None:
+            return
+        self._close_eds_progress()
+        box = QProgressDialog(
+            f"Reading the EDS node {node_id} keeps (object 0x1021)...", "Stop", 0, 0, self
+        )
+        box.setWindowTitle("Read EDS from node")
+        box.setWindowModality(Qt.WindowModal)
+        box.setMinimumDuration(0)
+        box.setAutoClose(False)
+        box.setAutoReset(False)
+        box.canceled.connect(self.manager.stop_reading_stored_eds)
+        box.show()
+        self._eds_progress = box
+        self.manager.read_stored_eds(node_id)
+
+    def _close_eds_progress(self) -> None:
+        box, self._eds_progress = getattr(self, "_eds_progress", None), None
+        if box is not None:
+            box.canceled.disconnect(self.manager.stop_reading_stored_eds)
+            box.close()
+            box.deleteLater()
+
+    @Slot(int, int, int)
+    def _on_stored_eds_progress(self, node_id: int, done: int, total: int) -> None:
+        box = getattr(self, "_eds_progress", None)
+        if box is None:
+            return
+        size = f"{done:,} of {total:,} bytes" if total else f"{done:,} bytes"
+        box.setLabelText(f"Reading the EDS node {node_id} keeps (object 0x1021): {size}")
+        if total:
+            box.setMaximum(total)
+            box.setValue(min(done, total))
+
+    @Slot(int, str)
+    def _on_stored_eds_failed(self, node_id: int, why: str) -> None:
+        self._close_eds_progress()
+        if why == STOPPED:
+            self.ctx.log(f"Node {node_id}: reading its EDS was stopped")
+        else:
+            self.ctx.warn(f"Node {node_id}: its EDS could not be read: {why}")
+
+    @Slot(int, object, int)
+    def _on_stored_eds(self, node_id: int, data: bytes, kind: int) -> None:
+        """Keep what the node sent as a file, and use it for the node."""
+        self._close_eds_progress()
+        # A device pads the object to the size of the memory it is kept in.
+        text = data.rstrip(b"\x00\xff")
+        if not text:
+            self.ctx.warn(f"Node {node_id}: its EDS object (0x1021) is empty")
+            return
+        if kind != 0:
+            # 0x1022 other than 0 is a compression of the maker's own, and
+            # guessing at one is how a file of noise gets loaded as an EDS.
+            self.ctx.warn(
+                f"Node {node_id} keeps its EDS in a format of its maker's own "
+                f"(0x1022 is {kind}), which pycangui cannot read. It can be saved as it came."
+            )
+            path = folders.save_file(
+                self,
+                self.ctx,
+                folders.EDS,
+                f"Save what node {node_id} sent, as it came",
+                "All files (*)",
+                self.ctx.eds_dir,
+                f"node{node_id}_eds_format{kind}.bin",
+            )
+            if path:
+                Path(path).write_bytes(data)
+            return
+        path = folders.save_file(
+            self,
+            self.ctx,
+            folders.EDS,
+            f"Save the EDS read from node {node_id}",
+            "EDS files (*.eds)",
+            self.ctx.eds_dir,
+            self._stored_eds_name(node_id),
+        )
+        if not path:
+            return
+        Path(path).write_bytes(text)
+        try:
+            load_od(path)
+        except Exception as exc:
+            self.ctx.warn(
+                f"Node {node_id}: what it keeps in 0x1021 is saved as {Path(path).name}, "
+                f"but is not an EDS pycangui can read ({exc})"
+            )
+            return
+        self.ctx.log(
+            f"Node {node_id}: EDS read from the node, {len(text):,} bytes, saved as {path}"
+        )
+        self.manager.load_eds(node_id, path)
+
+    def _stored_eds_name(self, node_id: int) -> str:
+        """Vendor and product where the node has said them: what tells one
+        device's file from another's in a folder of them."""
+        identity = self._identities.get(node_id)
+        if identity and identity.vendor_id is not None and identity.product_code is not None:
+            return f"{identity.vendor_id:08X}_{identity.product_code:08X}.eds"
+        return f"node{node_id}.eds"
 
     @Slot(int, str, str)
     def on_eds_loaded(self, node_id: int, path: str, product_name: str) -> None:

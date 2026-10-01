@@ -116,6 +116,16 @@ LSS_BIT_TIMINGS: tuple[tuple[int, int], ...] = (
 )
 
 
+#: CiA 301: the EDS a device keeps, as a DOMAIN, and how it is stored --
+#: 0 is the text as it is, anything else a compression of the maker's own.
+STORE_EDS = 0x1021
+STORE_FORMAT = 0x1022
+#: The SDO abort for an object the node does not have.
+NO_SUCH_OBJECT = 0x0602_0000
+#: What ``stored_eds_failed`` says when somebody stopped the read themselves.
+STOPPED = "stopped"
+
+
 class CanopenManager(QObject):
     node_seen = Signal(int, str)  # node_id, NMT state from heartbeat
     identified = Signal(object)  # NodeIdentity
@@ -130,6 +140,11 @@ class CanopenManager(QObject):
     lss_found = Signal(object)  # NodeIdentity discovered by LSS
     pdo_config = Signal(int)  # node_id: its PDO configuration changed
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
+    #: The EDS a node keeps in 0x1021: node_id, its bytes, and 0x1022's format.
+    stored_eds = Signal(int, object, int)
+    #: While that is read: node_id, bytes so far, bytes in all (0: not said).
+    stored_eds_progress = Signal(int, int, int)
+    stored_eds_failed = Signal(int, str)  # node_id, why
     access_level = Signal(int, object)  # node_id, the access level held (None: none known)
     fault_state = Signal(object)  # faults.FaultState: what a node says about itself
     #: One SDO transfer, for the CANopen log: sdo_log.SdoRecord. Emitted on
@@ -189,6 +204,7 @@ class CanopenManager(QObject):
         self._labels: dict[int, str] | None = None
         self._sync_on = False
         self._worker = Worker()  # starts itself the first time it is used
+        self._stop_stored_eds = False
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
 
@@ -1248,6 +1264,52 @@ class CanopenManager(QObject):
             return f"LSS: node-ID {node_id}, address {joined}"
 
         self._lss_job("LSS inquire", fn)
+
+    # --- the EDS a node keeps (0x1021 Store EDS, 0x1022 Store format) ----------
+    def read_stored_eds(self, node_id: int) -> None:
+        """Read the EDS the node holds in 0x1021, and its format from 0x1022.
+
+        CiA 301's own answer to a node with no EDS to hand: an optional
+        DOMAIN holding the device's file. Needs no EDS loaded, which is the
+        point. Segmented, so every device that has the object can serve it,
+        and reported as it goes: a file of tens of kilobytes is thousands of
+        frames.
+        """
+        if self.network is None:
+            return
+        node = self._ensure_node(node_id)
+        self._stop_stored_eds = False
+
+        def job() -> tuple[bytes, int]:
+            try:
+                kind = int.from_bytes(node.sdo.upload(STORE_FORMAT, 0)[:2], "little")
+            except canopen.SdoAbortedError:
+                kind = 0  # optional, and uncompressed text when it is not there
+            data = bytearray()
+            with node.sdo.open(STORE_EDS, 0, "rb", buffering=0) as stream:
+                total = stream.size or 0
+                while chunk := stream.read(7):
+                    if self._stop_stored_eds:
+                        raise RuntimeError(STOPPED)
+                    data += chunk
+                    if len(data) % 700 < len(chunk):
+                        self.stored_eds_progress.emit(node_id, len(data), total)
+            return bytes(data), kind
+
+        def done(read: tuple[bytes, int] | None, error: str | None) -> None:
+            if error:
+                if self._stop_stored_eds:
+                    error = STOPPED
+                elif f"{NO_SUCH_OBJECT:08X}" in error.upper():
+                    error = "this node does not keep its EDS (it has no object 0x1021)"
+                self.stored_eds_failed.emit(node_id, error)
+                return
+            self.stored_eds.emit(node_id, *read)
+
+        self._worker.submit(job, done)
+
+    def stop_reading_stored_eds(self) -> None:
+        self._stop_stored_eds = True
 
     # --- DCF (a device configuration file: an EDS plus the parameter values) ----
     def save_dcf(self, node_id: int, path: str) -> None:

@@ -56,7 +56,15 @@ CANopen has no standard way to log in, so both are done by `login` and
 The password is passed to the hook and is neither logged nor kept.
 
 The second row under the list is what the node holds. **Load EDS...** chooses
-its description by hand, and **Read PDO config** reads the selected node's
+its description by hand. **Read EDS from node** is for a node with no EDS to
+hand: it reads the file the device keeps in itself (CiA 301's object 0x1021),
+with no EDS loaded, asks where to save it -- the workspace's EDS folder, named
+for the vendor and product where the node has been identified -- and uses it
+for the node, which finds it by itself from then on. Few devices keep one, and
+one that does not says so. It is thousands of frames for a real file, so it
+shows how far it has got and can be stopped. A device that says (in 0x1022) it
+keeps the file in a format of its maker's own is not guessed at: what it sent
+can be saved as it came. The demo device keeps its EDS this way. **Read PDO config** reads the selected node's
 PDO mapping, both directions, from the node itself -- the same as *Read from
 node* in the PDO tab. The EDS says how a node shipped; this is how it is set up
 now, so [Signals and Plot](signals.md) decode the TPDOs a remapped node

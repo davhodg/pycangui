@@ -11,6 +11,9 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen **Read EDS from node**: reads the EDS a device keeps in itself (object 0x1021), saves
+  it in the workspace and uses it for the node -- for a node with no EDS to hand. The demo
+  device keeps one.
 - CANopen **Open DCF/EDS...**: a configuration file as a row of the node list, its object
   dictionary in the tree with no node or bus, values changed there and saved as a DCF. The
   PDO configuration tab works for the file too: its PDOs read from its objects, remapped, and
