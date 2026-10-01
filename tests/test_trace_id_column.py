@@ -28,3 +28,23 @@ def test_an_eight_digit_id_fits_in_both_views(app, tmp_path, monkeypatch):
         assert header.sectionResizeMode(column) == QHeaderView.Fixed, "not left to a sample"
         assert header.sectionSize(column) > table.fontMetrics().horizontalAdvance(WIDEST_ID)
     view.deleteLater()
+
+
+def test_the_data_column_starts_wide_enough_for_eight_bytes(app, tmp_path, monkeypatch):
+    """Before any frame: fitted to its heading, it pushed the columns after it
+    sideways the moment data arrived."""
+    from pycangui.ui.trace_view import EIGHT_BYTES
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    view = TraceView(Hooks(ctx), ctx)
+    view.resize(1400, 400)
+    view.show()
+    app.processEvents()
+    table = view.latest_table
+    column = latest_model.COLUMNS.index("Data")
+    header = table.horizontalHeader()
+    assert header.sectionSize(column) > table.fontMetrics().horizontalAdvance(EIGHT_BYTES)
+    assert header.sectionResizeMode(column) == QHeaderView.ResizeToContents, "CAN FD still fits"
+    view.close()
+    view.deleteLater()

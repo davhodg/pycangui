@@ -117,12 +117,34 @@ class _TraceFilter(QSortFilterProxyModel):
 
 #: The widest identifier there is: 29 bits, eight hex digits.
 WIDEST_ID = "1FFFFFFF"
+#: What the Data column starts wide enough for: a classic frame, full.
+EIGHT_BYTES = "FF FF FF FF FF FF FF FF"
 
 
-def _table(model, font: QFont, id_column: int) -> QTableView:
+class _Header(QHeaderView):
+    """A header whose columns are fitted to what is in them, but never
+    narrower than given: the Data column is as wide as its heading until the
+    first frame arrives, and then pushes every column after it sideways."""
+
+    def __init__(self, table: QTableView, at_least: dict[int, int]) -> None:
+        super().__init__(Qt.Horizontal, table)
+        self._at_least = at_least
+        # What a table's own header has, and one made by hand does not.
+        self.setSectionsClickable(True)
+        self.setHighlightSections(True)
+
+    def sectionSizeFromContents(self, logical_index: int):
+        size = super().sectionSizeFromContents(logical_index)
+        size.setWidth(max(size.width(), self._at_least.get(logical_index, 0)))
+        return size
+
+
+def _table(model, font: QFont, id_column: int, data_column: int) -> QTableView:
     table = QTableView()
-    table.setModel(model)
     table.setFont(font)
+    wide = table.fontMetrics().horizontalAdvance(EIGHT_BYTES) + 16
+    table.setHorizontalHeader(_Header(table, {data_column: wide}))
+    table.setModel(model)
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setDefaultSectionSize(18)
     header = table.horizontalHeader()
@@ -158,8 +180,12 @@ class TraceView(QWidget):
         self._latest_proxy = _TraceFilter()
         self._latest_proxy.setSourceModel(self.latest)
 
-        self.table = _table(self._trace_proxy, mono, TRACE_COLUMNS.index("ID"))
-        self.latest_table = _table(self._latest_proxy, mono, LATEST_COLUMNS.index("ID"))
+        self.table = _table(
+            self._trace_proxy, mono, TRACE_COLUMNS.index("ID"), TRACE_COLUMNS.index("Data")
+        )
+        self.latest_table = _table(
+            self._latest_proxy, mono, LATEST_COLUMNS.index("ID"), LATEST_COLUMNS.index("Data")
+        )
         self.latest_table.setSortingEnabled(True)
         self.latest_table.sortByColumn(0, Qt.AscendingOrder)
 
