@@ -10,7 +10,7 @@ CreatedBy=pycangui
 
 [DeviceInfo]
 VendorName=pycangui
-VendorNumber=0x00000042
+VendorNumber=0x00000000
 ProductName=Demo Drive
 ProductNumber=0x00001234
 RevisionNumber=0x00010002
@@ -79,7 +79,7 @@ ParameterName=Vendor ID
 ObjectType=0x7
 DataType=0x0007
 AccessType=ro
-DefaultValue=0x00000042
+DefaultValue=0x00000000
 PDOMapping=0
 
 [1018sub2]

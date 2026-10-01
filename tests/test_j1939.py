@@ -41,7 +41,7 @@ def test_name_fields():
 
     engine = ecu_name()
     n = Name.from_bytes(bytes(engine.bytes))
-    assert n.identity_number == 0x1234 and n.manufacturer_code == 66 and n.function == 0
+    assert n.identity_number == 0x1234 and n.manufacturer_code == 0 and n.function == 0
     assert n.industry_group == int(engine.industry_group)
     assert not n.arbitrary_address_capable
 
@@ -171,7 +171,7 @@ def test_manager_against_demo_engine(stack):
 
     wait_until(lambda: any(name is not None for _, name in nodes))  # address claim seen
     sa, name = next((sa, n) for sa, n in nodes if n is not None)
-    assert sa == 0 and name.manufacturer_code == 66
+    assert sa == 0 and name.identity_number == 0x1234 and name.manufacturer_code == 0
     wait_until(lambda: any(pgn == 61444 for pgn, _, _ in msgs))
     wait_until(lambda: dm1s, timeout=3)
     assert dm1s[0][1].dtcs[0].spn == 110 and dm1s[0][1].lamps() == "AWL"

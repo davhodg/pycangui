@@ -48,8 +48,8 @@ def test_discovery_identify_eds_sdo_pdo(stack):
     manager.identify(5)
     wait_until(lambda: identities)
     ident = identities[0]
-    assert (ident.vendor_id, ident.product_code, ident.revision) == (0x42, 0x1234, 0x10002)
-    assert ident.key == "00000042:00001234:00010002"
+    assert (ident.vendor_id, ident.product_code, ident.revision) == (0, 0x1234, 0x10002)
+    assert ident.key == "00000000:00001234:00010002"
 
     manager.load_eds(5, str(resources.path("demo.eds")))
     wait_until(lambda: loaded)
@@ -73,9 +73,10 @@ def test_discovery_identify_eds_sdo_pdo(stack):
 
 
 def test_find_eds_matches_device_info(tmp_path):
-    ident = NodeIdentity(5, vendor_id=0x42, product_code=0x1234, revision=0x10002)
+    # The demo's vendor ID is 0, which nobody is assigned: found all the same.
+    ident = NodeIdentity(5, vendor_id=0, product_code=0x1234, revision=0x10002)
     assert find_eds(ident, [resources.path("")]).name == "demo.eds"
-    assert find_eds(NodeIdentity(5, 0x42, 0x9999), [resources.path("")]) is None
+    assert find_eds(NodeIdentity(5, 0, 0x9999), [resources.path("")]) is None
     assert find_eds(NodeIdentity(5), [resources.path("")]) is None
     (tmp_path / "junk.eds").write_text("not an eds")
     assert find_eds(ident, [tmp_path]) is None

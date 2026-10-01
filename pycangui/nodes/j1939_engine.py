@@ -40,8 +40,9 @@ RATE_HZ = 10
 ADDRESS = 0x00
 
 #: Who it says it is, which is what decides who wins an address contest.
-#: A real one is allocated; these are a demonstration.
-MANUFACTURER = 66
+#: A real one is allocated; these are a demonstration, and 0 is the
+#: manufacturer code that is reserved and allocated to nobody.
+MANUFACTURER = 0
 IDENTITY = 0x1234
 
 #: Parameter groups, from J1939-71.
