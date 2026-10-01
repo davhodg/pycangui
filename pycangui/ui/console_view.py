@@ -48,6 +48,7 @@ BANNER = """pycangui console -- Python {ver}
   uds       UDS manager (uds.client is the udsoncan Client when open)
   j1939     J1939 manager       xcp       XCP manager (xcp.a2l parameters)
   window    the main window                     send(id, data, ext=False, fd=False)
+  wait(s)   let the window and buses run for s seconds (a script's sleep)
 Anything slow: canopen.background(job, done) / uds.background(...), which run
 off this thread so the window keeps up. done(result, error), or print.
 Type help(bus), help(canopen) or dir() to explore."""

@@ -126,6 +126,13 @@ To give everyone write access to the folder on Windows, open its
 **Modify**. On Linux and macOS, a common group with write permission does the
 same.
 
+## Starting in one
+
+`pycangui --workspace rig` opens *rig* this time only: the next start without
+it opens whichever workspace was last chosen in the window. That makes a
+shortcut per product -- one icon for each rig, each with its own channels and
+panes. A name that does not exist is refused, with the names that do.
+
 ## One at a time
 
 Only one workspace is open at a time. When it feels like you want two, what

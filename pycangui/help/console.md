@@ -14,8 +14,38 @@ The **Python Console** pane is a live console with the same objects the GUI uses
 | `ctx`, `hooks` | what [hooks](hooks.md) are handed, and the hooks themselves |
 | `window` | the main window |
 | `send(id, data, ext=False, fd=False)` | put one frame on the selected channel |
+| `wait(seconds)` | let the window and the buses run for that long -- a script's `sleep` |
 
 *Run script...* executes a `.py` file in that namespace.
+
+`wait` rather than `time.sleep`, because the console runs on the window's
+thread: `time.sleep` stops the window, and the frames, answers and timers a
+script is waiting for stop arriving with it.
+
+## A script from the command line
+
+```
+pycangui --run check.py
+pycangui --workspace rig --run check.py --skip-start-warning
+```
+
+`--run` starts pycangui, waits for the window and the workspace's
+[startup hook](hooks.md), runs the script with the names above, and closes.
+The exit code is the script's -- 0 when it runs to the end, *n* for
+`sys.exit(n)`, 1 for an exception or `sys.exit("why")` -- which is what a
+production line or a CI job reads. What it prints goes to the terminal when
+there is one, and to the [Event Log](event-log.md) always, with the exit code.
+
+A script is still asked every question pycangui asks: joining a real bus,
+transmitting, writing. Each has *Do not ask me this again*, so a run nobody is there to
+answer needs them answered once beforehand. The notice about real equipment
+cannot be ticked away, so `--skip-start-warning` skips it -- only with `--run`,
+and the Event Log says it was skipped. Closing still asks about changes not
+saved; the exit code then waits until pycangui is closed.
+
+On Windows, `python -m pycangui` waits for pycangui and prints; the installed
+`pycangui.exe` is a window program, so `start /wait pycangui.exe --run check.py`
+waits for it and sets `%ERRORLEVEL%`.
 
 ## Anything that blocks
 

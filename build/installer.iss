@@ -54,12 +54,32 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Per-user by default so no administrator rights are needed
 PrivilegesRequiredOverridesAllowed=dialog commandline
+; For the fileassoc task: Explorer is told to look again.
+ChangesAssociations=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
+Name: "fileassoc"; Description: "Open .dcf and .eds files with pycangui"; GroupDescription: "File types:"
+
+; pycangui is offered in Open with, rather than made the default: another
+; CANopen tool somebody already uses for these keeps them until they choose
+; otherwise, which Windows asks the first time one is opened. HKA is HKCU for
+; a per-user install and HKLM for an all-users one. A file double-clicked
+; while pycangui is open goes to that one (pycangui/ui/handoff.py).
+[Registry]
+Root: HKA; Subkey: "Software\Classes\.dcf\OpenWithProgids"; ValueType: string; ValueName: "pycangui.dcf"; ValueData: ""; Flags: uninsdeletevalue; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.dcf"; ValueType: string; ValueName: ""; ValueData: "CANopen device configuration file"; Flags: uninsdeletekey; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.dcf\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.dcf\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\.eds\OpenWithProgids"; ValueType: string; ValueName: "pycangui.eds"; ValueData: ""; Flags: uninsdeletevalue; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.eds"; ValueType: string; ValueName: ""; ValueData: "CANopen electronic data sheet"; Flags: uninsdeletekey; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.eds\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.eds\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".dcf"; ValueData: ""; Flags: uninsdeletekey; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".eds"; ValueData: ""; Tasks: fileassoc
 
 [Files]
 Source: "..\dist\pycangui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

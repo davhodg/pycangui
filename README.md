@@ -71,7 +71,7 @@ There are three options:
 
    Double-clicking `pycangui.sh` in a file manager works too: choose *Run in Terminal* when it asks, for the same reason.
 
-   At the end of the first run it offers to add pycangui to the Start menu, or to the applications menu on Linux, and *Tools > Add to Start menu* does the same later. The entry starts the launcher, so a start from the menu after a pull still picks up new libraries.
+   At the end of the first run it offers to add pycangui to the Start menu, or to the applications menu on Linux, and *Tools > Add shortcut to Start menu* does the same later. The entry starts the launcher, so a start from the menu after a pull still picks up new libraries.
 
    The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does. To run a checkout in an environment of your own instead, `pip install -e .` installs it there, reading the source.
 

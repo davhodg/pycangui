@@ -12,7 +12,16 @@ since the last version, and comes out in the next one.
 ### Added
 
 - CANopen **Open DCF/EDS...**: a configuration file as a row of the node list, its object
-  dictionary in the tree with no node or bus, values changed there and saved as a DCF.
+  dictionary in the tree with no node or bus, values changed there and saved as a DCF. The
+  PDO configuration tab works for the file too: its PDOs read from its objects, remapped, and
+  put back with **Put in file**.
+- **Command line**: `pycangui drive.dcf` opens a DCF or EDS, handed to the pycangui already
+  open if there is one. A tick box in the installer, and *Tools > Open .dcf and .eds files
+  with pycangui* for a source folder or pip, put pycangui in *Open with* for those files.
+  `--workspace NAME` opens a workspace for that run only. `--run script.py` runs a script once
+  the window is up and exits with its code, and `--skip-start-warning` skips the start-up
+  notice for such a run.
+- Console and scripts: `wait(seconds)`, a sleep that lets the window and the buses run.
 - Custom panes: **Write all** writes every change held on the pane, and **Read all** reads
   again, asking first before it throws unwritten changes away. Dropdowns, ticks and map cells
   now hold a change until it is written, as typed boxes did.
@@ -29,6 +38,11 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- The demo CANopen device reports vendor ID 0x00000000 and the J1939 engine node manufacturer
+  code 0, which are assigned to nobody, and no longer numbers that are somebody's.
+- The CAN trace's Data column starts wide enough for eight bytes rather than for its heading.
+- *Tools > Add to Start menu* is **Add shortcut to Start menu**, and the installer's desktop
+  shortcut is ticked to begin with.
 - CANopen *Read RPDO config* is **Read PDO config**, and reads both directions: TPDOs for
   Signals and Plot as well as RPDOs for CAN Transmit.
 - The CAN Trace's top row is shorter: Pause and Slow refresh are one choice -- Live, Slow

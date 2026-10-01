@@ -130,6 +130,27 @@ or pycangui with changes not saved asks first. The files open when pycangui
 closes are opened again next time, and disconnecting the bus leaves them in the
 list.
 
+`pycangui drive.dcf` opens one from the command line. To open one with a
+double-click, pycangui has to be offered for `.dcf` and `.eds` files: the
+installer has a tick box for it beside the desktop shortcut, and *Tools > Open
+.dcf and .eds files with pycangui* does the same at any time, for a source
+folder or a pip installation as well (Windows and Linux). Either puts pycangui
+in *Open with* and leaves the default alone, so another CANopen tool that has
+these files keeps them until you choose. With pycangui already open, the file
+goes to that one, which comes to the front: not a second pycangui fighting the
+first for the adapter.
+
+The *PDO configuration* tab works for a file as it does for a node. It shows the
+file's TPDOs and RPDOs, read out of its communication and mapping objects
+(0x1400, 0x1600, 0x1800 and 0x1A00), and they are edited the same way: a cell,
+*Map object...*, *Unmap object*. **Put in file** takes the place of *Write to
+node*: it puts the selected PDO back into those objects, where the change is
+tinted in the tree and waits for *Save* like any other. Only what changed is
+put back, and no more objects can be mapped than the file's mapping record has
+entries for. An EDS usually gives a COB-ID as `$NODEID+0x180`; the tab shows
+the base, the tooltip says so, and it stays as that text unless the COB-ID or
+*Enabled* is changed, when it becomes a plain number.
+
 A [custom pane](custom-panes.md) can work from a DCF or EDS too, with *Open a DCF or
 EDS...* in its own selector.
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import (
     QAction,
     QDesktopServices,
@@ -28,7 +28,15 @@ from PySide6.QtWidgets import (
 
 from pycangui import APP_NAME, __version__
 from pycangui.canopen.manager import CanopenManager
-from pycangui.core import shortcut, timing, workspace_files, workspaces
+from pycangui.core import (
+    cli,
+    file_types,
+    script_run,
+    shortcut,
+    timing,
+    workspace_files,
+    workspaces,
+)
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
@@ -157,6 +165,9 @@ class MainWindow(QMainWindow):
     #: state needs one last chance to take it back -- and a signal sent after
     #: the channels had closed would be a chance in name only.
     closing = Signal()
+    #: Up, and the startup hook has run: what ``--run`` waits for, so that a
+    #: script finds the channels the workspace or the hook connected.
+    started = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -289,7 +300,8 @@ class MainWindow(QMainWindow):
         # they are for: what is on the bus and what you put on it, then the
         # protocol panes, then what the tool has to say for itself.
         self.tx = self.panes.view(self.panes.add("tx"))
-        self.canopen_view = self.panes.view(self.panes.add("canopen"))
+        self._canopen_pane = self.panes.add("canopen")
+        self.canopen_view = self.panes.view(self._canopen_pane)
         self.canopen_view.add_to_custom_pane.connect(self._add_to_custom_pane)
         self.uds_view = self.panes.view(self.panes.add("uds"))
         self.j1939_view = self.panes.view(self.panes.add("j1939"))
@@ -505,13 +517,27 @@ class MainWindow(QMainWindow):
         if shortcut.launcher() is not None:
             tools_menu.addSeparator()
             self.shortcut_action = tools_menu.addAction(
-                f"Add to {shortcut.menu_name()}", self._add_shortcut
+                f"Add shortcut to {shortcut.menu_name()}", self._add_shortcut
             )
             self.shortcut_action.setToolTip(
                 f"Start pycangui from the {shortcut.menu_name()}. The entry starts the\n"
                 "launcher in this folder, so after a pull it still picks up new\n"
                 "libraries, as double-clicking the launcher does. Replaces one\n"
                 "made before."
+            )
+        # For every way of getting pycangui: the installer offers it as a
+        # task, and this is for a source folder, pip, or a task left unticked.
+        self.file_types_action = None
+        if file_types.command() is not None:
+            if self.shortcut_action is None:
+                tools_menu.addSeparator()
+            self.file_types_action = tools_menu.addAction(
+                "Open .dcf and .eds files with pycangui", self._register_file_types
+            )
+            self.file_types_action.setToolTip(
+                "Offer this pycangui in Open with for CANopen DCF and EDS files, so\n"
+                "double-clicking one opens it in the CANopen pane. For you only, and\n"
+                "not made the default: another tool that has them keeps them."
             )
 
         #: A menu of its own rather than a corner of Tools: a plugin adds
@@ -583,6 +609,36 @@ class MainWindow(QMainWindow):
         if self._closing:  # closed again before the event loop got here
             return
         self.hooks.call("startup", "on_startup", self)
+        self.started.emit()
+
+    def open_files(self, files: list[Path]) -> None:
+        """Files from the command line, or double-clicked while this was open.
+
+        A DCF or EDS goes to the CANopen pane as a row of its own, and the
+        window comes forward: somebody double-clicked it to look at it.
+        """
+        opened = False
+        for path in files:
+            if path.suffix.lower() in cli.OPENS:
+                opened = self.canopen_view.open_file(path) is not None or opened
+            else:
+                self.events.warning(f"{path.name}: pycangui opens a DCF or an EDS, not this")
+        if opened:
+            self.panes.show(self._canopen_pane)
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+        self.raise_()
+        self.activateWindow()
+
+    def run_script(self, path: Path) -> int:
+        """Run a script given with ``--run``, saying so in the Event Log. Returns
+        its exit code."""
+        self.events.information(f"Running {path}")
+        code = script_run.run(
+            path, self._console_namespace(), self.events.information, self.events.warning
+        )
+        said = self.events.good if code == 0 else self.events.error
+        said(f"{path.name} finished: exit code {code}")
+        return code
 
     def connect_channel(
         self,
@@ -660,6 +716,13 @@ class MainWindow(QMainWindow):
         def send(can_id: int, data, ext: bool = False, fd: bool = False) -> None:
             self.bus.send(can_id, bytes(data), extended=ext, fd=fd)
 
+        def wait(seconds: float) -> None:
+            """A script's sleep: frames, answers and timers go on arriving,
+            where time.sleep would stop the window and everything in it."""
+            loop = QEventLoop()
+            QTimer.singleShot(max(0, int(seconds * 1000)), loop.quit)
+            loop.exec()
+
         return {
             "ctx": self.ctx,
             "bus": self.bus,  # the selected channel
@@ -673,6 +736,7 @@ class MainWindow(QMainWindow):
             "window": self,
             "recorder": self.recorder,
             "send": send,
+            "wait": wait,
         }
 
     # --- panes ---------------------------------------------------------------
@@ -1597,13 +1661,22 @@ class MainWindow(QMainWindow):
         )
 
     def _add_shortcut(self) -> None:
-        """Tools > Add to Start menu: an entry that starts this folder's launcher."""
+        """Tools > Add shortcut to Start menu: an entry that starts this folder's launcher."""
         try:
             path = shortcut.create()
         except OSError as exc:
             self.events.error(f"Could not add pycangui to the {shortcut.menu_name()}: {exc}")
             return
         self.events.good(f"Added pycangui to the {shortcut.menu_name()}: {path}")
+
+    def _register_file_types(self) -> None:
+        """Tools > Open .dcf and .eds files with pycangui."""
+        try:
+            where = file_types.register()
+        except OSError as exc:
+            self.events.error(f"Could not register .dcf and .eds files: {exc}")
+            return
+        self.events.good(f"pycangui is offered for .dcf and .eds files, in {where}")
 
     def _ask_again(self) -> None:
         """Put back every question somebody has told pycangui to stop asking.

@@ -56,6 +56,11 @@ MAX_NAME = 64
 #: A workspace name is a folder name, so it has to survive being one. Letters,
 #: digits, space, dot, dash and underscore, starting with a letter or a digit.
 _ALLOWED = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]*$")
+
+#: The workspace ``--workspace`` named, for this run only. Kept out of the
+#: pointer so that a shortcut made for one product does not change what
+#: pycangui opens the next time it is started without one.
+_this_run = ""
 #: Windows refuses these as filenames whatever the extension, and has since
 #: DOS. A workspace called "con" would be created, apparently, and then be
 #: unopenable.
@@ -100,6 +105,8 @@ def exists(name: str) -> bool:
 def active() -> str:
     """Which workspace is in use. ``default`` when nothing says otherwise."""
     _ensure()
+    if _this_run and exists(_this_run):
+        return _this_run
     try:
         chosen = json.loads(_pointer().read_text(encoding="utf-8")).get("active")
     except (OSError, ValueError, AttributeError):
@@ -109,7 +116,14 @@ def active() -> str:
     return chosen if isinstance(chosen, str) and exists(chosen) else DEFAULT
 
 
+def use(name: str) -> None:
+    """Work in this workspace this time, leaving the one opened next time alone."""
+    global _this_run
+    _this_run = name
+
+
 def set_active(name: str) -> None:
+    use("")  # a workspace chosen in the window is chosen for good
     _pointer().write_text(json.dumps({"active": name}, indent=2), encoding="utf-8")
 
 
@@ -256,7 +270,9 @@ def rename(old: str, new: str) -> None:
     was_active = active() == old
     new = clean(new)
     dir_for(old).rename(dir_for(new))
-    if was_active:
+    if was_active and _this_run == old:
+        use(new)
+    elif was_active:
         set_active(new)
 
 

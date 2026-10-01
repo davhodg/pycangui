@@ -31,6 +31,7 @@ SELFTEST_MODULES = (
     "pycangui.uds.manager",
     "pycangui.j1939.manager",
     "pycangui.xcp.manager",
+    "pycangui.ui.handoff",
 )
 
 
@@ -205,6 +206,23 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_NAME)  # QSettings uses these two for the registry/ini path
     set_icon(app)
+    from pycangui.core import cli
+
+    options = cli.parse(sys.argv)
+    if options.help or options.problem:
+        return tell(options.problem or cli.USAGE, problem=bool(options.problem))
+    # Before the notice and the libraries: a file double-clicked while
+    # pycangui is open goes to that one, and this one has nothing more to do.
+    from pycangui.ui import handoff
+
+    if options.hand_over and handoff.hand_over(options.files):
+        return 0
+    listener = handoff.Listener(parent=app)
+    listener.waiting += options.files
+    if options.workspace:
+        from pycangui.core import workspaces
+
+        workspaces.use(options.workspace)
     # Before anything is drawn, so the notice is already in the colours chosen.
     from pycangui.ui import theme
 
@@ -247,7 +265,9 @@ def main() -> int:
     # Before the window is built, and therefore before a workspace can reopen
     # its channels or a startup hook can connect one: a notice read after the
     # first connection is a notice that was too late.
-    if not accept_notice(while_shown=load):
+    if options.skip_notice:
+        load()
+    elif not accept_notice(while_shown=load):
         return 0
     # Its own line, because the libraries load behind the notice and the
     # window is built after it: without this, every step between the two
@@ -272,10 +292,48 @@ def main() -> int:
     # Held by a Session rather than a local, because switching workspace
     # replaces the window rather than reconfiguring it.
     loaded["session"] = session_class(window_class)
-    window = loaded["session"].open()
+    session = loaded["session"]
+    window = session.open()
     timing.mark("window on screen")
+    if options.skip_notice:
+        window.events.information(
+            "Started with --skip-start-warning: the notice about real equipment was not shown."
+        )
     note_a_slow_start(window)
-    return app.exec()
+    listener.deliver(session.open_files)
+    if options.run is not None:
+        run_when_started(window, options.run, loaded)
+    finished = app.exec()
+    listener.close()
+    return loaded.get("exit code", finished)
+
+
+def run_when_started(window, script, loaded: dict) -> None:
+    """Run ``--run``'s script once the window and its startup hook are done,
+    then close. The exit code is kept for main to return: closing can be
+    refused -- a pane with changes not saved asks -- and then the code waits
+    until pycangui is closed by hand."""
+
+    def run() -> None:
+        window.started.disconnect(run)
+        loaded["exit code"] = window.run_script(script)
+        window.close()
+
+    window.started.connect(run)
+
+
+def tell(text: str, problem: bool) -> int:
+    """Say something about the command line before there is a window: on the
+    terminal if there is one, or in a message box if there is not -- pip's
+    launcher and the installed pycangui.exe have none."""
+    stream = sys.stderr if problem else sys.stdout
+    if stream is not None:
+        stream.write(text + "\n")
+    else:
+        from pycangui.ui import messages
+
+        (messages.critical if problem else messages.information)(None, APP_NAME, text)
+    return 2 if problem else 0
 
 
 def note_a_slow_start(window) -> None:
