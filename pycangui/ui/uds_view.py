@@ -143,8 +143,8 @@ OPEN_TIP = (
 NO_ADDRESS_TIP = "Fill in the Tx and Rx identifiers first."
 TRANSPORT_TIP = (
     "The ISO-TP transport, which is a replaceable component. Add one of\n"
-    "your own, or replace this one, with a file in Tools > Open folder for\n"
-    "your own components."
+    "your own, or replace this one, with a file in the folder Tools > Open\n"
+    "custom components folder opens."
 )
 LEVEL_TIP = (
     "Which security level to unlock. SecurityAccess sends a pair of\n"

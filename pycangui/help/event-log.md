@@ -37,7 +37,7 @@ of transfer communication detected)*. The code is what goes to the device's
 maker; the meaning is what tells you whether the node refused or never
 answered at all. *Aborted by client* is pycangui's own end giving up -- an
 SDO timeout -- rather than the device saying no.
-*Tools > Verbose CAN logging* adds their information messages too, which is
+*Tools > Settings > Verbose CAN logging* adds their information messages too, which is
 where the detail is when something is actually wrong, and more than you want
 the rest of the time.
 

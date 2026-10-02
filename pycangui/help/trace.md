@@ -7,14 +7,14 @@ or *Latest per ID* (below). The second chooses how the display keeps up with
 the bus, and none of the three loses anything -- frames go on being captured,
 decoded and recorded:
 
-- **Live** adds rows as they arrive.
+- **Live refresh** adds rows as they arrive.
 - **Slow refresh** repaints four times a second instead of twenty, for a bus
   busy enough that the rows are a blur. The frames are added in one go at the
   end of each quarter second rather than a dribble at a time, which is also
   why it costs less to draw. Kept per pane, so a trace opened on a quiet bus
   need not have it.
 - **Paused** holds the display still; what arrives meanwhile appears when you
-  go back to Live or Slow refresh.
+  go back to Live refresh or Slow refresh.
 
 The trace narrows down in two ways, neither of which discards anything: the
 **filter box** matches text against the id, the decoded name, the channel and

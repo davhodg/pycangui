@@ -3,7 +3,7 @@
 """Light, dark, or whatever the operating system is set to.
 
 Qt follows the system's choice by itself; this only adds a way to override it,
-under *Tools > Theme*. The choice is kept per person on this machine, in
+under *Tools > Settings > Theme*. The choice is kept per person on this machine, in
 ``QSettings`` beside the window's position, rather than in the workspace: a
 workspace handed to somebody else should not change their colours.
 
@@ -68,7 +68,7 @@ def choose(choice: str, settings: QSettings | None = None, app: QApplication | N
 
 
 def menu(parent: QWidget, settings: QSettings | None = None) -> QMenu:
-    """*Tools > Theme*: the three choices, the current one ticked."""
+    """*Tools > Settings > Theme*: the three choices, the current one ticked."""
     out = QMenu(TITLE, parent)
     out.setToolTipsVisible(True)
     out.menuAction().setToolTip(TIP)

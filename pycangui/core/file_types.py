@@ -4,7 +4,7 @@
 
 The installer offers this as a task. Everything else -- a source folder, a pip
 installation, an installed build whose task was left unticked -- gets it from
-the Tools menu, which is this module.
+Tools > Settings, which is this module.
 
 pycangui is added to *Open with*, and not made the default: another CANopen
 tool somebody already uses for these files keeps them until they choose

@@ -83,7 +83,7 @@ left alone, since a tooltip repeating its label is noise.
 
 ## Light or dark
 
-pycangui follows the operating system's light or dark setting. *Tools > Theme*
+pycangui follows the operating system's light or dark setting. *Tools > Settings > Theme*
 overrides it -- **Light** or **Dark** -- and **Match the system** hands it back.
 On Windows 10 and earlier the native style can only be light, so pycangui uses
 Qt's own Fusion style there, light and dark alike.

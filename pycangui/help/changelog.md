@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen **SYNC counter**, in *Settings...* and *none* until set: the SYNC producer sends the
+  one-byte counter devices with 0x1019 set expect, counting 1 to the overflow value.
 - CANopen **Read EDS from node**: reads the EDS a device keeps in itself (object 0x1021), saves
   it in the workspace and uses it for the node -- for a node with no EDS to hand. The demo
   device keeps one.
@@ -19,7 +21,7 @@ since the last version, and comes out in the next one.
   PDO configuration tab works for the file too: its PDOs read from its objects, remapped, and
   put back with **Put in file**.
 - **Command line**: `pycangui drive.dcf` opens a DCF or EDS, handed to the pycangui already
-  open if there is one. A tick box in the installer, and *Tools > Open .dcf and .eds files
+  open if there is one. A tick box in the installer, and *Tools > Settings > Open .dcf and .eds files
   with pycangui* for a source folder or pip, put pycangui in *Open with* for those files.
   `--workspace NAME` opens a workspace for that run only. `--run script.py` runs a script once
   the window is up and exits with its code, and `--skip-start-warning` skips the start-up
@@ -41,21 +43,46 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- Loading a DBC that has a message name or identifier already in a database loaded before it
+  says so in the Event Log, and which file is the one used.
+- CAN Transmit shows which database a DBC row came from, in its Unit column, and still names
+  the file (*not loaded: drive.dbc*) once that database is removed. With several loaded, *Add >
+  From DBC...* says which file each message is in. *Send selected*, *Counter / checksum...* and
+  *Remove selected* are greyed until a message is selected.
+- CAN Transmit tints the bytes a counter (blue) and a checksum (green) will overwrite, on the
+  message's own data, and has a second J1850: *CRC-8 / SAE J1850, start 0x00*, with no start
+  value and no final XOR.
+- In CAN Transmit a signal with named values (a `VAL_` table) is picked from a list, and
+  shown as name and number together -- *Run (1)* -- however it was entered.
+- The **Period** of a DBC or RPDO row in CAN Transmit can be typed, where it was fixed at
+  100 ms, and a row added from a database starts at the database's cycle time for the message.
 - The demo CANopen device reports vendor ID 0x00000000 and the J1939 engine node manufacturer
   code 0, which are assigned to nobody, and no longer numbers that are somebody's.
 - The CAN trace's Data column starts wide enough for eight bytes rather than for its heading.
-- *Tools > Add to Start menu* is **Add shortcut to Start menu**, and the installer's desktop
+- **Tools > Settings** holds what is set and left -- Theme, Verbose CAN logging, Strict DBC
+  checks, and the two that set this installation up -- so that Tools itself is what is done.
+  *Add to Start menu* is **Add shortcut to Start menu** there, and the installer's desktop
   shortcut is ticked to begin with.
 - CANopen *Read RPDO config* is **Read PDO config**, and reads both directions: TPDOs for
   Signals and Plot as well as RPDOs for CAN Transmit.
-- The CAN Trace's top row is shorter: Pause and Slow refresh are one choice -- Live, Slow
-  refresh or Paused -- and Columns is on the table's right-click, as it was on the header's.
+- The CAN Trace's top row is shorter: Pause and Slow refresh are one choice -- Live
+  refresh, Slow refresh or Paused -- and Columns is on the table's right-click, as it was on the header's.
   The plot has the same choice in place of its two ticks.
 - The NMT send button says who it goes to -- *Send NMT to node 5* or *to all nodes*.
 - The README and PyPI page list every adapter python-can supports.
 
 ### Fixed
 
+- A CRC placed in a database **signal** was computed over the frame with a zero where the CRC
+  goes, not over the other bytes, so it did not match what a receiver computes (a sum or an XOR
+  was unaffected). A checksum signal that is whole bytes is now left out, as one at a byte
+  position always was.
+- Plot **Fit** shows everything held for the plotted signals the first time: it had measured
+  only what was already in view, so each press showed a little more. It also works while the
+  display is paused.
+- A library that is installed but will not load -- as a release of one of its own dependencies
+  can make it -- is reported as that, with what failed, at start-up and by *Import signals*,
+  rather than as a library that is missing or not reported at all.
 - About wrapped its paths under the column of names. It is as wide as its longest line, up to
   most of the screen, and scrolls sideways past that.
 - Removing a DBC left its signals in Signals and Plot, as though still decoded. They go with it.

@@ -370,3 +370,43 @@ def test_the_right_axis_survives_a_restart_of_the_window(app, tmp_path, monkeypa
     speed_and_temperature(window.signals)
     assert window.plot.right_axis() == [TEMP]
     window.close()
+
+
+# --- Fit ------------------------------------------------------------------------------------
+def test_fit_shows_all_of_it_the_first_time(app, plot):
+    """The curves are clipped to what is in view, so fitting to the curves
+    measured only what was on screen and each press showed a little more."""
+    view, hub, clock = plot
+    speed_and_temperature(hub, upto=100.0)
+    clock.t = 100.0
+    view.set_plotted("Live/Speed", True)
+    view.window_s.setValue(5.0)
+    view._redraw()
+    settle(app)
+    low, _high = view.plot.viewRange()[0]
+    assert low >= 94.0, "following, only the last few seconds are in view"
+
+    view._fit()
+    settle(app)
+    first = view.plot.viewRange()[0]
+    assert first[0] <= 0.5 and first[1] >= 99.0, f"all hundred seconds at once: {first}"
+    view._fit()
+    settle(app)
+    again = view.plot.viewRange()[0]
+    assert again == pytest.approx(first), "and a second press has nothing more to find"
+
+
+def test_fit_works_while_the_display_is_paused(app, plot):
+    view, hub, clock = plot
+    speed_and_temperature(hub, upto=100.0)
+    clock.t = 100.0
+    view.set_plotted("Live/Speed", True)
+    view.window_s.setValue(5.0)
+    view._redraw()
+    view.pause.setChecked(True)
+    view._fit()
+    settle(app)
+    low, high = view.plot.viewRange()[0]
+    assert low <= 0.5 and high >= 99.0
+    times, _values = view._curves["Live/Speed"].getData()
+    assert len(times) == len(hub.get("Live/Speed").times), "drawn, though paused"

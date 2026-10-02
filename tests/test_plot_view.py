@@ -190,10 +190,10 @@ def test_a_plot_left_on_slow_refresh_opens_again(app, tmp_path, monkeypatch):
 
 def test_live_slow_and_paused_are_one_choice_here_too(plot):
     """As on the trace: two ticks on a row too long, and one question."""
-    from pycangui.ui.refresh import FAST_MS, SLOW_MS
+    from pycangui.ui.refresh import FAST_MS, LIVE, SLOW_MS
 
     view, _hub, _clock = plot
-    assert view.display.currentText() == "Live"
+    assert view.display.currentText() == LIVE
 
     def choose(text):
         index = view.display.findText(text)
@@ -204,6 +204,6 @@ def test_live_slow_and_paused_are_one_choice_here_too(plot):
     assert view.slow.isChecked() and view._timer.interval() == SLOW_MS
     choose("Paused")
     assert view.pause.isChecked()
-    choose("Live")
+    choose(LIVE)
     assert not view.pause.isChecked() and view._timer.interval() == FAST_MS
     assert not view.pause.isVisibleTo(view), "the ticks are not on the row any more"

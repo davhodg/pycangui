@@ -8,7 +8,7 @@ what notices a dependency added since the last pull, so starting from the menu
 picks up an update exactly as double-clicking the launcher does.
 
 Offered by the launcher at the end of its first-run setup, which runs
-``python -m pycangui.core.shortcut``, and at any time from the Tools menu.
+``python -m pycangui.core.shortcut``, and at any time from Tools > Settings.
 Standard library only, since the launcher calls it before anything else of
 pycangui's has been started.
 """

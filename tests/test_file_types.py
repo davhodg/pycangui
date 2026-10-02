@@ -80,3 +80,21 @@ def test_the_tools_menu_registers_them(app, tmp_path, monkeypatch):
         assert asked == [1]
     finally:
         window.close()
+
+
+def test_what_is_set_is_under_settings_and_tools_is_what_is_done(app, tmp_path, monkeypatch):
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    try:
+        tools = window.settings_menu.parent()
+        at_the_top = tools.actions()
+        inside = window.settings_menu.actions()
+        for action in (window.strict_dbc, window.theme_menu.menuAction(), window.file_types_action):
+            assert action in inside and action not in at_the_top
+        before_reset = at_the_top.index(window.reset_menu.menuAction()) - 1
+        assert at_the_top[before_reset] is window.settings_menu.menuAction()
+    finally:
+        window.close()

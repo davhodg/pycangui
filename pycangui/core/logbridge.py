@@ -10,7 +10,7 @@ from inside pycangui exactly like a bus with nothing on it.
 
 Warnings and errors go to the Event Log by default. Info is where the useful
 detail lives when something is actually wrong (which channels a backend
-opened, filters being applied), so Tools > Verbose CAN logging turns it on
+opened, filters being applied), so Tools > Settings > Verbose CAN logging turns it on
 rather than making it the default and burying the log in noise.
 """
 

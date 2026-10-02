@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""Tools > Theme: light, dark, or whatever the system is set to."""
+"""Tools > Settings > Theme: light, dark, or whatever the system is set to."""
 
 import pytest
 from PySide6.QtCore import QSettings, Qt
@@ -134,12 +134,13 @@ def test_picking_one_applies_and_remembers_it(app, settings, monkeypatch):
     assert dark.isChecked() and sum(a.isChecked() for a in menu.actions()) == 1
 
 
-def test_it_is_under_tools(app, tmp_path, monkeypatch):
+def test_it_is_under_tools_settings(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     from pycangui.ui.main_window import MainWindow
 
     window = MainWindow()
     tools = next(a.menu() for a in window.menuBar().actions() if a.text() == "&Tools")
-    assert window.theme_menu.menuAction() in tools.actions()
+    assert window.settings_menu.menuAction() in tools.actions()
+    assert window.theme_menu.menuAction() in window.settings_menu.actions()
     window.close()

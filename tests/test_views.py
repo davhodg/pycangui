@@ -446,7 +446,7 @@ def test_components_are_their_own_section_below_the_hook_entries(app, tmp_path, 
     QSettings().clear()
     window = MainWindow()
     entries = ["---" if a.isSeparator() else a.text() for a in _menu(window, "&Tools").actions()]
-    assert entries[:10] == [
+    assert entries == [
         "Reload hooks",
         "Open hooks folder",
         "---",
@@ -456,6 +456,7 @@ def test_components_are_their_own_section_below_the_hook_entries(app, tmp_path, 
         "Simulated nodes...",
         "Open nodes folder",
         "---",
+        "Settings",
         "Reset",
     ]
     window.close()
@@ -831,10 +832,12 @@ def test_a_trace_left_on_slow_refresh_opens_again(app, tmp_path, monkeypatch):
 def test_live_slow_and_paused_are_one_choice(app, tmp_path, monkeypatch):
     """Pause and Slow refresh were two ticks on a row too long to read, and
     are two states of one thing: how the display keeps up."""
+    from pycangui.ui.refresh import LIVE
+
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     view = TraceView(Hooks(ctx), ctx)
-    assert view.display.currentText() == "Live"
+    assert view.display.currentText() == LIVE
 
     def choose(text):
         index = view.display.findText(text)
@@ -850,7 +853,7 @@ def test_live_slow_and_paused_are_one_choice(app, tmp_path, monkeypatch):
     choose("Slow refresh")
     assert not view.pause.isChecked() and view.slow.isChecked()
     assert view.model.rowCount() == 1, "and shown on the way back"
-    choose("Live")
+    choose(LIVE)
     assert not view.slow.isChecked() and not view._slow_timer.isActive()
 
     view.pause.setChecked(True)  # as the console or a plugin might

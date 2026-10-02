@@ -39,7 +39,7 @@ DISPLAY_TIP = (
     f"{SLOW_LABEL} redraws four times a second, for data changing so fast\n"
     "that the curve is a shimmer.\n"
     "Paused holds the plot still, to look at; what arrives meanwhile is\n"
-    "collected, and there when it is back to Live or Slow refresh."
+    "collected, and there when it is back to Live refresh or Slow refresh."
 )
 #: Each choice's own tooltip, for when it is hovered in the list.
 DISPLAY_ITEM_TIPS = (
@@ -47,7 +47,7 @@ DISPLAY_ITEM_TIPS = (
     "The plot redraws four times a second. Display only: every sample is\n"
     "still collected as it arrives.",
     "The plot holds still. Display only: samples are still collected, and\n"
-    "drawn when it is back to Live or Slow refresh.",
+    "drawn when it is back to Live refresh or Slow refresh.",
 )
 COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
 
@@ -73,7 +73,7 @@ class PlotView(QWidget):
         self.window_s.setRange(0.5, 3600)
         self.window_s.setValue(10)
         self.window_s.setSuffix(" s")
-        # Two ticks, shown as one menu -- Live, Slow refresh or Paused; see
+        # Two ticks, shown as one menu -- Live refresh, Slow refresh or Paused; see
         # refresh.display_choice.
         self.pause = QCheckBox("Pause", self)
         self.follow = QCheckBox("Follow")
@@ -268,16 +268,13 @@ class PlotView(QWidget):
         self.follow.setChecked(False)
         # Redrawn first. The curves are filled on a timer, so fitting before
         # the next tick would fit whatever was on screen a moment ago -- and
-        # for a file just imported, that is nothing at all.
-        self._redraw()
-        self.plot.enableAutoRange()
-        self.plot.autoRange()
-        if not self._right:
-            return
-        self.right_view.enableAutoRange(axis=pg.ViewBox.YAxis)
-        # The plot's own fit only knows about the curves in its own box, and
-        # with every signal on the right that is none of them. X is shared,
-        # so it is fitted to both from the samples themselves.
+        # for a file just imported, that is nothing at all. Paused or not:
+        # Fit is asked for, and a pause is about what arrives by itself.
+        self._redraw(paused_too=True)
+        # The time range from the samples themselves, not from the curves.
+        # A curve is clipped to what is in view, so asking the plot to fit
+        # its curves measured only what was already on screen, and each
+        # press of Fit showed a little more than the last.
         ends = [
             t
             for key in self._curves
@@ -286,6 +283,10 @@ class PlotView(QWidget):
         ]
         if ends:
             self.plot.setXRange(min(ends), max(ends))
+        # Y after X, so each axis is fitted to all of what is now in view.
+        self.plot.enableAutoRange(axis=pg.ViewBox.YAxis)
+        if self._right:
+            self.right_view.enableAutoRange(axis=pg.ViewBox.YAxis)
 
     def _newest(self) -> float | None:
         """The latest timestamp across the plotted signals, or None if none."""
@@ -313,8 +314,8 @@ class PlotView(QWidget):
         newest = self._newest()
         return min(newest, now) if newest is not None else now
 
-    def _redraw(self) -> None:
-        if self.pause.isChecked() or not self._curves or not self.isVisible():
+    def _redraw(self, paused_too: bool = False) -> None:
+        if (self.pause.isChecked() and not paused_too) or not self._curves or not self.isVisible():
             return
         following = self.follow.isChecked()
         edge = self._edge()

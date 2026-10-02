@@ -88,11 +88,11 @@ UPDATE_TO = (
 #: otherwise say that the drive pane gained anything.
 CHANGED = (
     "Plugin {label} here differs from the one this pycangui ships, "
-    "though both call themselves {version}. Tools > Plugins to take the new one."
+    "though both call themselves {version}. Plugins > Manage plugins... to take the new one."
 )
 BEHIND = (
     "Plugin {label} {installed} is installed here; this pycangui ships "
-    "{supplied}. Tools > Plugins to update it."
+    "{supplied}. Plugins > Manage plugins... to update it."
 )
 
 UNINSTALL = (

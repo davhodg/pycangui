@@ -10,9 +10,9 @@ that list marked *(missing)*, which is how it is dropped without disturbing
 the others. Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
 the end of its message, both common in files real tools produce -- is offered
-for loading anyway rather than simply refused; turning off *Tools > Strict DBC
-checks* stops the asking. Signals with a `VAL_` table can
-be transmitted by name or by number, and the names are listed in the tooltip.
+for loading anyway rather than simply refused; turning off *Tools > Settings >
+Strict DBC checks* stops the asking. Signals with a `VAL_` table are
+picked from a list in [CAN Transmit](transmit.md), or typed by name or by number.
 A loaded database is loaded again next time. One kept outside the workspace
 can be copied into it when you load it, so it travels with the workspace; see
 [Workspaces](workspaces.md).
@@ -50,7 +50,7 @@ an hour. **Fit** zooms to everything plotted, wherever in time it is, and
 The menu beside the window says how the plot keeps up, the same choice the
 [trace](trace.md) has, with the same promise: it changes the screen and
 nothing else, so every sample is still collected, plotted and exported.
-**Live** redraws twenty times a second; **Slow refresh** four times, for a bus
+**Live refresh** redraws twenty times a second; **Slow refresh** four times, for a bus
 busy enough that the curve is a shimmer; **Paused** holds the plot still to be
 looked at, and what arrived meanwhile is there when you go back.
 

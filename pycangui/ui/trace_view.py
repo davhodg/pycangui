@@ -62,7 +62,7 @@ DISPLAY_TIP = (
     f"{SLOW_LABEL} adds them four times a second rather than twenty, for a\n"
     "bus busy enough that the screen is a blur.\n"
     "Paused holds the display still; frames that arrive meanwhile are kept\n"
-    "and appear when it is back to Live or Slow refresh."
+    "and appear when it is back to Live refresh or Slow refresh."
 )
 #: Each choice's own tooltip, for when it is hovered in the list.
 DISPLAY_ITEM_TIPS = (
@@ -70,7 +70,7 @@ DISPLAY_ITEM_TIPS = (
     "Rows are added four times a second. Display only: every frame is still\n"
     "captured, decoded and recorded as it arrives.",
     "The display holds still. Display only: frames are still captured,\n"
-    "decoded and recorded, and appear when it is back to Live or Slow refresh.",
+    "decoded and recorded, and appear when it is back to Live refresh or Slow refresh.",
 )
 MAX_PENDING = 200_000  # frames held while paused, oldest dropped beyond this
 
@@ -203,7 +203,7 @@ class TraceView(QWidget):
         self.mode.currentIndexChanged.connect(self._on_mode_changed)
         self.autoscroll = QCheckBox("Autoscroll")
         self.autoscroll.setChecked(True)
-        # Two ticks, shown as one menu -- Live, Slow refresh or Paused; see
+        # Two ticks, shown as one menu -- Live refresh, Slow refresh or Paused; see
         # refresh.display_choice.
         self.pause = QCheckBox("Pause", self)
         self.pause.toggled.connect(self._on_pause)

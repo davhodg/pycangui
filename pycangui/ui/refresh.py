@@ -39,7 +39,7 @@ SLOW_MS = 250
 
 LABEL = "Slow refresh"
 
-LIVE, PAUSED = "Live", "Paused"
+LIVE, PAUSED = "Live refresh", "Paused"
 #: How a pane keeps up, one choice for what were two ticks.
 CHOICES = (LIVE, LABEL, PAUSED)
 
@@ -47,7 +47,7 @@ CHOICES = (LIVE, LABEL, PAUSED)
 def display_choice(
     pause: QCheckBox, slow: QCheckBox, tip: str, item_tips: tuple[str, str, str]
 ) -> QComboBox:
-    """Live, Slow refresh or Paused, as one menu over the two ticks.
+    """Live refresh, Slow refresh or Paused, as one menu over the two ticks.
 
     Pause and Slow refresh were two ticks on rows already too long to read,
     and they are two states of one thing: how the pane keeps up. The ticks

@@ -139,6 +139,8 @@ AT_END = 4
 
 #: What the window opens at, and what Reset layout puts it back to. Wide,
 #: because the trace and the panes beside it are read across rather than down.
+#: How many clashing names a warning lists before it counts the rest.
+MOST_CLASHES = 5
 DEFAULT_WIDTH = 1400
 DEFAULT_HEIGHT = 900
 
@@ -496,12 +498,19 @@ class MainWindow(QMainWindow):
             "Which is a new workspace, rather than anything undone in place --\n"
             "so the one you are in now is still there to go back to."
         )
-        tools_menu.addSeparator()
-        verbose = tools_menu.addAction("Verbose CAN logging")
+        # What is set and left, apart from what is done: Tools had grown a
+        # mixture of the two. A submenu rather than a menu of its own on the
+        # bar, because most of pycangui's settings live where they are used
+        # -- a channel's on the connect bar, CANopen's in its pane -- and a
+        # menu called Settings would look like the place for all of them.
+        self.settings_menu = settings_menu = QMenu("Settings", tools_menu)
+        settings_menu.setToolTipsVisible(True)
+        tools_menu.insertMenu(self.reset_menu.menuAction(), settings_menu)
+        verbose = settings_menu.addAction("Verbose CAN logging")
         verbose.setCheckable(True)
         verbose.setToolTip("Relay the CAN libraries' info messages to the event log too")
         verbose.toggled.connect(self._set_verbose_logging)
-        self.strict_dbc = tools_menu.addAction("Strict DBC checks")
+        self.strict_dbc = settings_menu.addAction("Strict DBC checks")
         self.strict_dbc.setCheckable(True)
         self.strict_dbc.setChecked(bool(self.ctx.settings.get("dbc.strict", True)))
         self.strict_dbc.setToolTip(
@@ -511,12 +520,15 @@ class MainWindow(QMainWindow):
         )
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
         self.theme_menu = theme.menu(self)
-        tools_menu.addMenu(self.theme_menu)
+        settings_menu.insertMenu(verbose, self.theme_menu)
+        # Below the line: not how pycangui behaves, but how this copy of it
+        # is set up on this machine. Neither is offered on macOS.
+        if shortcut.launcher() is not None or file_types.command() is not None:
+            settings_menu.addSeparator()
         # Only for a source folder: the installer makes its own entry.
         self.shortcut_action = None
         if shortcut.launcher() is not None:
-            tools_menu.addSeparator()
-            self.shortcut_action = tools_menu.addAction(
+            self.shortcut_action = settings_menu.addAction(
                 f"Add shortcut to {shortcut.menu_name()}", self._add_shortcut
             )
             self.shortcut_action.setToolTip(
@@ -529,9 +541,7 @@ class MainWindow(QMainWindow):
         # task, and this is for a source folder, pip, or a task left unticked.
         self.file_types_action = None
         if file_types.command() is not None:
-            if self.shortcut_action is None:
-                tools_menu.addSeparator()
-            self.file_types_action = tools_menu.addAction(
+            self.file_types_action = settings_menu.addAction(
                 "Open .dcf and .eds files with pycangui", self._register_file_types
             )
             self.file_types_action.setToolTip(
@@ -1661,7 +1671,7 @@ class MainWindow(QMainWindow):
         )
 
     def _add_shortcut(self) -> None:
-        """Tools > Add shortcut to Start menu: an entry that starts this folder's launcher."""
+        """Tools > Settings > Add shortcut to Start menu, to this folder's launcher."""
         try:
             path = shortcut.create()
         except OSError as exc:
@@ -1670,7 +1680,7 @@ class MainWindow(QMainWindow):
         self.events.good(f"Added pycangui to the {shortcut.menu_name()}: {path}")
 
     def _register_file_types(self) -> None:
-        """Tools > Open .dcf and .eds files with pycangui."""
+        """Tools > Settings > Open .dcf and .eds files with pycangui."""
         try:
             where = file_types.register()
         except OSError as exc:
@@ -2149,6 +2159,19 @@ class MainWindow(QMainWindow):
         how = "" if strict else ", strict checks off"
         where = workspace_files.shown(path, self.ctx.workspace_dir)
         self.events.information(f"DBC loaded: {where} ({len(db.messages)} messages{how})")
+        if clashes := self.dbc.clashes(path):
+            # Said, because nothing else would: the earlier database goes on
+            # being used, and this one's version of the message silently is not.
+            some = ", ".join(
+                f"{what} ({Path(other).name})" for what, other in clashes[:MOST_CLASHES]
+            )
+            more = len(clashes) - MOST_CLASHES
+            self.events.warning(
+                f"{Path(path).name}: {len(clashes)} message name(s) or identifier(s) are already "
+                f"in a database loaded before it, which is the one used: {some}"
+                + (f", and {more} more" if more > 0 else "")
+                + ". Remove the other database to use this one's."
+            )
         if hasattr(self, "tx"):
             self._refresh_transmit_sources()
         if hasattr(self, "canopen"):
@@ -2165,7 +2188,7 @@ class MainWindow(QMainWindow):
                 "That check is about how well formed the file is, not about whether "
                 "its messages can be used, and databases that fail it are usually "
                 "still fine to read and transmit.\n\n"
-                "Load it anyway? Turning off Tools > Strict DBC checks stops the "
+                "Load it anyway? Turning off Tools > Settings > Strict DBC checks stops the "
                 "asking.",
                 QMessageBox.Yes | QMessageBox.Cancel,
                 QMessageBox.Yes,

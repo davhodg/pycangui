@@ -63,8 +63,8 @@ SEED_KEY_TIP = (
 )
 ENGINE_TIP = (
     "The XCP or CCP engine, which is a replaceable component. Add one of\n"
-    "your own, or replace this one, with a file in Tools > Open folder for\n"
-    "your own components."
+    "your own, or replace this one, with a file in the folder Tools > Open\n"
+    "custom components folder opens."
 )
 #: Everything a row can be found by, worked out once when it is built.
 ROLE_SEARCH = Qt.UserRole + 1

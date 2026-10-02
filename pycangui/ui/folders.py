@@ -19,7 +19,7 @@ first of those every time, however many times somebody had picked another --
 a small thing that happens on every single open.
 
 Getting back to where it started: a remembered folder that no longer exists is
-ignored and the default is used, and *Tools > Forget remembered folders* puts
+ignored and the default is used, and *Tools > Reset > Forget remembered folders* puts
 every one of them back at once. Nothing here overrides an explicit path a
 caller passes for a particular dialog.
 """
