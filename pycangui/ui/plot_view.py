@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.context import Context
-from pycangui.core.signals import SignalHub
+from pycangui.core.signals import MAX_SAMPLES, SignalHub
 from pycangui.ui.persist import remember
 from pycangui.ui.refresh import FAST_MS, SLOW_MS, display_choice
 from pycangui.ui.refresh import LABEL as SLOW_LABEL
@@ -73,6 +73,27 @@ TIME_ITEM_TIPS = (
     "The plot stays where you put it. Dragging or zooming the plot\nchooses this by itself.",
 )
 WINDOW_TIP = "How many seconds Follow keeps in view."
+#: How often the "N signals, M samples" readout is brought up to date.
+STORED_MS = 1000
+STORED_TIP = (
+    "What is held: every decoded signal is kept as it arrives, whether or\n"
+    "not it is plotted, which is why plotting one later shows its past and\n"
+    f"why Export has them all. Up to {MAX_SAMPLES:,} samples a signal; the\n"
+    "oldest go first. Clear history throws them away."
+)
+
+
+def stored_text(signals: int, samples: int) -> str:
+    """``3 signals, 1.2M samples``: short enough to sit in the top row."""
+    if samples >= 1_000_000:
+        amount = f"{samples / 1_000_000:.1f}M"
+    elif samples >= 10_000:
+        amount = f"{samples / 1000:.0f}k"
+    else:
+        amount = f"{samples:,}"
+    return f"{signals} signal{'' if signals == 1 else 's'}, {amount} samples"
+
+
 COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
 
 
@@ -142,8 +163,16 @@ class PlotView(QWidget):
         bar.addWidget(self.time)
         bar.addWidget(self.window_s)
         bar.addStretch()
+        # What Export would write and Clear history would throw away: every
+        # decoded signal is kept, plotted or not, and nothing else says so.
+        self.stored = QLabel()
+        self.stored.setToolTip(STORED_TIP)
+        bar.addWidget(self.stored)
         bar.addWidget(self.export)
         bar.addWidget(clear)
+        self._stored_timer = QTimer(self, interval=STORED_MS, timeout=self._show_stored)
+        self._stored_timer.start()
+        self._show_stored()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
@@ -165,6 +194,12 @@ class PlotView(QWidget):
             # drawing four times a second is still a live plot.
             remember(ctx, "plot.slow", self.slow)
         self._show_time()
+
+    def _show_stored(self) -> None:
+        if not self.isVisible() and self.stored.text():
+            return
+        signals, samples = self.hub.stored()
+        self.stored.setText(stored_text(signals, samples))
 
     # --- which stretch of time ------------------------------------------------------------
     def _on_time_chosen(self, index: int) -> None:

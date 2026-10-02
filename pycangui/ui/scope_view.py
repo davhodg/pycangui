@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
 from pycangui.ui.plot_view import PlotView
-from pycangui.ui.signals_view import SignalsView
+from pycangui.ui.signals_view import DEFAULT_COLUMNS, SignalsView
 
 # Enough for a signal name and its value; the plot takes whatever is left.
 LIST_WIDTH = 320
@@ -100,6 +100,12 @@ class ScopeView(QWidget):
         self.signals_view.plot_toggled.connect(self._note_plotted)
         self.signals_view.axis_toggled.connect(self._note_right)
         self.signals_view.all_unplotted.connect(self._forget_plotted)
+        # Which statistics columns this pane shows, kept with what it plots.
+        saved = ctx.settings.get(f"{key}.columns")
+        self.signals_view.set_columns(DEFAULT_COLUMNS if saved is None else _saved_keys(saved))
+        self.signals_view.columns_changed.connect(
+            lambda names: ctx.settings.set(f"{key}.columns", list(names))
+        )
         # Connected after the list's own, so the row is there to be ticked.
         self.hub.added.connect(self._restore)
         for signal in self.hub.keys():

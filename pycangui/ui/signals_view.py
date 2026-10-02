@@ -26,8 +26,45 @@ ROLE_KEY = Qt.UserRole
 #: The two checkbox columns: Plot Y1, the left axis, and Plot Y2, the right.
 PLOT = 3
 RIGHT = 4
+#: The statistics, hidden until asked for from the right-click: four more
+#: columns on a list that opens in a third of the pane is a list nobody can
+#: read. Each is kept for every signal whether its column shows or not.
+COUNT, RATE, MINIMUM, MAXIMUM = 5, 6, 7, 8
+HEADERS = ["Signal", "Value", "Unit", "Plot Y1", "Plot Y2", "Count", "Rate", "Min", "Max"]
+UNIT = 2
+#: Left to right as they are shown: Min and Max sit beside the value they are
+#: the extremes of, and Unit after them. The columns are moved into this
+#: order on screen rather than renumbered, so a column is still the number
+#: everything else knows it by.
+SHOWN_ORDER = (0, 1, MINIMUM, MAXIMUM, UNIT, PLOT, RIGHT, COUNT, RATE)
+#: The columns that can be hidden, in the order the menu offers them. Unit is
+#: one of them, and the only one showing until somebody chooses otherwise.
+OPTIONAL = {"Min": MINIMUM, "Max": MAXIMUM, "Unit": UNIT, "Count": COUNT, "Rate": RATE}
+DEFAULT_COLUMNS = ("Unit",)
+COLUMN_TIPS = {
+    COUNT: "How many samples of the signal have arrived since the history was last cleared.",
+    RATE: "Samples a second, over the last second of the signal's own samples:\n"
+    "how fast it was arriving when it last arrived.",
+    MINIMUM: "The smallest value since the history was last cleared.",
+    MAXIMUM: "The largest value since the history was last cleared.",
+    UNIT: "The unit the value is in, where the database or the EDS gives one.",
+}
 Y1_TIP = "Plot the signal against the left Y axis.\nRight-click to plot or unplot several at once."
-MENU_TIP = "Right-click to plot or unplot every signal, or every signal of one message."
+MENU_TIP = (
+    "Right-click to plot or unplot every signal, or every signal of one message,\n"
+    "and to show the Count, Rate, Min and Max columns."
+)
+
+
+def _number(value: float | None) -> str:
+    """A value as the Value column writes it; nothing for none yet."""
+    if value is None:
+        return ""
+    return (
+        f"{value:.6g}" if isinstance(value, float) and not value.is_integer() else f"{int(value)}"
+    )
+
+
 Y2_TIP = (
     "Plot the signal against a second Y axis, on the right of the plot, with a\n"
     "scale of its own. A signal is on one axis at a time."
@@ -40,6 +77,8 @@ class SignalsView(QWidget):
     #: *Unplot all* was pressed: whatever remembers what was plotted forgets
     #: the lot, including signals that have no row yet to untick.
     all_unplotted = Signal()
+    #: Which optional columns are showing changed, for whoever remembers it.
+    columns_changed = Signal(list)
 
     def __init__(self, hub: SignalHub) -> None:
         super().__init__()
@@ -49,9 +88,16 @@ class SignalsView(QWidget):
         self._updating = False
 
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Signal", "Value", "Unit", "Plot Y1", "Plot Y2"])
+        self.tree.setHeaderLabels(HEADERS)
         self.tree.headerItem().setToolTip(PLOT, Y1_TIP)
         self.tree.headerItem().setToolTip(RIGHT, Y2_TIP)
+        for column, tip in COLUMN_TIPS.items():
+            self.tree.headerItem().setToolTip(column, tip)
+        header = self.tree.header()
+        for place, column in enumerate(SHOWN_ORDER):
+            header.moveSection(header.visualIndex(column), place)
+        for name, column in OPTIONAL.items():
+            self.tree.setColumnHidden(column, name not in DEFAULT_COLUMNS)
         self.tree.setFont(QFont("Consolas", 9))
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tree.header().setStretchLastSection(True)
@@ -90,7 +136,7 @@ class SignalsView(QWidget):
             return
         group = self._groups.get(s.group)
         if group is None:
-            group = QTreeWidgetItem([s.group, "", "", "", ""])
+            group = QTreeWidgetItem([s.group])
             group.setFlags(group.flags() & ~Qt.ItemIsUserCheckable)
             self._groups[s.group] = group
             self.tree.addTopLevelItem(group)
@@ -132,6 +178,36 @@ class SignalsView(QWidget):
                     item.setText(1, text)
                 if s.unit and not item.text(2):
                     item.setText(2, s.unit)
+            if s is not None:
+                self._show_statistics(item, s)
+
+    def _show_statistics(self, item: QTreeWidgetItem, s) -> None:
+        """Fill the statistics columns that are showing, and only those."""
+        for column, text in (
+            (COUNT, lambda: f"{s.count:,}" if s.count else ""),
+            (RATE, lambda: "" if (rate := s.rate()) is None else f"{rate:.4g}"),
+            (MINIMUM, lambda: _number(s.minimum)),
+            (MAXIMUM, lambda: _number(s.maximum)),
+        ):
+            if self.tree.isColumnHidden(column):
+                continue
+            if item.text(column) != (new := text()):
+                item.setText(column, new)
+
+    # --- which optional columns show --------------------------------------------------
+    def columns(self) -> list[str]:
+        """The optional columns that are showing, by name."""
+        return [name for name, column in OPTIONAL.items() if not self.tree.isColumnHidden(column)]
+
+    def set_columns(self, names) -> None:
+        for name, column in OPTIONAL.items():
+            self.tree.setColumnHidden(column, name not in names)
+        self._refresh_values()
+
+    def _toggle_column(self, name: str, on: bool) -> None:
+        self.tree.setColumnHidden(OPTIONAL[name], not on)
+        self._refresh_values()
+        self.columns_changed.emit(self.columns())
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if self._updating or column not in (PLOT, RIGHT):
@@ -210,6 +286,15 @@ class SignalsView(QWidget):
         every = menu.addAction(f"Plot all on {name}", lambda: self.plot_all(axis))
         every.setToolTip("Every signal listed: with a filter typed, only the ones it shows.")
         menu.addAction("Unplot all", self.unplot_all)
+        menu.addSeparator()
+        columns = menu.addMenu("Columns")
+        columns.setToolTipsVisible(True)
+        for column_name, column in OPTIONAL.items():
+            action = columns.addAction(column_name)
+            action.setCheckable(True)
+            action.setChecked(not self.tree.isColumnHidden(column))
+            action.setToolTip(COLUMN_TIPS[column])
+            action.toggled.connect(lambda on, n=column_name: self._toggle_column(n, on))
         return menu
 
     def _signals(self, group: QTreeWidgetItem | None, shown_only: bool) -> list[QTreeWidgetItem]:

@@ -21,6 +21,9 @@ from PySide6.QtCore import QObject, Signal
 
 MAX_SAMPLES = 200_000  # per signal; trimmed back to this from 1.5x
 
+#: How far back a signal's rate is measured: the last second of its samples.
+RATE_WINDOW_S = 1.0
+
 
 @dataclass
 class SignalSeries:
@@ -29,10 +32,42 @@ class SignalSeries:
     unit: str = ""
     times: list[float] = field(default_factory=list)
     values: list[float] = field(default_factory=list)
+    #: Kept as each sample arrives, which is one addition and two comparisons,
+    #: and so for every sample ever received: trimming the history to its
+    #: newest samples does not make a signal's count, or its extremes, smaller.
+    count: int = 0
+    minimum: float | None = None
+    maximum: float | None = None
 
     @property
     def key(self) -> str:
         return f"{self.group}/{self.name}"
+
+    def note(self, value: float) -> None:
+        """Count a sample, and widen the extremes to hold it."""
+        self.count += 1
+        if self.minimum is None or value < self.minimum:
+            self.minimum = value
+        if self.maximum is None or value > self.maximum:
+            self.maximum = value
+
+    def forget_statistics(self) -> None:
+        self.count, self.minimum, self.maximum = 0, None, None
+
+    def rate(self) -> float | None:
+        """Samples a second, over the last second of samples there is.
+
+        Of the signal's own time stamps, not of the clock: it is how fast the
+        signal was arriving when it last arrived. Worked out when asked for,
+        so it costs nothing while nobody is looking. None with fewer than two
+        samples to measure between.
+        """
+        if len(self.times) < 2:
+            return None
+        first = bisect_left(self.times, self.times[-1] - RATE_WINDOW_S)
+        first = min(first, len(self.times) - 2)
+        span = self.times[-1] - self.times[first]
+        return (len(self.times) - 1 - first) / span if span > 0 else None
 
     @property
     def latest(self) -> float | None:
@@ -62,6 +97,7 @@ class SignalHub(QObject):
             s.unit = unit
         s.times.append(t)
         s.values.append(float(value))
+        s.note(s.values[-1])
         if len(s.times) > MAX_SAMPLES * 1.5:
             del s.times[:-MAX_SAMPLES]
             del s.values[:-MAX_SAMPLES]
@@ -95,6 +131,9 @@ class SignalHub(QObject):
         series.unit = unit or series.unit
         series.times = list(times)
         series.values = [float(v) for v in values]
+        series.count = len(series.values)
+        series.minimum = min(series.values, default=None)
+        series.maximum = max(series.values, default=None)
         if new:
             self.added.emit(key)
         self.updated.emit()
@@ -132,8 +171,13 @@ class SignalHub(QObject):
     def get(self, key: str) -> SignalSeries | None:
         return self._series.get(key)
 
+    def stored(self) -> tuple[int, int]:
+        """How many signals are held, and how many samples between them."""
+        return len(self._series), sum(len(s.times) for s in self._series.values())
+
     def clear(self) -> None:
         for s in self._series.values():
             s.times.clear()
             s.values.clear()
+            s.forget_statistics()
         self.updated.emit()

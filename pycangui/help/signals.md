@@ -35,6 +35,16 @@ a message the same two for that message's signals. Over the *Plot Y2* column
 they go on the right axis, anywhere else on the left. *Plot all* means all
 that are listed, so with *speed* typed in the filter it plots the speeds.
 
+The same right-click has **Columns**. **Min** and **Max** sit beside the value
+they are the extremes of; **Count** is the samples received and **Rate** the
+samples a second, over the last second of the signal's own samples -- how fast
+it was arriving when it last arrived. Those four are hidden until asked for.
+**Unit** is there too: shown to begin with, and it can be hidden. The
+statistics are kept for every signal as it
+arrives, whether shown or not and however much of the history has been
+trimmed, so they cost next to nothing; *Clear history* starts them again. Each
+Signals and Plot pane remembers which it shows.
+
 Tick *Plot Y2* instead to draw a signal against a second Y axis on the right of
 the plot, with a scale of its own, so that a speed in thousands and a
 temperature in tens can be read on the same plot. A signal is on one axis at a
@@ -64,7 +74,9 @@ On the right, **Export...** writes the samples held for every decoded signal --
 plotted or not -- to a file a spreadsheet can read, the same as *File > Export
 signals*, and **Clear history** throws those samples away. Every decoded
 signal is kept whether it is plotted or not, which is why plotting one later
-shows its past.
+shows its past -- and the figures beside *Export...* say how much that is:
+how many signals, and how many samples between them. Up to 200,000 samples are
+kept for each signal, the oldest going first.
 
 The first menu says how the plot keeps up, the same choice the
 [trace](trace.md) has, with the same promise: it changes the screen and

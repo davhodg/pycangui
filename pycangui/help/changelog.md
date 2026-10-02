@@ -63,6 +63,9 @@ since the last version, and comes out in the next one.
   its seconds), *All*, which keeps everything in view as more arrives, and *Manual*, which
   dragging or zooming chooses by itself. **Export...** sits beside *Clear history*. *Unplot
   all* is on the signal list's right-click, with *Plot all* and the same two for one message.
+- Signals and Plot has optional **Min**, **Max**, **Count** and **Rate** columns, from the
+  list's right-click, where **Unit** can be hidden too, and the plot's top row says how many
+  signals and samples are held.
 - **Tools > Settings** holds what is set and left -- Theme, Verbose CAN logging, Strict DBC
   checks, and the two that set this installation up -- so that Tools itself is what is done.
   *Add to Start menu* is **Add shortcut to Start menu** there, and the installer's desktop
