@@ -26,6 +26,7 @@ from pycangui.canopen.display import (
     text,
     with_overrides,
 )
+from pycangui.core.named_values import named
 
 EDS = """[FileInfo]
 FileName=acme.eds
@@ -186,7 +187,7 @@ def test_an_unscaled_number_keeps_its_hex():
 
 
 def test_a_named_value_says_what_it_means():
-    assert text(Display(choices={0: "Off", 1: "Run"}), 1) == "1 (Run)"
+    assert text(Display(choices={0: "Off", 1: "Run"}), 1) == named(1, "Run"), "name first"
 
 
 def test_limits_are_shown_in_both(app):

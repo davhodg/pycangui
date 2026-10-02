@@ -986,6 +986,28 @@ class CanopenManager(QObject):
             names.append(pdo_map.name)
         return names
 
+    def _choices_of(self, node_id: int, pdo_map) -> dict[str, dict[int, str]]:
+        """The named values of a PDO's mapped objects that have any: {name: {1: "Run"}}."""
+        out = {}
+        for var in pdo_map:
+            if choices := self.display(node_id, var.index, var.subindex).choices:
+                out[var.name] = dict(choices)
+        return out
+
+    def tpdo_choices(self, node_id: int, name: str) -> dict[str, dict[int, str]]:
+        """Named values for the variables of a node's TPDO of this name."""
+        node = self.node(node_id)
+        pdo_map = None
+        if node is not None:
+            pdo_map = next((m for m in node.tpdo.values() if m.name == name), None)
+        return {} if pdo_map is None else self._choices_of(node_id, pdo_map)
+
+    def rpdo_choices(self, node_id: int, number: int) -> dict[str, dict[int, str]]:
+        """Named values for the variables of a node's RPDO of this number."""
+        node = self.node(node_id)
+        pdo_map = None if node is None else node.rpdo.map.get(number)
+        return {} if pdo_map is None else self._choices_of(node_id, pdo_map)
+
     def tpdo_cob_id(self, node_id: int, name: str) -> int | None:
         """The identifier a node's TPDO of this name is sent on, if it is known."""
         node = self.node(node_id)

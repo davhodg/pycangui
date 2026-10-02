@@ -2257,7 +2257,12 @@ class MainWindow(QMainWindow):
             decoded = self.dbc.decode(f)
             if decoded is not None:
                 msg, values = decoded
-                self.signals.push_many(f"DBC {msg.name}", f.timestamp, values, self.dbc.units(msg))
+                group = f"DBC {msg.name}"
+                # Asked once, when the message is first seen, not per frame.
+                first = self._is_new_to_signals(group, values)
+                self.signals.push_many(group, f.timestamp, values, self.dbc.units(msg))
+                if first:
+                    self._name_values(group, self.dbc.choices(msg))
 
     @Slot(int, str, dict)
     def _on_pdo_update(self, node_id: int, pdo_name: str, values: dict) -> None:
@@ -2272,7 +2277,20 @@ class MainWindow(QMainWindow):
         cob_id = self.canopen.tpdo_cob_id(node_id, pdo_name)
         if cob_id is not None and self.dbc.describes(cob_id):
             return
-        self.signals.push_many(f"CANopen node {node_id} {pdo_name}", self.bus.now(), values)
+        group = f"CANopen node {node_id} {pdo_name}"
+        first = self._is_new_to_signals(group, values)
+        self.signals.push_many(group, self.bus.now(), values)
+        if first:
+            self._name_values(group, self.canopen.tpdo_choices(node_id, pdo_name))
+
+    def _is_new_to_signals(self, group: str, values: dict) -> bool:
+        """Whether this is the first of a message's values to reach the signal list."""
+        return any(self.signals.get(f"{group}/{name}") is None for name in values)
+
+    def _name_values(self, group: str, choices: dict[str, dict[int, str]]) -> None:
+        """Tell the signal list what a message's values mean, where they are named."""
+        for name, table in choices.items():
+            self.signals.set_choices(f"{group}/{name}", table)
 
     def _drop_pdos_a_database_decodes(self) -> None:
         """Take out TPDOs listed before a database describing them was loaded.

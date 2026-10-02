@@ -33,6 +33,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from pycangui.core.named_values import named
+
 
 @dataclass(frozen=True)
 class Display:
@@ -146,7 +148,7 @@ def text(display: Display, raw: Any) -> str:
         return str(raw)
 
     if isinstance(raw, int) and display.choices.get(raw):
-        return f"{raw} ({display.choices[raw]})"
+        return named(raw, display.choices[raw])  # name first, as everywhere
 
     if display.scaled:
         shown = format_number(display.physical(raw), display.decimals)

@@ -157,6 +157,15 @@ class DbcDecoder:
     def units(msg: Message) -> dict[str, str]:
         return {s.name: s.unit or "" for s in msg.signals}
 
+    @staticmethod
+    def choices(msg: Message) -> dict[str, dict[int, str]]:
+        """The named values of a message's signals that have a VAL_ table."""
+        return {
+            s.name: {number: str(name) for number, name in s.choices.items()}
+            for s in msg.signals
+            if s.choices
+        }
+
 
 def _looks_j1939(msg: Message) -> bool:
     """DBCs without VFrameFormat: treat 29-bit ids with a J1939-shaped PGN as J1939."""

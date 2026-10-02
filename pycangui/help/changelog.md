@@ -69,6 +69,10 @@ since the last version, and comes out in the next one.
   200,000, 500,000, or one, two or five million -- for a trace longer than the default holds. The status
   bar says how many signals and samples are held, the limit, and when it has been reached.
   Samples take a quarter of the memory they did.
+- A value that has a name is written the same way everywhere, name first: *Run (1)*. The
+  CANopen object dictionary had it as *1 (Run)*; Signals and Plot showed only the number, and
+  now shows the name for DBC signals with a `VAL_` table and for named CANopen PDO objects; a
+  CANopen RPDO row in CAN Transmit has the pick-list a DBC row has.
 - **Tools > Settings** holds what is set and left -- Theme, Verbose CAN logging, Strict DBC
   checks, and the two that set this installation up -- so that Tools itself is what is done.
   *Add to Start menu* is **Add shortcut to Start menu** there, and the installer's desktop

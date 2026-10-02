@@ -62,6 +62,7 @@ from pycangui.core import workspace_files
 from pycangui.core.context import Context
 from pycangui.core.events import ERROR, GOOD
 from pycangui.core.hooks import Hooks
+from pycangui.core.named_values import plain
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
 from pycangui.custom_panes.source import FileSource
@@ -1574,8 +1575,10 @@ class CanopenView(QWidget):
         if node_id is None:
             return
         index, sub = item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0
-        text = item.text(4)
         display = self.manager.display(node_id, index, sub)
+        # "Run (1)" is how a named value is shown, so it is how one comes
+        # back when the cell is edited: the number is what is written.
+        text = plain(item.text(4), display.choices)
         # A scaled object is shown in its own units, so it has to be *read*
         # in them too, or typing what you see back would write a number the
         # factor away from what you meant.
@@ -1727,6 +1730,8 @@ def _typed_value(var, display, text: str):
         return None, "not in this file"
     kind = var.data_type
     text = text.strip()
+    if kind not in (datatypes.VISIBLE_STRING, datatypes.UNICODE_STRING):
+        text = plain(text, display.choices)  # "Run (1)", or "Run": the number
     if kind in (datatypes.VISIBLE_STRING, datatypes.UNICODE_STRING):
         return text, None
     if kind in (datatypes.OCTET_STRING, datatypes.DOMAIN):

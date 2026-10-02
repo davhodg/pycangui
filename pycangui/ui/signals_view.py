@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.core.named_values import shown
 from pycangui.core.signals import SignalHub
 
 ROLE_KEY = Qt.UserRole
@@ -56,10 +57,15 @@ MENU_TIP = (
 )
 
 
-def _number(value: float | None) -> str:
-    """A value as the Value column writes it; nothing for none yet."""
+def _number(value: float | None, choices=None) -> str:
+    """A value as the Value column writes it; nothing for none yet.
+
+    With its name where the signal's values have names: ``Run (1)``.
+    """
     if value is None:
         return ""
+    if (text := shown(value, choices)) is not None:
+        return text
     return (
         f"{value:.6g}" if isinstance(value, float) and not value.is_integer() else f"{int(value)}"
     )
@@ -172,8 +178,7 @@ class SignalsView(QWidget):
         for key, item in self._items.items():
             s = self.hub.get(key)
             if s is not None and s.latest is not None:
-                v = s.latest
-                text = f"{v:.6g}" if isinstance(v, float) and not v.is_integer() else f"{int(v)}"
+                text = _number(s.latest, s.choices)
                 if item.text(1) != text:
                     item.setText(1, text)
                 if s.unit and not item.text(2):
@@ -186,8 +191,8 @@ class SignalsView(QWidget):
         for column, text in (
             (COUNT, lambda: f"{s.count:,}" if s.count else ""),
             (RATE, lambda: "" if (rate := s.rate()) is None else f"{rate:.4g}"),
-            (MINIMUM, lambda: _number(s.minimum)),
-            (MAXIMUM, lambda: _number(s.maximum)),
+            (MINIMUM, lambda: _number(s.minimum, s.choices)),
+            (MAXIMUM, lambda: _number(s.maximum, s.choices)),
         ):
             if self.tree.isColumnHidden(column):
                 continue

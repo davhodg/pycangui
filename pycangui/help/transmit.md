@@ -28,6 +28,9 @@ same box. However it goes in, it is shown as name and number together --
 is sent as that number; a name it does not have is refused, and says so in the
 Event Log, rather than being sent as zero.
 
+A **CANopen RPDO** row has the same list for a mapped object whose values are
+named, by the EDS or by your `object_display` [hook](hooks.md).
+
 A DBC or RPDO row takes its name, identifier and data from where it came from,
 so those cells are not typed into -- but its **Period ms** is yours to set,
 like a raw row's. A row added from a database starts at the cycle time the

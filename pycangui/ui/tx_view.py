@@ -24,7 +24,6 @@ worst kind of wrong.
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
@@ -56,6 +55,7 @@ from pycangui.core import tx_fields
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
+from pycangui.core.named_values import named, number_in, with_its_name
 from pycangui.core.tx_fields import Checksum, Counter
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.tx_fields_dialog import TxFieldsDialog
@@ -182,40 +182,6 @@ class _OnlyWhatIsTheRows(QStyledItemDelegate):
             width = metrics.horizontalAdvance(view.text[start:end])
             painter.fillRect(x, text_rect.top() + 1, width, text_rect.height() - 2, colour)
         painter.restore()
-
-
-def named(number, name) -> str:
-    """A named value as it is shown: the name, and the number it stands for."""
-    return f"{name} ({number})"
-
-
-#: ``Run (1)``, as ``named`` writes it: the number is what is sent.
-_NAMED = re.compile(r"^.*\((-?\d+)\)\s*$")
-
-
-def with_its_name(text: str, choices) -> str:
-    """What was typed, as name and number together where the table has it.
-
-    ``1``, ``Run`` and ``Run (1)`` all come out as ``Run (1)``. Anything the
-    table does not name is left exactly as typed: a number outside it is
-    sent as that number, and a name outside it is refused when it is encoded.
-    """
-    text = text.strip()
-    if not choices:
-        return text
-    if (already := _NAMED.match(text)) is not None:
-        text = already.group(1)
-    for number, name in choices:
-        if text == str(name):
-            return named(number, name)
-    try:
-        typed = float(text)
-    except ValueError:
-        return text
-    for number, name in choices:
-        if typed == number:
-            return named(number, name)
-    return text
 
 
 def tinted_runs(text: str, counter: bytes, checksum: bytes) -> list[tuple[int, int, QColor]]:
@@ -564,12 +530,18 @@ class TxView(QWidget):
                 item.setText(COL_UNIT, "node not configured")
             else:
                 stored = spec.get("signals", {})
+                # The names an EDS or a hook gives an object's values, as a
+                # database gives a signal's: picked from a list the same way.
+                tables = self.canopen.rpdo_choices(node_id, number)
                 for variable in entry[2]:
-                    child = QTreeWidgetItem(
-                        [variable, "", "", "", _format(stored.get(variable, 0)), "", "", ""]
-                    )
+                    choices = sorted(tables.get(variable, {}).items())
+                    value = with_its_name(_format(stored.get(variable, 0)), choices)
+                    child = QTreeWidgetItem([variable, "", "", "", value, "", "", ""])
                     child.setData(0, ROLE_KIND, "signal")
                     child.setFlags(child.flags() | Qt.ItemIsEditable)
+                    if choices:
+                        child.setData(COL_DATA, ROLE_CHOICES, choices)
+                        child.setToolTip(COL_DATA, CHOICES_TIP)
                     item.addChild(child)
                 item.setExpanded(bool(spec.get("expanded", False)))
         self._loading = False
@@ -652,8 +624,8 @@ class TxView(QWidget):
         for i in range(item.childCount()):
             child = item.child(i)
             text = child.text(COL_DATA).strip()
-            if (shown := _NAMED.match(text)) is not None:
-                text = shown.group(1)  # "Run (1)": the number is what is sent
+            if (number := number_in(text)) is not None:
+                text = str(number)  # "Run (1)": the number is what is sent
             try:
                 values[child.text(COL_NAME)] = float(text)
             except ValueError:

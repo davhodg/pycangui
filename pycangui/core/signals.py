@@ -59,6 +59,10 @@ class SignalSeries:
     count: int = 0
     minimum: float | None = None
     maximum: float | None = None
+    #: What the values mean, where the source names them: {1: "Run"}. The
+    #: samples stay numbers, so they plot and export as before; this is for
+    #: showing one to somebody.
+    choices: dict[int, str] = field(default_factory=dict)
 
     @property
     def key(self) -> str:
@@ -204,6 +208,11 @@ class SignalHub(QObject):
 
     def get(self, key: str) -> SignalSeries | None:
         return self._series.get(key)
+
+    def set_choices(self, key: str, choices: dict[int, str]) -> None:
+        """Say what a signal's values mean. Nothing happens for one not held."""
+        if (series := self._series.get(key)) is not None:
+            series.choices = dict(choices)
 
     def stored(self) -> tuple[int, int]:
         """How many signals are held, and how many samples between them."""

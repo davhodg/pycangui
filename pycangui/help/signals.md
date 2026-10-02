@@ -12,7 +12,15 @@ strictly, and one that fails the check -- overlapping signals, a signal past
 the end of its message, both common in files real tools produce -- is offered
 for loading anyway rather than simply refused; turning off *Tools > Settings >
 Strict DBC checks* stops the asking. Signals with a `VAL_` table are
-picked from a list in [CAN Transmit](transmit.md), or typed by name or by number.
+picked from a list in [CAN Transmit](transmit.md), or typed by name or by number,
+and are shown here with their names: *Run (1)* in the Value column, and in Min
+and Max. So are a CANopen TPDO's objects where the EDS or a hook names their
+values. The plot and *Export* keep the numbers.
+
+**A named value is written one way everywhere** -- the name, then the number
+it stands for, *Run (1)* -- in this list, in CAN Transmit, in the CANopen
+object dictionary and in custom panes. Where one can be typed, *1*, *Run* and
+*Run (1)* all mean the same.
 A loaded database is loaded again next time. One kept outside the workspace
 can be copied into it when you load it, so it travels with the workspace; see
 [Workspaces](workspaces.md).
