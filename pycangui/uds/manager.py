@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import struct
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -132,6 +133,15 @@ NOT_OFFERED = {0x11, 0x12, 0x7E, 0x7F}
 #: The reports Read all adds after the everyday ones: which failed first and
 #: last, what is building up, and what a clear cannot remove.
 READ_ALL_EXTRAS = (0x0B, 0x0C, 0x0D, 0x0E, 0x14, 0x15)
+
+
+#: How long to leave the channel alone after telling ECUs to change rate,
+#: before closing it to reopen at the new one. The request has no answer to
+#: wait for -- it is suppressed, because an answer would come at the new rate
+#: -- and sending only hands the frame to the adapter: closing straight away
+#: can drop it before it has been on the wire, and an ECU needs a moment to
+#: act on it. On the worker, so the window does not wait.
+LINK_SETTLE_S = 0.1
 
 
 class UdsManager(QObject):
@@ -579,6 +589,7 @@ class UdsManager(QObject):
                 if not everyone:
                     client.link_control(1, baud)
                     client.link_control(3)
+                    time.sleep(LINK_SETTLE_S)
                     return True, f"{label}: the ECU is changing to {kbit}"
                 verify = bytes([0x87, 0x01]) + baud.get_bytes()
                 answers = functional.request(bus, config, verify, p2_s=p2, p2_star_s=p2_star, fd=fd)
@@ -586,6 +597,7 @@ class UdsManager(QObject):
                 if any(a.objected for a in answers) or not any(a.positive for a in answers):
                     return False, f"{said}. Nothing was changed."
                 functional.send_only(bus, config, functional.suppressed(bytes([0x87, 0x03])), fd=fd)
+                time.sleep(LINK_SETTLE_S)  # see LINK_SETTLE_S
                 return True, f"{said}; told to change to {kbit}"
             except NegativeResponseException as exc:
                 return False, f"{label}: NRC 0x{exc.response.code:02X} {exc.response.code_name}"
@@ -625,6 +637,7 @@ class UdsManager(QObject):
             try:
                 if everyone:
                     functional.send_only(bus, config, bytes([0x10, 0x81]), fd=fd)
+                    time.sleep(LINK_SETTLE_S)
                     return "DiagnosticSessionControl (all ECUs): back to the default session"
                 client.change_session(1)
                 return "Session -> default"

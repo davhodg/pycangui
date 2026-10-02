@@ -80,6 +80,9 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- A UDS baud rate change reopened the channel the instant the request to change had been
+  handed to the adapter, which could close it before the frame was on the wire. It now waits a
+  tenth of a second first, and the same before following the ECUs back.
 - A CRC placed in a database **signal** was computed over the frame with a zero where the CRC
   goes, not over the other bytes, so it did not match what a receiver computes (a sum or an XOR
   was unaffected). A checksum signal that is whole bytes is now left out, as one at a byte

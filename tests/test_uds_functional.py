@@ -97,7 +97,9 @@ def test_a_functional_baud_rate_change_moves_the_ecu_and_the_channel(ecu):
 
     manager.change_bitrate(250_000)
     wait_until(lambda: moved)
-    assert state.bitrate == 250_000, "verified, then told to change"
+    # The ECU acts on the request on a thread of its own, so this is waited
+    # for rather than asserted the instant the channel has followed.
+    wait_until(lambda: state.bitrate == 250_000)
     assert bus.bitrate == 250_000 and bus.is_connected, "the channel followed"
     assert manager.is_open, "and the session with it"
     assert resumed and manager._tp_timer.isActive(), "tester present carried on"
