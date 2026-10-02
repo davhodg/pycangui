@@ -795,7 +795,7 @@ class MainWindow(QMainWindow):
                 "scope",
                 "Signals and Plot",
                 Qt.LeftDockWidgetArea,
-                lambda name: ScopeView(self.signals, self.bus.now, self.ctx, key=name),
+                self._new_scope,
                 several=True,
             ),
             PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
@@ -1609,10 +1609,16 @@ class MainWindow(QMainWindow):
         missing = len(wanted) - len(series)
         self.events.information(
             f"Imported {len(series)} signal(s), {points:,} points, from {path.name} as "
-            f'"{group}". Untick Follow on the plot and press Fit to see them: they sit '
+            f'"{group}". Set Time to All on the plot to see them: they sit '
             "at the times the file recorded, not at this window's clock."
             + (f"  {missing} held nothing readable." if missing else "")
         )
+
+    def _new_scope(self, name: str) -> ScopeView:
+        """A Signals and Plot pane, with its Export button wired to File > Export signals."""
+        scope = ScopeView(self.signals, self.bus.now, self.ctx, key=name)
+        scope.export_requested.connect(self._export_signals)
+        return scope
 
     def _export_signals(self) -> None:
         """Write the captured signal values where a spreadsheet can read them."""

@@ -43,6 +43,8 @@ class ScopeView(QWidget):
         self.plot = PlotView(hub, now, ctx)
         self.signals_view.plot_toggled.connect(self.plot.set_plotted)
         self.signals_view.axis_toggled.connect(self.plot.set_right)
+        #: Passed on from the plot's Export button, for whoever made this pane.
+        self.export_requested = self.plot.export_requested
         hub.removed.connect(self._on_removed)
 
         self.splitter = QSplitter(Qt.Horizontal)

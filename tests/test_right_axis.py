@@ -410,3 +410,114 @@ def test_fit_works_while_the_display_is_paused(app, plot):
     assert low <= 0.5 and high >= 99.0
     times, _values = view._curves["Live/Speed"].getData()
     assert len(times) == len(hub.get("Live/Speed").times), "drawn, though paused"
+
+
+# --- which stretch of time: Follow, All or Manual -------------------------------------------
+def choose_time(view, choice):
+    from pycangui.ui.plot_view import TIME_CHOICES
+
+    view.time.setCurrentIndex(TIME_CHOICES.index(choice))
+    view.time.activated.emit(TIME_CHOICES.index(choice))
+
+
+def test_the_time_choice_is_one_control_over_follow_and_fit(app, plot):
+    from pycangui.ui.plot_view import ALL, FOLLOW, MANUAL
+
+    view, hub, clock = plot
+    speed_and_temperature(hub, upto=100.0)
+    clock.t = 100.0
+    view.set_plotted(SPEED, True)
+    assert view.time_choice() == FOLLOW and view.window_s.isEnabled()
+
+    choose_time(view, MANUAL)
+    assert not view.follow.isChecked() and view.time_choice() == MANUAL
+    assert not view.window_s.isEnabled(), "the seconds are Follow's"
+
+    choose_time(view, ALL)
+    settle(app)
+    low, high = view.plot.viewRange()[0]
+    assert view.time_choice() == ALL and low <= 0.5 and high >= 99.0
+
+    choose_time(view, FOLLOW)
+    assert view.follow.isChecked() and view.time_choice() == FOLLOW and view.window_s.isEnabled()
+
+    view.follow.setChecked(False)  # as the console or a restored setting would
+    assert view.time.currentText() == MANUAL, "the menu follows the tick"
+
+
+def test_all_goes_on_showing_all_of_it_as_more_arrives(app, plot):
+    from pycangui.ui.plot_view import ALL
+
+    view, hub, clock = plot
+    speed_and_temperature(hub, upto=50.0)
+    clock.t = 50.0
+    view.set_plotted(SPEED, True)
+    choose_time(view, ALL)
+    settle(app)
+    assert view.plot.viewRange()[0][1] < 60.0
+
+    for t in np.arange(50.0, 100.0, 0.1):
+        hub.push("Live", "Speed", float(t), 3000.0 + t, unit="rpm")
+    clock.t = 100.0
+    view._redraw()
+    settle(app)
+    assert view.plot.viewRange()[0][1] >= 99.0, "the new samples are in view too"
+    assert view.time_choice() == ALL
+
+
+def test_dragging_the_plot_is_choosing_manual(app, plot):
+    from pycangui.ui.plot_view import MANUAL
+
+    view, hub, _clock = plot
+    speed_and_temperature(hub)
+    view.set_plotted(SPEED, True)
+    view.plot.getViewBox().sigRangeChangedManually.emit([True, True])
+    assert view.time_choice() == MANUAL and not view.follow.isChecked()
+
+
+def test_export_is_beside_clear_history_and_asks_whoever_made_the_plot(app, plot):
+    view, _hub, _clock = plot
+    asked = []
+    view.export_requested.connect(lambda: asked.append(1))
+    view.export.click()
+    assert asked == [1]
+
+
+# --- several at once, on the right-click ----------------------------------------------------
+def test_plot_all_and_unplot_all_are_on_the_right_click(app, listed):
+    signals, plot = listed
+    offered = [a.text() for a in signals.menu_for(None, PLOT).actions() if a.text()]
+    assert len(offered) == 2, "plot all, and unplot all"
+
+    signals.plot_all()
+    assert sorted(plot.plotted()) == sorted([SPEED, TEMP]) and plot.right_axis() == []
+    signals.unplot_all()
+    assert plot.plotted() == []
+
+    signals.plot_all(RIGHT)
+    assert sorted(plot.right_axis()) == sorted([SPEED, TEMP]), "over the Y2 column, on Y2"
+
+
+def test_plot_all_means_all_that_are_listed(app, listed):
+    signals, plot = listed
+    signals.search.setText("temp")
+    signals.plot_all()
+    assert plot.plotted() == [TEMP], "the filter narrows it"
+
+
+def test_a_messages_signals_have_entries_of_their_own(app, listed):
+    signals, plot = listed
+    signals.hub.push("Other", "Pressure", 0.0, 1.0, unit="bar")
+    settle(app)
+    group = signals._groups["Other"]
+    offered = [a.text() for a in signals.menu_for(group.child(0), PLOT).actions() if a.text()]
+    assert len(offered) == 4, "this message's two, then everything's two"
+
+    forgotten = []
+    signals.all_unplotted.connect(lambda: forgotten.append(1))
+    signals.plot_all()
+    signals.unplot_all(group)
+    assert sorted(plot.plotted()) == sorted([SPEED, TEMP]), "only that message's came off"
+    assert forgotten == [], "and nothing else was forgotten"
+    signals.plot_all(PLOT, group)
+    assert "Other/Pressure" in plot.plotted()

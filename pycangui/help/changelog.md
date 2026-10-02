@@ -59,6 +59,10 @@ since the last version, and comes out in the next one.
 - The demo CANopen device reports vendor ID 0x00000000 and the J1939 engine node manufacturer
   code 0, which are assigned to nobody, and no longer numbers that are somebody's.
 - The CAN trace's Data column starts wide enough for eight bytes rather than for its heading.
+- The plot's top row: *Window*, *Follow* and *Fit* are one **Time** choice -- *Follow* (with
+  its seconds), *All*, which keeps everything in view as more arrives, and *Manual*, which
+  dragging or zooming chooses by itself. **Export...** sits beside *Clear history*. *Unplot
+  all* is on the signal list's right-click, with *Plot all* and the same two for one message.
 - **Tools > Settings** holds what is set and left -- Theme, Verbose CAN logging, Strict DBC
   checks, and the two that set this installation up -- so that Tools itself is what is done.
   *Add to Start menu* is **Add shortcut to Start menu** there, and the installer's desktop

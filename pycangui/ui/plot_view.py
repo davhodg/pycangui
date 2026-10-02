@@ -13,9 +13,10 @@ because the temperature becomes a flat line along the bottom.
 from __future__ import annotations
 
 import pyqtgraph as pg
-from PySide6.QtCore import QTimer, Slot
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
@@ -49,10 +50,37 @@ DISPLAY_ITEM_TIPS = (
     "The plot holds still. Display only: samples are still collected, and\n"
     "drawn when it is back to Live refresh or Slow refresh.",
 )
+#: Which stretch of time is on screen: one question, which used to be a
+#: box, a tick and a button.
+FOLLOW, ALL, MANUAL = "Follow", "All", "Manual"
+TIME_CHOICES = (FOLLOW, ALL, MANUAL)
+TIME_TIP = (
+    "Which stretch of time the plot shows.\n"
+    "\n"
+    "Follow keeps the newest samples in view, the last so many seconds.\n"
+    "All shows everything held for the plotted signals, and goes on\n"
+    "showing all of it as more arrives.\n"
+    "Manual leaves the plot where it is: drag or zoom it and that is where\n"
+    "it stays."
+)
+TIME_ITEM_TIPS = (
+    "Keep the newest samples in view, for the number of seconds beside\n"
+    "this. It follows the data, so a quiet bus holds still rather than\n"
+    "scrolling the trace off the edge.",
+    "Everything held for the plotted signals, wherever in time it is --\n"
+    "which is how to find data imported from a file, sitting at its own\n"
+    "times. Kept in view as more arrives. Choose it again to fit again.",
+    "The plot stays where you put it. Dragging or zooming the plot\nchooses this by itself.",
+)
+WINDOW_TIP = "How many seconds Follow keeps in view."
 COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
 
 
 class PlotView(QWidget):
+    #: *Export...* was pressed. The plot holds the samples but not the file
+    #: dialogs or the Event Log, so whoever made it does the exporting.
+    export_requested = Signal()
+
     def __init__(self, hub: SignalHub, now: callable, ctx: Context | None = None) -> None:
         super().__init__()
         self.hub = hub
@@ -73,36 +101,48 @@ class PlotView(QWidget):
         self.window_s.setRange(0.5, 3600)
         self.window_s.setValue(10)
         self.window_s.setSuffix(" s")
+        self.window_s.setToolTip(WINDOW_TIP)
         # Two ticks, shown as one menu -- Live refresh, Slow refresh or Paused; see
         # refresh.display_choice.
         self.pause = QCheckBox("Pause", self)
-        self.follow = QCheckBox("Follow")
-        self.follow.setToolTip(
-            "Keep the newest samples in view as they arrive. The plot\n"
-            "follows the data, so it stops when the data does -- a quiet\n"
-            "bus, or a disconnected one, holds still rather than scrolling\n"
-            "the trace off the edge.\n\n"
-            "Untick it to look at what is already there -- and to see data\n"
-            "imported from a file at all, which sits at its own times rather\n"
-            "than at the clock this window is running on."
-        )
+        # A tick underneath, never shown: it is what is remembered between
+        # runs and what the console and the tests set. The menu follows it.
+        self.follow = QCheckBox("Follow", self)
+        self.follow.hide()
         self.follow.setChecked(True)
+        #: Showing everything, and keeping it all in view as more arrives.
+        self._all = False
+        self._all_range: tuple[float, float] | None = None
+        self.time = QComboBox()
+        self.time.addItems(TIME_CHOICES)
+        self.time.setToolTip(TIME_TIP)
+        for index, tip in enumerate(TIME_ITEM_TIPS):
+            self.time.setItemData(index, tip, Qt.ToolTipRole)
+        # activated, not currentIndexChanged: choosing All again fits again.
+        self.time.activated.connect(self._on_time_chosen)
+        self.follow.toggled.connect(self._on_follow)
+        self.plot.getViewBox().sigRangeChangedManually.connect(self._on_dragged)
         self.slow = QCheckBox(SLOW_LABEL, self)
         self.slow.toggled.connect(self._on_slow)
         self.display = display_choice(self.pause, self.slow, DISPLAY_TIP, DISPLAY_ITEM_TIPS)
-        self.fit = QPushButton("Fit")
-        self.fit.setToolTip("Zoom to everything being plotted, wherever in time it is.")
-        self.fit.clicked.connect(self._fit)
+        # The two things done to the samples held, side by side: out to a
+        # file, or thrown away. Export is for every signal, plotted or not.
+        self.export = QPushButton("Export...")
+        self.export.setToolTip(
+            "Write the samples held for every decoded signal -- plotted or not --\n"
+            "to a file a spreadsheet can read. The same as File > Export signals."
+        )
+        self.export.clicked.connect(self.export_requested)
         clear = QPushButton("Clear history")
         clear.setToolTip("Throw away the samples collected so far, for every signal")
         clear.clicked.connect(hub.clear)
         bar = QHBoxLayout()
-        bar.addWidget(QLabel("Window:"))
-        bar.addWidget(self.window_s)
         bar.addWidget(self.display)
-        bar.addWidget(self.follow)
-        bar.addWidget(self.fit)
+        bar.addWidget(QLabel("Time:"))
+        bar.addWidget(self.time)
+        bar.addWidget(self.window_s)
         bar.addStretch()
+        bar.addWidget(self.export)
         bar.addWidget(clear)
 
         layout = QVBoxLayout(self)
@@ -124,6 +164,41 @@ class PlotView(QWidget):
             # Unlike Pause, this one is restored: a plot that comes back
             # drawing four times a second is still a live plot.
             remember(ctx, "plot.slow", self.slow)
+        self._show_time()
+
+    # --- which stretch of time ------------------------------------------------------------
+    def _on_time_chosen(self, index: int) -> None:
+        choice = TIME_CHOICES[index]
+        if choice == FOLLOW:
+            self.follow.setChecked(True)
+        elif choice == ALL:
+            self._fit()
+        else:
+            self._all = False
+            self.follow.setChecked(False)
+        self._show_time()
+
+    @Slot(bool)
+    def _on_follow(self, on: bool) -> None:
+        if on:
+            self._all = False
+        self._show_time()
+
+    def _on_dragged(self, *_args) -> None:
+        """Dragged or zoomed by hand: that is where it stays."""
+        self._all = False
+        self.follow.setChecked(False)
+        self._show_time()
+
+    def time_choice(self) -> str:
+        if self.follow.isChecked():
+            return FOLLOW
+        return ALL if self._all else MANUAL
+
+    def _show_time(self) -> None:
+        choice = self.time_choice()
+        self.time.setCurrentIndex(TIME_CHOICES.index(choice))
+        self.window_s.setEnabled(choice == FOLLOW)  # the seconds are Follow's
 
     @Slot(bool)
     def _on_slow(self, slow: bool) -> None:
@@ -275,18 +350,29 @@ class PlotView(QWidget):
         # A curve is clipped to what is in view, so asking the plot to fit
         # its curves measured only what was already on screen, and each
         # press of Fit showed a little more than the last.
+        self._all_range = None
+        self._show_all()
+        # Y after X, so each axis is fitted to all of what is now in view.
+        self.plot.enableAutoRange(axis=pg.ViewBox.YAxis)
+        if self._right:
+            self.right_view.enableAutoRange(axis=pg.ViewBox.YAxis)
+        self._all = True
+        self._show_time()
+
+    def _show_all(self) -> None:
+        """Bring the time axis to everything held for the plotted signals."""
         ends = [
             t
             for key in self._curves
             if (s := self.hub.get(key)) and len(s.times)
             for t in (s.times[0], s.times[-1])
         ]
-        if ends:
-            self.plot.setXRange(min(ends), max(ends))
-        # Y after X, so each axis is fitted to all of what is now in view.
-        self.plot.enableAutoRange(axis=pg.ViewBox.YAxis)
-        if self._right:
-            self.right_view.enableAutoRange(axis=pg.ViewBox.YAxis)
+        if not ends:
+            return
+        wanted = (min(ends), max(ends))
+        if wanted != self._all_range:  # only when there is more to show
+            self._all_range = wanted
+            self.plot.setXRange(*wanted)
 
     def _newest(self) -> float | None:
         """The latest timestamp across the plotted signals, or None if none."""
@@ -330,6 +416,8 @@ class PlotView(QWidget):
                 continue
             ts, vs = s.window(t_from)
             curve.setData(ts, vs)
+        if self._all and not following:
+            self._show_all()  # All means all of it, as more arrives
         if following:
             # The right hand box is linked to this X range and follows it.
             self.plot.setXRange(t_from, edge, padding=0)

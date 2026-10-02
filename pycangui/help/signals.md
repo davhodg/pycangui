@@ -24,12 +24,16 @@ describes, which is listed once, as the database decodes it: the database has
 the names and scaling, and the PDO decode would put the same frame beside it
 with raw numbers. Removing a database takes its signals off the list and the
 plot, and a TPDO it described comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
-alongside the list (rolling window, pause, follow); drag the splitter to give
+alongside the list; drag the splitter to give
 the plot the whole pane, or the list. `resources/demo.dbc` matches the demo
 device.
 
-The filter box above the list narrows it to the signals whose names match, and
-*Unplot all* takes everything off the plot at once.
+The filter box above the list narrows it to the signals whose names match.
+**Right-click** the list, or its *Plot Y1* or *Plot Y2* heading, to plot or
+unplot several at once: *Plot all* and *Unplot all* for every signal, and over
+a message the same two for that message's signals. Over the *Plot Y2* column
+they go on the right axis, anywhere else on the left. *Plot all* means all
+that are listed, so with *speed* typed in the filter it plots the speeds.
 
 Tick *Plot Y2* instead to draw a signal against a second Y axis on the right of
 the plot, with a scale of its own, so that a speed in thousands and a
@@ -43,24 +47,34 @@ Each Signals and Plot pane remembers which signals it plots, and on which axis,
 from one run to the next. A signal comes back onto the plot as soon as it
 appears again: when its first frame is decoded, or when its file is imported.
 
-**Window** is how many seconds of signal the plot shows, from half a second to
-an hour. **Fit** zooms to everything plotted, wherever in time it is, and
-**Clear history** throws away the samples collected so far, for every signal.
+**Time** is which stretch of time the plot shows, one choice of three:
 
-The menu beside the window says how the plot keeps up, the same choice the
+- **Follow** keeps the newest samples in view, for the number of seconds in
+  the box beside it -- from half a second to an hour. It follows the **data**,
+  not the clock, so it stops when the data does: a quiet bus, or a
+  disconnected one, holds the trace still rather than scrolling it off the
+  left edge.
+- **All** shows everything held for the plotted signals, wherever in time it
+  is, and goes on showing all of it as more arrives. Choose it again to fit
+  again.
+- **Manual** leaves the plot where you put it. Dragging or zooming the plot
+  chooses it for you.
+
+On the right, **Export...** writes the samples held for every decoded signal --
+plotted or not -- to a file a spreadsheet can read, the same as *File > Export
+signals*, and **Clear history** throws those samples away. Every decoded
+signal is kept whether it is plotted or not, which is why plotting one later
+shows its past.
+
+The first menu says how the plot keeps up, the same choice the
 [trace](trace.md) has, with the same promise: it changes the screen and
 nothing else, so every sample is still collected, plotted and exported.
 **Live refresh** redraws twenty times a second; **Slow refresh** four times, for a bus
 busy enough that the curve is a shimmer; **Paused** holds the plot still to be
 looked at, and what arrived meanwhile is there when you go back.
 
-*Follow* keeps the newest samples in view as they arrive. It follows the
-**data**, not the clock, so it stops when the data does: a quiet bus, or a
-disconnected one, holds the trace still rather than scrolling it off the left
-edge.
-
-Both Y axes share the one time axis, so *Window*, *Follow* and *Fit* apply to
-signals on either side, and *Fit* scales each Y axis to its own signals.
+Both Y axes share the one time axis, so the *Time* choice applies to signals
+on either side, and *All* scales each Y axis to its own signals.
 
 ## Importing a measurement file
 
@@ -82,11 +96,11 @@ they are plumbing rather than measurements.
 
 Imported signals appear under the file's name, beside the live ones.
 
-**They will not be on screen until you untick *Follow* and press *Fit*.** A
+**They will not be on screen until you set *Time* to *All*.** A
 file sits at the times it was recorded at -- 235 seconds into somebody's test,
 or last Tuesday -- and *Follow* keeps the last few seconds of the live trace
-in view, which is a different part of the number line entirely. *Fit* zooms
-to whatever is plotted, wherever it is.
+in view, which is a different part of the number line entirely. *All* shows
+whatever is plotted, wherever it is.
 
 Reading MDF needs the `asammdf` library. The Windows installer includes it,
 and a `pip` installation offers to fetch it the first time you open a file that

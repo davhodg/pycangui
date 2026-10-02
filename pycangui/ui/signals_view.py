@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLineEdit,
-    QPushButton,
+    QMenu,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -26,7 +26,8 @@ ROLE_KEY = Qt.UserRole
 #: The two checkbox columns: Plot Y1, the left axis, and Plot Y2, the right.
 PLOT = 3
 RIGHT = 4
-Y1_TIP = "Plot the signal against the left Y axis."
+Y1_TIP = "Plot the signal against the left Y axis.\nRight-click to plot or unplot several at once."
+MENU_TIP = "Right-click to plot or unplot every signal, or every signal of one message."
 Y2_TIP = (
     "Plot the signal against a second Y axis, on the right of the plot, with a\n"
     "scale of its own. A signal is on one axis at a time."
@@ -59,11 +60,16 @@ class SignalsView(QWidget):
         self.search = QLineEdit()
         self.search.setPlaceholderText("filter signals...")
         self.search.textChanged.connect(self._apply_search)
-        unplot = QPushButton("Unplot all")
-        unplot.clicked.connect(self.unplot_all)
+        # Plotting and unplotting several at once is on the right-click,
+        # over the list or its two Plot headings, rather than a button here.
+        self.tree.setToolTip(MENU_TIP)
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._tree_menu)
+        header = self.tree.header()
+        header.setContextMenuPolicy(Qt.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._header_menu)
         bar = QHBoxLayout()
         bar.addWidget(self.search, 1)
-        bar.addWidget(unplot)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
@@ -177,15 +183,65 @@ class SignalsView(QWidget):
             self._tick(item, RIGHT, on)
             self._tick(item, PLOT, not on)
 
+    # --- several at once, on the right-click ------------------------------------------
+    def _tree_menu(self, at) -> None:
+        item = self.tree.itemAt(at)
+        column = self.tree.columnAt(at.x())
+        self.menu_for(item, column).exec(self.tree.viewport().mapToGlobal(at))
+
+    def _header_menu(self, at) -> None:
+        header = self.tree.header()
+        self.menu_for(None, header.logicalIndexAt(at)).exec(header.mapToGlobal(at))
+
+    def menu_for(self, item: QTreeWidgetItem | None, column: int) -> QMenu:
+        """What a right-click offers. Over the Plot Y2 column it plots on the
+        right axis, anywhere else on the left; over a message, that message's
+        signals have entries of their own."""
+        axis = RIGHT if column == RIGHT else PLOT
+        name = "Y2" if axis == RIGHT else "Y1"
+        group = None if item is None else (item.parent() or item)
+        menu = QMenu(self)
+        menu.setToolTipsVisible(True)
+        if group is not None:
+            title = group.text(0)
+            menu.addAction(f"Plot all of {title} on {name}", lambda: self.plot_all(axis, group))
+            menu.addAction(f"Unplot all of {title}", lambda: self.unplot_all(group))
+            menu.addSeparator()
+        every = menu.addAction(f"Plot all on {name}", lambda: self.plot_all(axis))
+        every.setToolTip("Every signal listed: with a filter typed, only the ones it shows.")
+        menu.addAction("Unplot all", self.unplot_all)
+        return menu
+
+    def _signals(self, group: QTreeWidgetItem | None, shown_only: bool) -> list[QTreeWidgetItem]:
+        groups = [group] if group is not None else list(self._groups.values())
+        return [
+            g.child(i)
+            for g in groups
+            for i in range(g.childCount())
+            if not (shown_only and g.child(i).isHidden())
+        ]
+
+    def plot_all(self, axis: int = PLOT, group: QTreeWidgetItem | None = None) -> None:
+        """Plot every signal listed, or every one of a message's, on one axis.
+
+        Listed, so a filter narrows it: "plot all" with *speed* typed plots
+        the speeds, which is usually what was meant.
+        """
+        for item in self._signals(group, shown_only=True):
+            if item.checkState(axis) != Qt.Checked:
+                item.setCheckState(axis, Qt.Checked)  # itemChanged plots or moves it
+
     @Slot()
-    def unplot_all(self) -> None:
-        for item in self._items.values():
+    def unplot_all(self, group: QTreeWidgetItem | None = None) -> None:
+        """Take every signal off the plot, or every one of a message's."""
+        for item in self._signals(group, shown_only=False):
             # Each emits plot_toggled through itemChanged.
             if item.checkState(RIGHT) == Qt.Checked:
                 item.setCheckState(RIGHT, Qt.Unchecked)
             elif item.checkState(PLOT) == Qt.Checked:
                 item.setCheckState(PLOT, Qt.Unchecked)
-        self.all_unplotted.emit()
+        if group is None:
+            self.all_unplotted.emit()
 
     def _apply_search(self, text: str) -> None:
         needle = text.lower()
