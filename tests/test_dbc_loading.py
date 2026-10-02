@@ -4,12 +4,12 @@
 
 import pytest
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QComboBox, QMessageBox
 
 from pycangui.core.dbc import DbcDecoder
 from pycangui.ui import messages
 from pycangui.ui.main_window import MainWindow
-from pycangui.ui.tx_view import COL_DATA, COL_NAME
+from pycangui.ui.tx_view import COL_DATA, COL_NAME, ROLE_CHOICES, named
 
 #: A signal with a VAL_ table *and* a start value. cantools hands the start
 #: value back as a NamedSignalValue -- "Run", not 1 -- which is neither a
@@ -63,7 +63,7 @@ def test_a_named_start_value_can_be_added_to_the_transmit_list(
     row = window.tx.add_message({"kind": "dbc", "message": "WithChoices", "period": 100})
     item = window.tx.item(row)
     values = {item.child(i).text(COL_NAME): item.child(i).text(COL_DATA) for i in range(2)}
-    assert values["Mode"] == "Run", "the name is what the database says, so show it"
+    assert values["Mode"] == named(1, "Run"), "the database's name, and the number behind it"
     assert item.text(COL_DATA).startswith("01"), "and it encodes to the value behind it"
     window.close()
 
@@ -88,16 +88,66 @@ def test_a_name_can_be_typed_and_a_typo_is_not_silently_zero(app, tmp_path, dbc_
     window.close()
 
 
-def test_the_choices_are_offered_in_the_tooltip(app, tmp_path, dbc_file, monkeypatch):
+@pytest.fixture
+def choices_row(app, tmp_path, dbc_file, monkeypatch):
+    """A transmit row whose first signal, Mode, has named values."""
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
     window._load_dbc(dbc_file(NAMED_VALUES))
     row = window.tx.add_message({"kind": "dbc", "message": "WithChoices", "period": 100})
-    tip = window.tx.item(row).child(0).toolTip(COL_DATA)
-    assert "0 = Idle" in tip and "2 = Fault" in tip
-    assert not window.tx.item(row).child(1).toolTip(COL_DATA), "no choices, nothing to say"
+    yield window, row, window.tx.item(row)
     window.close()
+
+
+def test_a_signal_with_named_values_is_picked_from_a_list(app, choices_row):
+    window, _row, item = choices_row
+    mode, other = item.child(0), item.child(1)
+    assert [name for _number, name in mode.data(COL_DATA, ROLE_CHOICES)] == ["Idle", "Run", "Fault"]
+    assert not other.data(COL_DATA, ROLE_CHOICES), "no names, so an ordinary box"
+
+    tree = window.tx.tree
+    tree.edit(tree.indexFromItem(mode, COL_DATA))
+    app.processEvents()
+    box = tree.findChild(QComboBox)
+    assert box is not None and box.isEditable(), "a list, which can still be typed into"
+    offered = [box.itemText(i) for i in range(box.count())]
+    assert offered == [named(0, "Idle"), named(1, "Run"), named(2, "Fault")]
+
+    box.setCurrentIndex(2)
+    box.activated.emit(2)
+    app.processEvents()
+    assert mode.text(COL_DATA) == named(2, "Fault"), "picked, and taken at once"
+    assert item.text(COL_DATA).startswith("02")
+
+
+@pytest.mark.parametrize("typed", ["2", "Fault", "Fault (2)", " 2 "])
+def test_however_it_is_put_in_it_is_shown_as_name_and_number(app, choices_row, typed):
+    _window, _row, item = choices_row
+    item.child(0).setText(COL_DATA, typed)
+    assert item.child(0).text(COL_DATA) == named(2, "Fault")
+    assert item.text(COL_DATA).startswith("02"), "and the number is what is sent"
+
+
+def test_a_number_the_table_does_not_name_is_sent_as_that_number(app, choices_row):
+    _window, _row, item = choices_row
+    item.child(0).setText(COL_DATA, "3")
+    assert item.child(0).text(COL_DATA) == "3"
+    assert item.text(COL_DATA).startswith("03")
+
+
+def test_the_named_value_comes_back_with_the_row(app, choices_row):
+    window, row, item = choices_row
+    item.child(0).setText(COL_DATA, "Fault")
+    saved = window.tx._spec(row)
+    again = window.tx.add_message(saved)
+    assert window.tx.item(again).child(0).text(COL_DATA) == named(2, "Fault")
+    assert window.tx.item(again).text(COL_DATA).startswith("02")
+
+    # A row saved before names and numbers were shown together held the bare name.
+    saved["signals"]["Mode"] = "Run"
+    older = window.tx.add_message(saved)
+    assert window.tx.item(older).child(0).text(COL_DATA) == named(1, "Run")
 
 
 # --- strict checking -----------------------------------------------------------------
@@ -286,3 +336,61 @@ def test_a_database_describing_a_tpdo_wins_over_the_pdo_decode(app, tmp_path, mo
         "the DBC's TPDO is left to it, and one it does not describe is still decoded"
     )
     window.close()
+
+
+# --- two databases with the same message ----------------------------------------------------
+PUMP = """VERSION ""
+NS_ :
+BS_:
+BU_:
+BO_ {ident} {name}: 2 Vector__XXX
+ SG_ Speed : 0|16@1+ (1,0) [0|0] "rpm" Vector__XXX
+"""
+
+
+def write_dbc(folder, file_name, name, ident):
+    path = folder / file_name
+    path.write_text(PUMP.format(name=name, ident=ident), encoding="utf-8")
+    return path
+
+
+def test_a_name_or_an_identifier_already_loaded_is_a_clash(tmp_path):
+    from pycangui.core.dbc import DbcDecoder
+
+    decoder = DbcDecoder()
+    first = write_dbc(tmp_path, "first.dbc", "Pump", 0x100)
+    decoder.load(first)
+    assert decoder.clashes(first) == [], "nothing was loaded before it"
+
+    same_name = write_dbc(tmp_path, "same_name.dbc", "Pump", 0x200)
+    decoder.load(same_name)
+    assert decoder.clashes(same_name) == [("Pump", str(first))]
+    assert decoder.source_of("Pump") == str(first), "and the earlier file is the one used"
+
+    same_id = write_dbc(tmp_path, "same_id.dbc", "Motor", 0x100)
+    decoder.load(same_id)
+    assert decoder.clashes(same_id) == [("0x100", str(first))]
+
+    apart = write_dbc(tmp_path, "apart.dbc", "Fan", 0x300)
+    decoder.load(apart)
+    assert decoder.clashes(apart) == []
+
+
+def test_loading_a_clashing_database_says_so(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.core.events import WARNING
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path / "home"))
+    QSettings().clear()
+    window = MainWindow()
+    try:
+        said = []
+        window.events.posted.connect(lambda *args: said.append(args))
+        assert window._load_dbc(str(write_dbc(tmp_path, "first.dbc", "Pump", 0x100)))
+        before = len([a for a in said if WARNING in a])
+        assert window._load_dbc(str(write_dbc(tmp_path, "second.dbc", "Pump", 0x200)))
+        assert len([a for a in said if WARNING in a]) == before + 1
+    finally:
+        window.close()

@@ -395,3 +395,53 @@ def test_a_row_whose_fields_overlap_is_not_sent(app, view, listening):
     )
     view.send_row(apart)
     assert collect(app, listening, 1), "a sound configuration was refused too"
+
+
+# --- showing which bytes are computed -------------------------------------------------------
+def marks(view, row):
+    from pycangui.ui.tx_view import COL_DATA, ROLE_MARKS
+
+    return view.item(row).data(COL_DATA, ROLE_MARKS)
+
+
+def test_the_message_shows_which_of_its_bytes_are_computed(app, view):
+    row = a_row(view, counter=COUNTER, checksum=CHECKSUM)
+    counter, checksum = marks(view, row)
+    assert counter == bytes([0x0F, 0, 0, 0, 0, 0, 0, 0]), "the low nibble of byte 0"
+    assert checksum == bytes([0, 0, 0, 0, 0, 0, 0, 0xFF]), "all of byte 7"
+    assert marks(view, a_row(view)) is None, "and a row that computes nothing shows nothing"
+
+
+def test_the_marks_follow_the_bytes_when_they_are_retyped(app, view):
+    from pycangui.ui.tx_view import COL_DATA
+
+    row = a_row(view, checksum=CHECKSUM)
+    view.item(row).setText(COL_DATA, "00 00 00 00 00 00 00 00 00 00 00 00")
+    _counter, checksum = marks(view, row)
+    assert len(checksum) == 12 and checksum[7] == 0xFF
+
+
+def test_the_tint_is_by_hex_digit_however_the_bytes_are_spaced(app):
+    from pycangui.ui.tx_view import CHECKSUM_COLOUR, COUNTER_COLOUR, tinted_runs
+
+    counter, checksum = bytes([0x0F, 0, 0]), bytes([0, 0, 0xFF])
+    for text in ("01 02 03", "0102 03", "010203"):
+        runs = tinted_runs(text, counter, checksum)
+        tinted = [(text[start:end], colour) for start, end, colour in runs]
+        assert tinted == [("1", COUNTER_COLOUR), ("03", CHECKSUM_COLOUR)], text
+
+
+def test_a_field_in_a_database_signal_is_found_through_the_database():
+    class Message:
+        def encode(self, values):
+            return bytes([int(values.get("Alive", 0)) & 0x0F, 0, int(values.get("Crc", 0)) & 0xFF])
+
+    counter, checksum = tx.field_masks(
+        3,
+        tx.Counter(signal="Alive"),
+        tx.Checksum(signal="Crc", algorithm="crc8_j1850"),
+        encode=Message().encode,
+        values={},
+        bits={"Alive": 4, "Crc": 8},
+    )
+    assert counter == bytes([0x0F, 0, 0]) and checksum == bytes([0, 0, 0xFF])

@@ -4,6 +4,7 @@
 
 import struct
 import time
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
@@ -13,7 +14,7 @@ from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
-from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, COL_ID, COL_NAME, TxView
+from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, COL_ID, COL_NAME, ROLE_DATABASE, TxView
 
 
 def wait_until(app, pred, timeout=5.0):
@@ -101,3 +102,100 @@ def test_rpdo_row_drives_the_demo_node(stack):
     )
     view.stop_all()
     assert view._tasks == {}
+
+
+# --- which database a row came from ---------------------------------------------------------
+def test_a_dbc_row_remembers_the_file_its_message_came_from(stack):
+    _app, _bus, view, _canopen, _demo, ctx = stack
+    source = view.dbc.source_of("PumpCommand")
+    assert source and Path(source).name == "demo.dbc"
+
+    row = view.add_message({"kind": "dbc", "message": "PumpCommand", "period": 50})
+    assert view.item(row).data(0, ROLE_DATABASE) == source
+    assert ctx.settings.get("tx.messages")[0]["database"] == source
+
+
+def test_the_file_is_still_known_once_the_database_is_gone(stack):
+    _app, _bus, view, _canopen, _demo, ctx = stack
+    row = view.add_message({"kind": "dbc", "message": "PumpCommand", "period": 50})
+    source = view.item(row).data(0, ROLE_DATABASE)
+
+    view.dbc.unload(source)
+    view.refresh_sources()
+    assert view.dbc.message_by_name("PumpCommand") is None
+    assert view.item(0).data(0, ROLE_DATABASE) == source, "kept with the row"
+    assert ctx.settings.get("tx.messages")[0]["database"] == source
+
+
+def test_a_row_saved_before_files_were_kept_learns_its_own(stack):
+    _app, _bus, view, _canopen, _demo, _ctx = stack
+    row = view.add_message({"kind": "dbc", "message": "PumpCommand", "database": ""})
+    assert Path(view.item(row).data(0, ROLE_DATABASE)).name == "demo.dbc"
+
+
+def test_what_acts_on_a_message_waits_for_one_to_be_selected(stack):
+    _app, _bus, view, _canopen, _demo, _ctx = stack
+    row = view.add_message({"kind": "dbc", "message": "PumpCommand", "period": 50})
+    view.tree.clearSelection()
+    assert not any(button.isEnabled() for button in view.selection_buttons)
+    view.tree.setCurrentItem(view.item(row))
+    assert all(button.isEnabled() for button in view.selection_buttons)
+    view.remove_selected()
+    assert not any(button.isEnabled() for button in view.selection_buttons), "gone with the row"
+
+
+# --- the period of a row from a database ----------------------------------------------------
+def test_a_database_rows_period_is_the_senders_to_set(stack):
+    from pycangui.ui.tx_view import COL_PERIOD, editable_columns
+
+    app, _bus, view, _canopen, _demo, ctx = stack
+    row = view.add_message({"kind": "dbc", "message": "PumpCommand", "period": 100})
+    item = view.item(row)
+    assert editable_columns(item) == (COL_PERIOD,), "and nothing else: the database has the rest"
+
+    index = view.tree.indexFromItem(item, COL_PERIOD)
+    view.tree.edit(index)
+    app.processEvents()
+    assert view.tree.state() == view.tree.State.EditingState, "an editor opens on the period"
+    view.tree.closePersistentEditor(item, COL_PERIOD)
+    view.tree.setCurrentItem(None)
+    app.processEvents()
+
+    assert not view.tree.edit(view.tree.indexFromItem(item, COL_ID)), "but not on the id"
+
+    item.setText(COL_PERIOD, "20")
+    assert ctx.settings.get("tx.messages")[0]["period"] == "20"
+    assert view._message(row)[4] == pytest.approx(0.020)
+
+
+def test_a_new_database_row_takes_the_databases_cycle_time(stack, tmp_path, monkeypatch):
+    from pycangui.ui import tx_view
+    from pycangui.ui.tx_view import COL_PERIOD
+
+    _app, _bus, view, _canopen, _demo, _ctx = stack
+    cyclic = tmp_path / "cyclic.dbc"
+    cyclic.write_text(
+        'VERSION ""\nNS_ :\nBS_:\nBU_:\n'
+        "BO_ 768 Heater: 2 Vector__XXX\n"
+        ' SG_ Level : 0|16@1+ (1,0) [0|0] "" Vector__XXX\n'
+        'BA_DEF_ BO_ "GenMsgCycleTime" INT 0 65535;\n'
+        'BA_DEF_DEF_ "GenMsgCycleTime" 0;\n'
+        'BA_ "GenMsgCycleTime" BO_ 768 40;\n',
+        encoding="utf-8",
+    )
+    view.dbc.load(cyclic)
+
+    class Picked:
+        def __init__(self, name):
+            self.name = name
+
+        def exec(self):
+            return tx_view.QDialog.Accepted
+
+        def chosen(self):
+            return self.name
+
+    for name, period in (("Heater", "40"), ("PumpCommand", str(tx_view.DEFAULT_PERIOD_MS))):
+        monkeypatch.setattr(tx_view, "MessagePicker", lambda *a, n=name: Picked(n))
+        view._add_from_dbc()
+        assert view.item(view.message_count() - 1).text(COL_PERIOD) == period

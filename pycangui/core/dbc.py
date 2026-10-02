@@ -50,6 +50,38 @@ class DbcDecoder:
         self._rebuild()
         return db
 
+    def clashes(self, path: str | Path) -> list[tuple[str, str]]:
+        """What this database has that one loaded before it has too: (what, the
+        file that has it already), where what is a message name or an
+        identifier.
+
+        The earlier database wins both ways -- a frame is decoded by the
+        first to describe its identifier, and a message is found by name in
+        the first to have one of that name -- so each of these is something
+        in this file that is not being used.
+        """
+        path = str(path)
+        mine = self.databases.get(path)
+        if mine is None:
+            return []
+        names: dict[str, str] = {}
+        ids: dict[tuple[int, bool], str] = {}
+        for other, db in self.databases.items():
+            if other == path:
+                break  # only what was loaded before it
+            for msg in db.messages:
+                names.setdefault(msg.name, other)
+                ids.setdefault((msg.frame_id, msg.is_extended_frame), other)
+        found: list[tuple[str, str]] = []
+        for msg in mine.messages:
+            key = (msg.frame_id, msg.is_extended_frame)
+            if msg.name in names:
+                found.append((msg.name, names[msg.name]))
+            if key in ids and ids[key] != names.get(msg.name):
+                ident = f"{msg.frame_id:08X}" if msg.is_extended_frame else f"{msg.frame_id:03X}"
+                found.append((f"0x{ident}", ids[key]))
+        return found
+
     def unload(self, path: str | Path) -> None:
         self.databases.pop(str(path), None)
         self._rebuild()
@@ -108,6 +140,18 @@ class DbcDecoder:
             if msg.name == name:
                 return msg
         return None
+
+    def source_of(self, name: str) -> str:
+        """The file the message of that name comes from, or "" if none has it.
+
+        With several databases loaded a message is found by name alone, and
+        the first database to have it wins -- so this is the same one
+        ``message_by_name`` answers from.
+        """
+        for path, db in self.databases.items():
+            if any(msg.name == name for msg in db.messages):
+                return path
+        return ""
 
     @staticmethod
     def units(msg: Message) -> dict[str, str]:

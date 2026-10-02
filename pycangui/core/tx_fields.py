@@ -142,8 +142,18 @@ def _crc(data: bytes, poly: int, init: int, xorout: int, width: int) -> int:
 
 
 def _crc8_j1850(data: bytes) -> int:
-    """SAE J1850, and AUTOSAR E2E profile 1's CRC."""
+    """SAE J1850 as the CRC catalogues have it: start 0xFF, final XOR 0xFF."""
     return _crc(data, poly=0x1D, init=0xFF, xorout=0xFF, width=8)
+
+
+def _crc8_j1850_zero(data: bytes) -> int:
+    """The same polynomial started at zero with no final XOR.
+
+    What a good many devices mean by "J1850", AUTOSAR E2E profile 1 among
+    them -- though that profile also hashes a data ID that is not in the
+    frame, which is a hook's job (hooks/transmit.py::checksum).
+    """
+    return _crc(data, poly=0x1D, init=0x00, xorout=0x00, width=8)
 
 
 def _crc8_2f(data: bytes) -> int:
@@ -162,6 +172,7 @@ ALGORITHMS: dict[str, tuple[Callable[[bytes], int], int]] = {
     "sum8": (_sum8, 1),
     "sum8_twos": (_sum8_twos, 1),
     "crc8_j1850": (_crc8_j1850, 1),
+    "crc8_j1850_zero": (_crc8_j1850_zero, 1),
     "crc8_2f": (_crc8_2f, 1),
     "crc16_ccitt": (_crc16_ccitt, 2),
 }
@@ -171,7 +182,8 @@ ALGORITHM_NAMES: dict[str, str] = {
     "xor": "XOR of bytes",
     "sum8": "Sum, 8-bit",
     "sum8_twos": "Sum, two's complement (bytes total zero)",
-    "crc8_j1850": "CRC-8 / SAE J1850 (AUTOSAR E2E profile 1)",
+    "crc8_j1850": "CRC-8 / SAE J1850 (start 0xFF, final XOR 0xFF)",
+    "crc8_j1850_zero": "CRC-8 / SAE J1850, start 0x00, no final XOR",
     "crc8_2f": "CRC-8 / 0x2F (AUTOSAR CRC8H2F)",
     "crc16_ccitt": "CRC-16 / CCITT",
 }
@@ -360,6 +372,7 @@ def apply_signals(
     computed: int | None = None,
     counter_bits: int | None = None,
     hook=None,
+    checksum_bits: int | None = None,
 ) -> bytes:
     """The same, for a message whose bytes come from a database.
 
@@ -369,14 +382,22 @@ def apply_signals(
     straddle a byte, and which of the two bit-numbering conventions the file
     uses are all questions the database has already answered.
 
-    The checksum is computed over the frame encoded with its **own signal set
-    to zero**, and the frame is then encoded again with the real value. Two
+    The frame is encoded with the checksum's **own signal set to zero**, the
+    checksum worked out, and the frame encoded again with the real value. Two
     encodes rather than patching bytes: a signal is not necessarily
-    byte-aligned, so there is no byte to patch, and zeroing is the convention
-    a database-described checksum is defined by in any case.
+    byte-aligned, so there is no byte to patch.
 
-    ``hook`` is called with the zeroed frame if given, so a bespoke checksum
-    sees exactly what the named algorithms see.
+    What is hashed depends on what the signal occupies. Where it is whole
+    bytes -- the usual case, a CRC in the last byte -- those bytes are **left
+    out**, exactly as for a checksum at a position: a receiver computes over
+    the other bytes, and for a CRC a zero byte in the middle is not the same
+    as no byte. (For XOR and the sums it makes no difference, which is how
+    hashing the zero went unnoticed.) Where it shares a byte with something
+    else, leaving the byte out would drop real data, so the zeroed frame is
+    hashed whole. A byte range given by hand is used as it is.
+
+    ``hook`` is called with the zeroed frame if given, whole, so a bespoke
+    checksum decides for itself what to leave out.
     """
     if (clash := conflict(counter, checksum)) is not None:
         raise FieldError(clash)
@@ -394,8 +415,82 @@ def apply_signals(
     blank = encode(values)
     if computed is None and hook is not None:
         computed = hook(blank)
-    values[checksum.signal] = checksum.value(blank) if computed is None else computed
+    if computed is None:
+        own = _whole_bytes_of(encode, values, checksum, checksum_bits, blank)
+        if own and checksum.first is None and checksum.last is None:
+            computed = checksum.function()(bytes(b for i, b in enumerate(blank) if i not in own))
+        else:
+            computed = checksum.value(blank)
+    values[checksum.signal] = computed
     return encode(values)
+
+
+def signal_mask(encode: Callable[[dict], bytes], values: dict, name: str, bits: int) -> bytes:
+    """Which bits of the frame a signal occupies, as a mask the frame's length.
+
+    Asked of the database, by encoding the signal at nothing and at all ones
+    and seeing what changed -- so byte order and bit numbering are the
+    database's to know. Empty where it cannot be encoded.
+    """
+    try:
+        low = encode({**values, name: 0})
+        high = encode({**values, name: (1 << bits) - 1})
+    except Exception:
+        return b""
+    return bytes(a ^ b for a, b in zip(low, high, strict=False))
+
+
+def _whole_bytes_of(
+    encode, values: dict, checksum: Checksum, bits: int | None, blank: bytes
+) -> set[int]:
+    """The bytes a checksum signal fills, or nothing if it shares one.
+
+    ``blank`` is the frame already encoded with the signal at zero, so
+    finding out costs one more encode rather than two.
+    """
+    bits = bits or 8 * width_of(checksum.algorithm)
+    try:
+        full = encode({**values, checksum.signal: (1 << bits) - 1})
+    except Exception:
+        return set()
+    mask = bytes(a ^ b for a, b in zip(blank, full, strict=False))
+    own = {i for i, b in enumerate(mask) if b}
+    return own if own and all(mask[i] == 0xFF for i in own) else set()
+
+
+def field_masks(
+    length: int,
+    counter: Counter | None,
+    checksum: Checksum | None,
+    encode: Callable[[dict], bytes] | None = None,
+    values: dict | None = None,
+    bits: dict[str, int] | None = None,
+) -> tuple[bytes, bytes]:
+    """Which bits of the payload the counter and the checksum occupy.
+
+    Two masks the payload's length, for showing somebody which of the bytes
+    in front of them are not theirs to set. ``encode``, ``values`` and
+    ``bits`` are for a field in a database signal.
+    """
+
+    def mask(field, default_bits: int) -> bytes:
+        out = bytearray(length)
+        if field is None:
+            return bytes(out)
+        if field.at is not None:
+            part = {LOW: 0x0F, HIGH: 0xF0}.get(field.at.part, 0xFF)
+            for i in field.at.covers():
+                if i < length:
+                    out[i] = part
+            return bytes(out)
+        if encode is None:
+            return bytes(out)
+        width = (bits or {}).get(field.signal) or default_bits
+        found = signal_mask(encode, values or {}, field.signal, width)
+        return bytes(found[:length].ljust(length, b"\x00"))
+
+    checksum_bits = 8 * width_of(checksum.algorithm) if checksum is not None else 8
+    return mask(counter, 4), mask(checksum, checksum_bits)
 
 
 # --- saving and loading ----------------------------------------------------------------

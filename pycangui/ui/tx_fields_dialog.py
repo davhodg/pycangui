@@ -378,6 +378,7 @@ class TxFieldsDialog(QDialog):
                         checksum,
                         sent=n,
                         counter_bits=self._bits.get(counter.signal) if counter else None,
+                        checksum_bits=self._bits.get(checksum.signal) if checksum else None,
                     )
                 else:
                     out = tx.apply(self._payload, counter, checksum, sent=n)

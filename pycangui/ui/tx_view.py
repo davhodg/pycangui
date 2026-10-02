@@ -24,10 +24,15 @@ worst kind of wrong.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QFont, QPalette
+from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -37,6 +42,9 @@ from PySide6.QtWidgets import (
     QListWidget,
     QMenu,
     QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -70,7 +78,179 @@ ROLE_NODE = Qt.UserRole + 2  # CANopen node id
 ROLE_PDO = Qt.UserRole + 3  # CANopen RPDO number
 ROLE_COUNTER = Qt.UserRole + 4  # the counter configuration, as a dict
 ROLE_CHECKSUM = Qt.UserRole + 5  # the checksum configuration, as a dict
+ROLE_DATABASE = Qt.UserRole + 6  # the file a DBC row's message came from
+#: On a signal's value cell: its named values, as [(number, name), ...], for a
+#: signal the database gives a VAL_ table.
+ROLE_CHOICES = Qt.UserRole + 8
+#: On the Data cell: (counter mask, checksum mask), each the payload's length,
+#: saying which of its bits are computed as the frame is sent.
+ROLE_MARKS = Qt.UserRole + 7
 
+#: The tint behind the hex digits a counter or a checksum will overwrite, so
+#: that it shows on the message itself which bytes are not there to be set.
+#: Translucent, to sit over a light or a dark theme and a selected row alike.
+COUNTER_COLOUR = QColor(70, 130, 230, 90)
+CHECKSUM_COLOUR = QColor(60, 180, 90, 90)
+CHOICES_TIP = (
+    "This signal has named values. Double-click to pick one from the list,\n"
+    "or type a number or a name: a number the list does not have is sent as\n"
+    "that number."
+)
+HEX_DIGITS = "0123456789abcdefABCDEF"
+MARKS_TIP = (
+    "Tinted digits are worked out as each frame is sent:\n"
+    "blue is the counter, green is the checksum.\n"
+    "What is typed there is replaced. See Counter / checksum..."
+)
+
+#: A message's period where nothing says otherwise.
+DEFAULT_PERIOD_MS = 100
+
+
+def editable_columns(item: QTreeWidgetItem) -> tuple[int, ...]:
+    """Which cells of a message row can be typed into.
+
+    All of a raw message is the user's. A message from a database, or a
+    node's RPDO, takes its name, id and data from there and is edited through
+    its signals -- but its period is still the sender's to choose.
+    """
+    if item.data(0, ROLE_KIND) in ("dbc", "rpdo"):
+        return (COL_PERIOD,)
+    return (COL_NAME, COL_ID, COL_DATA, COL_PERIOD)
+
+
+class _OnlyWhatIsTheRows(QStyledItemDelegate):
+    """Opens an editor only on the cells ``editable_columns`` allows.
+
+    Qt's editable flag is for a whole row, and these rows are editable in one
+    cell and not the rest.
+    """
+
+    def createEditor(self, parent, option, index):
+        tree = self.parent()
+        item = tree.itemFromIndex(index)
+        if item is not None and item.parent() is None:
+            if index.column() not in editable_columns(item):
+                return None
+        choices = index.data(ROLE_CHOICES) if index.column() == COL_DATA else None
+        if not choices:
+            return super().createEditor(parent, option, index)
+        # The names to pick from, and still a box to type in: a number the
+        # table does not name is a value the signal can perfectly well take.
+        box = QComboBox(parent)
+        box.setEditable(True)
+        box.setInsertPolicy(QComboBox.NoInsert)
+        box.addItems([named(number, name) for number, name in choices])
+        # Picking one is the whole edit, so it is taken at once rather than
+        # waiting for Return.
+        box.activated.connect(lambda _index: self._picked(box))
+        QTimer.singleShot(0, box.showPopup)
+        return box
+
+    def _picked(self, box) -> None:
+        self.commitData.emit(box)
+        self.closeEditor.emit(box)
+
+    def setEditorData(self, editor, index):
+        if isinstance(editor, QComboBox):
+            editor.setCurrentText(index.data() or "")
+        else:
+            super().setEditorData(editor, index)
+
+    def setModelData(self, editor, model, index):
+        if isinstance(editor, QComboBox):
+            model.setData(index, editor.currentText())
+        else:
+            super().setModelData(editor, model, index)
+
+    def paint(self, painter, option, index):
+        """The cell as usual, then a tint over the digits that are computed."""
+        super().paint(painter, option, index)
+        marks = index.data(ROLE_MARKS) if index.column() == COL_DATA else None
+        if not marks:
+            return
+        view = QStyleOptionViewItem(option)
+        self.initStyleOption(view, index)
+        style = view.widget.style() if view.widget is not None else QApplication.style()
+        text_rect = style.subElementRect(QStyle.SE_ItemViewItemText, view, view.widget)
+        left = text_rect.left() + style.pixelMetric(QStyle.PM_FocusFrameHMargin) + 1
+        metrics = view.fontMetrics
+        painter.save()
+        painter.setClipRect(text_rect)
+        for start, end, colour in tinted_runs(view.text, *marks):
+            x = left + metrics.horizontalAdvance(view.text[:start])
+            width = metrics.horizontalAdvance(view.text[start:end])
+            painter.fillRect(x, text_rect.top() + 1, width, text_rect.height() - 2, colour)
+        painter.restore()
+
+
+def named(number, name) -> str:
+    """A named value as it is shown: the name, and the number it stands for."""
+    return f"{name} ({number})"
+
+
+#: ``Run (1)``, as ``named`` writes it: the number is what is sent.
+_NAMED = re.compile(r"^.*\((-?\d+)\)\s*$")
+
+
+def with_its_name(text: str, choices) -> str:
+    """What was typed, as name and number together where the table has it.
+
+    ``1``, ``Run`` and ``Run (1)`` all come out as ``Run (1)``. Anything the
+    table does not name is left exactly as typed: a number outside it is
+    sent as that number, and a name outside it is refused when it is encoded.
+    """
+    text = text.strip()
+    if not choices:
+        return text
+    if (already := _NAMED.match(text)) is not None:
+        text = already.group(1)
+    for number, name in choices:
+        if text == str(name):
+            return named(number, name)
+    try:
+        typed = float(text)
+    except ValueError:
+        return text
+    for number, name in choices:
+        if typed == number:
+            return named(number, name)
+    return text
+
+
+def tinted_runs(text: str, counter: bytes, checksum: bytes) -> list[tuple[int, int, QColor]]:
+    """Which stretches of a hex string to tint: (first character, one past the
+    last, colour).
+
+    By hex digit rather than by position in the text, so it does not matter
+    how the bytes were spaced when they were typed; a nibble is one digit.
+    """
+    runs: list[tuple[int, int, QColor]] = []
+    digit = 0
+    for at, char in enumerate(text):
+        if char not in HEX_DIGITS:
+            continue
+        byte, part = digit // 2, 0xF0 if digit % 2 == 0 else 0x0F
+        digit += 1
+        colour = None
+        if byte < len(checksum) and checksum[byte] & part:
+            colour = CHECKSUM_COLOUR
+        elif byte < len(counter) and counter[byte] & part:
+            colour = COUNTER_COLOUR
+        if colour is None:
+            continue
+        if runs and runs[-1][1] == at and runs[-1][2] is colour:
+            runs[-1] = (runs[-1][0], at + 1, colour)
+        else:
+            runs.append((at, at + 1, colour))
+    return runs
+
+
+DATABASE_TIP = "The database this message and its signals come from:\n{path}"
+DATABASE_GONE_TIP = (
+    "This row was made from a database that is not loaded now, so it cannot\n"
+    "be encoded or sent. File > Load DBC... with:\n{path}"
+)
 COMPUTED_TIP = (
     "Worked out as each frame is sent, so whatever is here is ignored.\n"
     "Change it in the Fields dialog, or stop computing it there."
@@ -95,9 +275,12 @@ class MessagePicker(QDialog):
         self.list = QListWidget()
         self.list.setFont(QFont("Consolas", 9))
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
+        # Which file, once there is more than one to have come from.
+        several = len(dbc.databases) > 1
         for msg in dbc.messages():
             ident = f"{msg.frame_id:08X}" if msg.is_extended_frame else f"{msg.frame_id:03X}"
-            self.list.addItem(f"{msg.name}  [{ident}]  {len(msg.signals)} signals")
+            where = f"  {Path(dbc.source_of(msg.name)).name}" if several else ""
+            self.list.addItem(f"{msg.name}  [{ident}]  {len(msg.signals)} signals{where}")
         if not self.list.count():
             # Said here rather than in the Event Log. A button that opens
             # nothing and writes a line into a pane you may have closed looks
@@ -214,6 +397,7 @@ class TxView(QWidget):
         self.tree.installEventFilter(self)
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.itemDoubleClicked.connect(self._on_double_clicked)
+        self.tree.setItemDelegate(_OnlyWhatIsTheRows(self.tree))
         self.tree.setToolTip(
             "Double-click a message to send it once.\n"
             "Tick Cyclic to send it over and over at its period.\n"
@@ -261,6 +445,11 @@ class TxView(QWidget):
         for b in (send, stop_all, add, fields, remove):
             bar.addWidget(b)
         bar.addStretch()
+        #: What acts on the selected message, and so has nothing to act on
+        #: until one is selected. Greyed rather than pressable and silent.
+        self.selection_buttons = (send, fields, remove)
+        self.tree.itemSelectionChanged.connect(self._offer_selection_buttons)
+        self._offer_selection_buttons()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
@@ -269,6 +458,11 @@ class TxView(QWidget):
 
         bus.disconnected.connect(self._on_disconnected)
         self._load()
+
+    def _offer_selection_buttons(self) -> None:
+        selected = bool(self.tree.selectedItems())
+        for button in self.selection_buttons:
+            button.setEnabled(selected)
 
     # --- rows -------------------------------------------------------------------
     def message_count(self) -> int:
@@ -314,9 +508,19 @@ class TxView(QWidget):
             item.setData(0, ROLE_MESSAGE, name)
             item.setText(COL_NAME, name)
             msg = self.dbc.message_by_name(name)
+            # Kept with the row, so that it can still be named once the
+            # database is removed -- and told apart while several are loaded.
+            database = self.dbc.source_of(name) or spec.get("database", "")
+            item.setData(0, ROLE_DATABASE, database)
+            file_name = Path(database).name if database else ""
             if msg is None:
-                item.setText(COL_UNIT, "database not loaded")
+                item.setText(
+                    COL_UNIT, f"not loaded: {file_name}" if file_name else "database not loaded"
+                )
+                item.setToolTip(COL_UNIT, DATABASE_GONE_TIP.format(path=database or "not known"))
             else:
+                item.setText(COL_UNIT, file_name)
+                item.setToolTip(COL_UNIT, DATABASE_TIP.format(path=database))
                 item.setText(
                     COL_ID,
                     f"{msg.frame_id:08X}" if msg.is_extended_frame else f"{msg.frame_id:03X}",
@@ -325,19 +529,29 @@ class TxView(QWidget):
                 stored = spec.get("signals", {})
                 for signal in msg.signals:
                     value = stored.get(signal.name, _default_value(signal))
+                    choices = _choices(signal)
                     child = QTreeWidgetItem(
-                        [signal.name, "", "", "", _format(value), "", "", signal.unit or ""]
+                        [
+                            signal.name,
+                            "",
+                            "",
+                            "",
+                            with_its_name(_format(value), choices),
+                            "",
+                            "",
+                            signal.unit or "",
+                        ]
                     )
                     child.setData(0, ROLE_KIND, "signal")
                     child.setFlags(child.flags() | Qt.ItemIsEditable)
-                    if signal.choices:
-                        # Both spellings work, so say what the names are.
-                        names = "\n".join(f"  {v} = {n}" for v, n in sorted(signal.choices.items()))
-                        child.setToolTip(COL_DATA, f"Type a number or a name:\n{names}")
+                    if choices:
+                        child.setData(COL_DATA, ROLE_CHOICES, choices)
+                        child.setToolTip(COL_DATA, CHOICES_TIP)
                     item.addChild(child)
                 item.setExpanded(bool(spec.get("expanded", False)))
-            # message rows driven by a database are not edited directly
-            item.setFlags(flags & ~Qt.ItemIsEditable)
+            # A row driven by a database is not edited directly -- its
+            # id and data come from the database -- but how often it is sent
+            # is nobody's to decide but the sender's: see _OnlyWhatIsTheRows.
         elif kind == "rpdo":
             node_id = int(spec.get("node", 0))
             number = int(spec.get("pdo", 1))
@@ -358,18 +572,21 @@ class TxView(QWidget):
                     child.setFlags(child.flags() | Qt.ItemIsEditable)
                     item.addChild(child)
                 item.setExpanded(bool(spec.get("expanded", False)))
-            item.setFlags(flags & ~Qt.ItemIsEditable)
         self._loading = False
         if kind in ("dbc", "rpdo"):
             self._mark_computed(self.tree.indexOfTopLevelItem(item))
             self._encode_row(self.tree.indexOfTopLevelItem(item))
+        self._mark_bytes(self.tree.indexOfTopLevelItem(item))
         self._save()
         return self.tree.indexOfTopLevelItem(item)
 
     def _add_from_dbc(self) -> None:
         dialog = MessagePicker(self.dbc, self)
         if dialog.exec() == QDialog.Accepted and (name := dialog.chosen()):
-            self.add_message({"kind": "dbc", "message": name, "period": 100, "expanded": True})
+            # What the database says the message's cycle is, where it says.
+            msg = self.dbc.message_by_name(name)
+            period = getattr(msg, "cycle_time", None) or DEFAULT_PERIOD_MS
+            self.add_message({"kind": "dbc", "message": name, "period": period, "expanded": True})
 
     def _add_rpdo(self) -> None:
         dialog = RpdoPicker(self.canopen, self)
@@ -415,6 +632,7 @@ class TxView(QWidget):
             }
         if spec["kind"] == "dbc":
             spec["message"] = item.data(0, ROLE_MESSAGE)
+            spec["database"] = item.data(0, ROLE_DATABASE) or ""
         elif spec["kind"] == "rpdo":
             spec["node"] = item.data(0, ROLE_NODE)
             spec["pdo"] = item.data(0, ROLE_PDO)
@@ -434,6 +652,8 @@ class TxView(QWidget):
         for i in range(item.childCount()):
             child = item.child(i)
             text = child.text(COL_DATA).strip()
+            if (shown := _NAMED.match(text)) is not None:
+                text = shown.group(1)  # "Run (1)": the number is what is sent
             try:
                 values[child.text(COL_NAME)] = float(text)
             except ValueError:
@@ -586,10 +806,40 @@ class TxView(QWidget):
                 sent=sent,
                 counter_bits=_signal_bits(message, counter.signal) if counter else None,
                 hook=hook,
+                checksum_bits=_signal_bits(message, checksum.signal) if checksum else None,
             )
         except Exception as exc:  # a renamed signal, or one out of range
             self.ctx.warn(f"TX {message.name}: {exc}")
             return None
+
+    def _mark_bytes(self, row: int) -> None:
+        """Say on the message itself which of its bytes are computed.
+
+        The Counter / checksum column says there is one; this shows where,
+        on the bytes, which is where somebody is looking when they wonder why
+        what they typed did not go out.
+        """
+        item = self.item(row)
+        counter, checksum = self.fields(row)
+        marks = None
+        if counter is not None or checksum is not None:
+            length = (sum(c in HEX_DIGITS for c in item.text(COL_DATA)) + 1) // 2
+            by_signal = {}
+            if item.data(0, ROLE_KIND) == "dbc":
+                message = self.dbc.message_by_name(item.data(0, ROLE_MESSAGE) or "")
+                if message is not None:
+                    by_signal = {
+                        "encode": lambda v: message.encode(v, padding=False, strict=False),
+                        "values": self._child_values(item, names=True),
+                        "bits": {s.name: s.length for s in message.signals},
+                    }
+            found = tx_fields.field_masks(length, counter, checksum, **by_signal)
+            marks = found if any(any(mask) for mask in found) else None
+        was_loading, self._loading = self._loading, True  # not an edit: nothing to save or resend
+        item.setData(COL_DATA, ROLE_MARKS, marks)
+        if item.data(0, ROLE_KIND) == "raw" or marks:
+            item.setToolTip(COL_DATA, MARKS_TIP if marks else "")
+        self._loading = was_loading
 
     def _mark_computed(self, row: int) -> None:
         """Grey out the signals a counter or checksum is going to overwrite.
@@ -676,6 +926,7 @@ class TxView(QWidget):
         item.setData(0, ROLE_CHECKSUM, tx_fields.checksum_to_dict(dialog.checksum()))
         self._describe_fields(row)
         self._mark_computed(row)
+        self._mark_bytes(row)
         # Restart it if it was running: which timer it belongs on has just
         # changed, and so has the payload.
         if row in self._tasks or row in self._timers:
@@ -865,7 +1116,15 @@ class TxView(QWidget):
         if row is None:
             return
         if item.parent() is not None:  # a signal value changed
+            # Shown with its name, however it was put in: typed as a number,
+            # as a name, or picked.
+            shown = with_its_name(item.text(COL_DATA), item.data(COL_DATA, ROLE_CHOICES))
+            if column == COL_DATA and shown != item.text(COL_DATA):
+                self._loading = True
+                item.setText(COL_DATA, shown)
+                self._loading = False
             self._encode_row(row)
+        self._mark_bytes(row)  # the bytes may be a different length now
         if column == COL_CYCLIC and item.parent() is None:
             if item.checkState(COL_CYCLIC) == Qt.Checked:
                 self._start_row(row)
@@ -877,9 +1136,7 @@ class TxView(QWidget):
         self._save()
 
     def _on_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
-        if item.parent() is None and not (
-            item.flags() & Qt.ItemIsEditable and column in (COL_NAME, COL_ID, COL_DATA, COL_PERIOD)
-        ):
+        if item.parent() is None and column not in editable_columns(item):
             row = self._row_of(item)
             if row is not None:
                 self.send_row(row)
@@ -932,9 +1189,13 @@ def _choices_tip(message, name: str) -> str:
         return ""
     for signal in message.signals:
         if signal.name == name and signal.choices:
-            names = "\n".join(f"  {v} = {n}" for v, n in sorted(signal.choices.items()))
-            return f"Type a number or a name:\n{names}"
+            return CHOICES_TIP
     return ""
+
+
+def _choices(signal) -> list[tuple[int, str]]:
+    """A signal's named values, in number order, as plain numbers and text."""
+    return [(number, str(name)) for number, name in sorted((signal.choices or {}).items())]
 
 
 def _default_value(signal) -> float:

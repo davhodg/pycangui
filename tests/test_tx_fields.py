@@ -261,14 +261,53 @@ def test_a_signal_counter_takes_its_width_from_the_database():
     assert counter.value(16) == 16, "with nothing said, a byte"
 
 
-def test_a_signal_checksum_is_hashed_with_itself_set_to_zero():
-    """Not by leaving bytes out: a signal may share a byte with real data,
-    and dropping the byte would drop that too."""
+def test_a_signal_checksum_is_worked_out_without_itself_in_it():
     message = FakeMessage({"A": 0, "B": 1, "Crc": 7})
     checksum = Checksum(signal="Crc", algorithm="sum8")
     out = tx.apply_signals(message.encode, {"A": 0x10, "B": 0x20}, checksum=checksum)
-    assert out[7] == 0x30, "the sum of the frame with Crc zeroed"
-    assert message.encodes == 2, "once to hash, once for real"
+    assert out[7] == 0x30
+    assert message.encodes == 3, "to hash, to see which bytes are its own, and for real"
+
+
+@pytest.mark.parametrize("algorithm", ["crc8_j1850", "crc8_j1850_zero", "crc8_2f"])
+def test_a_crc_in_a_whole_byte_signal_is_over_the_other_bytes(algorithm):
+    """What a receiver computes, and what the same checksum at a position
+    gives. Hashing the frame with a zero where the CRC goes is a different
+    number -- unlike a sum, which is why sums never showed it."""
+    message = FakeMessage({"A": 0, "B": 1, "Crc": 7})
+    values = {"A": 0x12, "B": 0x34}
+    out = tx.apply_signals(
+        message.encode, values, checksum=Checksum(signal="Crc", algorithm=algorithm)
+    )
+    by_position = tx.apply(
+        message.encode(values), checksum=Checksum(at=Placement(byte=7), algorithm=algorithm)
+    )
+    assert out == by_position
+    assert out[7] == tx.ALGORITHMS[algorithm][0](out[:7])
+
+
+def test_a_checksum_sharing_a_byte_is_hashed_with_its_bits_at_zero():
+    """Leaving the byte out would drop the real data beside it."""
+
+    class Nibbles:
+        def encode(self, values):
+            out = bytearray(2)
+            out[0] = int(values.get("A", 0)) & 0xFF
+            out[1] = ((int(values.get("Mode", 0)) & 0x0F) << 4) | (int(values.get("Crc", 0)) & 0x0F)
+            return bytes(out)
+
+    out = tx.apply_signals(
+        Nibbles().encode,
+        {"A": 0x21, "Mode": 0x3},
+        checksum=Checksum(signal="Crc", algorithm="sum8"),
+        checksum_bits=4,
+    )
+    assert out[1] >> 4 == 0x3, "its neighbour is still there"
+    assert out[1] & 0x0F == (0x21 + 0x30) & 0x0F, "and was part of the sum"
+
+
+def test_the_zero_start_j1850_is_its_own_algorithm():
+    assert tx.ALGORITHMS["crc8_j1850_zero"][0](b"123456789") == 0x37
 
 
 def test_the_signal_checksum_covers_the_signal_counter():

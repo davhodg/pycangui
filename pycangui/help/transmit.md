@@ -21,9 +21,26 @@ choice is which source rather than which button. Expand a row to see its
 signals; the encoded bytes update as you type, and a message that is already
 cycling is updated live.
 
+A signal the database gives **named values** (a `VAL_` table) is picked from a
+list: double-click its value and choose, or type a number or a name into the
+same box. However it goes in, it is shown as name and number together --
+*Run (1)* -- and the number is what is sent. A number the table does not name
+is sent as that number; a name it does not have is refused, and says so in the
+Event Log, rather than being sent as zero.
+
+A DBC or RPDO row takes its name, identifier and data from where it came from,
+so those cells are not typed into -- but its **Period ms** is yours to set,
+like a raw row's. A row added from a database starts at the cycle time the
+database gives the message (`GenMsgCycleTime`) where it gives one, and at
+100 ms where it does not. The Unit column of a DBC row names the database file
+it came from, and goes on naming it -- *not loaded: drive.dbc* -- if that
+database is removed.
+
 Select several rows -- Ctrl+A takes the lot -- and *Send selected*, *Remove
 selected* and the space bar all work on the whole selection, so starting or
 stopping a set of cyclic messages is one keypress rather than one tick per row.
+*Send selected*, *Counter / checksum...* and *Remove selected* are greyed
+until a message is selected.
 
 ## Counters and checksums
 
@@ -48,7 +65,8 @@ at the other end. Give it an explicit byte range where a protocol wants one.
 |-----------|-------------------|
 | XOR, 8-bit sum | Simple in-house protocols |
 | Sum, two's complement | The bytes plus the checksum total zero |
-| CRC-8 / SAE J1850 | AUTOSAR E2E profile 1 |
+| CRC-8 / SAE J1850 | The catalogue's: start 0xFF, final XOR 0xFF |
+| CRC-8 / SAE J1850, start 0x00 | The same polynomial with no start value and no final XOR, which many devices mean by "J1850" |
 | CRC-8 / 0x2F | AUTOSAR CRC8H2F |
 | CRC-16 / CCITT | Two bytes, either endianness |
 
@@ -61,9 +79,13 @@ underneath: a signal that is three bits straddling a byte boundary, in either
 of CAN's two bit-numbering conventions, is the database's problem and not
 yours.
 
-A checksum named this way is computed over the frame **with its own signal set
-to zero**, rather than by leaving whole bytes out. A signal can share a byte
-with data that has to survive, so dropping the byte would drop that too.
+A checksum named this way is computed over the frame **without its own
+bytes**, exactly as one at a position is, where the signal is whole bytes --
+a CRC in the last byte, say. Where it shares a byte with data that has to
+survive, leaving the byte out would drop that too, so the frame is hashed
+whole with the checksum's bits at zero. (Earlier versions always did the
+second, which for a CRC is a different number from the one a receiver
+computes: a zero byte is not the same as no byte.)
 
 The counter's width comes from the database as well, so a one-bit counter
 counts 0, 1, 0, 1 without being told to.
@@ -74,6 +96,15 @@ two it is, and the value is filled in as the frame is sent. That is the point
 of naming it -- and a box that took an edit and then ignored it would be a box
 that had lied. Stop computing it in the dialog and it goes back to being an
 ordinary signal you can type into.
+
+AUTOSAR E2E profile 1 uses the J1850 polynomial too, but also hashes a data
+ID that is not in the frame, so it is not either of the entries above: it is
+a hook's job.
+
+**The bytes are tinted on the message itself.** In the list, the hex digits a
+counter will overwrite have a blue background and a checksum's a green one --
+a single digit where the field is a nibble -- so it shows on the row which
+bytes are not there to be set.
 
 **Not in the list?** A maker's own arithmetic is nobody's standard, so it
 goes in the `transmit.checksum` [hook](hooks.md): return a number and it is
