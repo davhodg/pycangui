@@ -20,6 +20,7 @@ says what to do when it is not, and nothing imports it at start-up.
 
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,6 +32,17 @@ WHY = (
     "MDF and MF4 files are read by the asammdf library, which this "
     "installation of pycangui does not include. It is a download of a few "
     "tens of megabytes."
+)
+
+#: It is installed, and will not load. Not something installing it again
+#: changes, so nothing is offered: it says what failed, which is what finds
+#: the pair of libraries that no longer agree.
+BROKEN = (
+    "MDF and MF4 files are read by the asammdf library, which is installed "
+    "here but would not load:\n\n    {error}\n\n"
+    "This is usually asammdf and a library it uses no longer agreeing, after a "
+    "new release of one of them. Upgrading asammdf, or going back a version of "
+    "the library named above, normally puts it right."
 )
 
 #: Suffixes that mean "this is a measurement file". ``.dat`` is MDF 3, which
@@ -105,20 +117,42 @@ class Summary:
     attachments: list[str] = field(default_factory=list)
 
 
-def available() -> bool:
-    """Whether MDF files can be read at all in this installation."""
+def installed() -> bool:
+    """Whether asammdf is in this installation at all, loadable or not."""
+    try:
+        return importlib.util.find_spec(PACKAGE) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def why_not() -> str:
+    """Why MDF files cannot be read here, or "" when they can.
+
+    Missing and broken are told apart, because what to do differs: a library
+    that is not there can be fetched, and one that is there and will not load
+    cannot be fixed by fetching it again. It fails however it likes -- a
+    release of a library it depends on once raised TypeError from inside the
+    import -- so anything it raises counts.
+    """
     try:
         import asammdf  # noqa: F401
-    except ImportError:
-        return False
-    return True
+    except Exception as exc:
+        if not installed():
+            return WHY
+        return BROKEN.format(error=f"{type(exc).__name__}: {exc}")
+    return ""
+
+
+def available() -> bool:
+    """Whether MDF files can be read at all in this installation."""
+    return why_not() == ""
 
 
 def _mdf(path: str | Path):
-    try:
-        from asammdf import MDF
-    except ImportError as exc:  # pragma: no cover - exercised by the UI path
-        raise NotAvailableError(WHY) from exc
+    if (reason := why_not()) != "":
+        raise NotAvailableError(reason)
+    from asammdf import MDF
+
     return MDF(Path(path))
 
 

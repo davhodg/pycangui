@@ -259,7 +259,11 @@ def main() -> int:
 
             loaded["classes"] = (Session, MainWindow)
             timing.mark(timing.LIBRARIES_STEP)
-        except ImportError as exc:
+        except Exception as exc:
+            # Not ImportError alone. A library that is installed and will not
+            # load fails however it likes -- a release of one that another was
+            # not written for raised TypeError from inside an import -- and
+            # anything not caught here is a window that never appears.
             loaded["error"] = exc
 
     # Before the window is built, and therefore before a workspace can reopen
@@ -276,16 +280,11 @@ def main() -> int:
     timing.mark(timing.NOTICE_STEP)
     if not loaded:  # nothing ran it, so do it here rather than not at all
         load()
-    if (missing := loaded.get("error")) is not None:
+    if (failed := loaded.get("error")) is not None:
         from pycangui.ui import messages
 
-        messages.critical(
-            None,
-            f"{APP_NAME} cannot start",
-            f"A library {APP_NAME} needs is missing:\n\n    {missing}\n\n"
-            "Start it with pycangui.cmd (or pycangui.sh), which installs "
-            "anything missing before starting.",
-        )
+        messages.critical(None, f"{APP_NAME} cannot start", why_it_cannot_start(failed))
+        sys.stderr and sys.stderr.write(why_it_cannot_start(failed) + "\n")
         return 1
 
     session_class, window_class = loaded["classes"]
@@ -306,6 +305,35 @@ def main() -> int:
     finished = app.exec()
     listener.close()
     return loaded.get("exit code", finished)
+
+
+def why_it_cannot_start(failed: BaseException) -> str:
+    """What to tell somebody whose libraries would not load, and what to do.
+
+    Two different faults. A library that is not there is put right by
+    installing it. One that is there and will not load is usually two
+    libraries that no longer agree -- a new release of one, which the other
+    was not written for -- and installing again changes nothing: it wants the
+    name of the file that failed, so that the pair can be found.
+    """
+    if isinstance(failed, ModuleNotFoundError):
+        return (
+            f"A library {APP_NAME} needs is missing:\n\n    {failed}\n\n"
+            "Start it with pycangui.cmd (or pycangui.sh), which installs "
+            "anything missing before starting, or install it with pip."
+        )
+    import traceback
+
+    where = traceback.extract_tb(failed.__traceback__)
+    place = f"\n    in {where[-1].filename}, line {where[-1].lineno}" if where else ""
+    return (
+        f"A library {APP_NAME} needs is installed but would not load:\n\n"
+        f"    {type(failed).__name__}: {failed}{place}\n\n"
+        "This is usually two libraries that no longer agree, after a new release "
+        "of one of them. Upgrading the one named above, or going back a version "
+        "of the one it was loading, normally puts it right; in a source folder, "
+        "deleting .venv and starting the launcher installs them all again."
+    )
 
 
 def run_when_started(window, script, loaded: dict) -> None:

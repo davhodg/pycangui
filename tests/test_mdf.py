@@ -14,17 +14,16 @@ that claim samples and read back with none -- but a real export is also
 somebody's product data, so the shapes are reproduced and the data is not.
 """
 
-import can  # before asammdf: see below
+import importlib
+
 import numpy as np
 import pytest
 
 from pycangui.core import mdf
 
-# asammdf imports python-can while it is still loading itself. If asammdf comes
-# first, python-can then finds it half-loaded, takes it as not installed, and
-# its MF4Writer -- which the bus_log fixture uses -- refuses to work. The
-# application always imports python-can at start-up, so only a test run that
-# reaches this file first ever sees it.
+# python-can is loaded without its MF4 support, as the application loads it
+# (see conftest), so its MF4Writer -- which the bus_log fixture uses -- has to
+# be given asammdf afterwards: the fixture loads that one module again.
 
 asammdf = pytest.importorskip("asammdf", reason="MDF support is in the pycangui[all] extra")
 
@@ -82,7 +81,9 @@ def bus_log(tmp_path_factory):
     prove nothing.
     """
     path = tmp_path_factory.mktemp("mdf") / "buslog.mf4"
-    with can.MF4Writer(str(path)) as writer:
+    import can.io.mf4
+
+    with importlib.reload(can.io.mf4).MF4Writer(str(path)) as writer:
         for i in range(100):
             writer.on_message_received(
                 can.Message(timestamp=i / 20.0, arbitration_id=0x123, data=bytes([i % 256] * 8))

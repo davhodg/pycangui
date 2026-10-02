@@ -23,8 +23,17 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QCoreApplication, QSettings
-from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+# python-can is loaded the way the application loads it, without the MF4
+# support it would otherwise pull in. Otherwise a release of asammdf, or of
+# something asammdf uses, that will not import takes ``import can`` with it
+# and every test in the suite fails to be collected -- which is what a bad
+# canmatrix release did to CI -- where only the tests that read MDF should.
+from pycangui.__main__ import import_can_without_mf4
+
+import_can_without_mf4()
+
+from PySide6.QtCore import QCoreApplication, QSettings  # noqa: E402
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox  # noqa: E402
 
 #: Taken before anything patches it, so a test that wants a real dialog can
 #: have one back.

@@ -174,8 +174,14 @@ def ensure_available(parent: QWidget, ctx, frozen: bool = False) -> bool:
     asked rather than done: a download is not something to start because
     somebody opened a file dialog.
     """
-    if mdf.available():
+    if (reason := mdf.why_not()) == "":
         return True
+    if mdf.installed():
+        # There, and it will not load: fetching it again would report that
+        # it is already installed and leave everything as it was.
+        messages.warning(parent, INSTALL_TITLE, reason)
+        ctx.error(f"{mdf.PACKAGE} is installed but would not load; MDF files cannot be read")
+        return False
     if frozen:
         messages.information(parent, INSTALL_TITLE, FROZEN)
         ctx.warn(f"{mdf.PACKAGE} is missing from this build; MDF files cannot be read")
@@ -196,8 +202,8 @@ def _install(parent: QWidget, ctx, command: list[str] | None = None) -> bool:
     """Fetch asammdf with pip, then make sure it can be imported."""
     if not pip_install.install(parent, ctx, [mdf.PACKAGE], command):
         return False
-    if not mdf.available():
-        ctx.error(f"{mdf.PACKAGE} installed but will not import; restart pycangui.")
+    if (reason := mdf.why_not()) != "":
+        ctx.error(f"{mdf.PACKAGE} was installed but will not load. {reason}")
         return False
     ctx.log(f"{mdf.PACKAGE} installed: measurement files can be read now")
     return True
