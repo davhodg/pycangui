@@ -37,6 +37,8 @@ from PySide6.QtWidgets import (
 from pycangui.canopen.manager import (
     DEFAULT_SDO_RETRIES,
     DEFAULT_SDO_TIMEOUT_S,
+    MAX_SYNC_OVERFLOW,
+    MIN_SYNC_OVERFLOW,
     SDO_REQUEST_BASE,
     SDO_RESPONSE_BASE,
 )
@@ -48,6 +50,7 @@ RETRIES_KEY = "canopen.sdo_retries"
 CHANNELS_KEY = "canopen.sdo_channels"
 HEARTBEATS_KEY = "canopen.heartbeat_timeouts"
 SYNC_KEY = "canopen.sync_period_ms"
+SYNC_COUNTER_KEY = "canopen.sync_counter_overflow"
 IDENTIFY_KEY = "canopen.identify_automatically"
 
 #: How often SYNC goes out while it is switched on. A rate, which is a
@@ -75,6 +78,14 @@ SYNC_TIP = (
     "It belongs here rather than beside the button: it is a fact about the\n"
     "bus, agreed once, not a decision to take every time synchronous PDOs\n"
     "are wanted."
+)
+SYNC_COUNTER_TIP = (
+    "Leave at none unless the devices use a SYNC counter.\n"
+    "\n"
+    "Otherwise the same number as their object 0x1019, the synchronous\n"
+    "counter overflow value: SYNC then carries one byte counting 1 to that\n"
+    "number and round again, which is what a PDO's SYNC start value refers\n"
+    "to. A device set up with a counter expects that byte."
 )
 IDENTIFY_TIP = (
     "Read 0x1018 and 0x1000 from a node the first time it is heard, which\n"
@@ -117,6 +128,8 @@ class CanopenSettings:
     #: node -> milliseconds, for the nodes whose timeout is not worked out.
     heartbeat_timeouts: dict[int, float] = field(default_factory=dict)
     sync_period_ms: float = DEFAULT_SYNC_MS
+    #: The devices' 0x1019: 0 for a SYNC with no counter, or 2 to 240.
+    sync_counter_overflow: int = 0
     #: Whether a node is asked who it is as soon as it is heard. On, because
     #: an EDS is matched from the answer and nothing else would match one.
     identify: bool = True
@@ -144,6 +157,13 @@ def why_not_heartbeat(node_id: int, milliseconds: float) -> str:
             f"{MIN_HEARTBEAT_MS} ms to {MAX_HEARTBEAT_MS // 60000} minutes"
         )
     return ""
+
+
+def sync_overflow(value: int) -> int:
+    """A value 0x1019 can hold: none, or 2 to 240. 1 is not a counter."""
+    if value < MIN_SYNC_OVERFLOW:
+        return 0
+    return min(value, MAX_SYNC_OVERFLOW)
 
 
 def _integer(value) -> int | None:
@@ -182,6 +202,8 @@ def load(ctx: Context) -> CanopenSettings:
         out.retries = min(max(retries, 0), MAX_RETRIES)
     if (sync := _milliseconds(ctx.settings.get(SYNC_KEY))) is not None:
         out.sync_period_ms = min(max(sync, MIN_SYNC_MS), MAX_SYNC_MS)
+    if (overflow := _integer(ctx.settings.get(SYNC_COUNTER_KEY))) is not None:
+        out.sync_counter_overflow = sync_overflow(overflow)
     out.identify = bool(ctx.settings.get(IDENTIFY_KEY, True))
     saved = ctx.settings.get(CHANNELS_KEY, {})
     if isinstance(saved, dict):
@@ -207,6 +229,7 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
     ctx.settings.set(TIMEOUT_KEY, settings.timeout_ms)
     ctx.settings.set(RETRIES_KEY, settings.retries)
     ctx.settings.set(SYNC_KEY, settings.sync_period_ms)
+    ctx.settings.set(SYNC_COUNTER_KEY, settings.sync_counter_overflow)
     ctx.settings.set(IDENTIFY_KEY, settings.identify)
     # In hex, the way a COB-ID is spoken, so the file reads as the dialog does.
     ctx.settings.set(
@@ -270,6 +293,13 @@ class CanopenSettingsDialog(QDialog):
         self.sync_period.setSuffix(" ms")
         self.sync_period.setValue(settings.sync_period_ms)
         self.sync_period.setToolTip(SYNC_TIP)
+        self.sync_counter = QSpinBox()
+        # One below the least counter stands for none, so the box cannot
+        # hold 1, which 0x1019 does not allow.
+        self.sync_counter.setRange(MIN_SYNC_OVERFLOW - 1, MAX_SYNC_OVERFLOW)
+        self.sync_counter.setSpecialValueText("none")
+        self.sync_counter.setValue(settings.sync_counter_overflow or MIN_SYNC_OVERFLOW - 1)
+        self.sync_counter.setToolTip(SYNC_COUNTER_TIP)
         self.identify = QCheckBox("Identify a node when it is first heard")
         self.identify.setChecked(settings.identify)
         self.identify.setToolTip(IDENTIFY_TIP)
@@ -282,6 +312,7 @@ class CanopenSettingsDialog(QDialog):
         form.addRow("SDO timeout:", self.timeout)
         form.addRow("SDO retries:", self.retries)
         form.addRow("SYNC period:", self.sync_period)
+        form.addRow("SYNC counter:", self.sync_counter)
         form.addRow("", self.identify)
 
         self.table = QTableWidget(0, len(COLUMNS))
@@ -411,6 +442,7 @@ class CanopenSettingsDialog(QDialog):
             timeout_ms=self.timeout.value(),
             retries=self.retries.value(),
             sync_period_ms=self.sync_period.value(),
+            sync_counter_overflow=sync_overflow(self.sync_counter.value()),
             identify=self.identify.isChecked(),
             channels={
                 row.node_id: (row.request, row.response)

@@ -1197,7 +1197,12 @@ class CanopenView(QWidget):
         if on:
             # The rate comes from the settings rather than a box beside the
             # button: it is a fact about the bus, agreed once.
-            self.manager.start_sync(canopen_settings.load(self.ctx).sync_period_ms / 1000)
+            # So does the counter, for the devices that use one.
+            chosen = canopen_settings.load(self.ctx)
+            if chosen.sync_counter_overflow:
+                self.manager.start_sync(chosen.sync_period_ms / 1000, chosen.sync_counter_overflow)
+            else:
+                self.manager.start_sync(chosen.sync_period_ms / 1000)
         else:
             self.manager.stop_sync()
 

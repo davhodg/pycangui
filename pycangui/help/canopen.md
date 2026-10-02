@@ -30,7 +30,11 @@ to all of them, click an empty part of the node list, or press Esc in it, to
 select none.
 **SYNC producer** transmits SYNC (0x080) for as long as it is ticked, so
 synchronous PDOs are exchanged; how often is under *Settings...*, since a rate
-is a fact about the bus rather than a decision to take each time.
+is a fact about the bus rather than a decision to take each time. So is the
+**SYNC counter**, for devices that use one: under *Settings...*, *none* unless
+it is set. Set to the devices' object 0x1019 (2 to 240), SYNC carries one byte
+counting 1 to that number and round again, which is what a PDO's SYNC start
+value refers to, and what a device set up with a counter expects to see.
 
 The list is the dividing line. What is above it acts on the network -- NMT
 and SYNC are services the whole bus hears, and **Add node...** puts a row in
@@ -140,8 +144,8 @@ list.
 
 `pycangui drive.dcf` opens one from the command line. To open one with a
 double-click, pycangui has to be offered for `.dcf` and `.eds` files: the
-installer has a tick box for it beside the desktop shortcut, and *Tools > Open
-.dcf and .eds files with pycangui* does the same at any time, for a source
+installer has a tick box for it beside the desktop shortcut, and *Tools > Settings >
+Open .dcf and .eds files with pycangui* does the same at any time, for a source
 folder or a pip installation as well (Windows and Linux). Either puts pycangui
 in *Open with* and leaves the default alone, so another CANopen tool that has
 these files keeps them until you choose. With pycangui already open, the file

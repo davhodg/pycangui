@@ -16,6 +16,7 @@ Threads, and why:
 
 from __future__ import annotations
 
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -126,6 +127,28 @@ NO_SUCH_OBJECT = 0x0602_0000
 STOPPED = "stopped"
 
 
+#: What 0x1019 allows for a counter; 0 there means none.
+MIN_SYNC_OVERFLOW = 2
+MAX_SYNC_OVERFLOW = 240
+
+
+def _count_sync(sync, period_s: float, overflow: int, stop: threading.Event) -> None:
+    """Send SYNC with its counter until told to stop: 1 to ``overflow``, and round."""
+    count = 1
+    due = time.monotonic()
+    while not stop.is_set():
+        try:
+            sync.transmit(count)
+        except Exception:  # the bus went away, or would not take it: try the next
+            pass
+        count = count % overflow + 1
+        # Against the clock rather than a fixed sleep, so sending does not
+        # stretch the period.
+        due += period_s
+        if stop.wait(max(0.0, due - time.monotonic())):
+            return
+
+
 class CanopenManager(QObject):
     node_seen = Signal(int, str)  # node_id, NMT state from heartbeat
     identified = Signal(object)  # NodeIdentity
@@ -203,6 +226,8 @@ class CanopenManager(QObject):
         #: only when somebody finds a node or loads an EDS.
         self._labels: dict[int, str] | None = None
         self._sync_on = False
+        self._sync_thread: threading.Thread | None = None
+        self._sync_stop = threading.Event()
         self._worker = Worker()  # starts itself the first time it is used
         self._stop_stored_eds = False
         bus.connected.connect(self._on_bus_connected)
@@ -1105,20 +1130,45 @@ class CanopenManager(QObject):
     def sync_running(self) -> bool:
         return self._sync_on
 
-    def start_sync(self, period_s: float) -> None:
-        """Transmit SYNC (COB-ID 0x80) so synchronous PDOs are exchanged."""
+    def start_sync(self, period_s: float, overflow: int = 0) -> None:
+        """Transmit SYNC (COB-ID 0x80) so synchronous PDOs are exchanged.
+
+        ``overflow`` is the devices' 0x1019, the synchronous counter overflow
+        value: 0 sends the empty SYNC, and 2 to 240 sends one byte counting
+        1 to that value and round again. A device set up with a counter
+        expects the one-byte frame, and a PDO's SYNC start value is a number
+        on that counter.
+        """
         self.stop_sync()
         if self.network is None:
             self.message.emit(f"SYNC: {NOT_CONNECTED}", WARNING)
             return
-        self.network.sync.start(period_s)  # returns None; it keeps its own task
+        if overflow:
+            # The library's own producer sends one fixed frame, so a counter
+            # is sent from a thread of its own, on the same schedule.
+            self._sync_stop = threading.Event()
+            self._sync_thread = threading.Thread(
+                target=_count_sync,
+                args=(self.network.sync, period_s, overflow, self._sync_stop),
+                name="canopen-sync-counter",
+                daemon=True,
+            )
+            self._sync_thread.start()
+            counting = f", counting to {overflow}"
+        else:
+            self.network.sync.start(period_s)  # returns None; it keeps its own task
+            counting = ""
         self._sync_on = True
-        self.message.emit(f"SYNC started at {period_s * 1000:.0f} ms", INFORMATION)
+        self.message.emit(f"SYNC started at {period_s * 1000:.0f} ms{counting}", INFORMATION)
         self.sync_changed.emit(True, period_s)
 
     def stop_sync(self) -> None:
         if not self._sync_on:
             return
+        if self._sync_thread is not None:
+            self._sync_stop.set()
+            self._sync_thread.join(1.0)
+            self._sync_thread = None
         try:
             self.network.sync.stop()
         except Exception:  # the bus went away first

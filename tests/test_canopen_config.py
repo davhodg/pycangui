@@ -193,3 +193,75 @@ def test_the_sync_rate_lives_in_the_settings(app, tmp_path, monkeypatch):
 
     assert started == [0.25], "the period comes from the settings"
     window.close()
+
+
+# --- the SYNC counter (0x1019) --------------------------------------------------------------
+def sync_frames(channel: str, how_many: int, start, timeout: float = 5.0) -> list[bytes]:
+    """The data of the SYNC frames on a virtual channel, heard from beside it."""
+    import can
+
+    with can.Bus(interface="virtual", channel=channel) as listener:
+        start()
+        heard: list[bytes] = []
+        deadline = time.monotonic() + timeout
+        while len(heard) < how_many and time.monotonic() < deadline:
+            QCoreApplication.processEvents()
+            message = listener.recv(0.05)
+            if message is not None and message.arbitration_id == 0x80:
+                heard.append(bytes(message.data))
+        return heard
+
+
+@pytest.fixture
+def on_a_bus(app):
+    bus = BusManager()
+    manager = CanopenManager(bus)
+    bus.connect_bus("virtual", "vcan_sync_counter", 500000, False)
+    yield manager
+    manager.stop_sync()
+    bus.disconnect_bus()
+    manager.shutdown()
+
+
+def test_sync_counts_to_the_overflow_and_round_again(on_a_bus):
+    heard = sync_frames("vcan_sync_counter", 7, lambda: on_a_bus.start_sync(0.01, 3))
+    assert [frame[0] for frame in heard] == [1, 2, 3, 1, 2, 3, 1]
+    assert all(len(frame) == 1 for frame in heard)
+    on_a_bus.stop_sync()
+    assert not on_a_bus.sync_running
+
+
+def test_sync_with_no_counter_is_the_empty_frame(on_a_bus):
+    heard = sync_frames("vcan_sync_counter", 3, lambda: on_a_bus.start_sync(0.01))
+    assert heard == [b"", b"", b""]
+
+
+def test_the_counter_is_a_setting_and_off_until_it_is_set(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui import canopen_settings
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.canopen_view
+    assert canopen_settings.load(window.ctx).sync_counter_overflow == 0
+
+    dialog = canopen_settings.CanopenSettingsDialog(None, canopen_settings.load(window.ctx))
+    assert dialog.settings().sync_counter_overflow == 0, "shown as none"
+    dialog.sync_counter.setValue(12)
+    canopen_settings.save(window.ctx, dialog.settings())
+
+    started = []
+    monkeypatch.setattr(window.canopen, "start_sync", lambda *args: started.append(args))
+    view.sync_btn.setChecked(True)
+    assert started == [(0.1, 12)], "the period and the counter both come from the settings"
+    window.close()
+
+
+@pytest.mark.parametrize(("typed", "kept"), [(0, 0), (1, 0), (2, 2), (240, 240), (999, 240)])
+def test_only_what_0x1019_can_hold_is_kept(typed, kept):
+    from pycangui.ui import canopen_settings
+
+    assert canopen_settings.sync_overflow(typed) == kept
