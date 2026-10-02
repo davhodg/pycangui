@@ -13,6 +13,7 @@ first (that is already how bus frames and PDO updates arrive).
 
 from __future__ import annotations
 
+from array import array
 from bisect import bisect_left
 from dataclasses import dataclass, field
 
@@ -20,6 +21,26 @@ import numpy as np
 from PySide6.QtCore import QObject, Signal
 
 MAX_SAMPLES = 200_000  # per signal; trimmed back to this from 1.5x
+
+#: What the history can be set to keep of each signal, for a trace that runs
+#: longer than the default holds. In memory, so these are what a machine can
+#: reasonably carry: a trace longer than the largest wants the samples on
+#: disk, which is another piece of work.
+LIMITS = (200_000, 500_000, 1_000_000, 2_000_000, 5_000_000)
+
+#: A time and a value, each eight bytes: what one sample costs to hold.
+BYTES_PER_SAMPLE = 16
+
+
+def _samples() -> array:
+    """Somewhere to keep samples: packed doubles, not a list of Python floats.
+
+    A list holds a pointer to an object per number, about four times the
+    memory, which is the difference between a million samples of a signal
+    being 16 MB and being 64.
+    """
+    return array("d")
+
 
 #: How far back a signal's rate is measured: the last second of its samples.
 RATE_WINDOW_S = 1.0
@@ -30,8 +51,8 @@ class SignalSeries:
     group: str
     name: str
     unit: str = ""
-    times: list[float] = field(default_factory=list)
-    values: list[float] = field(default_factory=list)
+    times: array = field(default_factory=_samples)
+    values: array = field(default_factory=_samples)
     #: Kept as each sample arrives, which is one addition and two comparisons,
     #: and so for every sample ever received: trimming the history to its
     #: newest samples does not make a signal's count, or its extremes, smaller.
@@ -53,6 +74,15 @@ class SignalSeries:
 
     def forget_statistics(self) -> None:
         self.count, self.minimum, self.maximum = 0, None, None
+
+    @property
+    def trimmed(self) -> bool:
+        """Whether samples that arrived are no longer held: the limit was reached."""
+        return self.count > len(self.times)
+
+    def keep_newest(self, limit: int) -> None:
+        del self.times[:-limit]
+        del self.values[:-limit]
 
     def rate(self) -> float | None:
         """Samples a second, over the last second of samples there is.
@@ -86,6 +116,8 @@ class SignalHub(QObject):
     def __init__(self) -> None:
         super().__init__()
         self._series: dict[str, SignalSeries] = {}
+        #: How many samples of each signal are kept. See ``set_limit``.
+        self.limit = MAX_SAMPLES
 
     def push(self, group: str, name: str, t: float, value: float, unit: str = "") -> None:
         key = f"{group}/{name}"
@@ -98,9 +130,10 @@ class SignalHub(QObject):
         s.times.append(t)
         s.values.append(float(value))
         s.note(s.values[-1])
-        if len(s.times) > MAX_SAMPLES * 1.5:
-            del s.times[:-MAX_SAMPLES]
-            del s.values[:-MAX_SAMPLES]
+        # Trimmed back to the limit from half as much again, rather than one
+        # sample at a time: taking the front off is a copy of all the rest.
+        if len(s.times) > self.limit * 1.5:
+            s.keep_newest(self.limit)
 
     def push_many(
         self, group: str, t: float, values: dict[str, float], units: dict | None = None
@@ -129,8 +162,9 @@ class SignalHub(QObject):
         else:
             new = False
         series.unit = unit or series.unit
-        series.times = list(times)
-        series.values = [float(v) for v in values]
+        series.times, series.values = _samples(), _samples()
+        series.times.frombytes(np.asarray(times, dtype=float).tobytes())
+        series.values.frombytes(np.asarray(values, dtype=float).tobytes())
         series.count = len(series.values)
         series.minimum = min(series.values, default=None)
         series.maximum = max(series.values, default=None)
@@ -175,9 +209,42 @@ class SignalHub(QObject):
         """How many signals are held, and how many samples between them."""
         return len(self._series), sum(len(s.times) for s in self._series.values())
 
+    def limit_reached(self) -> bool:
+        """Whether any signal has had its oldest samples dropped to keep to the limit."""
+        return any(s.trimmed for s in self._series.values())
+
+    def set_limit(self, limit: int) -> None:
+        """How many samples of each signal to keep, from now on.
+
+        A smaller one takes effect at once: holding on to more than was just
+        asked for would be a setting that had not happened yet.
+        """
+        self.limit = max(1, int(limit))
+        for s in self._series.values():
+            if len(s.times) > self.limit:
+                s.keep_newest(self.limit)
+        self.updated.emit()
+
     def clear(self) -> None:
         for s in self._series.values():
-            s.times.clear()
-            s.values.clear()
+            del s.times[:]
+            del s.values[:]
             s.forget_statistics()
         self.updated.emit()
+
+
+def short_count(samples: int) -> str:
+    """``3,600``, ``612k`` or ``1.2M``."""
+    if samples >= 1_000_000:
+        return f"{samples / 1_000_000:.1f}".removesuffix(".0") + "M"
+    if samples >= 10_000:
+        return f"{samples / 1000:.0f}k"
+    return f"{samples:,}"
+
+
+def stored_text(signals: int, samples: int, limit: int = 0, reached: bool = False) -> str:
+    """``3 signals, 1.2M samples, limit 200k``: short enough for the status bar."""
+    text = f"{signals} signal{'' if signals == 1 else 's'}, {short_count(samples)} samples"
+    if limit:
+        text += f", limit {short_count(limit)}" + (" reached" if reached else "")
+    return text

@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import (
     QAction,
+    QActionGroup,
     QDesktopServices,
     QFont,
     QKeySequence,
@@ -49,7 +50,7 @@ from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.plugins import Plugins
-from pycangui.core.signals import SignalHub
+from pycangui.core.signals import BYTES_PER_SAMPLE, LIMITS, SignalHub, stored_text
 from pycangui.core.simnodes import SimulatedNodes
 from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
@@ -139,6 +140,13 @@ AT_END = 4
 
 #: What the window opens at, and what Reset layout puts it back to. Wide,
 #: because the trace and the panes beside it are read across rather than down.
+HISTORY_KEY = "signals.history"
+HISTORY_TIP = (
+    "How many samples of each decoded signal are kept, for the plot and for\n"
+    "Export. Past it the oldest are dropped, so a long trace loses its start:\n"
+    "raise it for one that runs longer. It is all held in memory, and only a\n"
+    "signal fast enough to fill it uses it."
+)
 #: How many clashing names a warning lists before it counts the rest.
 MOST_CLASHES = 5
 DEFAULT_WIDTH = 1400
@@ -521,6 +529,8 @@ class MainWindow(QMainWindow):
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
         self.theme_menu = theme.menu(self)
         settings_menu.insertMenu(verbose, self.theme_menu)
+        self.history_menu = self._history_menu()
+        settings_menu.addMenu(self.history_menu)
         # Below the line: not how pycangui behaves, but how this copy of it
         # is set up on this machine. Neither is offered on macOS.
         if shortcut.launcher() is not None or file_types.command() is not None:
@@ -1614,6 +1624,34 @@ class MainWindow(QMainWindow):
             + (f"  {missing} held nothing readable." if missing else "")
         )
 
+    def _history_menu(self) -> QMenu:
+        """Tools > Settings > Signal history: how many samples of each signal to keep."""
+        menu = QMenu("Signal history", self)
+        menu.setToolTipsVisible(True)
+        menu.menuAction().setToolTip(HISTORY_TIP)
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+        saved = self.ctx.settings.get(HISTORY_KEY)
+        current = saved if saved in LIMITS else LIMITS[0]
+        self.signals.set_limit(current)
+        for limit in LIMITS:
+            megabytes = limit * 1.5 * BYTES_PER_SAMPLE / 1_000_000
+            action = menu.addAction(f"{limit:,} samples a signal")
+            action.setCheckable(True)
+            action.setChecked(limit == current)
+            action.setData(limit)
+            action.setToolTip(
+                f"Up to about {megabytes:.0f} MB for each signal fast enough to fill it."
+            )
+            action.triggered.connect(lambda _=False, n=limit: self._set_history(n))
+            group.addAction(action)
+        return menu
+
+    def _set_history(self, limit: int) -> None:
+        self.ctx.settings.set(HISTORY_KEY, limit)
+        self.signals.set_limit(limit)
+        self.events.information(f"Signal history: {limit:,} samples of each signal are kept")
+
     def _new_scope(self, name: str) -> ScopeView:
         """A Signals and Plot pane, with its Export button wired to File > Export signals."""
         scope = ScopeView(self.signals, self.bus.now, self.ctx, key=name)
@@ -2284,4 +2322,11 @@ class MainWindow(QMainWindow):
         if self.recorder.is_recording:
             parts.append(f"Recording {self.recorder.path.name} ({self.recorder.summary()})")
         parts.append(f"Total frames: {self._frame_count:,}")
+        # What is held for the plot and for Export, and whether the start of
+        # a long trace has gone: one figure for every pane, so it is here.
+        signals, samples = self.signals.stored()
+        if signals:
+            parts.append(
+                stored_text(signals, samples, self.signals.limit, self.signals.limit_reached())
+            )
         self.bus_status.summary.setText("  |  ".join(parts))

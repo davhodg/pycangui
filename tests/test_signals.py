@@ -211,17 +211,94 @@ def test_the_columns_shown_come_back_with_the_pane(app, tmp_path, monkeypatch):
     assert bare.signals_view.columns() == [], "none at all is remembered too, not put back"
 
 
-def test_the_plot_says_how_much_is_held(app):
+# --- how much is kept, and saying so ---------------------------------------------------------
+def test_the_history_keeps_as_many_samples_as_it_is_set_to():
     from pycangui.core.signals import SignalHub
-    from pycangui.ui.plot_view import PlotView, stored_text
 
     hub = SignalHub()
-    view = PlotView(hub, lambda: 0.0)
-    view.show()
-    for i in range(20):
+    hub.set_limit(100)
+    for i in range(1000):
+        hub.push("Live", "Speed", i * 0.01, float(i))
+    s = hub.get("Live/Speed")
+    assert 100 <= len(s.times) <= 150, "the newest, trimmed back from half as much again"
+    assert s.times[-1] == pytest.approx(9.99) and s.values[-1] == 999.0
+    assert hub.limit_reached(), "and it says the start has gone"
+
+    hub.set_limit(1000)
+    for i in range(1000, 1500):
+        hub.push("Live", "Speed", i * 0.01, float(i))
+    assert len(s.times) > 500, "raised, it keeps what arrives from then on"
+
+    hub.set_limit(50)
+    assert len(s.times) == len(s.values) == 50, "lowered, it takes effect at once"
+
+
+def test_a_trace_within_the_limit_has_not_reached_it():
+    from pycangui.core.signals import SignalHub
+
+    hub = SignalHub()
+    for i in range(10):
         hub.push("Live", "Speed", i * 0.1, 0.0)
-    view._show_stored()
-    assert view.stored.text() == stored_text(1, 20)
+    assert not hub.limit_reached()
+    hub.set_series("drive.mf4", "Speed", [0.0, 1.0], [1.0, 2.0])
+    assert not hub.limit_reached(), "a file is kept whole"
+
+
+def test_samples_are_packed_rather_than_a_list_of_objects():
+    """A list of floats is about four times the memory, which is what decides
+    how long a trace a machine can hold."""
+    from pycangui.core.signals import BYTES_PER_SAMPLE, SignalHub
+
+    hub = SignalHub()
+    for i in range(1000):
+        hub.push("Live", "Speed", i * 0.01, float(i))
+    s = hub.get("Live/Speed")
+    held = s.times.itemsize * len(s.times) + s.values.itemsize * len(s.values)
+    assert held == BYTES_PER_SAMPLE * 1000
+    times, values = s.window(5.0)
+    assert len(times) == len(values) == 500 and values[0] == 500.0
+
+
+def test_the_status_bar_says_how_much_is_held_and_when_the_limit_is_reached(
+    app, tmp_path, monkeypatch
+):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.core.signals import LIMITS, stored_text
+    from pycangui.ui.main_window import HISTORY_KEY, MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    try:
+        assert window.signals.limit == LIMITS[0], "the default, until it is chosen"
+        for i in range(20):
+            window.signals.push("Live", "Speed", i * 0.1, 0.0)
+        window._update_status()
+        said = window.bus_status.summary.text()
+        assert stored_text(1, 20, LIMITS[0], False) in said
+
+        chosen = next(a for a in window.history_menu.actions() if a.data() == LIMITS[2])
+        chosen.trigger()
+        assert window.signals.limit == LIMITS[2]
+        assert window.ctx.settings.get(HISTORY_KEY) == LIMITS[2], "kept with the workspace"
+
+        window.signals.set_limit(5)
+        window._update_status()
+        assert stored_text(1, 5, 5, True) in window.bus_status.summary.text()
+    finally:
+        window.close()
+
+    again = MainWindow()
+    try:
+        assert again.signals.limit == LIMITS[2], "and it comes back"
+    finally:
+        again.close()
+
+
+def test_the_readout_is_short_whatever_the_size():
+    from pycangui.core.signals import stored_text
+
     amounts = {stored_text(2, samples) for samples in (5, 50_000, 5_000_000)}
     assert len(amounts) == 3, "small, thousands and millions each read differently"
-    view.close()
+    assert stored_text(1, 5, 200_000, True) != stored_text(1, 5, 200_000, False)

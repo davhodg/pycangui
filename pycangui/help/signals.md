@@ -74,9 +74,19 @@ On the right, **Export...** writes the samples held for every decoded signal --
 plotted or not -- to a file a spreadsheet can read, the same as *File > Export
 signals*, and **Clear history** throws those samples away. Every decoded
 signal is kept whether it is plotted or not, which is why plotting one later
-shows its past -- and the figures beside *Export...* say how much that is:
-how many signals, and how many samples between them. Up to 200,000 samples are
-kept for each signal, the oldest going first.
+shows its past -- and the status bar says how much that is: how many signals,
+how many samples between them, and the limit.
+
+**The limit, and long traces.** 200,000 samples of each signal are kept to
+begin with, the oldest going first, so a trace that runs long enough loses its
+start: at a thousand samples a second that is a little over three minutes. The
+status bar says *limit ... reached* once any signal has lost samples that way.
+*Tools > Settings > Signal history* raises it -- 500,000, one million, two or five
+million a signal -- and each choice says what it costs: the samples are held in
+memory, at sixteen bytes each, and only a signal fast enough to fill the limit
+uses it. Lowering it takes effect at once. *Count*, *Min* and *Max* cover every
+sample that arrived, whatever has been dropped. A trace longer than the largest
+choice holds needs the samples kept on disk, which pycangui does not do yet.
 
 The first menu says how the plot keeps up, the same choice the
 [trace](trace.md) has, with the same promise: it changes the screen and

@@ -137,8 +137,8 @@ def test_a_signal_with_no_samples_yet_does_not_pin_the_edge(app, plot):
     hub.push("Live", "RPM", 3.0, 900.0)
     view.set_plotted("Live/RPM", True)
     hub.push("Live", "Temp", 0.0, 20.0)
-    hub.get("Live/Temp").times.clear()
-    hub.get("Live/Temp").values.clear()
+    del hub.get("Live/Temp").times[:]
+    del hub.get("Live/Temp").values[:]
     view.set_plotted("Live/Temp", True)
 
     clock.t = 9.0
