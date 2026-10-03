@@ -104,6 +104,7 @@ is present:
 ```
 build.cmd            tests, notices, PyInstaller, checks, then setup.exe
 build.cmd nosetup    stop after the checked application folder
+build.cmd setup      only the installer, from the application folder already built
 ```
 
 It runs the tests, regenerates `THIRD-PARTY-NOTICES.txt` from the installed package metadata,

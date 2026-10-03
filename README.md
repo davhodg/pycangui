@@ -110,9 +110,34 @@ asammdf, the MDF and MF4 reader, is the one **optional** entry: the Windows inst
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **PySide6-Essentials** rather than the full PySide6, so the GPL-only add-on modules (Qt Charts, Qt Data Visualization and the rest) are never installed. Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the vendor's driver and python-can loads it at run time.
 
+## Code signing policy
+
+The Windows releases are not code-signed for now, so Windows SmartScreen warns about the
+installer: *More info > Run anyway* goes past it. Where an unsigned program is a problem --
+a company machine that blocks them, say -- install with pip instead (`pip install pycangui`,
+above), which SmartScreen does not apply to. Signing is intended, and
+[CODE_SIGNING.md](CODE_SIGNING.md) is the policy -- what will be signed and how, the team
+roles, and the privacy policy.
+
+## Uninstalling
+
+- **The Windows installer:** *Settings > Apps* (or *Add or remove programs*), or *Uninstall
+  pycangui* in its Start menu folder. It takes away its file associations and shortcuts too.
+- **pip:** `pip uninstall pycangui`.
+- **A Git clone:** delete the folder. If *Tools > Settings* was used to add a Start menu entry
+  or to open `.dcf` and `.eds` files with it, take those away as well: the entry is
+  `%APPDATA%\Microsoft\Windows\Start Menu\Programs\pycangui.lnk` (on Linux,
+  `~/.local/share/applications/pycangui.desktop`), and the file types are
+  `HKEY_CURRENT_USER\Software\Classes\pycangui.dcf` and `pycangui.eds` with their entries under
+  `.dcf` and `.eds` (on Linux, `pycangui-open.desktop` and `mime/packages/pycangui.xml` under
+  `~/.local/share`). The same applies to a pip installation that used them.
+
+Your hooks, EDS files and settings are in `%APPDATA%\pycangui` (`~/.config/pycangui` on
+Linux), and no way of uninstalling touches them; delete that folder to remove them too.
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md): the policy for changes, setting up to work on pycangui, running the tests, and building the Windows installer.
+See [CONTRIBUTING.md](CONTRIBUTING.md): the policy for changes, setting up to work on pycangui, running the tests, and building the Windows installer. Everyone taking part is asked to follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Safety notice
 

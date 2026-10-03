@@ -4,6 +4,8 @@ rem then wrapped in a Windows installer with Inno Setup.
 rem
 rem   build.cmd            build, check, and make setup.exe
 rem   build.cmd nosetup    stop after the checked one-directory build
+rem   build.cmd setup      only make setup.exe, from the dist\pycangui already
+rem                        there -- which CI has had signed in between
 rem
 rem Two notes for editing this file: batch files must keep CRLF line endings or
 rem cmd.exe mis-parses labels and goto (.gitattributes enforces it), and
@@ -13,6 +15,7 @@ setlocal
 cd /d "%~dp0"
 
 set PYTHON=.venv\Scripts\python.exe
+if /i "%~1"=="setup" goto :setup
 
 echo.
 echo === Environment ===================================================
@@ -56,6 +59,12 @@ echo === Checks ========================================================
 if errorlevel 1 goto :fail
 
 if /i "%~1"=="nosetup" goto :done
+
+:setup
+if not exist dist\pycangui\pycangui.exe (
+    echo There is no dist\pycangui to package: run build.cmd nosetup first.
+    goto :fail
+)
 
 rem The version comes from git: a tag is built as the tag, and refused if it
 rem disagrees with pycangui.__version__; anything else is a -dev build named

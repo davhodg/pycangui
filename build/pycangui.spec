@@ -18,7 +18,18 @@
 
 from pathlib import Path
 
+import sys
+
 from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+from PyInstaller.utils.win32.versioninfo import (
+    FixedFileInfo,
+    StringFileInfo,
+    StringStruct,
+    StringTable,
+    VarFileInfo,
+    VarStruct,
+    VSVersionInfo,
+)
 
 import can.interfaces
 
@@ -173,6 +184,39 @@ analysis.datas = TOC(e for e in analysis.datas if not _is_gpl_qt(e))
 
 pyz = PYZ(analysis.pure)
 
+# The version resource, which Windows shows under Properties > Details and
+# which code signing requires: the product name and version, the same in every
+# file of one build. The same version the installer is built as.
+sys.path.insert(0, str(PROJECT / "build"))
+import version as _version  # noqa: E402
+
+_package = _version.package_version()
+_numbers = tuple(int(n) for n in _version.file_version(_package).split("."))
+_product_version = _version.installer_version(_package, *_version.this_commit())
+VERSION_RESOURCE = VSVersionInfo(
+    ffi=FixedFileInfo(filevers=_numbers, prodvers=_numbers),
+    kids=[
+        StringFileInfo(
+            [
+                StringTable(
+                    "040904B0",
+                    [
+                        StringStruct("CompanyName", "davhodg"),
+                        StringStruct("FileDescription", "pycangui, a CAN bus tool"),
+                        StringStruct("FileVersion", _product_version),
+                        StringStruct("InternalName", "pycangui"),
+                        StringStruct("LegalCopyright", "Apache License 2.0"),
+                        StringStruct("OriginalFilename", "pycangui.exe"),
+                        StringStruct("ProductName", "pycangui"),
+                        StringStruct("ProductVersion", _product_version),
+                    ],
+                )
+            ]
+        ),
+        VarFileInfo([VarStruct("Translation", [0x0409, 1200])]),
+    ],
+)
+
 exe = EXE(
     pyz,
     analysis.scripts,
@@ -187,6 +231,7 @@ exe = EXE(
     # Explorer, the Start menu and the desktop shortcut read the icon out of
     # the exe, not from the running window. Regenerate with build/icon.py.
     icon=str(PROJECT / "pycangui" / "resources" / "pycangui.ico"),
+    version=VERSION_RESOURCE,
 )
 
 COLLECT(
