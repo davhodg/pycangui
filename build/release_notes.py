@@ -45,7 +45,8 @@ def unwrap(text: str) -> str:
     """
     lines: list[str] = []
     for line in text.splitlines():
-        starts_something = not line.strip() or line.startswith(("#", "- ", "* "))
+        # An indented item is one of a list inside an item, and starts a line too.
+        starts_something = not line.strip() or line.lstrip().startswith(("#", "- ", "* "))
         if lines and lines[-1].strip() and not lines[-1].startswith("#") and not starts_something:
             lines[-1] = f"{lines[-1]} {line.strip()}"
         else:

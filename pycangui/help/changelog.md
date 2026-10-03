@@ -11,132 +11,48 @@ since the last version, and comes out in the next one.
 
 ### Added
 
-- CANopen **TIME** (0x100): a TIME producer and *Send TIME* in the CANopen pane, offered once
-  *Settings...* turns them on, with the period and local time or UTC set there.
-- CANopen **SYNC counter**, in *Settings...* and *none* until set: the SYNC producer sends the
-  one-byte counter devices with 0x1019 set expect, counting 1 to the overflow value.
-- CANopen **Read EDS from node**: reads the EDS a device keeps in itself (object 0x1021), saves
-  it in the workspace and uses it for the node -- for a node with no EDS to hand. The demo
-  device keeps one.
-- CANopen **Open DCF/EDS...**: a configuration file as a row of the node list, its object
-  dictionary in the tree with no node or bus, values changed there and saved as a DCF. The
-  PDO configuration tab works for the file too: its PDOs read from its objects and remapped,
-  each change going into the file as it is made, so it is saved, or asked about on closing,
-  like any other.
-- CANopen **Remove node**, beside *Add node...* and on a node's right-click menu: takes a node
-  out of the list, a lost one included.
-- CANopen **Read all**, **Save DCF** and **Apply DCF** show how far they have got and can be
-  stopped. A stopped *Save DCF* writes no file.
-- CANopen PDO tab: **Move up** and **Move down** reorder a PDO's mapped objects, and *Map
-  object...* puts the new one after the object selected rather than at the end.
-- **Command line**: `pycangui drive.dcf` opens a DCF or EDS, handed to the pycangui already
-  open if there is one. A tick box in the installer, and *Tools > Settings > Open .dcf and .eds files
-  with pycangui* for a source folder or pip, put pycangui in *Open with* for those files.
-  `--workspace NAME` opens a workspace for that run only. `--run script.py` runs a script once
-  the window is up and exits with its code, and `--skip-start-warning` skips the start-up
-  notice for such a run.
-- Console and scripts: `wait(seconds)`, a sleep that lets the window and the buses run.
-- Custom panes: **Write all** writes every change held on the pane, and **Read all** reads
-  again, asking first before it throws unwritten changes away. Dropdowns, ticks and map cells
-  now hold a change until it is written, as typed boxes did.
-- UDS **functional requests**: a *Functional* choice in ECU config sends each ticked service --
-  session, reset, clear DTCs, CommunicationControl, tester present, DTC setting, baud rate, a
-  one-frame raw request -- to every ECU at once, and says which ECUs objected.
-- The UDS **baud rate change follows the ECUs**: every ECU is asked, then told, and the channel
-  reopens at the new rate with the session and tester present; *Back to ...* returns to the
-  channel's own rate. Behind a confirmation, and not on a channel whose rate pycangui cannot set.
-- A **CANopen log** tab in the CANopen pane: every SDO read and write pycangui makes, whatever
-  asked for it, with the data, how long it took, and an abort code and its meaning if it failed;
-  NMT sent and SYNC started and stopped; node state changes, boot-up and heartbeats lost; each
-  emergency; each LSS step. A tick per kind chooses what is shown.
+- CANopen **Open DCF/EDS...**: edit a configuration file's values and PDOs with no node or bus.
+- Open a DCF or EDS from the command line or by double-click, with *Open with* registered by
+  the installer or *Tools > Settings*.
+- CANopen **Read EDS from node** (object 0x1021).
+- CANopen **TIME** producer and **SYNC counter**, set up in *Settings...*.
+- A **CANopen log** tab: every SDO, NMT, SYNC, state change, emergency and LSS step.
+- CANopen **Remove node**, and *Move up* / *Move down* for PDO mapped objects.
+- UDS **functional requests**, and a **baud rate change** that follows the ECUs and comes back.
+- Signals and Plot: optional **Min**, **Max**, **Count** and **Rate** columns.
+- **Signal history** limit in *Tools > Settings*, up to five million samples per signal.
+- Custom panes: **Write all**, and *Read all* asks before discarding unwritten changes.
+- Command line `--workspace`, `--run` and `--skip-start-warning`; `wait()` for scripts.
 
 ### Changed
 
-- Loading a DBC that has a message name or identifier already in a database loaded before it
-  says so in the Event Log, and which file is the one used.
-- CAN Transmit shows which database a DBC row came from, in its Unit column, and still names
-  the file (*not loaded: drive.dbc*) once that database is removed. With several loaded, *Add >
-  From DBC...* says which file each message is in. *Send selected*, *Counter / checksum...* and
-  *Remove selected* are greyed until a message is selected.
-- CAN Transmit tints the bytes a counter (blue) and a checksum (green) will overwrite, on the
-  message's own data, and has a second J1850: *CRC-8 / SAE J1850, start 0x00*, with no start
-  value and no final XOR.
-- In CAN Transmit a signal with named values (a `VAL_` table) is picked from a list, and
-  shown as name and number together -- *Run (1)* -- however it was entered.
-- The **Period** of a DBC or RPDO row in CAN Transmit can be typed, where it was fixed at
-  100 ms, and a row added from a database starts at the database's cycle time for the message.
-- The demo CANopen device reports vendor ID 0x00000000 and the J1939 engine node manufacturer
-  code 0, which are assigned to nobody, and no longer numbers that are somebody's.
-- The CAN trace's Data column starts wide enough for eight bytes rather than for its heading.
-- The plot's top row: *Window*, *Follow* and *Fit* are one **Time** choice -- *Follow* (with
-  its seconds), *All*, which keeps everything in view as more arrives, and *Manual*, which
-  dragging or zooming chooses by itself. **Export...** sits beside *Clear history*. *Unplot
-  all* is on the signal list's right-click, with *Plot all* and the same two for one message.
-- Signals and Plot has optional **Min**, **Max**, **Count** and **Rate** columns, from the
-  list's right-click, where **Unit** can be hidden too.
-- **Tools > Settings > Signal history** sets how many samples of each signal are kept --
-  200,000, 500,000, or one, two or five million -- for a trace longer than the default holds. The status
-  bar says how many signals and samples are held, the limit, and when it has been reached.
-  Samples take a quarter of the memory they did.
-- A value that has a name is written the same way everywhere, name first: *Run (1)*. The
-  CANopen object dictionary had it as *1 (Run)*; Signals and Plot showed only the number, and
-  now shows the name for DBC signals with a `VAL_` table and for named CANopen PDO objects; a
-  CANopen RPDO row in CAN Transmit has the pick-list a DBC row has.
-- CANopen *Read all* and *Save DCF* read **DOMAIN** objects with the rest, where they were
-  skipped, so a block of data a device keeps is captured in the DCF and applied from it.
-  *Settings...* has a tick box, on to begin with, to leave them out. While one is read its cell
-  says how far it has got, and a long block is cut short in the tree, with its length.
-- **Tools > Settings** holds what is set and left -- Theme, Verbose CAN logging, Strict DBC
-  checks, and the two that set this installation up -- so that Tools itself is what is done.
-  *Add to Start menu* is **Add shortcut to Start menu** there, and the installer's desktop
-  shortcut is ticked to begin with.
-- CANopen *Read RPDO config* is **Read PDO config**, and reads both directions: TPDOs for
-  Signals and Plot as well as RPDOs for CAN Transmit.
-- The CAN Trace's top row is shorter: Pause and Slow refresh are one choice -- Live
-  refresh, Slow refresh or Paused -- and Columns is on the table's right-click, as it was on the header's.
-  The plot has the same choice in place of its two ticks.
-- The NMT send button says who it goes to -- *Send NMT to node 5* or *to all nodes*.
-- A CANopen button that cannot do what it was pressed for -- *Read EDS from node* on a node
-  that keeps none, *Add node...* with no channel connected, *Read all* with no EDS, a failed
-  *Save DCF* or *Apply DCF* -- says so in a box, not only in an Event Log that may be behind the
-  window.
-- CANopen *Settings...* writes only what *OK* changed to the Event Log, rather than the SDO
-  settings every time. Changing the SYNC period or counter while SYNC is running asks whether
-  to restart it, as it otherwise carries on as it was.
-- The ASCII Log's *Enable* button, which stayed down, is **Send enable** and **Send disable**,
-  each sending when pressed: a device that has been reset has stopped, whatever a button said.
-- CiA 402's **Poll** is a tick box, as on a custom pane, where it was a button that stayed down
-  and did not plainly say whether polling was on.
-- The README and PyPI page list every adapter python-can supports.
+- CANopen *Read all* and *Save DCF* include DOMAIN objects, and they and *Apply DCF* show
+  progress and can be stopped.
+- CANopen buttons that cannot act say so in a box, not only in the Event Log.
+- CANopen *Settings...* logs only what changed, and offers to restart a running SYNC.
+- CANopen *Read PDO config* reads both directions; the NMT button says who it goes to.
+- Named values read the same everywhere, name first: *Run (1)*.
+- CAN Transmit: named-value pick-lists, counter and checksum bytes tinted, a typed period,
+  the source DBC shown, and buttons greyed until a row is selected.
+- A DBC message clashing with one already loaded is reported in the Event Log.
+- Plot: one **Time** choice (*Follow*, *All*, *Manual*), an *Export...* button, and *Plot all* /
+  *Unplot all* on right-click.
+- CAN Trace: *Live refresh*, *Slow refresh* or *Paused* in one choice; Data column sized for
+  eight bytes.
+- ASCII Log: **Send enable** and **Send disable** buttons. CiA 402: *Poll* is a tick box.
+- *Tools > Settings* submenu; the installer's desktop shortcut is ticked by default.
+- Demo nodes use vendor and manufacturer ID 0, assigned to nobody.
+- Code signing policy, code of conduct and build attestations for releases.
 
 ### Fixed
 
-- A UDS baud rate change reopened the channel the instant the request to change had been
-  handed to the adapter, which could close it before the frame was on the wire. It now waits a
-  tenth of a second first, and the same before following the ECUs back.
-- A CRC placed in a database **signal** was computed over the frame with a zero where the CRC
-  goes, not over the other bytes, so it did not match what a receiver computes (a sum or an XOR
-  was unaffected). A checksum signal that is whole bytes is now left out, as one at a byte
-  position always was.
-- Plot **Fit** shows everything held for the plotted signals the first time: it had measured
-  only what was already in view, so each press showed a little more. It also works while the
-  display is paused.
-- A library that is installed but will not load -- as a release of one of its own dependencies
-  can make it -- is reported as that, with what failed, at start-up and by *Import signals*,
-  rather than as a library that is missing or not reported at all.
-- About wrapped its paths under the column of names. It is as wide as its longest line, up to
-  most of the screen, and scrolls sideways past that.
-- Removing a DBC left its signals in Signals and Plot, as though still decoded. They go with it.
-- A CANopen TPDO that a loaded DBC also describes was in Signals and Plot twice, the DBC's
-  scaled values beside the PDO's raw ones. The DBC's decode is used, and the PDO's left out.
-- Once any CANopen node was listed, NMT could not be sent to all nodes: a node stayed selected.
-  Clicking an empty part of the node list, or Esc, now selects none.
-- A TPDO enabled after its node was first read was never decoded into Signals and Plot.
-- In the CANopen object dictionary every column of a writable row could be typed into -- the
-  index, name, type and access as well as the value -- and the change was ignored but left
-  showing. Only the value can be edited now. The same in the PDO tab, for a PDO's name and size.
-- A PDO edited in a file's PDO tab and not yet put into the file was lost without a word when
-  the file was closed.
+- CANopen object dictionary: only the value column can be edited.
+- NMT could not be sent to all nodes once a node was listed.
+- A TPDO enabled after the first read was not decoded; one also in a DBC was decoded twice.
+- Removing a DBC left its signals in Signals and Plot.
+- A CRC in a DBC signal was computed over the wrong bytes.
+- A library that is installed but fails to load is reported as such.
+- About wrapped long paths.
 
 ## [0.1.1] - 2026-09-29
 

@@ -66,6 +66,16 @@ def test_a_release_s_notes_are_its_section_on_one_line_per_item():
     assert release_notes.section("2.0.0", text) is None
 
 
+def test_a_list_inside_an_item_keeps_one_line_per_item():
+    text = (
+        "## [1.0.0] - 2026-01-02\n\n### Changed\n\n- Transmit:\n"
+        "  - one that goes on\n    over two lines.\n  - two.\n- After.\n"
+    )
+    assert release_notes.section("1.0.0", text) == (
+        "### Changed\n\n- Transmit:\n  - one that goes on over two lines.\n  - two.\n- After.\n"
+    )
+
+
 def test_a_tag_with_no_notes_stops_the_release(tmp_path):
     out = tmp_path / "notes.md"
     assert release_notes.main(["release_notes.py", "v99.0.0", str(out)]) == 1
