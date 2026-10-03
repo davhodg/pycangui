@@ -43,6 +43,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
+from pycangui.ui import messages
 
 #: How many lines a stream keeps. A device printing steadily will run to
 #: megabytes over an afternoon, and none of it is worth the memory.
@@ -61,9 +62,12 @@ ID_TIP = (
     "cannot settle."
 )
 ENABLE_TIP = (
-    "Ask the device to start printing, and to stop. How to ask is the\n"
-    "maker's own business, so it lives in hooks/ascii_log.py::enable --\n"
-    "without one, this says so and sends nothing."
+    "Ask the device to start printing. How to ask is the maker's own\n"
+    "business, so it lives in hooks/ascii_log.py::enable -- without one,\n"
+    "this says so and sends nothing."
+)
+DISABLE_TIP = (
+    "Ask the device to stop printing, through hooks/ascii_log.py::enable,\nas Send enable does."
 )
 
 SKIP_TIP = (
@@ -188,10 +192,17 @@ class AsciiView(QWidget):
         self.id_edit.setPlaceholderText("id (hex)")
         self.id_edit.setToolTip(ID_TIP)
         self.id_edit.editingFinished.connect(self._on_changed)
-        self.enable = QPushButton("Enable")
-        self.enable.setCheckable(True)
-        self.enable.setToolTip(ENABLE_TIP)
-        self.enable.toggled.connect(self._on_enable)
+        # Two buttons that each send, rather than one that stays down. A
+        # button held down claims to know the device is printing, and it
+        # cannot: a device that has been reset has stopped, with the button
+        # still saying otherwise, and the only way to ask again was to press
+        # it twice.
+        self.send_enable = QPushButton("Send enable")
+        self.send_enable.setToolTip(ENABLE_TIP)
+        self.send_enable.clicked.connect(lambda: self.send(True))
+        self.send_disable = QPushButton("Send disable")
+        self.send_disable.setToolTip(DISABLE_TIP)
+        self.send_disable.clicked.connect(lambda: self.send(False))
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("name (optional)")
         self.name_edit.setFixedWidth(140)
@@ -212,7 +223,8 @@ class AsciiView(QWidget):
         bar.addWidget(QLabel("Skip"))
         bar.addWidget(self.skip)
         bar.addStretch()
-        bar.addWidget(self.enable)
+        bar.addWidget(self.send_enable)
+        bar.addWidget(self.send_disable)
         bar.addWidget(clear)
 
         self.text = QPlainTextEdit()
@@ -262,15 +274,12 @@ class AsciiView(QWidget):
         if self.stream != was:
             self.changed.emit(self.stream)
 
-    @Slot(bool)
-    def _on_enable(self, on: bool) -> None:
-        """Ask the device to start or stop printing, through the hook.
+    def send(self, on: bool) -> bool:
+        """Ask the device to start or stop printing, through the hook. Whether it was sent.
 
-        The button goes back up if nothing was sent. A control that looks
-        as though it worked, on a device still saying nothing, sends
-        somebody looking at the wiring.
+        Said in a box when nothing was: a button that seemed to work, on a
+        device still saying nothing, sends somebody looking at the wiring.
         """
-        self.enable.setText("Disable" if on else "Enable")
         sent = (
             self.hooks.call("ascii_log", "enable", on, self.stream.can_id, self.stream.extended)
             if self.hooks is not None
@@ -278,15 +287,14 @@ class AsciiView(QWidget):
         )
         if sent is True:
             self.ctx.log(f"ASCII Log: asked the device to {'start' if on else 'stop'}")
-            return
-        self.ctx.warn(
-            "ASCII Log: nothing was sent -- write hooks/ascii_log.py::enable to say "
-            "how this device is asked to print"
+            return True
+        why = (
+            "Nothing was sent: write hooks/ascii_log.py::enable to say how this "
+            "device is asked to print."
         )
-        self.enable.blockSignals(True)
-        self.enable.setChecked(False)
-        self.enable.setText("Enable")
-        self.enable.blockSignals(False)
+        self.ctx.warn(f"ASCII Log: {why}")
+        messages.warning(self, "Nothing sent", why)
+        return False
 
     # --- what arrives -------------------------------------------------------------------
     @Slot(list)

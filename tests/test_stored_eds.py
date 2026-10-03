@@ -13,7 +13,7 @@ from pycangui.canopen.manager import STOPPED, STORE_EDS, CanopenManager
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.ui import folders
+from pycangui.ui import folders, messages
 from pycangui.ui.canopen_view import CanopenView
 
 NODE = 5
@@ -127,8 +127,11 @@ def test_nothing_is_saved_when_the_dialog_is_cancelled(view, tmp_path, monkeypat
 
 def test_an_empty_object_is_not_a_file(view, tmp_path, monkeypatch):
     save_as(monkeypatch, tmp_path / "empty.eds")
+    boxes = []
+    monkeypatch.setattr(messages, "warning", lambda *a, **k: boxes.append(a[1]))
     view._on_stored_eds(NODE, b"\xff" * 64, 0)
     assert view.loaded == [] and not (tmp_path / "empty.eds").exists()
+    assert boxes, "said where the button was pressed"
 
 
 def test_the_node_has_the_action_beside_load_eds(view):

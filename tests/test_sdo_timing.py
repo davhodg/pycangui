@@ -184,7 +184,6 @@ def test_what_the_dialog_is_told_reaches_the_manager_and_the_workspace(app, home
     assert (window.canopen.sdo_timeout_s, window.canopen.sdo_retries) == (1.5, 2)
     assert window.canopen.sdo_channels == {5: (0x640, 0x5C0)}
     assert canopen_settings.load(window.ctx).channels == {5: (0x640, 0x5C0)}
-    assert "node 5 on 0x640/0x5C0" in window.log.toPlainText()
     window.close()
 
 

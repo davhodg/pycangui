@@ -329,3 +329,154 @@ def test_a_long_block_is_cut_short_in_the_tree():
     domain = load_od(resources.path("demo.eds")).get_variable(0x1021, 0)
     raw, why = _typed_value(domain, Display(), shown)
     assert raw is None and why, "what is shown cut short cannot be written back as the block"
+
+
+# --- Read all, as one job that says how far it has got ---------------------------------------
+def test_read_all_says_how_far_and_that_it_finished(stack):
+    manager, _demo, _tmp = stack
+    wanted = [(0x1000, 0), (0x1018, 1), (0x2001, 0)]
+    progress, results, finished = [], [], []
+    manager.read_progress.connect(lambda n, done, total: progress.append((done, total)))
+    manager.sdo_result.connect(lambda n, index, sub, value, error: results.append((index, sub)))
+    manager.read_finished.connect(lambda *args: finished.append(args))
+    manager.read_many(5, wanted)
+    wait_until(lambda: finished)
+    assert finished == [(5, 3, 3, False)]
+    assert results == wanted, "each answer as a single read's would be"
+    assert [done for done, _total in progress] == [0, 1, 2]
+
+
+def test_read_all_can_be_stopped(stack):
+    manager, _demo, _tmp = stack
+    finished = []
+    manager.read_finished.connect(lambda *args: finished.append(args))
+    manager.sdo_result.connect(lambda *_args: manager.stop_batch())  # after the first
+    manager.read_many(5, [(0x1000, 0)] * 50)
+    wait_until(lambda: finished)
+    _node, done, total, stopped = finished[0]
+    assert stopped and done < total == 50
+
+
+def test_a_stopped_dcf_save_writes_no_file(stack, monkeypatch):
+    manager, _demo, tmp = stack
+    finished = []
+    manager.dcf_finished.connect(lambda *args: finished.append(args))
+    manager.dcf_progress.connect(lambda *_args: manager.stop_batch())
+    dcf = tmp / "half.dcf"
+    manager.save_dcf(5, str(dcf))
+    wait_until(lambda: finished)
+    assert not dcf.exists(), "half a configuration is not one"
+    assert finished[0][2] is False, "stopped is not something going wrong"
+
+
+def test_a_removed_node_is_forgotten(stack):
+    manager, _demo, _tmp = stack
+    manager.add_node(9)
+    assert 9 in manager.nodes()
+    manager.remove_node(9)
+    assert 9 not in manager.nodes() and manager.node(9) is None
+    manager.remove_node(5)
+    assert manager.node(5) is None and manager.eds_path(5) is None
+
+
+# --- settings: say what changed, and offer to restart what is running ------------------------
+@pytest.fixture
+def window(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    yield window
+    window.close()
+
+
+def answer_settings(monkeypatch, change=lambda dialog: None):
+    from PySide6.QtWidgets import QDialog
+
+    from pycangui.ui.canopen_settings import CanopenSettingsDialog
+
+    def answered(dialog):
+        change(dialog)
+        return QDialog.Accepted
+
+    monkeypatch.setattr(CanopenSettingsDialog, "exec", answered)
+
+
+def lines(window) -> int:
+    return len(window.log.toPlainText().splitlines())
+
+
+def test_ok_with_nothing_changed_says_nothing(window, monkeypatch):
+    answer_settings(monkeypatch)
+    before = lines(window)
+    window.canopen_view._open_settings()
+    assert lines(window) == before
+
+
+def test_ok_says_only_what_changed(window, monkeypatch):
+    from pycangui.ui import canopen_settings
+
+    old = canopen_settings.CanopenSettings()
+    new = canopen_settings.CanopenSettings(sync_period_ms=50, heartbeat_timeouts={5: 2000})
+    assert len(canopen_settings.changes(old, new)) == 2
+    assert canopen_settings.changes(new, new) == []
+
+    answer_settings(monkeypatch, lambda dialog: dialog.retries.setValue(4))
+    before = lines(window)
+    window.canopen_view._open_settings()
+    assert lines(window) == before + 1, "one line, for the one change"
+
+
+def test_a_running_sync_is_offered_a_restart_when_its_settings_change(window, monkeypatch):
+    from pycangui.ui import canopen_view
+
+    view = window.canopen_view
+    started = []
+    monkeypatch.setattr(window.canopen, "start_sync", lambda *args: started.append(args))
+    monkeypatch.setattr(window.canopen, "stop_sync", lambda: None)
+    view.sync_btn.setChecked(True)
+    asked = []
+    monkeypatch.setattr(
+        canopen_view.messages,
+        "question",
+        lambda *a, **k: asked.append(a[1]) or canopen_view.messages.Button.Yes,
+    )
+
+    answer_settings(monkeypatch, lambda dialog: dialog.retries.setValue(4))
+    view._open_settings()
+    assert not asked, "nothing SYNC uses changed"
+
+    answer_settings(monkeypatch, lambda dialog: dialog.sync_period.setValue(20))
+    view._open_settings()
+    assert asked and started[-1] == (0.02,), "restarted at the new period"
+
+
+def test_remove_node_takes_the_row_and_works_on_a_lost_one(window):
+    view = window.canopen_view
+    view.on_node_seen(9, "added by hand")
+    view.on_node_lost(9)
+    view.nodes.setCurrentItem(view._node_item(9))
+    assert view.remove_node_btn.isEnabled(), "a lost node most of all"
+    assert not view._node_buttons[0].isEnabled()
+    view.remove_node_btn.click()
+    assert view._node_item(9) is None and 9 not in view._lost
+
+
+def test_a_refused_button_says_so_in_a_box(window, monkeypatch):
+    """The Event Log can be behind the window the button was pressed in."""
+    from pycangui.ui import canopen_view
+
+    view = window.canopen_view
+    boxes = []
+    for kind in ("warning", "information"):
+        monkeypatch.setattr(canopen_view.messages, kind, lambda *a, **k: boxes.append(a[1]))
+    view._on_stored_eds_failed(5, "this node does not keep its EDS")
+    view._add_node()  # nothing connected
+    view.on_node_seen(9, "added by hand")
+    view.nodes.setCurrentItem(view._node_item(9))
+    view._read_all()  # no EDS, so nothing to read
+    assert len(boxes) == 3
+    assert view.read_all_btn.isVisibleTo(view), "and nothing was started"

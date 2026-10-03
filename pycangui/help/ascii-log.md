@@ -14,12 +14,15 @@ number alone cannot settle. **Skip** ignores up
 to 63 bytes at the start of each frame, and **Clear** throws away the text so
 far while the ID goes on being read.
 
-**Enable** asks the device to start printing, and to stop. Plenty of
-controllers say nothing until they are asked, and how you ask is the maker's
+**Send enable** asks the device to start printing, and **Send disable** to
+stop. Two buttons that each send, rather than one that stays down: a device
+that has been reset has stopped printing whatever a button says, and asking
+again should be one press. Plenty of controllers say nothing until they are
+asked, and how you ask is the maker's
 own business -- a command on its own ID, a CANopen object, a UDS routine -- so
-it lives in [`hooks/ascii_log.py::enable`](hooks.md), which is given the button
-state and the ID this pane is reading. Without a hook the button says nothing
-was sent and comes back up, rather than looking as though it worked.
+it lives in [`hooks/ascii_log.py::enable`](hooks.md), which is given which of
+the two was pressed and the ID this pane is reading. Without a hook, a box says
+nothing was sent, rather than the button looking as though it worked.
 
 **One pane, one ID.** *View > Standard panes > Additional ASCII Log* opens
 another, so two devices can be watched side by side; drop one onto another and

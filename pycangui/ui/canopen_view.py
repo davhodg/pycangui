@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QProgressDialog,
     QPushButton,
     QSplitter,
@@ -68,6 +69,7 @@ from pycangui.custom_panes.model import names as custom_names
 from pycangui.custom_panes.source import FileSource
 from pycangui.ui import canopen_login, canopen_settings, folders, keep_file, messages
 from pycangui.ui.canopen_log_view import CanopenLogView
+from pycangui.ui.edit_columns import EditColumns
 from pycangui.ui.faults_view import FaultsView
 from pycangui.ui.lss_view import LssView
 from pycangui.ui.pdo_view import PdoConfigView
@@ -149,6 +151,11 @@ SYNC_TIP = (
     "is in Settings: a rate is a fact about the bus, agreed once, rather\n"
     "than a decision to take every time this is pressed."
 )
+REMOVE_NODE_TIP = (
+    "Take the selected node out of the list: one added at the wrong id, or\n"
+    "unplugged for good. A node still on the bus comes back with its next\n"
+    "heartbeat, because it is there."
+)
 
 
 class _NodeList(QTreeWidget):
@@ -224,6 +231,9 @@ class CanopenView(QWidget):
             "identified straight away."
         )
         add_node.clicked.connect(self._add_node)
+        self.remove_node_btn = QPushButton("Remove node")
+        self.remove_node_btn.setToolTip(REMOVE_NODE_TIP)
+        self.remove_node_btn.clicked.connect(lambda: self.remove_node(self.selected_node()))
         login = QPushButton("Login...")
         login.setToolTip(
             "Ask the selected node for an access level. CANopen has no standard\n"
@@ -268,6 +278,7 @@ class CanopenView(QWidget):
         # it acts on the list rather than on a row of it.
         nmt_bar = QHBoxLayout()
         nmt_bar.addWidget(add_node)
+        nmt_bar.addWidget(self.remove_node_btn)
         open_file = QPushButton("Open DCF/EDS...")
         open_file.setToolTip(OPEN_FILE_TIP)
         open_file.clicked.connect(self._open_file_dialog)
@@ -376,6 +387,9 @@ class CanopenView(QWidget):
         self.od.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.od.header().setStretchLastSection(False)
         self.od.header().setSectionResizeMode(COL_VALUE, QHeaderView.Stretch)
+        # A row is editable for its value, and only its value: the index,
+        # name, type and access are what the EDS says, not settings.
+        self.od.setItemDelegate(EditColumns([COL_VALUE], self.od))
         self.od.itemDoubleClicked.connect(self._on_od_double_clicked)
         self.od.itemChanged.connect(self._on_od_item_changed)
         # Several at once, because building a pane means picking the six
@@ -414,7 +428,20 @@ class CanopenView(QWidget):
             "It can take a while on a large node."
         )
         read_all.clicked.connect(self._read_all)
+        self.read_all_btn = read_all
         od_bar.addWidget(read_all)
+        # In place of the button while it runs: how far, and a way to stop.
+        # In the bar rather than a box over the tree, because watching the
+        # values arrive is half of what Read all is for.
+        self.read_bar = QProgressBar()
+        self.read_bar.setFormat("%v of %m")
+        self.read_bar.setMaximumWidth(220)
+        self.stop_read_btn = QPushButton("Stop")
+        self.stop_read_btn.setToolTip("Stop reading after the object in hand")
+        self.stop_read_btn.clicked.connect(manager.stop_batch)
+        for running in (self.read_bar, self.stop_read_btn):
+            od_bar.addWidget(running)
+            running.hide()
 
         # --- PDOs -----------------------------------------------------------
         self.pdos = QTreeWidget()
@@ -535,6 +562,10 @@ class CanopenView(QWidget):
         manager.stored_eds_failed.connect(self._on_stored_eds_failed)
         manager.sdo_result.connect(self.on_sdo_result)
         manager.sdo_progress.connect(self._on_sdo_progress)
+        manager.read_progress.connect(self._on_read_progress)
+        manager.read_finished.connect(self._on_read_finished)
+        manager.dcf_progress.connect(self._on_dcf_progress)
+        manager.dcf_finished.connect(self._on_dcf_finished)
         manager.pdo_update.connect(self.on_pdo_update)
         manager.fault_state.connect(self.on_fault_state)
         manager.emcy.connect(manager.remember_emcy)
@@ -760,6 +791,9 @@ class CanopenView(QWidget):
         """Built apart from being shown, so what it offers can be looked at."""
         menu = QMenu(self.nodes)
         menu.addAction("Add node...", self._add_node)
+        menu.addAction("Remove node", lambda: self.remove_node(node_id)).setEnabled(
+            node_id is not None
+        )
         on_a_node = self._can_act_on(node_id)
         for group in (
             (
@@ -787,6 +821,7 @@ class CanopenView(QWidget):
     def _add_node(self) -> None:
         if self.manager.network is None:  # said before a node id is asked for, not after
             self.ctx.warn(f"Add node: {NOT_CONNECTED}")
+            messages.warning(self, "No node added", NOT_CONNECTED[:1].upper() + NOT_CONNECTED[1:])
             return
         node_id, chose = QInputDialog.getInt(
             self, "Add node", "Node id, 1 to 127:", self.selected_node() or 1, 1, 127
@@ -797,6 +832,19 @@ class CanopenView(QWidget):
             return
         if (item := self._node_item(node_id)) is not None:
             self.nodes.setCurrentItem(item)
+
+    def remove_node(self, node_id: int | None) -> None:
+        """Take a node out of the list, and out of what the manager knows."""
+        if node_id is None or (item := self._node_item(node_id)) is None:
+            return
+        self.manager.remove_node(node_id)
+        self._lost.discard(node_id)
+        self._identities.pop(node_id, None)
+        self.nodes.takeTopLevelItem(self.nodes.indexOfTopLevelItem(item))
+        if self._od_node == node_id and self._od_file is None:
+            self._populate_od(self.selected_node(), self.selected_file())
+        self._offer_node_buttons()
+        self.ctx.log(f"Node {node_id}: removed from the list")
 
     def _login(self) -> None:
         node_id = self.selected_node()
@@ -856,30 +904,50 @@ class CanopenView(QWidget):
         item.setForeground(COL_ERROR, ERROR_COLOUR if state.faulted else ALIVE_BRUSH)
 
     def _open_settings(self) -> None:
-        dialog = canopen_settings.CanopenSettingsDialog(
-            self, canopen_settings.load(self.ctx), self.selected_node()
-        )
+        before = canopen_settings.load(self.ctx)
+        dialog = canopen_settings.CanopenSettingsDialog(self, before, self.selected_node())
         if dialog.exec() != QDialog.Accepted:
             return
         chosen = dialog.settings()
+        said = canopen_settings.changes(before, chosen)
+        if not said:
+            return  # OK on what was already there
         canopen_settings.save(self.ctx, chosen)
         canopen_settings.apply(self.manager, chosen)
+        self.ctx.log("CANopen settings: " + "; ".join(said))
         self._offer_time()
-        if self.time_btn.isChecked():  # a new period or zone, from now on
+        if self.time_btn.isChecked() and canopen_settings.changed(
+            before, chosen, canopen_settings.TIME_FIELDS
+        ):
+            # A new period or zone, from now on: TIME carries no state, so
+            # starting it again costs a node nothing.
             self.manager.start_time(chosen.time_period_s, chosen.time_local)
-        channels = ", ".join(
-            f"node {node_id} on 0x{request:03X}/0x{response:03X}"
-            for node_id, (request, response) in sorted(chosen.channels.items())
+        if self.sync_btn.isChecked() and canopen_settings.changed(
+            before, chosen, canopen_settings.SYNC_FIELDS
+        ):
+            self._offer_sync_restart()
+
+    def _offer_sync_restart(self) -> None:
+        """SYNC goes on as it was until it is started again; ask whether now.
+
+        Asked rather than done: the counter starts again from 1 when SYNC
+        does, and a device checking the count may see that as a fault.
+        """
+        answer = messages.question(
+            self,
+            "Restart SYNC with the new settings?",
+            "The SYNC producer is running, and carries on at the old period and "
+            "counter until it is started again. Restarting it now starts the "
+            "counter from 1.",
+            messages.Button.Yes | messages.Button.No,
+            messages.Button.Yes,
         )
-        heartbeats = ", ".join(
-            f"node {node_id} {ms:g} ms" for node_id, ms in sorted(chosen.heartbeat_timeouts.items())
-        )
-        self.ctx.log(
-            f"CANopen settings: SDO timeout {chosen.timeout_ms:.0f} ms, "
-            f"{chosen.retries} retries"
-            + (f"; SDO channel {channels}" if channels else "")
-            + (f"; heartbeat timeout {heartbeats}" if heartbeats else "")
-        )
+        if answer == messages.Button.Yes:
+            self.manager.stop_sync()
+            self._toggle_sync(True)
+            self.ctx.log("SYNC producer restarted with the new settings")
+        else:
+            self.ctx.log("SYNC producer left as it was: untick and tick it to use the new settings")
 
     @Slot(int, str)
     def on_node_seen(self, node_id: int, state: str) -> None:
@@ -1047,18 +1115,24 @@ class CanopenView(QWidget):
         if node_id is None:
             return
         self._close_eds_progress()
-        box = QProgressDialog(
-            f"Reading the EDS node {node_id} keeps (object 0x1021)...", "Stop", 0, 0, self
+        self._eds_progress = self._progress_box(
+            "Read EDS from node",
+            f"Reading the EDS node {node_id} keeps (object 0x1021)...",
+            self.manager.stop_reading_stored_eds,
         )
-        box.setWindowTitle("Read EDS from node")
+        self.manager.read_stored_eds(node_id)
+
+    def _progress_box(self, title: str, text: str, stop) -> QProgressDialog:
+        """A box for a job that takes a while, with Stop, until it is over."""
+        box = QProgressDialog(text, "Stop", 0, 0, self)
+        box.setWindowTitle(title)
         box.setWindowModality(Qt.WindowModal)
         box.setMinimumDuration(0)
         box.setAutoClose(False)
         box.setAutoReset(False)
-        box.canceled.connect(self.manager.stop_reading_stored_eds)
+        box.canceled.connect(stop)
         box.show()
-        self._eds_progress = box
-        self.manager.read_stored_eds(node_id)
+        return box
 
     def _close_eds_progress(self) -> None:
         box, self._eds_progress = getattr(self, "_eds_progress", None), None
@@ -1083,8 +1157,11 @@ class CanopenView(QWidget):
         self._close_eds_progress()
         if why == STOPPED:
             self.ctx.log(f"Node {node_id}: reading its EDS was stopped")
-        else:
-            self.ctx.warn(f"Node {node_id}: its EDS could not be read: {why}")
+            return
+        self.ctx.warn(f"Node {node_id}: its EDS could not be read: {why}")
+        # A box as well as the line: this answers a button just pressed, and
+        # the Event Log can be behind the window it was pressed in.
+        messages.warning(self, "The EDS was not read", f"Node {node_id}: {why}")
 
     @Slot(int, object, int)
     def _on_stored_eds(self, node_id: int, data: bytes, kind: int) -> None:
@@ -1094,6 +1171,11 @@ class CanopenView(QWidget):
         text = data.rstrip(b"\x00\xff")
         if not text:
             self.ctx.warn(f"Node {node_id}: its EDS object (0x1021) is empty")
+            messages.warning(
+                self,
+                "The EDS was not read",
+                f"Node {node_id} has object 0x1021, but nothing is kept in it.",
+            )
             return
         if kind != 0:
             # 0x1022 other than 0 is a compression of the maker's own, and
@@ -1196,6 +1278,7 @@ class CanopenView(QWidget):
         )
         if path:
             self.ctx.log(f"Node {node_id}: reading all parameters, this can take a while...")
+            self._start_dcf("Save DCF", f"Reading every parameter of node {node_id}...")
             self.manager.save_dcf(node_id, path)
 
     def _apply_dcf(self) -> None:
@@ -1211,7 +1294,34 @@ class CanopenView(QWidget):
             self.ctx.eds_dir,
         )
         if path:
+            self._start_dcf("Apply DCF", f"Writing {Path(path).name} into node {node_id}...")
             self.manager.apply_dcf(node_id, path)
+
+    def _start_dcf(self, title: str, text: str) -> None:
+        self._close_dcf_progress()
+        self._dcf_progress = self._progress_box(title, text, self.manager.stop_batch)
+        self._dcf_title = title
+
+    def _close_dcf_progress(self) -> None:
+        box, self._dcf_progress = getattr(self, "_dcf_progress", None), None
+        if box is not None:
+            box.canceled.disconnect(self.manager.stop_batch)
+            box.close()
+            box.deleteLater()
+
+    @Slot(int, int)
+    def _on_dcf_progress(self, done: int, total: int) -> None:
+        if (box := getattr(self, "_dcf_progress", None)) is not None and total:
+            box.setMaximum(total)
+            box.setValue(min(done, total))
+
+    @Slot(int, str, bool)
+    def _on_dcf_finished(self, node_id: int, said: str, wrong: bool) -> None:
+        if getattr(self, "_dcf_progress", None) is None:
+            return  # not one this pane started: a script's, or the console's
+        self._close_dcf_progress()
+        if wrong:
+            messages.warning(self, f"{self._dcf_title}: node {node_id}", said)
 
     @Slot(bool)
     def _toggle_sync(self, on: bool) -> None:
@@ -1387,6 +1497,8 @@ class CanopenView(QWidget):
         on_a_node = self._can_act_on(self.selected_node())
         for button in self._node_buttons:
             button.setEnabled(on_a_node)
+        if hasattr(self, "remove_node_btn"):  # a lost node most of all
+            self.remove_node_btn.setEnabled(self.selected_node() is not None)
         source = self.selected_file() if hasattr(self, "_file_buttons") else None
         for button in getattr(self, "_file_buttons", []):
             button.setVisible(source is not None)
@@ -1680,12 +1792,43 @@ class CanopenView(QWidget):
             self._populate_od(None, self._od_file)  # from the file, as it stands
             return
         node_id = self.selected_node()
-        node = None if node_id is None else self.manager.node(node_id)
-        if node is None:
+        if node_id is None:
+            messages.information(self, "Nothing to read", "Select a node or a file first.")
             return
-        for index, sub, var, _name in od_entries(node.object_dictionary):
-            if var is not None and var.readable and self.manager.reads(var):
-                self.manager.sdo_read(node_id, index, sub or 0)
+        node = self.manager.node(node_id)
+        wanted = [
+            (index, sub or 0)
+            for index, sub, var, _name in od_entries(getattr(node, "object_dictionary", {}))
+            if var is not None and var.readable and self.manager.reads(var)
+        ]
+        if not wanted:
+            messages.information(
+                self,
+                "Nothing to read",
+                f"Node {node_id} has no EDS loaded, so there is no list of objects to read. "
+                "Load EDS or Read EDS from node first.",
+            )
+            return
+        self.read_bar.setRange(0, len(wanted))
+        self.read_bar.setValue(0)
+        self._show_reading(True)
+        self.manager.read_many(node_id, wanted)
+
+    def _show_reading(self, on: bool) -> None:
+        self.read_all_btn.setVisible(not on)
+        self.read_bar.setVisible(on)
+        self.stop_read_btn.setVisible(on)
+
+    @Slot(int, int, int)
+    def _on_read_progress(self, node_id: int, done: int, total: int) -> None:
+        self.read_bar.setMaximum(total)
+        self.read_bar.setValue(done)
+
+    @Slot(int, int, int, bool)
+    def _on_read_finished(self, node_id: int, done: int, total: int, stopped: bool) -> None:
+        self._show_reading(False)
+        if stopped:
+            self.ctx.log(f"Node {node_id}: Read all stopped, {done} of {total} objects read")
 
     @Slot(int, int, int, int, int)
     def _on_sdo_progress(self, node_id: int, index: int, sub: int, done: int, total: int) -> None:

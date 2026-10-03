@@ -19,6 +19,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
+from pycangui.ui import ascii_view
 from pycangui.ui.ascii_view import AsciiView, Stream, decode
 from pycangui.ui.main_window import MainWindow
 
@@ -293,14 +294,16 @@ def test_enable_asks_the_hook_and_says_when_there_is_none(app, tmp_path, monkeyp
     ctx = Context(log=said.append)
     hooks = Hooks(ctx)
     view = AsciiView(Channels(), ctx, Stream(can_id=0x300), hooks)
+    boxes: list[str] = []
+    monkeypatch.setattr(ascii_view.messages, "warning", lambda *a, **k: boxes.append(a[1]))
 
-    view.enable.setChecked(True)
+    view.send_enable.click()
 
-    assert not view.enable.isChecked(), "it does not pretend it worked"
-    assert any("hooks/ascii_log.py" in line for line in said), "and says what to write"
+    assert boxes, "it says so where the button was pressed, not only in the log"
+    assert not view.send(True), "and does not pretend it worked"
 
 
-def test_a_hook_that_sends_the_command_keeps_the_button_down(app, tmp_path, monkeypatch):
+def test_enable_and_disable_each_send_through_the_hook(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     said: list[str] = []
     ctx = Context(log=said.append)
@@ -314,7 +317,9 @@ def test_a_hook_that_sends_the_command_keeps_the_button_down(app, tmp_path, monk
     hooks.reload()
     view = AsciiView(Channels(), ctx, Stream(can_id=0x300), hooks)
 
-    view.enable.setChecked(True)
+    view.send_enable.click()
+    view.send_enable.click()  # again: the device may have been reset since
+    view.send_disable.click()
 
-    assert view.enable.isChecked() and view.enable.text() == "Disable"
-    assert any("asked True 300" in line for line in said)
+    asked = [line for line in said if line.startswith("asked")]
+    assert asked == ["asked True 300", "asked True 300", "asked False 300"]

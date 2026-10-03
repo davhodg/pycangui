@@ -20,8 +20,15 @@ since the last version, and comes out in the next one.
   device keeps one.
 - CANopen **Open DCF/EDS...**: a configuration file as a row of the node list, its object
   dictionary in the tree with no node or bus, values changed there and saved as a DCF. The
-  PDO configuration tab works for the file too: its PDOs read from its objects, remapped, and
-  put back with **Put in file**.
+  PDO configuration tab works for the file too: its PDOs read from its objects and remapped,
+  each change going into the file as it is made, so it is saved, or asked about on closing,
+  like any other.
+- CANopen **Remove node**, beside *Add node...* and on a node's right-click menu: takes a node
+  out of the list, a lost one included.
+- CANopen **Read all**, **Save DCF** and **Apply DCF** show how far they have got and can be
+  stopped. A stopped *Save DCF* writes no file.
+- CANopen PDO tab: **Move up** and **Move down** reorder a PDO's mapped objects, and *Map
+  object...* puts the new one after the object selected rather than at the end.
 - **Command line**: `pycangui drive.dcf` opens a DCF or EDS, handed to the pycangui already
   open if there is one. A tick box in the installer, and *Tools > Settings > Open .dcf and .eds files
   with pycangui* for a source folder or pip, put pycangui in *Open with* for those files.
@@ -89,6 +96,17 @@ since the last version, and comes out in the next one.
   refresh, Slow refresh or Paused -- and Columns is on the table's right-click, as it was on the header's.
   The plot has the same choice in place of its two ticks.
 - The NMT send button says who it goes to -- *Send NMT to node 5* or *to all nodes*.
+- A CANopen button that cannot do what it was pressed for -- *Read EDS from node* on a node
+  that keeps none, *Add node...* with no channel connected, *Read all* with no EDS, a failed
+  *Save DCF* or *Apply DCF* -- says so in a box, not only in an Event Log that may be behind the
+  window.
+- CANopen *Settings...* writes only what *OK* changed to the Event Log, rather than the SDO
+  settings every time. Changing the SYNC period or counter while SYNC is running asks whether
+  to restart it, as it otherwise carries on as it was.
+- The ASCII Log's *Enable* button, which stayed down, is **Send enable** and **Send disable**,
+  each sending when pressed: a device that has been reset has stopped, whatever a button said.
+- CiA 402's **Poll** is a tick box, as on a custom pane, where it was a button that stayed down
+  and did not plainly say whether polling was on.
 - The README and PyPI page list every adapter python-can supports.
 
 ### Fixed
@@ -114,6 +132,11 @@ since the last version, and comes out in the next one.
 - Once any CANopen node was listed, NMT could not be sent to all nodes: a node stayed selected.
   Clicking an empty part of the node list, or Esc, now selects none.
 - A TPDO enabled after its node was first read was never decoded into Signals and Plot.
+- In the CANopen object dictionary every column of a writable row could be typed into -- the
+  index, name, type and access as well as the value -- and the change was ignored but left
+  showing. Only the value can be edited now. The same in the PDO tab, for a PDO's name and size.
+- A PDO edited in a file's PDO tab and not yet put into the file was lost without a word when
+  the file was closed.
 
 ## [0.1.1] - 2026-09-29
 

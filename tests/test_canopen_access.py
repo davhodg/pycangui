@@ -21,7 +21,7 @@ from pycangui.canopen.manager import ADDED_BY_HAND, CanopenManager
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks, registry
-from pycangui.ui import canopen_login
+from pycangui.ui import canopen_login, canopen_view
 from pycangui.ui.canopen_login import LoginDialog
 from pycangui.ui.main_window import MainWindow
 
@@ -215,10 +215,10 @@ def test_add_node_with_no_channel_connected_says_so_before_asking(window, monkey
     asked = []
     monkeypatch.setattr(QInputDialog, "getInt", lambda *a, **k: (asked.append(1), (0, False))[1])
     warned = []
-    monkeypatch.setattr(window.canopen_view.ctx, "warn", warned.append)
+    monkeypatch.setattr(canopen_view.messages, "warning", lambda *a, **k: warned.append(a[1]))
     window.canopen_view._add_node()
     assert not asked, "no node id asked for"
-    assert warned
+    assert warned, "said where Add node was pressed"
 
 
 def test_login_hands_the_level_and_password_on_and_remembers_only_the_level(window, monkeypatch):
@@ -297,6 +297,7 @@ def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
     offered = {a.text() for a in view.node_menu(7).actions() if not a.isSeparator()}
     assert offered == {
         "Add node...",
+        "Remove node",
         "Read EDS from node",
         "Identify",
         "Login...",
@@ -308,7 +309,7 @@ def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
         "Save DCF...",
         "Apply DCF...",
     }
-    assert offered - {"Add node..."} == {b.text() for b in view._node_buttons}
+    assert offered - {"Add node...", "Remove node"} == {b.text() for b in view._node_buttons}
 
 
 def test_the_menu_greys_out_what_needs_a_node_when_none_was_clicked(app, window):
@@ -322,7 +323,7 @@ def test_the_menu_greys_out_what_a_lost_node_cannot_answer(app, window):
     window.canopen.node_lost.emit(7)
     menu = window.canopen_view.node_menu(7)
     live = {a.text() for a in menu.actions() if a.isEnabled() and not a.isSeparator()}
-    assert live == {"Add node..."}
+    assert live == {"Add node...", "Remove node"}, "a lost node can still be taken away"
 
 
 def test_a_lost_node_can_no_longer_be_asked_anything(app, window):

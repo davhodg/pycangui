@@ -12,8 +12,9 @@ from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.ui import folders, messages
+from pycangui.ui import folders, messages, pdo_view
 from pycangui.ui.canopen_view import COL_VALUE, EDITED_COLOUR, ROLE_FILE, CanopenView
+from pycangui.ui.pdo_view import COL_ENABLED, COL_TRANS
 
 EDS = """[FileInfo]
 FileName=drive.eds
@@ -223,19 +224,141 @@ def test_only_what_changed_goes_into_the_file(view, demo):
     assert source.edited == {(0x1800, 2): 1}, "and the node-relative COB-ID is left as text"
 
 
-def test_unmapping_and_disabling_are_put_in_the_files_objects(app, view, demo):
+def test_unmapping_and_disabling_go_straight_into_the_files_objects(app, view, demo):
+    """In a file there is no second step: a change is in the file as it is
+    made, so it is saved, or asked about on closing, like any other."""
     source = view.open_file(demo)
     tab = view.pdo_config
+    assert tab.write_btn.isHidden(), "nothing to put anywhere"
     row = tab.tree.topLevelItem(0)
-    config = tab._config_of(row)
-    assert config.direction == "TPDO"
-    del config.entries[-1]
-    config.enabled = False
-    tab.tree.setCurrentItem(row)
-    tab._write()
+    assert tab._config_of(row).direction == "TPDO"
+    row.setCheckState(COL_ENABLED, Qt.Unchecked)
+    assert source.unsaved, "disabled in the file at once"
+    row = tab.tree.topLevelItem(0)  # the tree is drawn again from the file
+    tab.tree.setCurrentItem(row.child(row.childCount() - 1))
+    tab._remove_entry()
     assert source.edited == {(0x1800, 1): 0x8000_0180, (0x1A00, 0): 2}
     again = pdos(view)["TPDO1"]
     assert not again.enabled and len(again.entries) == 2 and not again.cob_id_text
+
+
+def test_a_cell_typed_in_the_pdo_tab_is_in_the_file_and_closing_asks(app, view, demo, monkeypatch):
+    source = view.open_file(demo)
+    tab = view.pdo_config
+    tab.tree.topLevelItem(0).setText(COL_TRANS, "1")
+    assert source.edited == {(0x1800, 2): 1}
+    asked = []
+    monkeypatch.setattr(
+        messages, "question", lambda *a, **k: asked.append(a[1]) or messages.Button.Cancel
+    )
+    assert not view.close_file(source) and asked, "the change is not lost without a word"
+
+
+def test_a_change_the_file_has_no_room_for_is_refused_and_not_shown(app, view, demo, monkeypatch):
+    from pycangui.canopen import PdoEntry
+
+    source = view.open_file(demo)
+    tab = view.pdo_config
+    boxes = []
+    monkeypatch.setattr(pdo_view.messages, "warning", lambda *a, **k: boxes.append(a[1]))
+    rpdo = next(
+        tab.tree.topLevelItem(i)
+        for i in range(tab.tree.topLevelItemCount())
+        if tab._config_of(tab.tree.topLevelItem(i)).direction == "RPDO"
+    )
+    config = tab._config_of(rpdo)
+    config.entries += [PdoEntry(0x2001, 0, 8)] * 6
+    assert not tab._into_file(config)
+    assert boxes and source.edited == {}
+    assert len(pdos(view)["RPDO1"].entries) == 1, "the tree is the file again"
+
+
+class _Picks:
+    """Stands in for the object picker: answers with one entry, at once."""
+
+    def __init__(self, *_args, **_kwargs):
+        from pycangui.canopen import PdoEntry
+
+        self.entry = PdoEntry(0x2001, 0, 8, "Picked")
+
+    def exec(self):
+        return pdo_view.QDialog.Accepted
+
+    def chosen(self):
+        return self.entry
+
+
+def mapped(view, name="TPDO1"):
+    return [(e.index, e.subindex) for e in pdos(view)[name].entries]
+
+
+def test_an_object_is_mapped_after_the_one_selected(app, view, demo, monkeypatch):
+    view.open_file(demo)
+    tab = view.pdo_config
+    monkeypatch.setattr(pdo_view, "ObjectPicker", _Picks)
+    row = tab.tree.topLevelItem(0)
+    del tab._config_of(row).entries[-1]  # room for eight more bits
+    tab._into_file(tab._config_of(row))
+    row = tab.tree.topLevelItem(0)
+    tab.tree.setCurrentItem(row.child(0))
+    tab._add_entry()
+    assert mapped(view) == [(0x6041, 0), (0x2001, 0), (0x2000, 1)]
+    picked = tab.tree.selectedItems()[0]
+    assert picked.parent() is not None and picked.parent().indexOfChild(picked) == 1
+
+
+def test_with_the_pdo_selected_an_object_goes_at_the_end(app, view, demo, monkeypatch):
+    view.open_file(demo)
+    tab = view.pdo_config
+    monkeypatch.setattr(pdo_view, "ObjectPicker", _Picks)
+    row = tab.tree.topLevelItem(0)
+    del tab._config_of(row).entries[0]
+    tab._into_file(tab._config_of(row))
+    tab.tree.setCurrentItem(tab.tree.topLevelItem(0))
+    tab._add_entry()
+    assert mapped(view) == [(0x2000, 1), (0x2000, 2), (0x2001, 0)]
+
+
+def test_a_mapped_object_moves_up_and_down(app, view, demo):
+    view.open_file(demo)
+    tab = view.pdo_config
+    tab.tree.setCurrentItem(tab.tree.topLevelItem(0).child(2))
+    tab._move_entry(-1)
+    assert mapped(view) == [(0x6041, 0), (0x2000, 2), (0x2000, 1)]
+    tab._move_entry(-1)
+    tab._move_entry(-1)  # already first: stays
+    assert mapped(view) == [(0x2000, 2), (0x6041, 0), (0x2000, 1)]
+    tab._move_entry(1)
+    assert mapped(view) == [(0x6041, 0), (0x2000, 2), (0x2000, 1)]
+
+
+def can_edit(tree, item, column) -> bool:
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    index = tree.indexFromItem(item, column)
+    editor = tree.itemDelegate().createEditor(tree.viewport(), QStyleOptionViewItem(), index)
+    if editor is not None:
+        editor.deleteLater()
+    return editor is not None
+
+
+def test_only_a_value_is_typed_into_in_the_dictionary(view, eds):
+    """The index, name, type and access are what the EDS says. Typing over
+    them changed nothing and left the cell looking changed."""
+    view.open_file(eds)
+    row = view._od_item(0x2001, 0)
+    assert can_edit(view.od, row, COL_VALUE)
+    assert not any(can_edit(view.od, row, column) for column in range(COL_VALUE))
+
+
+def test_a_pdo_s_name_and_size_are_not_typed_into(view, demo):
+    from pycangui.ui.pdo_view import COL_BITS, COL_COBID, COL_NAME
+
+    view.open_file(demo)
+    tree = view.pdo_config.tree
+    row = tree.topLevelItem(0)
+    assert can_edit(tree, row, COL_COBID) and can_edit(tree, row, COL_TRANS)
+    assert not can_edit(tree, row, COL_NAME) and not can_edit(tree, row, COL_BITS)
 
 
 def test_a_pdo_with_more_objects_than_the_file_has_room_for_is_refused(view, demo):

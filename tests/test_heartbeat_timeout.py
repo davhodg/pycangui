@@ -131,7 +131,6 @@ def test_the_dialog_s_heartbeat_timeout_reaches_the_manager(app, home, monkeypat
     window.canopen_view._open_settings()
     assert window.canopen.heartbeat_overrides == {5: 2.5}
     assert window.canopen.sdo_channels == {}, "the channel was left as it was"
-    assert "heartbeat timeout node 5 2500 ms" in window.log.toPlainText()
     window.close()
 
 

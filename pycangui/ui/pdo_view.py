@@ -34,6 +34,7 @@ from pycangui.canopen.manager import CanopenManager, mappable, mapped_bits, od_e
 from pycangui.core.classify import predefined_meaning
 from pycangui.core.context import Context
 from pycangui.ui import messages
+from pycangui.ui.edit_columns import EditColumns
 
 COL_NAME, COL_COBID, COL_ENABLED, COL_TRANS, COL_INHIBIT, COL_TIMER, COL_BITS = range(7)
 
@@ -161,21 +162,36 @@ class PdoConfigView(QWidget):
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.tree.header().setStretchLastSection(True)
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
+        # The PDO's settings are typed into; its name and size are not.
+        self.tree.setItemDelegate(
+            EditColumns((COL_COBID, COL_TRANS, COL_INHIBIT, COL_TIMER), self.tree)
+        )
         self.tree.itemChanged.connect(self._on_item_changed)
 
         self.read_btn = read = QPushButton()
         read.clicked.connect(self._read)
         add = QPushButton("Map object...")
-        add.setToolTip("Add an object from the dictionary to this PDO's contents")
+        add.setToolTip(
+            "Add an object from the dictionary to this PDO: after the selected\n"
+            "mapped object, or at the end with the PDO itself selected."
+        )
         add.clicked.connect(self._add_entry)
         remove = QPushButton("Unmap object")
         remove.setToolTip("Take the selected object out of this PDO")
         remove.clicked.connect(self._remove_entry)
+        # The order is the layout of the frame: the first object mapped is
+        # the first bits sent.
+        up = QPushButton("Move up")
+        up.setToolTip("Move the selected object earlier in the PDO: lower bits of the frame")
+        up.clicked.connect(lambda: self._move_entry(-1))
+        down = QPushButton("Move down")
+        down.setToolTip("Move the selected object later in the PDO: higher bits of the frame")
+        down.clicked.connect(lambda: self._move_entry(1))
         self.write_btn = write = QPushButton()
         write.clicked.connect(self._write)
         self.hint = QLabel()
         bar = QHBoxLayout()
-        for b in (read, add, remove, write):
+        for b in (read, add, remove, up, down, write):
             bar.addWidget(b)
         bar.addStretch()
         bar.addWidget(self.hint)
@@ -216,20 +232,18 @@ class PdoConfigView(QWidget):
             self.write_btn.setToolTip(
                 "Write the selected PDO's communication and mapping parameters"
             )
+            self.write_btn.show()
             self.hint.setText("Edit a cell, then Write to node")
         else:
             self.read_btn.setText("Read from file")
-            self.read_btn.setToolTip(
-                "Show the PDOs as the file's objects have them now, dropping\n"
-                "anything changed here and not yet put in the file."
-            )
-            self.write_btn.setText("Put in file")
-            self.write_btn.setToolTip(
-                "Put the selected PDO's communication and mapping parameters into\n"
-                "the file's objects. Held like any other change to the file, and\n"
-                "written to disk when the file is saved."
-            )
-            self.hint.setText("Edit a cell, then Put in file, then Save")
+            self.read_btn.setToolTip("Show the PDOs as the file's objects have them now.")
+            # Nothing to write: in a file, each change goes into its objects
+            # as it is made, like a value typed into the object dictionary,
+            # and is kept or thrown away with the file. A second step before
+            # Save was a step to forget, and closing the file then lost the
+            # change without a word.
+            self.write_btn.hide()
+            self.hint.setText("Changes go into the file: Save it to keep them")
 
     @Slot(int)
     def _on_config_changed(self, node_id: int) -> None:
@@ -358,10 +372,32 @@ class PdoConfigView(QWidget):
                 config.inhibit_time_us = _optional_int(item.text(COL_INHIBIT))
             elif column == COL_TIMER:
                 config.event_timer_ms = _optional_int(item.text(COL_TIMER))
+            else:
+                return
         except ValueError:
-            self.ctx.warn(f"PDO: {item.text(column)!r} is not a valid number")
+            messages.warning(
+                self, "Not changed", f"{item.text(column)!r} is not a number this can hold."
+            )
             self.refresh()
-        self._updating = False
+            return
+        finally:
+            self._updating = False
+        self._into_file(config)
+
+    def _into_file(self, config: PdoConfig) -> bool:
+        """In a file, put the change into its objects now. False if it would not go.
+
+        Refused, the file is left as it was and the tree goes back to it, so
+        what is on the screen is never something the file does not hold.
+        """
+        if self._file is None:
+            return True
+        if (why_not := pdo_file.apply(self._file, config)) != "":
+            messages.warning(self, f"{config.direction}{config.number} not changed", why_not)
+            self.refresh()
+            return False
+        self.refresh()
+        return True
 
     def _add_entry(self) -> None:
         item = self._selected_row()
@@ -387,8 +423,16 @@ class PdoConfigView(QWidget):
                 "object in another PDO.",
             )
             return
-        config.entries.append(entry)
+        # After the object selected, which is where somebody looking at a
+        # mapping expects the new one; at the end with the PDO selected.
+        picked = self.tree.selectedItems()
+        child = picked[0] if picked and picked[0].parent() is item else None
+        at = item.indexOfChild(child) + 1 if child is not None else len(config.entries)
+        row = self.tree.indexOfTopLevelItem(item)  # the item goes with the redraw
+        config.entries.insert(at, entry)
         self._redraw()
+        if self._into_file(config):
+            self._select_place((row, at))
 
     def _remove_entry(self) -> None:
         items = self.tree.selectedItems()
@@ -410,6 +454,31 @@ class PdoConfigView(QWidget):
         if 0 <= where < len(config.entries):
             del config.entries[where]
         self._redraw()
+        self._into_file(config)
+
+    def _move_entry(self, step: int) -> None:
+        """Move the selected mapped object one place earlier or later."""
+        items = self.tree.selectedItems()
+        if not items or items[0].parent() is None:
+            messages.warning(
+                self,
+                "Nothing to move",
+                "Select a mapped object -- one of the rows underneath a PDO.",
+            )
+            return
+        child = items[0]
+        parent = child.parent()
+        config = self._config_of(parent)
+        row = self.tree.indexOfTopLevelItem(parent)
+        where = parent.indexOfChild(child)
+        to = where + step
+        if not 0 <= to < len(config.entries):
+            return  # already first, or last
+        entries = config.entries
+        entries[where], entries[to] = entries[to], entries[where]
+        self._redraw()
+        if self._into_file(config):
+            self._select_place((row, to))
 
     def _read(self) -> None:
         if self._file is not None:
@@ -425,13 +494,6 @@ class PdoConfigView(QWidget):
         config = self._config_of(item)
         if self._file is None:
             self.manager.write_pdo_config(config)
-            return
-        if (why_not := pdo_file.apply(self._file, config)) != "":
-            self.ctx.warn(f"PDO: {why_not}")
-            return
-        name = f"{config.direction}{config.number}"
-        self.ctx.log(f"{name} put in {self._file.label}: save the file to keep it")
-        self.refresh()
 
 
 def _optional_int(text: str) -> int | None:

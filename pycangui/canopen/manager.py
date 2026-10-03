@@ -188,6 +188,11 @@ class CanopenManager(QObject):
     lss_found = Signal(object)  # NodeIdentity discovered by LSS
     pdo_config = Signal(int)  # node_id: its PDO configuration changed
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
+    #: Save DCF or Apply DCF is over: node_id, what to say (the result, or
+    #: why it failed), and whether it went wrong. Stopped is not wrong.
+    dcf_finished = Signal(int, str, bool)
+    read_progress = Signal(int, int, int)  # Read all: node_id, objects done, in all
+    read_finished = Signal(int, int, int, bool)  # node_id, done, in all, stopped
     #: The EDS a node keeps in 0x1021: node_id, its bytes, and 0x1022's format.
     stored_eds = Signal(int, object, int)
     #: While that is read: node_id, bytes so far, bytes in all (0: not said).
@@ -261,6 +266,7 @@ class CanopenManager(QObject):
         self._sync_stop = threading.Event()
         self._worker = Worker()  # starts itself the first time it is used
         self._stop_stored_eds = False
+        self._stop_batch = False
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
 
@@ -393,6 +399,36 @@ class CanopenManager(QObject):
                 self.lost_nodes.discard(node_id)
                 self.message.emit(f"Node {node_id}: heartbeat back", GOOD)
                 self.node_back.emit(node_id)
+
+    def remove_node(self, node_id: int) -> None:
+        """Forget one node: off the network, and everything known about it.
+
+        For a node added by hand at the wrong id, or one unplugged for good.
+        One still on the bus comes back with its next heartbeat, which is
+        right: it is there.
+        """
+        for known in (
+            self.last_heartbeat,
+            self._heartbeat_stamp,
+            self._heartbeat_gaps,
+            self.heartbeat_interval,
+            self.access_levels,
+            self.fault_states,
+            self._eds_path,
+        ):
+            known.pop(node_id, None)
+        self.lost_nodes.discard(node_id)
+        node = self.node(node_id)
+        if node is not None:
+            # The library leaves a read PDO's subscription behind, and its
+            # frames would go on being decoded for a node no longer listed.
+            for pdo_map in getattr(node, "tpdo", {}).values():
+                try:
+                    self.network.unsubscribe(pdo_map.cob_id, pdo_map.on_message)
+                except (KeyError, ValueError):
+                    pass  # never subscribed: disabled, or never read
+            del self.network[node_id]
+        self.forget_labels()
 
     def forget_nodes(self) -> None:
         self.last_heartbeat.clear()
@@ -940,16 +976,54 @@ class CanopenManager(QObject):
         if node is None:
             return
 
-        def job() -> Any:
-            try:
-                variable = self._variable(node, index, sub)
-            except KeyError:
-                return node.sdo.upload(index, sub)  # not in the EDS: give bytes
-            if variable.od.data_type == datatypes.DOMAIN:
-                return self._read_block(node_id, node, index, sub)
-            return variable.raw
+        self._worker.submit(
+            lambda: self._read_one(node_id, node, index, sub),
+            lambda v, e: self.sdo_result.emit(node_id, index, sub, v, e),
+        )
 
-        self._worker.submit(job, lambda v, e: self.sdo_result.emit(node_id, index, sub, v, e))
+    def read_many(self, node_id: int, wanted) -> None:
+        """Read a list of objects one after another, saying how far it has got.
+
+        Read all, as one job rather than one per object: a job per object
+        could not be stopped once queued, and could not say "300 of 1,400".
+        Each answer goes out as ``sdo_result``, as a single read's does;
+        ``read_progress`` says how far, and ``read_finished`` that it is over.
+        """
+        node = self.node(node_id)
+        if node is None:
+            return
+        wanted = list(wanted)
+        self._stop_batch = False
+
+        def job() -> int:
+            for i, (index, sub) in enumerate(wanted):
+                if self._stop_batch:
+                    return i
+                self.read_progress.emit(node_id, i, len(wanted))
+                try:
+                    value, error = self._read_one(node_id, node, index, sub), None
+                except Exception as exc:  # this one, not the rest
+                    value, error = None, f"{type(exc).__name__}: {exc}"
+                self.sdo_result.emit(node_id, index, sub, value, error)
+            return len(wanted)
+
+        def done(count: int | None, error: str | None) -> None:
+            self.read_finished.emit(node_id, count or 0, len(wanted), self._stop_batch)
+
+        self._worker.submit(job, done)
+
+    def stop_batch(self) -> None:
+        """Stop Read all, Save DCF or Apply DCF after the object in hand."""
+        self._stop_batch = True
+
+    def _read_one(self, node_id: int, node, index: int, sub: int) -> Any:
+        try:
+            variable = self._variable(node, index, sub)
+        except KeyError:
+            return node.sdo.upload(index, sub)  # not in the EDS: give bytes
+        if variable.od.data_type == datatypes.DOMAIN:
+            return self._read_block(node_id, node, index, sub)
+        return variable.raw
 
     def _read_block(self, node_id: int, node, index: int, sub: int) -> bytes:
         """A DOMAIN, read a piece at a time so it can say how far it has got.
@@ -1493,9 +1567,11 @@ class CanopenManager(QObject):
         node = self.node(node_id)
         if node is None or not len(node.object_dictionary):
             self.message.emit(f"Node {node_id}: load an EDS first", WARNING)
+            self.dcf_finished.emit(node_id, "load an EDS for it first", True)
             return
+        self._stop_batch = False
 
-        def job() -> tuple[int, int]:
+        def job() -> tuple[int, int] | None:
             variables = [
                 var
                 for var in _all_variables(node.object_dictionary)
@@ -1504,6 +1580,8 @@ class CanopenManager(QObject):
             read = 0
             values: dict[tuple[int, int], object] = {}
             for i, var in enumerate(variables):
+                if self._stop_batch:
+                    return None  # half a configuration is not one: nothing written
                 try:
                     value = self._variable(node, var.index, var.subindex).raw
                     values[(var.index, var.subindex)] = value
@@ -1542,10 +1620,17 @@ class CanopenManager(QObject):
         def done(counts: tuple[int, int] | None, error: str | None) -> None:
             if error:
                 self.message.emit(f"Node {node_id}: DCF save failed ({error})", WARNING)
+                self.dcf_finished.emit(node_id, f"The DCF was not saved: {error}", True)
+            elif counts is None:
+                self.message.emit(f"Node {node_id}: DCF save stopped, nothing written", INFORMATION)
+                self.dcf_finished.emit(node_id, "Stopped: no file was written.", False)
             else:
                 read, total = counts
                 self.message.emit(
                     f"Node {node_id}: DCF written, {read}/{total} parameters read", INFORMATION
+                )
+                self.dcf_finished.emit(
+                    node_id, f"{read} of {total} parameters read and written to {path}", False
                 )
 
         self._worker.submit(job, done)
@@ -1590,8 +1675,10 @@ class CanopenManager(QObject):
         """Write the parameter values from a DCF into the node."""
         if self.node(node_id) is None:
             self.message.emit(f"Node {node_id}: not known", WARNING)
+            self.dcf_finished.emit(node_id, f"Node {node_id} is not known", True)
             return
         node = self.node(node_id)
+        self._stop_batch = False
 
         def job() -> tuple[int, int, list[tuple[int, int, str]]]:
             source = load_od(path, node_id)
@@ -1603,6 +1690,8 @@ class CanopenManager(QObject):
             written: int = 0
             failures: list[tuple[int, int, str]] = []
             for i, var in enumerate(wanted):
+                if self._stop_batch:
+                    break
                 try:
                     self._variable(node, var.index, var.subindex).raw = var.value
                     written += 1
@@ -1618,11 +1707,18 @@ class CanopenManager(QObject):
         ) -> None:
             if error:
                 self.message.emit(f"Node {node_id}: DCF apply failed ({error})", WARNING)
+                self.dcf_finished.emit(node_id, f"The DCF was not applied: {error}", True)
                 return
             written, total, failures = result
+            stopped = " before it was stopped" if self._stop_batch else ""
             self.message.emit(
-                f"Node {node_id}: {written}/{total} parameters written from the DCF", INFORMATION
+                f"Node {node_id}: {written}/{total} parameters written from the DCF{stopped}",
+                INFORMATION,
             )
+            said = f"{written} of {total} parameters written{stopped}."
+            if failures:
+                said += f" {len(failures)} refused by the node: the Event Log says which and why."
+            self.dcf_finished.emit(node_id, said, bool(failures))
             # Grouped by reason rather than listed one per line. A DCF that
             # goes wrong usually goes wrong the same way two hundred times --
             # one read-only object, or one value the node's range rejects --

@@ -357,8 +357,9 @@ class MotorView(QWidget):
         self.disable_too = QCheckBox("Disable the drive as well when this pane closes")
         self.disable_too.setToolTip(DISABLE_TOO_TIP)
 
-        self.poll = QPushButton("Poll")
-        self.poll.setCheckable(True)
+        # A tick, as on a custom pane: polling is a state the pane is in, and a
+        # button that stays down did not say which way it was.
+        self.poll = QCheckBox("Poll")
         self.poll.setToolTip(
             "Read these, over and over:\n"
             + "\n".join(f"    {about(obj)}" for obj in cia402.WATCHED)
@@ -729,7 +730,7 @@ class MotorView(QWidget):
     def _show_state(self) -> None:
         if not self._read_something:
             self.state.setText("Not read yet")
-            self.flags.setText("Press Poll, or one of the commands below.")
+            self.flags.setText("Tick Poll, or press one of the commands below.")
             self.raw.setText("")
             self.maker_status.setText(MAKER_NOT_READ)
             for button in (self.enable, self.disable, self.quick_stop, self.reset):

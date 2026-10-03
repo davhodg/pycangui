@@ -290,6 +290,66 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
     )
 
 
+def _on_off(on: bool) -> str:
+    return "on" if on else "off"
+
+
+def _counter(overflow: int) -> str:
+    return f"1 to {overflow}" if overflow else "none"
+
+
+def _channel(node_id: int, channels: dict[int, tuple[int, int]]) -> str:
+    request, response = channels.get(node_id, predefined(node_id))
+    return f"0x{request:03X}/0x{response:03X}"
+
+
+def _heartbeat(node_id: int, timeouts: dict[int, float]) -> str:
+    return f"{timeouts[node_id]:g} ms" if node_id in timeouts else "worked out"
+
+
+#: Each setting that is one value: its field, what to call it, how to show it.
+_SHOWN = (
+    ("timeout_ms", "SDO timeout", lambda v: f"{v:g} ms"),
+    ("retries", "SDO retries", str),
+    ("sync_period_ms", "SYNC period", lambda v: f"{v:g} ms"),
+    ("sync_counter_overflow", "SYNC counter", _counter),
+    ("identify", "identify new nodes", _on_off),
+    ("read_domains", "read DOMAIN objects", _on_off),
+    ("time_offered", "TIME offered", _on_off),
+    ("time_period_s", "TIME period", lambda v: f"{v:g} s"),
+    ("time_local", "TIME as", lambda v: "local time" if v else "UTC"),
+)
+SYNC_FIELDS = ("sync_period_ms", "sync_counter_overflow")
+TIME_FIELDS = ("time_period_s", "time_local")
+
+
+def changes(old: CanopenSettings, new: CanopenSettings) -> list[str]:
+    """What OK changed, one item each: "SYNC period 50 ms (was 100 ms)".
+
+    Only what changed. Every setting on every OK was a paragraph in the Event
+    Log that said the same thing each time, and hid the one that was new.
+    """
+    out = [
+        f"{name} {show(getattr(new, attr))} (was {show(getattr(old, attr))})"
+        for attr, name, show in _SHOWN
+        if getattr(old, attr) != getattr(new, attr)
+    ]
+    for node_id in sorted({*old.channels, *new.channels}):
+        was, now = _channel(node_id, old.channels), _channel(node_id, new.channels)
+        if was != now:
+            out.append(f"node {node_id} SDO channel {now} (was {was})")
+    for node_id in sorted({*old.heartbeat_timeouts, *new.heartbeat_timeouts}):
+        was = _heartbeat(node_id, old.heartbeat_timeouts)
+        now = _heartbeat(node_id, new.heartbeat_timeouts)
+        if was != now:
+            out.append(f"node {node_id} heartbeat timeout {now} (was {was})")
+    return out
+
+
+def changed(old: CanopenSettings, new: CanopenSettings, fields) -> bool:
+    return any(getattr(old, attr) != getattr(new, attr) for attr in fields)
+
+
 def apply(manager, settings: CanopenSettings) -> None:
     manager.read_domains = settings.read_domains
     manager.set_sdo_timing(settings.timeout_ms / 1000, settings.retries)

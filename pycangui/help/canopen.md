@@ -35,6 +35,9 @@ is a fact about the bus rather than a decision to take each time. So is the
 it is set. Set to the devices' object 0x1019 (2 to 240), SYNC carries one byte
 counting 1 to that number and round again, which is what a PDO's SYNC start
 value refers to, and what a device set up with a counter expects to see.
+Changing either while SYNC is running asks whether to restart it with the new
+settings, since otherwise it carries on as it was; restarting starts the counter
+from 1 again.
 
 **TIME** (0x100) tells every node the date and time, for devices that keep a
 clock. It is offered only once *Settings...* says so -- **Offer TIME in the
@@ -44,8 +47,9 @@ not say whose midnight it counts from, so *Settings...* also chooses local time
 or UTC; local is what a device showing its clock usually wants.
 
 The list is the dividing line. What is above it acts on the network -- NMT
-and SYNC are services the whole bus hears, and **Add node...** puts a row in
-the list rather than doing anything to one. Everything below it acts on the
+and SYNC are services the whole bus hears, and **Add node...** and **Remove
+node** put a row in the list or take one out rather than doing anything to a
+node. Everything below it acts on the
 node highlighted in it, and is switched off while no node is highlighted, or
 while the highlighted one is lost: a button that looks pressable and then says
 "no node selected" is a worse way to find that out than one that is plainly
@@ -58,7 +62,10 @@ reflashed keeps what it said before until this is pressed.
 
 **Add node...** puts in a node that has not been heard from:
 one with its heartbeat switched off, held in pre-operational, or sitting in its
-bootloader. It is identified straight away. **Login...** asks the selected
+bootloader. It is identified straight away. **Remove node** takes the selected
+node out of the list -- one added at the wrong id, or unplugged for good -- and
+works on a lost node too. A node still on the bus comes back with its next
+heartbeat, because it is there. **Login...** asks the selected
 node for an access level, with a password if the device wants one, and **Read
 access level** asks which level is held; the **Access** column shows the
 answer.
@@ -81,14 +88,19 @@ node* in the PDO tab. The EDS says how a node shipped; this is how it is set up
 now, so [Signals and Plot](signals.md) decode the TPDOs a remapped node
 actually sends, and [CAN Transmit](transmit.md) offers the RPDOs it receives. **Store** and **Restore defaults** are 0x1010 and 0x1011, and **Save
 DCF...** and **Apply DCF...** read every parameter out to a file and write one
-back in.
+back in. Both show how far they have got and can be stopped: a stopped *Save
+DCF* writes no file, since half a configuration is not one, and a stopped
+*Apply DCF* says how many it had written.
+
+A button that cannot do what it was pressed for says so in a box, as well as in
+the Event Log: the log can be behind the window the button was pressed in.
 
 Everything under the list is on the right-click menu of a node as well, so a
 node can be worked on where it is rather than by selecting it and then
 reaching for a row of buttons.
 
 **Settings...** holds what is set once rather than done, and is kept in the
-workspace:
+workspace. *OK* writes what it changed to the Event Log, and only that:
 
 - **Identify a node when it is first heard** is on to begin with, and is the
   one thing pycangui sends a node without being asked: five SDO uploads as
@@ -123,7 +135,10 @@ matches the index or the name, and several words must all match.
 Tick **Watch** against the objects a job uses and **Watched** shows only those.
 The list is kept per device, so the next controller of the same kind opens with
 the objects you were using on the last one. **Read all** reads every readable
-entry, one SDO at a time, which takes a while on a large node. Select some
+entry, one SDO at a time, which takes a while on a large node: while it runs,
+a bar in its place says how far it has got, with **Stop** beside it. Only the
+*Value* column can be typed into, and only for an object that can be written:
+the index, name, type and access are what the EDS says. Select some
 entries and right-click to add them to a [custom pane](custom-panes.md).
 
 **DOMAIN objects** -- blocks of bytes of any length, such as a file or a block
@@ -173,11 +188,13 @@ first for the adapter.
 The *PDO configuration* tab works for a file as it does for a node. It shows the
 file's TPDOs and RPDOs, read out of its communication and mapping objects
 (0x1400, 0x1600, 0x1800 and 0x1A00), and they are edited the same way: a cell,
-*Map object...*, *Unmap object*. **Put in file** takes the place of *Write to
-node*: it puts the selected PDO back into those objects, where the change is
-tinted in the tree and waits for *Save* like any other. Only what changed is
-put back, and no more objects can be mapped than the file's mapping record has
-entries for. An EDS usually gives a COB-ID as `$NODEID+0x180`; the tab shows
+*Map object...*, *Unmap object*, *Move up* and *Move down*. There is no *Write
+to node*, and nothing to press instead: each change goes into those objects as
+it is made, as a value typed into the dictionary does, tinted in the tree and
+waiting for *Save* like any other -- so closing the file with it unsaved asks
+first. Only what changed is put in, and no more objects can be mapped than the
+file's mapping record has entries for; a change that will not go is said in a
+box and the tab goes back to what the file holds. An EDS usually gives a COB-ID as `$NODEID+0x180`; the tab shows
 the base, the tooltip says so, and it stays as that text unless the COB-ID or
 *Enabled* is changed, when it becomes a plain number.
 
