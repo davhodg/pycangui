@@ -8,7 +8,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 
 from pycangui import resources
-from pycangui.canopen import PdoEntry
+from pycangui.canopen import PdoEntry, load_od
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
 
@@ -265,3 +265,67 @@ def test_only_what_0x1019_can_hold_is_kept(typed, kept):
     from pycangui.ui import canopen_settings
 
     assert canopen_settings.sync_overflow(typed) == kept
+
+
+# --- DOMAIN objects: read with the rest, unless the setting says not ------------------------
+def test_a_dcf_saved_from_the_node_has_its_domain_objects(stack):
+    manager, _demo, tmp = stack
+    done: list[str] = []
+    manager.message.connect(lambda text, _level: done.append(text))
+
+    with_them = tmp / "with.dcf"
+    assert manager.read_domains, "on unless it is switched off"
+    manager.save_dcf(5, str(with_them))
+    wait_until(lambda: with_them.is_file() and any("DCF" in m for m in done))
+    kept = load_od(with_them).get_variable(0x1021, 0)
+    assert kept.value == resources.path("demo.eds").read_bytes(), "the block, byte for byte"
+
+    done.clear()
+    without = tmp / "without.dcf"
+    manager.read_domains = False
+    manager.save_dcf(5, str(without))
+    wait_until(lambda: without.is_file() and any("DCF" in m for m in done))
+    assert load_od(without).get_variable(0x1021, 0).value is None, "left out"
+
+
+def test_read_all_includes_domain_objects_when_the_setting_is_on(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui import canopen_settings
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    try:
+        view, manager = window.canopen_view, window.canopen
+        assert canopen_settings.load(window.ctx).read_domains and manager.read_domains
+
+        domain = load_od(resources.path("demo.eds")).get_variable(0x1021, 0)
+        number = load_od(resources.path("demo.eds")).get_variable(0x2001, 0)
+        assert manager.reads(domain) and manager.reads(number)
+
+        dialog = canopen_settings.CanopenSettingsDialog(None, canopen_settings.load(window.ctx))
+        dialog.read_domains.setChecked(False)
+        chosen = dialog.settings()
+        canopen_settings.save(window.ctx, chosen)
+        canopen_settings.apply(manager, chosen)
+        assert not manager.reads(domain) and manager.reads(number), "only the blocks are left out"
+        assert not canopen_settings.load(window.ctx).read_domains, "and it is remembered"
+        assert view.manager is manager
+    finally:
+        window.close()
+
+
+def test_a_long_block_is_cut_short_in_the_tree():
+    from pycangui.canopen.display import Display
+    from pycangui.ui.canopen_view import MOST_BYTES_SHOWN, _cell_text, _typed_value
+
+    short, long = bytes(range(8)), bytes(1000)
+    assert _cell_text(Display(), short) == short.hex(" ").upper()
+    shown = _cell_text(Display(), long)
+    assert len(shown) < 4 * MOST_BYTES_SHOWN + 40
+
+    domain = load_od(resources.path("demo.eds")).get_variable(0x1021, 0)
+    raw, why = _typed_value(domain, Display(), shown)
+    assert raw is None and why, "what is shown cut short cannot be written back as the block"

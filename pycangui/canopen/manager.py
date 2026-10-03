@@ -225,6 +225,8 @@ class CanopenManager(QObject):
         #: kept up to date, because it is read once per frame and written
         #: only when somebody finds a node or loads an EDS.
         self._labels: dict[int, str] | None = None
+        #: Whether DOMAIN objects are read by Read all and Save DCF. See ``reads``.
+        self.read_domains = True
         self._sync_on = False
         self._sync_thread: threading.Thread | None = None
         self._sync_stop = threading.Event()
@@ -1008,6 +1010,16 @@ class CanopenManager(QObject):
         pdo_map = None if node is None else node.rpdo.map.get(number)
         return {} if pdo_map is None else self._choices_of(node_id, pdo_map)
 
+    def reads(self, var) -> bool:
+        """Whether a read of everything -- Read all, Save DCF -- includes this object.
+
+        A DOMAIN is a block of bytes of any length: a stored file, a block of
+        calibration data. They are read with the rest unless CANopen settings
+        say otherwise, since a block a device keeps is part of what it is set
+        to; left out, a large one is the many frames it would have cost.
+        """
+        return self.read_domains or var.data_type != datatypes.DOMAIN
+
     def tpdo_cob_id(self, node_id: int, name: str) -> int | None:
         """The identifier a node's TPDO of this name is sent on, if it is known."""
         node = self.node(node_id)
@@ -1395,7 +1407,7 @@ class CanopenManager(QObject):
             variables = [
                 var
                 for var in _all_variables(node.object_dictionary)
-                if var.readable and var.index >= 0x1000 and var.data_type != datatypes.DOMAIN
+                if var.readable and var.index >= 0x1000 and self.reads(var)
             ]
             read = 0
             values: dict[tuple[int, int], object] = {}

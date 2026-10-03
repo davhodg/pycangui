@@ -694,7 +694,7 @@ class CanopenView(QWidget):
     def _show_file_value(self, item, source: FileSource, index: int, sub: int, raw, error) -> None:
         was, self._updating = self._updating, True
         display = source.display(index, sub)
-        item.setText(COL_VALUE, str(error) if error else value_text(display, raw))
+        item.setText(COL_VALUE, str(error) if error else _cell_text(display, raw))
         edited = source.unsaved_at(index, sub)
         for column in range(COL_VALUE + 1):
             item.setBackground(column, EDITED_COLOUR if edited else QBrush())
@@ -1645,7 +1645,7 @@ class CanopenView(QWidget):
         if node is None:
             return
         for index, sub, var, _name in od_entries(node.object_dictionary):
-            if var is not None and var.readable and var.data_type != 0xF:  # skip DOMAIN
+            if var is not None and var.readable and self.manager.reads(var):
                 self.manager.sdo_read(node_id, index, sub or 0)
 
     @Slot(int, int, int, object, object)
@@ -1659,7 +1659,7 @@ class CanopenView(QWidget):
             return
         self._updating = True
         display = self.manager.display(node_id, index, sub)
-        item.setText(4, "error" if error else value_text(display, value))
+        item.setText(4, "error" if error else _cell_text(display, value))
         tip = self._object_tooltip(node_id, index, sub, None if error else value)
         item.setToolTip(4, tip)
         item.setToolTip(1, tip)
@@ -1716,6 +1716,23 @@ def _hex(value: int | None) -> str:
 
 def _access(var) -> str:
     return "" if var is None else var.access_type
+
+
+#: The most bytes of a block shown in a cell. A DOMAIN can be kilobytes, and
+#: a row thirty thousand characters wide is a tree nobody can use.
+MOST_BYTES_SHOWN = 32
+
+
+def _cell_text(display, value) -> str:
+    """A value as the tree shows it, a long block of bytes cut short.
+
+    Cut short it says how long it is, and it is not hex any more, so an edit
+    of what is shown is refused rather than written back as the whole block.
+    """
+    if isinstance(value, bytes | bytearray) and len(value) > MOST_BYTES_SHOWN:
+        start = bytes(value[:MOST_BYTES_SHOWN]).hex(" ").upper()
+        return f"{start} ... ({len(value):,} bytes)"
+    return value_text(display, value)
 
 
 def _typed_value(var, display, text: str):

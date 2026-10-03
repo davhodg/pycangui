@@ -119,6 +119,14 @@ the objects you were using on the last one. **Read all** reads every readable
 entry, one SDO at a time, which takes a while on a large node. Select some
 entries and right-click to add them to a [custom pane](custom-panes.md).
 
+**DOMAIN objects** -- blocks of bytes of any length, such as a file or a block
+of data a device keeps -- are read with the rest, by *Read all* and by *Save
+DCF*, so a block is captured in the DCF and written back by *Apply DCF* where
+the object is writable. A large one is many frames and takes that much longer:
+*Settings...* has **Read DOMAIN objects with Read all and Save DCF**, ticked to
+begin with, to leave them out. In the tree a long block shows its first bytes
+and how long it is; a block shown cut short cannot be edited in the cell.
+
 ## A DCF or EDS with no node
 
 **Open DCF/EDS...**, beside *Add node...*, puts a configuration file in the node

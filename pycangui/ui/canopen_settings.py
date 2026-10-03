@@ -52,6 +52,7 @@ HEARTBEATS_KEY = "canopen.heartbeat_timeouts"
 SYNC_KEY = "canopen.sync_period_ms"
 SYNC_COUNTER_KEY = "canopen.sync_counter_overflow"
 IDENTIFY_KEY = "canopen.identify_automatically"
+DOMAINS_KEY = "canopen.read_domain_objects"
 
 #: How often SYNC goes out while it is switched on. A rate, which is a
 #: settled choice about a bus, rather than something to decide each time
@@ -97,6 +98,14 @@ IDENTIFY_TIP = (
     "else's live machine wants. The cost is that a new node stays Node <id>\n"
     "with no EDS until Identify or Load EDS is pressed."
 )
+DOMAINS_TIP = (
+    "Include DOMAIN objects -- blocks of bytes of any length -- when Read all\n"
+    "reads the object dictionary and when Save DCF reads the node, so that a\n"
+    "block a device keeps is read, saved and applied with everything else.\n"
+    "\n"
+    "A large one is many frames, so it takes that much longer. Untick it to\n"
+    "leave them out; one can still be read by double-clicking it."
+)
 TIMEOUT_TIP = (
     "How long to wait for a node to answer each SDO request, for every SDO\n"
     "pycangui sends. 300 ms is the canopen library's own default."
@@ -133,6 +142,8 @@ class CanopenSettings:
     #: Whether a node is asked who it is as soon as it is heard. On, because
     #: an EDS is matched from the answer and nothing else would match one.
     identify: bool = True
+    #: Whether Read all and Save DCF read DOMAIN objects with the rest.
+    read_domains: bool = True
 
 
 def why_not(node_id: int, request: int, response: int) -> str:
@@ -205,6 +216,7 @@ def load(ctx: Context) -> CanopenSettings:
     if (overflow := _integer(ctx.settings.get(SYNC_COUNTER_KEY))) is not None:
         out.sync_counter_overflow = sync_overflow(overflow)
     out.identify = bool(ctx.settings.get(IDENTIFY_KEY, True))
+    out.read_domains = bool(ctx.settings.get(DOMAINS_KEY, True))
     saved = ctx.settings.get(CHANNELS_KEY, {})
     if isinstance(saved, dict):
         for node, pair in saved.items():
@@ -231,6 +243,7 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
     ctx.settings.set(SYNC_KEY, settings.sync_period_ms)
     ctx.settings.set(SYNC_COUNTER_KEY, settings.sync_counter_overflow)
     ctx.settings.set(IDENTIFY_KEY, settings.identify)
+    ctx.settings.set(DOMAINS_KEY, settings.read_domains)
     # In hex, the way a COB-ID is spoken, so the file reads as the dialog does.
     ctx.settings.set(
         CHANNELS_KEY,
@@ -249,6 +262,7 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
 
 
 def apply(manager, settings: CanopenSettings) -> None:
+    manager.read_domains = settings.read_domains
     manager.set_sdo_timing(settings.timeout_ms / 1000, settings.retries)
     manager.set_sdo_channels(settings.channels)
     manager.set_heartbeat_timeouts(
@@ -303,6 +317,9 @@ class CanopenSettingsDialog(QDialog):
         self.identify = QCheckBox("Identify a node when it is first heard")
         self.identify.setChecked(settings.identify)
         self.identify.setToolTip(IDENTIFY_TIP)
+        self.read_domains = QCheckBox("Read DOMAIN objects with Read all and Save DCF")
+        self.read_domains.setChecked(settings.read_domains)
+        self.read_domains.setToolTip(DOMAINS_TIP)
         # "Every node" rather than "SDO, every node": the SYNC period is
         # not an SDO setting, and it moved in here the moment the rate
         # stopped being a box beside the button. What each row is about is
@@ -314,6 +331,7 @@ class CanopenSettingsDialog(QDialog):
         form.addRow("SYNC period:", self.sync_period)
         form.addRow("SYNC counter:", self.sync_counter)
         form.addRow("", self.identify)
+        form.addRow("", self.read_domains)
 
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
@@ -444,6 +462,7 @@ class CanopenSettingsDialog(QDialog):
             sync_period_ms=self.sync_period.value(),
             sync_counter_overflow=sync_overflow(self.sync_counter.value()),
             identify=self.identify.isChecked(),
+            read_domains=self.read_domains.isChecked(),
             channels={
                 row.node_id: (row.request, row.response)
                 for row in rows
