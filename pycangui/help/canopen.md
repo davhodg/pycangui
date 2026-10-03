@@ -36,6 +36,13 @@ it is set. Set to the devices' object 0x1019 (2 to 240), SYNC carries one byte
 counting 1 to that number and round again, which is what a PDO's SYNC start
 value refers to, and what a device set up with a counter expects to see.
 
+**TIME** (0x100) tells every node the date and time, for devices that keep a
+clock. It is offered only once *Settings...* says so -- **Offer TIME in the
+CANopen pane** -- and then the pane has **TIME producer**, sending it now and
+again at the period set there, and **Send TIME**, sending it once. CiA 301 does
+not say whose midnight it counts from, so *Settings...* also chooses local time
+or UTC; local is what a device showing its clock usually wants.
+
 The list is the dividing line. What is above it acts on the network -- NMT
 and SYNC are services the whole bus hears, and **Add node...** puts a row in
 the list rather than doing anything to one. Everything below it acts on the
@@ -124,8 +131,11 @@ of data a device keeps -- are read with the rest, by *Read all* and by *Save
 DCF*, so a block is captured in the DCF and written back by *Apply DCF* where
 the object is writable. A large one is many frames and takes that much longer:
 *Settings...* has **Read DOMAIN objects with Read all and Save DCF**, ticked to
-begin with, to leave them out. In the tree a long block shows its first bytes
-and how long it is; a block shown cut short cannot be edited in the cell.
+begin with, to leave them out. While a block is being read its cell says so --
+*reading...*, then how far it has got -- since a large one is many frames; the
+read is in the background, so everything else carries on. Once read, a long
+block shows its first bytes and how long it is, and a block shown cut short
+cannot be edited in the cell.
 
 ## A DCF or EDS with no node
 

@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen **TIME** (0x100): a TIME producer and *Send TIME* in the CANopen pane, offered once
+  *Settings...* turns them on, with the period and local time or UTC set there.
 - CANopen **SYNC counter**, in *Settings...* and *none* until set: the SYNC producer sends the
   one-byte counter devices with 0x1019 set expect, counting 1 to the overflow value.
 - CANopen **Read EDS from node**: reads the EDS a device keeps in itself (object 0x1021), saves
@@ -75,8 +77,8 @@ since the last version, and comes out in the next one.
   CANopen RPDO row in CAN Transmit has the pick-list a DBC row has.
 - CANopen *Read all* and *Save DCF* read **DOMAIN** objects with the rest, where they were
   skipped, so a block of data a device keeps is captured in the DCF and applied from it.
-  *Settings...* has a tick box, on to begin with, to leave them out. A long block is cut short
-  in the tree, with its length.
+  *Settings...* has a tick box, on to begin with, to leave them out. While one is read its cell
+  says how far it has got, and a long block is cut short in the tree, with its length.
 - **Tools > Settings** holds what is set and left -- Theme, Verbose CAN logging, Strict DBC
   checks, and the two that set this installation up -- so that Tools itself is what is done.
   *Add to Start menu* is **Add shortcut to Start menu** there, and the installer's desktop

@@ -139,6 +139,11 @@ IDENTIFY_TIP = (
     "pressed -- and with automatic identification off in Settings, nothing\n"
     "has asked it at all."
 )
+TIME_PRODUCER_TIP = (
+    "Send TIME (0x100) -- the date and time, for every node -- now and then\n"
+    "repeatedly, at the period in Settings. Local time or UTC is chosen there."
+)
+SEND_TIME_TIP = "Send TIME (0x100) once: the date and time, for every node."
 SYNC_TIP = (
     "Transmit SYNC (0x080), so synchronous PDOs are exchanged. How often\n"
     "is in Settings: a rate is a fact about the bus, agreed once, rather\n"
@@ -292,6 +297,17 @@ class CanopenView(QWidget):
         self.sync_btn.setToolTip(SYNC_TIP)
         self.sync_btn.toggled.connect(self._toggle_sync)
         nmt_bar.addWidget(self.sync_btn)
+        # TIME, for the buses that use it: there only once CANopen settings
+        # say so, so that nobody else has two controls to wonder about.
+        self.time_btn = QCheckBox("TIME producer")
+        self.time_btn.setToolTip(TIME_PRODUCER_TIP)
+        self.time_btn.toggled.connect(self._toggle_time)
+        nmt_bar.addWidget(self.time_btn)
+        self.send_time_btn = QPushButton("Send TIME")
+        self.send_time_btn.setToolTip(SEND_TIME_TIP)
+        self.send_time_btn.clicked.connect(self._send_time)
+        nmt_bar.addWidget(self.send_time_btn)
+        self._offer_time()
         nmt_bar.addStretch()
         # What is set once rather than done lives on a dialog of its own: the
         # bar is for commands, and every setting beside them hid them further.
@@ -518,6 +534,7 @@ class CanopenView(QWidget):
         manager.stored_eds_progress.connect(self._on_stored_eds_progress)
         manager.stored_eds_failed.connect(self._on_stored_eds_failed)
         manager.sdo_result.connect(self.on_sdo_result)
+        manager.sdo_progress.connect(self._on_sdo_progress)
         manager.pdo_update.connect(self.on_pdo_update)
         manager.fault_state.connect(self.on_fault_state)
         manager.emcy.connect(manager.remember_emcy)
@@ -847,6 +864,9 @@ class CanopenView(QWidget):
         chosen = dialog.settings()
         canopen_settings.save(self.ctx, chosen)
         canopen_settings.apply(self.manager, chosen)
+        self._offer_time()
+        if self.time_btn.isChecked():  # a new period or zone, from now on
+            self.manager.start_time(chosen.time_period_s, chosen.time_local)
         channels = ", ".join(
             f"node {node_id} on 0x{request:03X}/0x{response:03X}"
             for node_id, (request, response) in sorted(chosen.channels.items())
@@ -1207,6 +1227,24 @@ class CanopenView(QWidget):
         else:
             self.manager.stop_sync()
 
+    def _offer_time(self) -> None:
+        offered = canopen_settings.load(self.ctx).time_offered
+        if not offered:
+            self.time_btn.setChecked(False)
+        for control in (self.time_btn, self.send_time_btn):
+            control.setVisible(offered)
+
+    @Slot(bool)
+    def _toggle_time(self, on: bool) -> None:
+        if on:
+            chosen = canopen_settings.load(self.ctx)
+            self.manager.start_time(chosen.time_period_s, chosen.time_local)
+        else:
+            self.manager.stop_time()
+
+    def _send_time(self) -> None:
+        self.manager.send_time(canopen_settings.load(self.ctx).time_local)
+
     def _nmt(self, command: str) -> None:
         self.manager.nmt(self.selected_node() or 0, command)
 
@@ -1226,6 +1264,7 @@ class CanopenView(QWidget):
         if self.selected_file() is None:  # a file's PDOs are not the bus's to take
             self.pdo_config.set_node(None)
         self.sync_btn.setChecked(False)
+        self.time_btn.setChecked(False)
         self._offer_node_buttons()  # nothing in the list, so nothing selected
 
     # --- emergencies ----------------------------------------------------------------
@@ -1648,6 +1687,15 @@ class CanopenView(QWidget):
             if var is not None and var.readable and self.manager.reads(var):
                 self.manager.sdo_read(node_id, index, sub or 0)
 
+    @Slot(int, int, int, int, int)
+    def _on_sdo_progress(self, node_id: int, index: int, sub: int, done: int, total: int) -> None:
+        """Say in the cell that a block is being read, and how far it has got."""
+        if node_id != self.selected_node() or (item := self._od_item(index, sub)) is None:
+            return
+        self._updating = True
+        item.setText(4, reading_text(done, total))
+        self._updating = False
+
     @Slot(int, int, int, object, object)
     def on_sdo_result(self, node_id: int, index: int, sub: int, value, error) -> None:
         if error:
@@ -1721,6 +1769,15 @@ def _access(var) -> str:
 #: The most bytes of a block shown in a cell. A DOMAIN can be kilobytes, and
 #: a row thirty thousand characters wide is a tree nobody can use.
 MOST_BYTES_SHOWN = 32
+
+
+def reading_text(done: int, total: int) -> str:
+    """``reading...``, then how far, while a block comes in."""
+    if not done:
+        return "reading..."
+    if total:
+        return f"reading... {100 * done // total}% ({done:,} of {total:,} bytes)"
+    return f"reading... {done:,} bytes"
 
 
 def _cell_text(display, value) -> str:

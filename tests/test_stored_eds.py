@@ -134,3 +134,32 @@ def test_an_empty_object_is_not_a_file(view, tmp_path, monkeypatch):
 def test_the_node_has_the_action_beside_load_eds(view):
     offered = [a.text() for a in view.node_menu(None).actions()]
     assert offered.index("Read EDS from node") == offered.index("Load EDS...") + 1
+
+
+# --- a DOMAIN read in the object dictionary says how far it has got --------------------------
+def test_a_domain_read_says_how_far_it_has_got(stack):
+    manager, _demo = stack
+    manager.load_eds(NODE, str(resources.path("demo.eds")))
+    wait_until(lambda: manager.node(NODE) is not None and len(manager.node(NODE).object_dictionary))
+    progress, results = [], []
+    manager.sdo_progress.connect(lambda n, i, s, done, total: progress.append((i, done, total)))
+    manager.sdo_result.connect(lambda n, i, s, value, error: results.append((i, value, error)))
+
+    manager.sdo_read(NODE, STORE_EDS, 0)
+    wait_until(lambda: results)
+    _index, value, error = results[0]
+    assert error is None and value == resources.path("demo.eds").read_bytes()
+    assert progress[0] == (STORE_EDS, 0, 0), "said at the start, before a byte has come"
+    assert len(progress) > 2 and progress[-1][1] <= len(value), "and as it went"
+
+    results.clear()
+    manager.sdo_read(NODE, 0x2001, 0)
+    wait_until(lambda: results)
+    assert [p for p in progress if p[0] == 0x2001] == [], "an ordinary object is just read"
+
+
+def test_the_cell_reads_reading_until_the_block_has_come():
+    from pycangui.ui.canopen_view import reading_text
+
+    shown = {reading_text(0, 0), reading_text(700, 10_240), reading_text(700, 0)}
+    assert len(shown) == 3, "starting, a share of a known size, and bytes of an unknown one"

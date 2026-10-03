@@ -19,6 +19,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from datetime import UTC, datetime
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -127,6 +128,27 @@ NO_SUCH_OBJECT = 0x0602_0000
 STOPPED = "stopped"
 
 
+def time_stamp(local: bool, now: float | None = None) -> float:
+    """The moment to put in a TIME frame, as the library takes it.
+
+    CiA 301 counts milliseconds since midnight and days since 1984, and says
+    nothing about which midnight. The library uses UTC's; a device showing
+    its clock to somebody usually wants the local one, so that is the choice
+    offered -- by shifting the moment by the local offset, summer time and
+    all, before the library does its sums.
+    """
+    now = time.time() if now is None else now
+    if not local:
+        return now
+    offset = datetime.fromtimestamp(now).astimezone().utcoffset()
+    return now + (offset.total_seconds() if offset is not None else 0.0)
+
+
+def _time_said(local: bool) -> str:
+    when = datetime.fromtimestamp(time_stamp(local), tz=UTC)
+    return when.strftime("%Y-%m-%d %H:%M:%S") + (" local time" if local else " UTC")
+
+
 #: What 0x1019 allows for a counter; 0 there means none.
 MIN_SYNC_OVERFLOW = 2
 MAX_SYNC_OVERFLOW = 240
@@ -154,6 +176,9 @@ class CanopenManager(QObject):
     identified = Signal(object)  # NodeIdentity
     eds_loaded = Signal(int, str, str)  # node_id, path, product name
     sdo_result = Signal(int, int, int, object, object)  # node_id, index, sub, value, error|None
+    #: A block being read: node_id, index, sub, bytes so far, bytes in all (0:
+    #: not said). Sent at the start, with nothing read yet, and as it goes.
+    sdo_progress = Signal(int, int, int, int, int)
     pdo_update = Signal(int, str, dict)  # node_id, pdo name, {variable name: value}
     emcy = Signal(object)  # Emcy
     node_lost = Signal(int)  # node_id: its heartbeat stopped arriving
@@ -227,6 +252,10 @@ class CanopenManager(QObject):
         self._labels: dict[int, str] | None = None
         #: Whether DOMAIN objects are read by Read all and Save DCF. See ``reads``.
         self.read_domains = True
+        #: TIME on a timer, on the GUI thread: seconds apart, so jitter is nothing.
+        self._time_timer = QTimer(self)
+        self._time_timer.timeout.connect(self._transmit_time)
+        self._time_local = True
         self._sync_on = False
         self._sync_thread: threading.Thread | None = None
         self._sync_stop = threading.Event()
@@ -256,6 +285,7 @@ class CanopenManager(QObject):
     def shutdown(self) -> None:
         self._liveness.stop()
         self.stop_sync()
+        self.stop_time()
         self._on_bus_disconnected()
         self._worker.stop()
         for signal, slot in (
@@ -912,11 +942,31 @@ class CanopenManager(QObject):
 
         def job() -> Any:
             try:
-                return self._variable(node, index, sub).raw
+                variable = self._variable(node, index, sub)
             except KeyError:
                 return node.sdo.upload(index, sub)  # not in the EDS: give bytes
+            if variable.od.data_type == datatypes.DOMAIN:
+                return self._read_block(node_id, node, index, sub)
+            return variable.raw
 
         self._worker.submit(job, lambda v, e: self.sdo_result.emit(node_id, index, sub, v, e))
+
+    def _read_block(self, node_id: int, node, index: int, sub: int) -> bytes:
+        """A DOMAIN, read a piece at a time so it can say how far it has got.
+
+        A block can be kilobytes -- thousands of frames -- and a cell that
+        stays as it was for that long reads as nothing happening. Read in the
+        same pieces an SDO upload is made of anyway, so it costs nothing.
+        """
+        self.sdo_progress.emit(node_id, index, sub, 0, 0)
+        data = bytearray()
+        with node.sdo.open(index, sub, "rb", buffering=0) as stream:
+            total = stream.size or 0
+            while chunk := stream.read(7):
+                data += chunk
+                if len(data) % 700 < len(chunk):
+                    self.sdo_progress.emit(node_id, index, sub, len(data), total)
+        return bytes(data)
 
     def sdo_write(self, node_id: int, index: int, sub: int, text: str) -> None:
         node = self.node(node_id)
@@ -1210,6 +1260,48 @@ class CanopenManager(QObject):
         self._sync_on = False
         self.message.emit("SYNC stopped", INFORMATION)
         self.sync_changed.emit(False, 0.0)
+
+    # --- TIME producer (CiA 301 TIME_OF_DAY on 0x100) ---------------------------
+    @property
+    def time_running(self) -> bool:
+        return self._time_timer.isActive()
+
+    def send_time(self, local: bool = True) -> None:
+        """Tell every node the date and time, once."""
+        if self.network is None:
+            self.message.emit(f"TIME: {NOT_CONNECTED}", WARNING)
+            return
+        self._transmit_time(local)
+        self.message.emit(f"TIME sent: {_time_said(local)}", INFORMATION)
+
+    def start_time(self, period_s: float, local: bool = True) -> None:
+        """Send TIME now and every ``period_s`` from then on."""
+        self.stop_time()
+        if self.network is None:
+            self.message.emit(f"TIME: {NOT_CONNECTED}", WARNING)
+            return
+        self._time_local = local
+        self._transmit_time(local)
+        self._time_timer.start(max(1, round(period_s * 1000)))
+        self.message.emit(
+            f"TIME producer started, every {period_s:g} s, {_time_said(local)}", INFORMATION
+        )
+
+    def stop_time(self) -> None:
+        if not self._time_timer.isActive():
+            return
+        self._time_timer.stop()
+        self.message.emit("TIME producer stopped", INFORMATION)
+
+    def _transmit_time(self, local: bool | None = None) -> None:
+        if self.network is None:
+            self._time_timer.stop()  # the bus went: nothing to send it on
+            return
+        local = self._time_local if local is None else local
+        try:
+            self.network.time.transmit(time_stamp(local))
+        except Exception as exc:  # the adapter refused it
+            self.message.emit(f"TIME: {exc}", WARNING)
 
     # --- LSS, layer setting services (CiA 305) ----------------------------------
     # LSS configures a node's node-ID and bit rate over CAN, before it has a
