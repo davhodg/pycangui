@@ -2,7 +2,7 @@
 
 # Replaceable components
 
-A **component** is the small part of pycangui that actually talks on the wire.
+A **component** is the small part of pycangui that actually talks on the bus.
 Everything above it -- the pane, the threading, the settings, the plotting --
 stays put, and the component underneath can be swapped: a C or Rust library
 through `ctypes`, a maker's DLL, or a different Python package, without

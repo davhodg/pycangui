@@ -9,8 +9,8 @@ bottom clears the lot. A database that has moved since it was loaded is on
 that list marked *(missing)*, which is how it is dropped without disturbing
 the others. Databases are checked
 strictly, and one that fails the check -- overlapping signals, a signal past
-the end of its message, both common in files real tools produce -- is offered
-for loading anyway rather than simply refused; turning off *Tools > Settings >
+the end of its message, both common in files real tools produce -- is asked
+about, and can be loaded anyway, rather than simply refused; turning off *Tools > Settings >
 Strict DBC checks* stops the asking. Signals with a `VAL_` table are
 picked from a list in [CAN Transmit](transmit.md), or typed by name or by number,
 and are shown here with their names: *Run (1)* in the Value column, and in Min

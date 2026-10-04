@@ -80,7 +80,7 @@ for checking for updates to a pip installation and for installing the MDF reader
 
 The installer says what it will do before it does it: a desktop shortcut and opening `.dcf`
 and `.eds` files with pycangui are tasks shown, and can be unticked, before anything is
-installed, and pycangui is only offered in *Open with* -- the default is left alone. It
+installed, and pycangui is only added to *Open with* -- the default is left alone. It
 installs an uninstaller, which takes away the program, its shortcuts and its file
 associations.
 

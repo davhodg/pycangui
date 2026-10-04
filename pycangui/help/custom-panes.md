@@ -70,7 +70,7 @@ source's name, so a polled object plots and exports to CSV like any other
 signal. Reading once by hand does not, since a series of one point would only
 fill the signal list.
 
-Polling is offered against a node and not against a file: a file does not
+Polling is available for a node and not for a file: a file does not
 change while you watch it.
 
 ## How an object is shown

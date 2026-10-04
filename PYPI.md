@@ -66,8 +66,8 @@ No hardware is needed to try it: the `virtual` interface's *Demo device* channel
 
 pycangui talks to real equipment. It is intended only for people trained and experienced in working with CAN networks and the equipment connected to them.
 
-Joining a bus at the wrong bitrate makes a controller signal an error on every frame it sees, and those error frames go out on the wire -- they can impact the nodes that are already on the bus. Transmitting, replaying a log, writing parameters, enabling a drive and downloading firmware all change what equipment does, and not all of them can be undone.
+Joining a bus at the wrong bitrate makes a controller signal an error on every frame it sees, which can impact the nodes that are already on the bus. Transmitting, replaying a log, writing parameters, enabling a drive and downloading firmware all change what equipment does, and not all of them can be undone.
 
-Know what is on the bus before you join it, and what a device will do before you write to it. The confirmations pycangui asks for along the way are a reminder, not a safeguard: like any software it can have faults, so do not rely on it to keep anything off the bus. Where a mistake could hurt someone or damage equipment, keep a way to stop that equipment within reach.
+Know what is on the bus before you join it, and what a device will do before you write to it. Like any software, pycangui can have faults, so do not rely on it to keep anything off the bus. Where a mistake could hurt someone or damage equipment, keep a way to stop that equipment within reach.
 
 The hook and simulated-node templates copied into a workspace are under MIT-0, so what you write in them carries no conditions. pycangui itself is provided under the Apache License 2.0, without warranty of any kind.

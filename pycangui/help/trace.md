@@ -40,7 +40,7 @@ node's PDOs are somewhere other than the predefined places, that is what is
 used -- which in practice means a DCF, since it carries the identifiers a node
 was configured with, where an EDS often declares the objects and leaves the
 values to `$NODEID` or to nothing at all. A PDO switched off in the
-configuration is left at its predefined place, since it is not on the wire to
+configuration is left at its predefined place, since it is not on the bus to
 be named.
 
 A frame nothing can account for keeps its identifier and sits under *Other*.

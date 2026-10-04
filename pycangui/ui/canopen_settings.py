@@ -161,7 +161,7 @@ class CanopenSettings:
     identify: bool = True
     #: Whether Read all and Save DCF read DOMAIN objects with the rest.
     read_domains: bool = True
-    #: Whether the pane offers TIME at all, how often the producer sends it,
+    #: Whether the pane shows TIME at all, how often the producer sends it,
     #: and whether it is local time or UTC.
     time_offered: bool = False
     time_period_s: float = DEFAULT_TIME_S
@@ -315,7 +315,7 @@ _SHOWN = (
     ("sync_counter_overflow", "SYNC counter", _counter),
     ("identify", "identify new nodes", _on_off),
     ("read_domains", "read DOMAIN objects", _on_off),
-    ("time_offered", "TIME offered", _on_off),
+    ("time_offered", "show TIME", _on_off),
     ("time_period_s", "TIME period", lambda v: f"{v:g} s"),
     ("time_local", "TIME as", lambda v: "local time" if v else "UTC"),
 )
@@ -409,7 +409,7 @@ class CanopenSettingsDialog(QDialog):
         self.read_domains = QCheckBox("Read DOMAIN objects with Read all and Save DCF")
         self.read_domains.setChecked(settings.read_domains)
         self.read_domains.setToolTip(DOMAINS_TIP)
-        self.time_offered = QCheckBox("Offer TIME in the CANopen pane")
+        self.time_offered = QCheckBox("Show TIME in the CANopen pane")
         self.time_offered.setChecked(settings.time_offered)
         self.time_offered.setToolTip(TIME_TIP)
         self.time_period = QDoubleSpinBox()

@@ -40,7 +40,9 @@ A script is still asked every question pycangui asks: joining a real bus,
 transmitting, writing. Each has *Do not ask me this again*, so a run nobody is there to
 answer needs them answered once beforehand. The notice about real equipment
 cannot be ticked away, so `--skip-start-warning` skips it -- only with `--run`,
-and the Event Log says it was skipped. Closing still asks about changes not
+and the Event Log says it was skipped. Skipping it changes nothing it says: it
+applies to an unattended run as much as to one somebody is watching, and whoever
+sets the run up is the one it is addressed to. Closing still asks about changes not
 saved; the exit code then waits until pycangui is closed.
 
 On Windows, `python -m pycangui` waits for pycangui and prints; the installed

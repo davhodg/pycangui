@@ -26,7 +26,7 @@ workspaces, and two for moving one between computers.
   since it means dropping off the bus and stopping anything being sent
   cyclically.
 - **Manage...** renames, deletes and exports. Renaming and deleting are not
-  offered for `default`, which is the one that is always there, or for the one
+  available for `default`, which is the one that is always there, or for the one
   you are in -- switch away first, so the ground does not move under the window.
 - **Export...** writes the workspace you are in to one zip file. To export a
   different one, use *Export...* in *Manage...*.

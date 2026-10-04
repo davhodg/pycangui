@@ -30,7 +30,7 @@ it:
 * **Install from file...** installs a package, the same as *Plugins > Install
   plugin...*.
 * **Update...** replaces one of pycangui's own plugins with the version this
-  pycangui ships, and is offered only when that one is newer. A plugin is
+  pycangui ships, and is available only when that one is newer. A plugin is
   installed into a workspace as a *copy*, so updating pycangui leaves the
   copy exactly as it was -- which is right for one you have edited, and not
   what you want for one you have not. The row says which version is

@@ -40,7 +40,7 @@ settings, since otherwise it carries on as it was; restarting starts the counter
 from 1 again.
 
 **TIME** (0x100) tells every node the date and time, for devices that keep a
-clock. It is offered only once *Settings...* says so -- **Offer TIME in the
+clock. It is shown only once *Settings...* says so -- **Show TIME in the
 CANopen pane** -- and then the pane has **TIME producer**, sending it now and
 again at the period set there, and **Send TIME**, sending it once. CiA 301 does
 not say whose midnight it counts from, so *Settings...* also chooses local time
@@ -176,7 +176,7 @@ closes are opened again next time, and disconnecting the bus leaves them in the
 list.
 
 `pycangui drive.dcf` opens one from the command line. To open one with a
-double-click, pycangui has to be offered for `.dcf` and `.eds` files: the
+double-click, pycangui has to be in *Open with* for `.dcf` and `.eds` files: the
 installer has a tick box for it beside the desktop shortcut, and *Tools > Settings >
 Open .dcf and .eds files with pycangui* does the same at any time, for a source
 folder or a pip installation as well (Windows and Linux). Either puts pycangui
@@ -232,7 +232,7 @@ overflows it.
 **The COB-ID column is a number, not a name.** Hover over one and pycangui
 says what CiA 301's predefined connection set gives that identifier to --
 0x181 to node 1's TPDO1, and so on -- or says plainly that the identifier is
-not one the standard gives a meaning to. That is offered as a convention and
+not one the standard gives a meaning to. That is given as a convention and
 nothing more: the predefined set describes a bus nobody has configured, so
 reading it backwards off a configured node is how a TPDO at 0x151 comes to
 be labelled as node 81's RPDO. True about the number, and about nothing else

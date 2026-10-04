@@ -1730,7 +1730,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.events.error(f"Could not register .dcf and .eds files: {exc}")
             return
-        self.events.good(f"pycangui is offered for .dcf and .eds files, in {where}")
+        self.events.good(f"pycangui added to Open with for .dcf and .eds files, in {where}")
 
     def _ask_again(self) -> None:
         """Put back every question somebody has told pycangui to stop asking.
