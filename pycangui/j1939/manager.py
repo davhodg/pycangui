@@ -105,8 +105,9 @@ class J1939Manager(QObject):
     broadcasts_stopped = Signal(bool)
     claimed = Signal(int)  # our address after a successful claim (0xFE = lost)
     log = Signal(str)
-    #: A node doing something J1939 does not allow: said as a warning, so it
-    #: stands out from the answers, since it is the node's maker to tell.
+    #: What was asked for and did not happen -- no answer, a request refused,
+    #: an address not claimed -- and a node doing something J1939 does not
+    #: allow. Said as a warning, so it stands out from the answers.
     problem = Signal(str)
 
     #: How long a node has to answer a request, from J1939-21. After it, a
@@ -263,7 +264,10 @@ class J1939Manager(QObject):
                 self._asked[about][1].add(sa)
                 what = CLEARING.get(about)
                 subject = f"clearing {what} faults" if what else f"{self.request_name(about)}"
-                self.log.emit(f"J1939 {sa:02X}: {subject} {said}")
+                # Anything but "accepted" is the node declining, which is a
+                # warning; the acceptance is the news that it worked.
+                said_it = self.log if data and data[0] == 0 else self.problem
+                said_it.emit(f"J1939 {sa:02X}: {subject} {said}")
             return
         self._answered(pgn, sa, data)
 
@@ -290,7 +294,7 @@ class J1939Manager(QObject):
         destination, answered, _serial = self._asked.pop(pgn)
         if not answered:
             who = "any node" if destination == GLOBAL else f"{destination:02X}"
-            self.log.emit(f"J1939: no answer to {self.request_name(pgn)} from {who}")
+            self.problem.emit(f"J1939: no answer to {self.request_name(pgn)} from {who}")
 
     def describe_answer(self, pgn: int, sa: int, data: bytes) -> str:
         """A node's answer to a request, in words."""
@@ -362,7 +366,7 @@ class J1939Manager(QObject):
         """Become a node on the bus (needed to send multi-packet messages and
         to receive messages addressed to us)."""
         if self.ecu is None:
-            self.log.emit("J1939: not connected")
+            self.problem.emit("J1939: not connected")
             return
         self.release_address()
         self.ca = self.ecu.add_ca(name=tester_name(), device_address=address)
@@ -398,10 +402,10 @@ class J1939Manager(QObject):
             or time.monotonic() >= self._claim_deadline
         ):
             self._claim_timer.stop()
-            self.log.emit("J1939: address claim failed (address in use?)")
+            self.problem.emit("J1939: address claim failed (address in use?)")
             if self._after_claim:
                 self._after_claim.clear()
-                self.log.emit("J1939: not sent, since the tester has no address to send from")
+                self.problem.emit("J1939: not sent, since the tester has no address to send from")
             self.release_address()
 
     def release_address(self) -> None:
@@ -427,7 +431,7 @@ class J1939Manager(QObject):
             action()
             return
         if self.ecu is None:
-            self.log.emit("J1939: not connected")
+            self.problem.emit("J1939: not connected")
             return
         self._after_claim.append(action)
         claiming = self._claim_timer.isActive() and self.ca is not None
@@ -498,4 +502,4 @@ class J1939Manager(QObject):
         elif len(data) <= 8:
             self._bus.send(build_id(pgn, 0xFE, destination, priority), data, extended=True)
         else:
-            self.log.emit("J1939: claim an address first to send more than 8 bytes")
+            self.problem.emit("J1939: claim an address first to send more than 8 bytes")

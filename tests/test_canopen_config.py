@@ -568,7 +568,10 @@ def test_a_pdo_shorter_than_its_mapping_says_so_once_with_the_bits(stack):
     assert not decoded, "not decoded from a frame that is too short"
 
 
-def test_an_object_mapped_shorter_than_its_type_is_named_and_the_rest_decoded(stack):
+def test_an_object_mapped_with_fewer_bits_than_its_type_is_decoded_as_mapped(stack):
+    """A device maps the low bits of a wider object to fit the frame -- eight of
+    an INTEGER16, say. The library read the type's full size and failed at the
+    end of the frame, on every frame."""
     manager, _demo, _tmp = stack
     said, decoded = [], []
     manager.message.connect(lambda text, level: said.append(text))
@@ -577,9 +580,63 @@ def test_an_object_mapped_shorter_than_its_type_is_named_and_the_rest_decoded(st
     last = pdo.map[-1]  # a 32-bit object, mapped here as 16
     last.length = 16
     pdo.length -= 16
-    pdo.data = bytearray(6)
+    pdo.data = bytearray([0, 0, 0, 0, 0x34, 0x12])
+    said.clear()  # what loading the mapping said is not what is being asked
     manager._on_pdo(5, pdo)
     manager._on_pdo(5, pdo)
-    named = [text for text in said if last.name in text and "mapped as 16 bits" in text]
-    assert len(named) == 1
-    assert decoded and last.name not in decoded[0] and len(decoded[0]) == len(pdo.map) - 1
+    assert decoded[0][last.name] == 0x1234, "the bits that were sent"
+    assert len(decoded[0]) == len(pdo.map), "and nothing left out"
+    assert not said, "flagged when the mapping is read, not on every frame"
+
+
+def test_a_signed_object_mapped_short_keeps_its_sign(stack):
+    from canopen.objectdictionary import datatypes
+
+    manager, _demo, _tmp = stack
+    values = []
+    manager.pdo_update.connect(lambda node, name, got: values.append(got))
+    pdo = tpdo1(manager)
+    first = pdo.map[0]
+    first.od.data_type = datatypes.INTEGER16
+    first.length = 8  # the low eight bits of a signed sixteen
+    for var in pdo.map[1:]:
+        var.offset -= 8
+    pdo.length -= 8
+    pdo.data = bytearray([0xFE, 0, 0, 0, 0, 0, 0])
+    manager._on_pdo(5, pdo)
+    assert values[0][first.name] == -2
+
+
+def test_an_rpdo_object_mapped_short_is_sent_as_its_mapped_bits(stack):
+    """The library wrote the type's full size, over what follows and past the frame."""
+    manager, _demo, _tmp = stack
+    manager.load_pdos_from_eds(5)
+    number, pdo = next(iter(manager.node(5).rpdo.map.items()))
+    var = pdo.map[0]  # a 16-bit object, mapped here as its low 8 bits
+    var.length = 8
+    pdo.length = 8
+    pdo.data = bytearray(1)
+    cob_id, data = manager.encode_rpdo(5, number, {var.name: 0x1FE})
+    assert cob_id == pdo.cob_id and data == bytes([0xFE]), "one byte, the low eight bits"
+
+
+def test_a_mapped_size_that_is_not_the_types_is_flagged_when_the_mapping_is_read(stack):
+    """The EDS says INTEGER16 and the mapping 8 bits: one of them is wrong
+    about the object, or part of it is mapped, and either way it is worth
+    knowing before trusting the number."""
+    manager, _demo, _tmp = stack
+    warned = []
+    manager.message.connect(lambda text, level: level == "warning" and warned.append(text))
+    pdo = tpdo1(manager)
+    assert manager.mapping_size_mismatches(5) == [], "the demo device agrees with its EDS"
+    manager.flag_mapping_sizes(5)
+    assert not warned
+
+    pdo.map[-1].length = 16  # a 32-bit object
+    found = manager.mapping_size_mismatches(5)
+    assert len(found) == 1 and pdo.map[-1].name in found[0]
+    manager.flag_mapping_sizes(5)
+    manager.flag_mapping_sizes(5)
+    assert len(warned) == 1, "said once for the same mapping"
+    manager.flag_mapping_sizes(5, again=True)
+    assert len(warned) == 2, "and again when a read was asked for"

@@ -176,7 +176,8 @@ machine.
 Edit a value in the tree to change it. It is checked the way a write to a node
 is -- in the units shown, and against the limits the file declares -- and held
 in memory, tinted, until it is saved; the row says *edited* meanwhile.
-Double-click an entry, or press *Read all*, to show the file's value again.
+Double-click an entry to show the file's value again; *Read all* is for a node,
+and is not there for a file.
 
 With a file row selected, **Save** and **Save as...** take the place of the
 node's buttons, which are greyed: there is nothing on the bus to ask. *Remove
@@ -252,12 +253,19 @@ on the screen. What a PDO actually carries is the mapped objects underneath
 it.
 
 The *Live PDOs* tab shows each
-PDO with its receive count and rate. A PDO that does not fit its mapping is said
-once in the Event Log, with the numbers: *expected 64 bits, received 48 bits*
-for a frame shorter than the mapping -- an error, if the mapping was read from
-the node, since the node is then sending it short -- or, for one object, that it
-is mapped with fewer bits than its type in the EDS has. The rest of the PDO is
-still decoded. **Store** / **Restore
+PDO with its receive count and rate. A frame shorter than its mapping is said
+once in the Event Log, with the numbers -- *expected 64 bits, received 48 bits*
+-- as an error if the mapping was read from the node, since the node is then
+sending it short.
+
+**A mapped size that is not the size of the object's type is flagged.** A
+mapping entry carries a length and the EDS a data type; where they differ --
+an object the EDS types INTEGER16 mapped as 8 bits, say -- the Event Log warns
+when the mapping is read, naming each PDO and object, for TPDOs and RPDOs, and
+the *PDO configuration* tab shows the row's bits in amber as *8 (type 16)*.
+Either the node maps part of the object, or the EDS has its type wrong. The
+object is decoded, and sent in an RPDO, as the bits the mapping gives it, signed
+if its type is. **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
 node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is the [CANopen DCF compare](compare.md) plugin.

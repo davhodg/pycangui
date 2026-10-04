@@ -264,6 +264,14 @@ class PlotView(QWidget):
 
     def _attach(self, key: str, curve: pg.PlotDataItem) -> None:
         """Put a curve in the view box for its axis, with its legend entry."""
+        # Off while it is being added. A curve that holds data and clips to
+        # its view asks for that view the moment it enters the scene, before
+        # it has been given one, and pyqtgraph then asks the plot widget
+        # instead -- which fails, leaves the curve half added, and fails again
+        # on every redraw. A new curve is empty, so only moving one between
+        # the axes ran into it.
+        curve.setClipToView(False)
+        curve.setDownsampling(auto=False)
         if key in self._right:
             self.right_view.addItem(curve)
             # The legend belongs to the plot, and the plot only makes entries

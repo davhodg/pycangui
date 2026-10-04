@@ -100,9 +100,8 @@ HEARTBEAT_MIN_SAMPLES = 3
 #: comparison, and pycangui says so rather than implying its own check was
 #: the last word.
 VERIFY_NOTE = (
-    "  The node accepted those writes. To be sure they survive, store them, "
-    "power-cycle node {node_id} and compare it against the DCF in the "
-    "CANopen DCF compare pane."
+    " To be sure they survive, store them, power-cycle node {node_id} and compare "
+    "it against the DCF in the CANopen DCF compare pane."
 )
 
 #: Bit timing table 1 of CiA 305, as (index, bit rate).
@@ -274,6 +273,9 @@ class CanopenManager(QObject):
         #: (CAN-ID, error) already reported for a frame nothing could handle:
         #: each said once rather than once a frame.
         self._pdo_size_said: set[tuple[int, str]] = set()
+        #: The size mismatches last reported for each node, so that reading
+        #: the same mapping again by itself does not report them again.
+        self._size_mismatches_said: dict[int, list[str]] = {}
         self._frame_errors_said: set[tuple[int, str]] = set()
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
@@ -401,11 +403,29 @@ class CanopenManager(QObject):
         values = {}
         for var in pdo_map.map:
             try:
-                values[var.name] = var.raw
+                values[var.name] = self._pdo_value(node_id, pdo_map, var)
             except Exception:
                 self._pdo_object_unreadable(node_id, pdo_map, var, received)
         if values:
             self.pdo_update.emit(node_id, pdo_map.name, values)
+
+    def _pdo_value(self, node_id: int, pdo_map, var):
+        """One mapped object's value, at the length the mapping gives it.
+
+        A device may map fewer bits of an object than its type has -- the low
+        eight of an INTEGER16 temperature, to fit a frame. The library reads
+        the type's full size whatever the mapping says, which gives the wrong
+        value mid-frame and fails at the end of one. An integer is therefore
+        taken as the mapped bits, and signed if its type is.
+        """
+        od = var.od
+        if var.length == len(od) or od.data_type not in datatypes.INTEGER_TYPES:
+            return var.raw
+        # Flagged when the mapping was read: see mapping_size_mismatches.
+        value = (int.from_bytes(pdo_map.data, "little") >> var.offset) & ((1 << var.length) - 1)
+        if od.data_type in datatypes.SIGNED_TYPES and value >> (var.length - 1):
+            value -= 1 << var.length
+        return value
 
     def _pdo_where(self, node_id: int, pdo_map) -> str:
         return f"Node {node_id} {pdo_map.name} (0x{pdo_map.cob_id:03X})"
@@ -444,9 +464,8 @@ class CanopenManager(QObject):
     def _pdo_object_unreadable(self, node_id: int, pdo_map, var, received: int) -> None:
         """Say once that one mapped object cannot be read out of its PDO.
 
-        The library reads an object at its data type's size wherever it starts
-        on a byte, whatever length the mapping gives it -- so an object mapped
-        as 16 bits whose type is 32 reads past the end of the frame.
+        For what is not an integer -- a REAL32 mapped as 16 bits, say -- where
+        there is no taking only the bits that were sent.
         """
         key = (node_id, f"{pdo_map.name}:{var.name}")
         if key in self._pdo_size_said:
@@ -531,6 +550,7 @@ class CanopenManager(QObject):
             self.access_levels,
             self.fault_states,
             self._eds_path,
+            self._size_mismatches_said,
         ):
             known.pop(node_id, None)
         self.lost_nodes.discard(node_id)
@@ -554,6 +574,7 @@ class CanopenManager(QObject):
         self.lost_nodes.clear()
         self.access_levels.clear()
         self.fault_states.clear()
+        self._size_mismatches_said.clear()
 
     # --- a node added by hand ----------------------------------------------------
     def add_node(self, node_id: int) -> bool:
@@ -1243,6 +1264,7 @@ class CanopenManager(QObject):
                 return
             if names:
                 self.message.emit(f"Node {node_id}: decoding {', '.join(names)}", INFORMATION)
+            self.flag_mapping_sizes(node_id)
             # The read replaced what the EDS said with what the node maps, so
             # anything showing the mapping has to ask again -- it may have
             # been drawn from the EDS, or mid-read, from a map still filling.
@@ -1250,6 +1272,50 @@ class CanopenManager(QObject):
             self.pdo_config.emit(node_id)
 
         self._worker.submit(job, done)
+
+    def mapping_size_mismatches(self, node_id: int) -> list[str]:
+        """Each mapped object whose mapped size is not its type's, a line each.
+
+        A PDO mapping entry carries a length, and the EDS a data type; where
+        the two differ, one of them is wrong about the object, or the device
+        maps part of it. Either way the value on the bus is not what the EDS
+        alone would say, and that is worth knowing before trusting a number.
+        """
+        node = self.node(node_id)
+        out = []
+        for direction in ("tpdo", "rpdo"):
+            for pdo_map in getattr(node, direction, {}).values() if node is not None else ():
+                if pdo_map.cob_id is None:
+                    continue
+                for var in pdo_map.map:
+                    od = var.od
+                    if var.length != len(od):
+                        out.append(
+                            f"{pdo_map.name} (0x{pdo_map.cob_id:03X}): {od.index:04X}:"
+                            f"{od.subindex:02X} {var.name} is mapped as {var.length} bits; "
+                            f"the EDS types it {type_name(od)}, {len(od)} bits"
+                        )
+        return out
+
+    def flag_mapping_sizes(self, node_id: int, again: bool = False) -> None:
+        """Warn of mapped sizes that disagree with the EDS, when there are any new.
+
+        ``again`` for a read somebody asked for, which is answered whether or
+        not it found what the last one did.
+        """
+        found = self.mapping_size_mismatches(node_id)
+        if found == self._size_mismatches_said.get(node_id, []) and not again:
+            return
+        self._size_mismatches_said[node_id] = found
+        if not found:
+            return
+        self.message.emit(
+            f"Node {node_id}: the PDO mapping and the EDS disagree about the size of "
+            f"{len(found)} object(s):\n  " + "\n  ".join(found) + "\n"
+            "  Each is decoded, and sent, as the bits mapped. Either the node maps part "
+            "of the object, or the EDS has its type wrong.",
+            WARNING,
+        )
 
     def _mapping_from_node(self, node_id: int) -> None:
         """The node's own mapping is known now: judge its frames against that, afresh."""
@@ -1368,6 +1434,7 @@ class CanopenManager(QObject):
                 )
                 return
             self.message.emit(f"Node {node_id}: {count} PDO(s) configured", INFORMATION)
+            self.flag_mapping_sizes(node_id, again=True)
             self.forget_labels()
             self.pdo_config.emit(node_id)
             self.rpdos_read.emit(node_id)
@@ -1891,10 +1958,6 @@ class CanopenManager(QObject):
                 return
             written, total, failures = result
             stopped = " before it was stopped" if self._stop_batch else ""
-            self.message.emit(
-                f"Node {node_id}: {written}/{total} parameters written from the DCF{stopped}",
-                INFORMATION,
-            )
             said = f"{written} of {total} parameters written{stopped}."
             if failures:
                 said += (
@@ -1903,18 +1966,21 @@ class CanopenManager(QObject):
                     + "\n\nThe Event Log lists each one, by name."
                 )
             self.dcf_finished.emit(node_id, said, bool(failures))
-            # Grouped by reason rather than listed one per line. A DCF that
-            # goes wrong usually goes wrong the same way two hundred times --
-            # one read-only object, or one value the node's range rejects --
-            # and two hundred identical lines say it worse than one does.
+            # What went wrong first, grouped by reason, and what went right
+            # last and in one line: the count written, then what to do about
+            # them. Written, refused, then "the node accepted those writes"
+            # read as though the last line were about the refusals.
             if failures:
                 self.message.emit(
-                    f"Node {node_id}: {len(failures)} refused by the node:\n"
-                    + self.failures_text(node_id, failures),
+                    f"Node {node_id}: {len(failures)} of {total} parameters in the DCF "
+                    "refused by the node:\n" + self.failures_text(node_id, failures),
                     WARNING,
                 )
-            if written:
-                self.message.emit(VERIFY_NOTE.format(node_id=node_id), INFORMATION)
+            self.message.emit(
+                f"Node {node_id}: {written} of {total} parameters written from the DCF{stopped}."
+                + (VERIFY_NOTE.format(node_id=node_id) if written else ""),
+                INFORMATION,
+            )
             self.read_pdo_config(node_id)
 
         self._worker.submit(job, done)
@@ -1951,6 +2017,7 @@ class CanopenManager(QObject):
             return
         self.forget_labels()
         self.pdo_config.emit(node_id)
+        self.flag_mapping_sizes(node_id)
         count = len(self.rpdos(node_id))
         if count:
             self.message.emit(f"Node {node_id}: {count} RPDO(s) available to transmit", INFORMATION)
@@ -1967,11 +2034,26 @@ class CanopenManager(QObject):
         if pdo_map is None or pdo_map.cob_id is None:
             return None
         for var in pdo_map:
-            if var.name in values:
+            if var.name not in values:
+                continue
+            od = var.od
+            if var.length != len(od) and od.data_type in datatypes.INTEGER_TYPES:
+                # Mapped with fewer bits than its type has: put in the bits the
+                # mapping gives it. The library writes the type's full size,
+                # over whatever is mapped after it and past the end of the frame.
                 try:
-                    var.phys = values[var.name]
-                except Exception:  # value out of range for the mapped type
-                    var.raw = int(values[var.name])
+                    raw = int(od.encode_phys(values[var.name]))
+                except Exception:
+                    raw = int(values[var.name])
+                mask = (1 << var.length) - 1
+                whole = int.from_bytes(pdo_map.data, "little")
+                whole = (whole & ~(mask << var.offset)) | ((raw & mask) << var.offset)
+                pdo_map.data[:] = whole.to_bytes(len(pdo_map.data), "little")
+                continue
+            try:
+                var.phys = values[var.name]
+            except Exception:  # value out of range for the mapped type
+                var.raw = int(values[var.name])
         return pdo_map.cob_id, bytes(pdo_map.data)
 
 

@@ -30,6 +30,10 @@ def sources() -> list[Path]:
         rel = path.relative_to(ROOT)
         if SKIPPED & set(rel.parts):
             continue
+        # A folder a tool keeps for itself -- a second checkout of this
+        # repository among them -- is not part of this one.
+        if any(part.startswith(".") for part in rel.parts[:-1]):
+            continue
         if any(part.endswith(".egg-info") or part.startswith("bdist.") for part in rel.parts):
             continue
         found.append(rel)

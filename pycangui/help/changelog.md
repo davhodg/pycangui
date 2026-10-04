@@ -45,8 +45,8 @@ since the last version, and comes out in the next one.
 - CAN Trace: *Live refresh*, *Slow refresh* or *Paused* in one choice; Data column sized for
   eight bytes.
 - ASCII Log: **Send enable** and **Send disable** buttons. CiA 402: *Poll* is a tick box.
-- J1939: **Hold broadcasts stopped (DM13)** is a tick box; DM4 with no freeze frames shows what
-  came.
+- J1939: **Request stop broadcasts (DM13)** is a tick box; DM4 with no freeze frames shows what came;
+  no answer and a refused request are warnings.
 - *Tools > Settings* submenu; the installer's desktop shortcut is ticked by default.
 - Demo nodes use vendor and manufacturer ID 0, assigned to nobody.
 - Code signing policy, code of conduct and build attestations for releases.
@@ -60,8 +60,10 @@ since the last version, and comes out in the next one.
 - A CRC in a DBC signal was computed over the wrong bytes.
 - A library that is installed but fails to load is reported as such.
 - About wrapped long paths.
-- Frames the canopen library could not handle -- NMT with no data, a PDO that does not fit
-  its mapping -- flooded the Event Log. Each is said once, with the frame or object and the bits.
+- A PDO object mapped with fewer bits than its type was not decoded, and flooded the Event
+  Log with library errors, as did NMT frames with no data. The object is decoded as mapped,
+  and the mismatch with the EDS flagged; a frame nothing can handle is said once.
+- Moving a plotted signal with data to the other Y axis failed, and the curve stopped drawing.
 - DCF compare: a DOMAIN value made its column too wide to use. Long values are cut short and
   every column can be widened.
 

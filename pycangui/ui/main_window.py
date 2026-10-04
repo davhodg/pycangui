@@ -1522,6 +1522,10 @@ class MainWindow(QMainWindow):
         if event_colours.bold_for(level):
             shape.setFontWeight(QFont.Bold)
         cursor.insertText(message, shape)
+        # Painted again as a whole. Written through a cursor, a line could be
+        # drawn before its colour was laid out, and stayed in the plain text
+        # colour until scrolling redrew it -- an error that did not look like one.
+        self.log.viewport().update()
         if at_end:
             bar.setValue(bar.maximum())
         if level in PROBLEMS:

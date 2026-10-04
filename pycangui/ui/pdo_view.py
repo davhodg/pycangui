@@ -11,8 +11,9 @@ rebuilt without hand-encoding 0xIIIISSLL words.
 
 from __future__ import annotations
 
+from canopen.objectdictionary import ODVariable
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -78,6 +79,8 @@ HEADERS = (
     "Event ms",
     "Bits",
 )
+#: A mapped size that is not the size of the object's type: amber, as a warning is.
+MISMATCH_COLOUR = QColor(200, 120, 0)
 ROLE_CONFIG = Qt.UserRole  # PdoConfig on top-level rows
 ROLE_ENTRY = Qt.UserRole + 1  # PdoEntry on child rows
 
@@ -347,9 +350,35 @@ class PdoConfigView(QWidget):
                 ]
             )
             child.setData(0, ROLE_ENTRY, entry)
+            type_bits = self._type_bits(entry)
+            if type_bits is not None and type_bits != entry.bits:
+                # Mapped at a size the object's type in the EDS does not have:
+                # one of the two is wrong about it, or part of it is mapped.
+                child.setText(COL_BITS, f"{entry.bits} (type {type_bits})")
+                child.setForeground(COL_BITS, MISMATCH_COLOUR)
+                child.setToolTip(
+                    COL_BITS,
+                    f"Mapped as {entry.bits} bits, and the EDS types this object as "
+                    f"{type_bits}.\nDecoded, and sent, as the {entry.bits} bits mapped: either "
+                    "the node maps part of the\nobject, or the EDS has its type wrong.",
+                )
             item.addChild(child)
         item.setExpanded(True)
         return item
+
+    def _type_bits(self, entry: PdoEntry) -> int | None:
+        """The size the EDS's data type gives a mapped object, or None if unknown."""
+        if self._file is not None:
+            dictionary = self._file.object_dictionary
+        else:
+            node = None if self.node_id is None else self.manager.node(self.node_id)
+            dictionary = getattr(node, "object_dictionary", None)
+        try:
+            obj = dictionary[entry.index]
+            var = obj if isinstance(obj, ODVariable) else obj[entry.subindex]
+            return mapped_bits(var)
+        except (KeyError, TypeError, IndexError):
+            return None
 
     # --- selection helpers ---------------------------------------------------------
     def _selected_row(self) -> QTreeWidgetItem | None:

@@ -1519,6 +1519,8 @@ class CanopenView(QWidget):
         source = self.selected_file() if hasattr(self, "_file_buttons") else None
         for button in getattr(self, "_file_buttons", []):
             button.setVisible(source is not None)
+        if hasattr(self, "read_bar"):
+            self._show_reading(not self.read_bar.isHidden())
         if source is not None:
             self.save_file_btn.setEnabled(source.unsaved)
 
@@ -1836,7 +1838,8 @@ class CanopenView(QWidget):
         self.manager.read_many(node_id, wanted)
 
     def _show_reading(self, on: bool) -> None:
-        self.read_all_btn.setVisible(not on)
+        # Not for a file: there is nothing to read, its values are all there.
+        self.read_all_btn.setVisible(not on and self.selected_file() is None)
         self.read_bar.setVisible(on)
         self.stop_read_btn.setVisible(on)
 

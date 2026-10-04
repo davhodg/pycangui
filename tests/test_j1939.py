@@ -305,11 +305,12 @@ def test_every_request_says_what_came_of_it(stack, monkeypatch):
 def test_a_request_nothing_answers_says_so(stack, monkeypatch):
     _bus, manager, _demo = stack
     monkeypatch.setattr(manager, "RESPONSE_S", 0.3)
-    said = []
+    said, warned = [], []
     manager.log.connect(said.append)
+    manager.problem.connect(warned.append)
     manager.request_pgn(0xFEE5, 0x55)  # nobody at 55
-    wait_until(lambda: said, timeout=2)
-    assert said[-1].startswith("J1939: no answer to") and said[-1].endswith("from 55")
+    wait_until(lambda: warned, timeout=2)
+    assert len(warned) == 1 and not said, "a warning, since what was asked did not happen"
 
 
 def test_a_request_goes_out_from_the_tester_address_claiming_it_first(stack):

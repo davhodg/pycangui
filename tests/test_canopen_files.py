@@ -419,3 +419,25 @@ def test_a_value_changed_back_is_not_an_edit(app, view, eds):
     assert not source.unsaved and source.edited == {}
     app.processEvents()
     assert view._od_item(0x2001, 0).background(COL_VALUE) != EDITED_COLOUR
+
+
+def test_a_mapped_size_that_is_not_the_types_is_marked_in_the_pdo_tab(view, demo):
+    from pycangui.ui.pdo_view import COL_BITS, MISMATCH_COLOUR
+
+    text = demo.read_text(encoding="utf-8")
+    assert "DefaultValue=0x60410010" in text
+    demo.write_text(text.replace("DefaultValue=0x60410010", "DefaultValue=0x60410008"), "utf-8")
+    view.open_file(demo)
+    row = view.pdo_config.tree.topLevelItem(0)
+    odd, fine = row.child(0), row.child(1)
+    assert odd.foreground(COL_BITS).color() == MISMATCH_COLOUR and odd.toolTip(COL_BITS)
+    assert fine.foreground(COL_BITS).color() != MISMATCH_COLOUR and not fine.toolTip(COL_BITS)
+
+
+def test_read_all_is_not_there_for_a_file(view, eds):
+    """There is nothing to read: a file's values are all there already."""
+    assert not view.read_all_btn.isHidden()
+    source = view.open_file(eds)
+    assert view.read_all_btn.isHidden()
+    view.close_file(source)
+    assert not view.read_all_btn.isHidden()

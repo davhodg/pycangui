@@ -125,7 +125,7 @@ class J1939View(QWidget):
         # broadcasting again by themselves a few seconds after the last hold.
         # A tick rather than a button that stays down and renames itself: it
         # is a state pycangui is holding the bus in, and a tick says which.
-        self.broadcast_btn = QCheckBox("Hold broadcasts stopped (DM13)")
+        self.broadcast_btn = QCheckBox("Request stop broadcasts (DM13)")
         self.broadcast_btn.setToolTip(
             "DM13: tell the nodes on this network to stop broadcasting, and\n"
             "keep telling them for as long as this is ticked -- they begin\n"

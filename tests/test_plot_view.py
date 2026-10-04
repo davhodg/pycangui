@@ -207,3 +207,18 @@ def test_live_slow_and_paused_are_one_choice_here_too(plot):
     choose(LIVE)
     assert not view.pause.isChecked() and view._timer.interval() == FAST_MS
     assert not view.pause.isVisibleTo(view), "the ticks are not on the row any more"
+
+
+def test_a_curve_with_data_moves_between_the_axes(app, plot):
+    """Reported: Plot all, with a signal already on the other axis, failed
+    inside the plotting library and the curve never drew again."""
+    view, hub, _clock = plot
+    key = live(hub, 5.0)
+    view.set_plotted(key, True)
+    view._redraw()
+    assert len(view._curves[key].getData()[0]), "drawn, so there is data to move"
+    view.set_right(key, True)
+    view.set_right(key, False)
+    view.set_right(key, True)
+    view._redraw()
+    assert view.right_axis() == [key] and len(view._curves[key].getData()[0])
