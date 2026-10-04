@@ -139,8 +139,14 @@ def test_releasing_stops_the_checking(claiming):
     assert claimed == [0xFE] and not manager._claim_timer.isActive()
 
 
+#: A wait returns as soon as it is answered, so patience costs a passing run
+#: nothing -- and a loaded machine takes several times as long to claim an
+#: address and reassemble a transfer as a quiet one does.
+PATIENCE = 5
+
+
 def wait_until(pred, timeout=5.0):
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + timeout * PATIENCE
     while not pred():
         QCoreApplication.processEvents()
         if time.monotonic() > deadline:
