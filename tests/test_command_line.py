@@ -197,6 +197,10 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication
 app = QCoreApplication([])
 from pycangui.ui import handoff
+# Half a second to connect is right for somebody waiting on a double-click, and
+# not for a machine running two thousand tests at once: what is being tested is
+# the handing over, not how quickly this one was given a turn.
+handoff.CONNECT_MS = 10000
 sys.exit(0 if handoff.hand_over([Path(f) for f in sys.argv[2:]], sys.argv[1]) else 1)
 """
 
