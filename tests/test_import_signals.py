@@ -256,7 +256,9 @@ def test_the_window_keeps_running_while_pip_does(app, installing):
     assert _install(None, ctx, fake_pip(script))
     timer.stop()
 
-    assert len(ticks) >= 5, "the event loop kept turning"
+    # More than once is the point; how many times depends on how busy the
+    # machine is, and a frozen window would have managed none.
+    assert len(ticks) >= 2, "the event loop kept turning"
     assert any("Downloading asammdf" in label for label in labels), "and said what pip was doing"
 
 

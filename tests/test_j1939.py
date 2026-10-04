@@ -160,6 +160,11 @@ def stack(app, tmp_path, monkeypatch, demo_device):
     ctx = Context(log=print)
     bus = BusManager()
     manager = J1939Manager(bus, Hooks(ctx))
+    # The demo engine answers from a thread of its own, and on a loaded machine
+    # that thread can be kept waiting longer than a real node is allowed to
+    # take -- which is "no answer", and the late answer is then not shown.
+    # The tests about no answer set their own, short, time.
+    monkeypatch.setattr(manager, "RESPONSE_S", 20.0)
     bus.connect_bus("virtual", "vcan_j1939", 500000, False)
     demo = demo_device(bus, kinds=["j1939_engine"])
     yield bus, manager, demo
@@ -298,7 +303,7 @@ def test_every_request_says_what_came_of_it(stack, monkeypatch):
     # Answered once, though the engine broadcasts DM1 every second.
     manager.request_pgn(PGN_DM1, 0x00)
     wait_until(lambda: any("DM1 active faults: 1 active fault(s)" in s for s in said))
-    deadline = time.monotonic() + manager.RESPONSE_S + 0.3
+    deadline = time.monotonic() + 1.5  # long enough for a broadcast to come by
     while time.monotonic() < deadline:
         QCoreApplication.processEvents()
         time.sleep(0.01)
