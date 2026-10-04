@@ -5,7 +5,7 @@
 import time
 
 import pytest
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, Qt
 
 from pycangui import resources
 from pycangui.canopen import PdoEntry, load_od
@@ -346,11 +346,16 @@ def test_read_all_says_how_far_and_that_it_finished(stack):
     assert [done for done, _total in progress] == [0, 1, 2]
 
 
+DIRECT = Qt.ConnectionType.DirectConnection
+
+
 def test_read_all_can_be_stopped(stack):
     manager, _demo, _tmp = stack
     finished = []
     manager.read_finished.connect(lambda *args: finished.append(args))
-    manager.sdo_result.connect(lambda *_args: manager.stop_batch())  # after the first
+    # Stopped from the reading thread itself, after the first answer: left to
+    # the window's thread, a quick machine has read all fifty before it is told.
+    manager.sdo_result.connect(lambda *_args: manager.stop_batch(), DIRECT)
     manager.read_many(5, [(0x1000, 0)] * 50)
     wait_until(lambda: finished)
     _node, done, total, stopped = finished[0]
@@ -361,7 +366,7 @@ def test_a_stopped_dcf_save_writes_no_file(stack, monkeypatch):
     manager, _demo, tmp = stack
     finished = []
     manager.dcf_finished.connect(lambda *args: finished.append(args))
-    manager.dcf_progress.connect(lambda *_args: manager.stop_batch())
+    manager.dcf_progress.connect(lambda *_args: manager.stop_batch(), DIRECT)
     dcf = tmp / "half.dcf"
     manager.save_dcf(5, str(dcf))
     wait_until(lambda: finished)

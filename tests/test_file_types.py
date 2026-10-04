@@ -66,6 +66,11 @@ def test_linux_says_what_the_files_are_and_who_opens_them(tmp_path):
     assert '"/opt/py thon/bin/python"' in exec_line and exec_line.endswith("%f")
 
 
+# No file types on macOS: an association there belongs to an application bundle.
+REGISTERS = file_types.command() is not None
+
+
+@pytest.mark.skipif(not REGISTERS, reason="file types are registered on Windows and Linux only")
 def test_the_tools_menu_registers_them(app, tmp_path, monkeypatch):
     from pycangui.ui.main_window import MainWindow
 
@@ -92,7 +97,10 @@ def test_what_is_set_is_under_settings_and_tools_is_what_is_done(app, tmp_path, 
         tools = window.settings_menu.parent()
         at_the_top = tools.actions()
         inside = window.settings_menu.actions()
-        for action in (window.strict_dbc, window.theme_menu.menuAction(), window.file_types_action):
+        settings = [window.strict_dbc, window.theme_menu.menuAction()]
+        if window.file_types_action is not None:
+            settings.append(window.file_types_action)
+        for action in settings:
             assert action in inside and action not in at_the_top
         before_reset = at_the_top.index(window.reset_menu.menuAction()) - 1
         assert at_the_top[before_reset] is window.settings_menu.menuAction()
