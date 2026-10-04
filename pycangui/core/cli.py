@@ -30,7 +30,7 @@ USAGE = """pycangui [--workspace NAME] [--run SCRIPT] [--skip-start-warning] [FI
                      real equipment, for a run nobody is there to answer.
                      Every other question is still asked unless its box
                      was ticked before
-  FILE               a DCF or EDS to open in the CANopen pane. Given alone,
+  FILE               a DCF or EDS to open in the CANopen pane. Used alone,
                      it goes to the pycangui already open, if there is one."""
 
 #: What a file on the command line can be: a double-clicked DCF or EDS.
@@ -125,5 +125,5 @@ def _check(options: Options) -> str:
     # it is skipped only for a script nobody is there to watch -- never for
     # a session somebody is about to sit in front of.
     if options.skip_notice and options.run is None:
-        return "--skip-start-warning is for a run nobody is there to answer: give it with --run."
+        return "--skip-start-warning is for a run nobody is there to answer: use it with --run."
     return ""
