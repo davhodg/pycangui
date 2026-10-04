@@ -7,6 +7,10 @@ rem   build.cmd nosetup    stop after the checked one-directory build
 rem   build.cmd setup      only make setup.exe, from the dist\pycangui already
 rem                        there -- which CI has had signed in between
 rem
+rem The tests run first, unless WINDOWS_TESTS_PASSED is set to 1: that is CI
+rem saying its Windows test job has already passed for this commit, which the
+rem installer job waits for. Nothing on your own machine sets it.
+rem
 rem Two notes for editing this file: batch files must keep CRLF line endings or
 rem cmd.exe mis-parses labels and goto (.gitattributes enforces it), and
 rem "if errorlevel 1 goto :fail" is used rather than "|| goto :fail", which is
@@ -38,9 +42,16 @@ if errorlevel 1 goto :fail
 
 echo.
 echo === Tests =========================================================
+if "%WINDOWS_TESTS_PASSED%"=="1" goto :tested
 rem -n auto: a thousand Qt tests split cleanly across processes.
 "%PYTHON%" -m pytest -q -n auto tests
 if errorlevel 1 goto :fail
+goto :notices
+
+:tested
+echo Already passed on Windows for this commit, so not run again.
+
+:notices
 
 echo.
 echo === Third party notices ===========================================

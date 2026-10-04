@@ -113,7 +113,11 @@ jobs:
       # In two halves, so that the application can be signed before the
       # installer is built around it: an installer signed with an unsigned
       # program inside is half the point missed.
+      # This job waits for the test jobs, so the Windows tests have passed for
+      # this commit on this Python; build.cmd would otherwise run them again.
       - name: Build and check the application
+        env:
+          WINDOWS_TESTS_PASSED: "1"
         run: .\build.cmd nosetup
 
       - name: Check the licence guard actually ran
