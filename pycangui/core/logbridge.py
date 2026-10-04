@@ -17,6 +17,8 @@ rather than making it the default and burying the log in noise.
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from collections.abc import Callable
 
 from pycangui.core.events import ERROR, INFORMATION, WARNING
@@ -37,11 +39,22 @@ LEVEL_NAMES = {
     logging.WARNING: WARNING,
 }
 
+#: A line said again and again -- a library failing on every frame of
+#: something a device keeps sending -- is said once, and then how many more
+#: times at most this often, rather than a line a frame.
+REPEATS_SAID_EVERY_S = 10.0
+
 
 class _Bridge(logging.Handler):
     def __init__(self, sink: Callable[[str, str], None]) -> None:
         super().__init__(level=QUIET_LEVEL)
         self._sink = sink
+        #: The last line said, its level, how many times it has come again
+        #: since, and when that was last said. Records arrive on any thread.
+        self._lock = threading.Lock()
+        self._last: tuple[str, str] | None = None
+        self._repeats = 0
+        self._repeats_said = 0.0
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -58,11 +71,10 @@ class _Bridge(logging.Handler):
             text = explain_aborts(text)
         # The logger name says which backend spoke, which is the useful part
         # when two adapters are connected at once.
+        line = f"{record.levelname.title()} [{record.name}]: {text}"
         try:
-            self._sink(
-                f"{record.levelname.title()} [{record.name}]: {text}",
-                LEVEL_NAMES.get(record.levelno, INFORMATION),
-            )
+            for said in self._what_to_say(line, LEVEL_NAMES.get(record.levelno, INFORMATION)):
+                self._sink(*said)
         except RuntimeError:
             # The Event Log's C++ side has gone: the window is being torn down
             # and a library is still talking. python-can's Bus.__del__ says
@@ -71,6 +83,24 @@ class _Bridge(logging.Handler):
             # nowhere left to put the message, and a logging handler that
             # raises turns a tidy shutdown into a traceback.
             pass
+
+    def _what_to_say(self, line: str, level: str) -> list[tuple[str, str]]:
+        """This line, or nothing while it repeats -- with how many times, now and then."""
+        now = time.monotonic()
+        with self._lock:
+            if (line, level) == self._last:
+                self._repeats += 1
+                if now - self._repeats_said < REPEATS_SAID_EVERY_S:
+                    return []
+                count, self._repeats, self._repeats_said = self._repeats, 0, now
+                return [(repeated(count), level)]
+            out = [(repeated(self._repeats), self._last[1])] if self._repeats else []
+            self._last, self._repeats, self._repeats_said = (line, level), 0, now
+            return [*out, (line, level)]
+
+
+def repeated(count: int) -> str:
+    return f"    (the line above, {count} more time{'s' if count != 1 else ''})"
 
 
 class LogBridge:

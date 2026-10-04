@@ -19,6 +19,9 @@ is what the line looks like:
 The colours follow the theme: one set reads against a pale background, another
 against a dark one.
 
+Everything is kept for the whole session -- the line that matters is often the
+first of a thousand -- until **Clear**, on the pane's right-click, empties it.
+
 A warning or an error opens the pane if it has been closed, a plain note does
 not, and neither does good news -- a fault clearing is worth seeing and is not
 worth a pane springing open over. So closing the pane means "stop chattering
@@ -29,6 +32,9 @@ at me" rather than "hide failures from me". [Hooks](hooks.md) and
 python-can and the protocol libraries -- canopen, python-can-j1939, udsoncan and
 can-isotp -- report through Python's logging, and a backend often says nothing
 about a bus error any other way. Their warnings and errors come here as well.
+A line a library says over and over -- failing on every frame of something a
+device keeps sending -- is shown once, then *(the line above, n more times)* at
+most every ten seconds while it goes on.
 
 A CANopen line carrying an **SDO abort code** gets its meaning put beside it:
 the library logs `Transfer aborted by client with code 0x05040000` and stops

@@ -92,8 +92,8 @@ back in. Both show how far they have got and can be stopped: a stopped *Save
 DCF* writes no file, since half a configuration is not one, and a stopped
 *Apply DCF* says how many it had written. Either ends with a box if any object
 could not be read or written, with how many failed for each reason -- each
-abort code and its meaning -- and the *CANopen log* tab has every
-one.
+abort code and its meaning -- and the Event Log lists every one of them by name,
+under its reason.
 
 A DCF is written as CiA 306 describes: the EDS's own text, unchanged, with a
 `ParameterValue` added after the last entry of each object the node gave a value
@@ -145,8 +145,10 @@ The list is kept per device, so the next controller of the same kind opens with
 the objects you were using on the last one. **Read all** reads every readable
 entry, one SDO at a time, which takes a while on a large node: while it runs,
 a bar in its place says how far it has got, with **Stop** beside it. Objects
-it could not read are counted rather than each given a warning, and a box at the
-end says how many failed for each reason. Only the
+it could not read are counted rather than each given a warning: a box at the
+end says how many failed for each reason, and the Event Log lists each one by
+name, under its reason. The *CANopen log* tab has every transfer, failed or
+not. Only the
 *Value* column can be typed into, and only for an object that can be written:
 the index, name, type and access are what the EDS says. Select some
 entries and right-click to add them to a [custom pane](custom-panes.md).
@@ -250,7 +252,12 @@ on the screen. What a PDO actually carries is the mapped objects underneath
 it.
 
 The *Live PDOs* tab shows each
-PDO with its receive count and rate. **Store** / **Restore
+PDO with its receive count and rate. A PDO that does not fit its mapping is said
+once in the Event Log, with the numbers: *expected 64 bits, received 48 bits*
+for a frame shorter than the mapping -- an error, if the mapping was read from
+the node, since the node is then sending it short -- or, for one object, that it
+is mapped with fewer bits than its type in the EDS has. The rest of the PDO is
+still decoded. **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
 node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is the [CANopen DCF compare](compare.md) plugin.

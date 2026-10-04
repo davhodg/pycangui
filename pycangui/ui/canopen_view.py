@@ -1854,15 +1854,17 @@ class CanopenView(QWidget):
             self.ctx.log(f"Node {node_id}: Read all stopped, {done} of {total} objects read")
         if not failures:
             return
-        totals = totals_text(failures)
         self.ctx.warn(
-            f"Node {node_id}: Read all, {len(failures)} of {done} objects not read:\n{totals}"
+            f"Node {node_id}: Read all, {len(failures)} of {done} objects could not be read:\n"
+            + self.manager.failures_text(node_id, failures)
         )
+        totals = totals_text(reason for _index, _sub, reason in failures)
         messages.warning(
             self,
             f"Read all: node {node_id}",
-            f"{done - len(failures)} of {done} objects read. {len(failures)} could not be:\n"
-            f"{totals}\n\nThe CANopen log lists each one, and why.",
+            f"{done - len(failures)} of {done} objects read. "
+            f"{len(failures)} could not be read:\n{totals}\n\n"
+            "The Event Log lists each one, by name.",
         )
 
     @Slot(int, int, int, int, int)
@@ -1877,7 +1879,7 @@ class CanopenView(QWidget):
     @Slot(int, int, int, object, object)
     def on_sdo_result(self, node_id: int, index: int, sub: int, value, error) -> None:
         if error and node_id == getattr(self, "_reading_node", None):
-            self._read_failures.append(error)  # said once, when Read all is over
+            self._read_failures.append((index, sub, error))  # said when Read all is over
         elif error:
             self.ctx.warn(f"Node {node_id}: SDO {index:04X}:{sub:02X} failed: {error}")
         if node_id != self.selected_node():

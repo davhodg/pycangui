@@ -516,3 +516,70 @@ def test_a_domain_read_is_in_the_canopen_log(stack):
     manager.sdo_logged.connect(records.append)
     manager.sdo_read(5, 0x1021, 0)  # the demo device's own EDS, a DOMAIN
     wait_until(lambda: any(r.index == 0x1021 and r.data for r in records))
+
+
+def test_an_nmt_frame_too_short_to_be_one_is_ignored_and_said_once(on_a_bus):
+    """A device sending 0x000 with no data made the library fail on every frame."""
+    said = []
+    on_a_bus.message.connect(lambda text, level: said.append(text))
+    heard = []
+    on_a_bus.network.subscribe(0, lambda can_id, data, ts: heard.append(bytes(data)))
+    for _ in range(20):
+        on_a_bus.network.notify(0, bytearray(), 0.0)
+    on_a_bus.network.notify(0, bytearray(b"\x81\x05"), 0.0)
+    assert heard == [b"\x81\x05"], "only the real command reaches the library"
+    assert len(said) == 1
+
+
+def test_failures_are_listed_by_name_under_their_reason(stack):
+    manager, _demo, _tmp = stack
+    text = manager.failures_text(
+        5,
+        [
+            (0x2001, 0, "abort 0x06010002, attempt to write a read only object"),
+            (0x6041, 0, "abort 0x06010002, attempt to write a read only object"),
+            (0x1017, 0, "SdoCommunicationError: No SDO response received"),
+        ],
+    )
+    lines = text.splitlines()
+    assert lines[0].strip().endswith("(2):") and "0x06010002" in lines[0]
+    assert lines[1].strip().startswith("2001:00") and "Statusword" in lines[2]
+    assert lines[3].strip().endswith("(1):")
+
+
+def tpdo1(manager):
+    manager.load_pdos_from_eds(5)
+    return next(m for m in manager.node(5).tpdo.map.values() if m.name.startswith("TxPDO1"))
+
+
+def test_a_pdo_shorter_than_its_mapping_says_so_once_with_the_bits(stack):
+    """'Mismatch between expected and actual data size', a line a frame, said
+    nothing about which PDO or by how much."""
+    manager, _demo, _tmp = stack
+    said, decoded = [], []
+    manager.message.connect(lambda text, level: said.append((level, text)))
+    manager.pdo_update.connect(lambda *args: decoded.append(args))
+    pdo = tpdo1(manager)
+    pdo.data = bytearray(6)
+    for _ in range(5):
+        manager._on_pdo(5, pdo)
+    shorts = [text for _level, text in said if "received 48 bits" in text]
+    assert len(shorts) == 1 and "expected 64 bits" in shorts[0]
+    assert not decoded, "not decoded from a frame that is too short"
+
+
+def test_an_object_mapped_shorter_than_its_type_is_named_and_the_rest_decoded(stack):
+    manager, _demo, _tmp = stack
+    said, decoded = [], []
+    manager.message.connect(lambda text, level: said.append(text))
+    manager.pdo_update.connect(lambda node, name, values: decoded.append(values))
+    pdo = tpdo1(manager)
+    last = pdo.map[-1]  # a 32-bit object, mapped here as 16
+    last.length = 16
+    pdo.length -= 16
+    pdo.data = bytearray(6)
+    manager._on_pdo(5, pdo)
+    manager._on_pdo(5, pdo)
+    named = [text for text in said if last.name in text and "mapped as 16 bits" in text]
+    assert len(named) == 1
+    assert decoded and last.name not in decoded[0] and len(decoded[0]) == len(pdo.map) - 1

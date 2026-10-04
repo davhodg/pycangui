@@ -211,15 +211,17 @@ class FileSource(Source):
         """
         if (index, sub) in self._values:
             return self._values[(index, sub)], None
-        var = self._variable(index, sub)
-        if var is None:
+        if self._variable(index, sub) is None:
             return None, "not in this file"
-        # A DCF's ParameterValue where it has one, the EDS default otherwise.
-        # ``canopen`` puts both on the variable, the value winning.
-        raw = getattr(var, "value", None)
-        if raw is None:
-            raw = getattr(var, "default", None)
+        raw = self._in_file(index, sub)
         return raw, None if raw is not None else "no value in this file"
+
+    def _in_file(self, index: int, sub: int) -> Any:
+        """What the file itself holds: a DCF's ParameterValue where it has one,
+        the EDS default otherwise. ``canopen`` puts both on the variable."""
+        var = self._variable(index, sub)
+        raw = getattr(var, "value", None)
+        return getattr(var, "default", None) if raw is None else raw
 
     def request(self, index: int, sub: int) -> None:
         self._answer(index, sub, *self.current(index, sub))
@@ -228,7 +230,13 @@ class FileSource(Source):
         if self._variable(index, sub) is None:
             self._answer(index, sub, None, "not in this file")
             return
-        self._values[(index, sub)] = raw
+        key = (index, sub)
+        if key not in self._saved and raw == self._in_file(index, sub):
+            # Changed back to what the file says: no longer an edit, so the
+            # file is not "edited" for it and closing does not ask.
+            self._values.pop(key, None)
+        else:
+            self._values[key] = raw
         self._answer(index, sub, raw, None)
         self.modified.emit(self.unsaved)
 

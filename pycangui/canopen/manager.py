@@ -45,7 +45,7 @@ from pycangui.canopen.display import Display, from_variable, with_overrides
 from pycangui.canopen.emcy import Emcy
 from pycangui.core.bus import BusManager
 from pycangui.core.classify import predefined_labels
-from pycangui.core.events import GOOD, INFORMATION, WARNING
+from pycangui.core.events import ERROR, GOOD, INFORMATION, WARNING
 from pycangui.core.worker import Worker
 
 DATATYPE_NAMES: dict[int, str] = {
@@ -267,13 +267,49 @@ class CanopenManager(QObject):
         self._worker = Worker()  # starts itself the first time it is used
         self._stop_stored_eds = False
         self._stop_batch = False
+        #: Nodes whose TPDO mapping was read from the node itself, rather than
+        #: taken from the EDS: what a frame of the wrong size is judged against.
+        self._mapping_read: set[int] = set()
+        #: (node, PDO) already reported for frames of the wrong size, and the
+        #: (CAN-ID, error) already reported for a frame nothing could handle:
+        #: each said once rather than once a frame.
+        self._pdo_size_said: set[tuple[int, str]] = set()
+        self._frame_errors_said: set[tuple[int, str]] = set()
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
 
     # --- bus lifecycle -------------------------------------------------------
     @Slot(str)
     def _on_bus_connected(self, _desc: str) -> None:
-        self.network = canopen.Network(bus=self._bus.bus)
+        self.network = network = canopen.Network(bus=self._bus.bus)
+        self._said_short_nmt = False
+        self._frame_errors_said.clear()
+
+        def notify_unless_short_nmt(can_id: int, data: bytearray, timestamp: float) -> None:
+            # An NMT command is two bytes. A device that sends 0x000 with
+            # fewer made the library fail to unpack it on every frame -- an
+            # error each time, flooding the Event Log -- and there is nothing
+            # in it to act on. Said once, and otherwise left to the trace.
+            if can_id == 0 and len(data) < 2:
+                if not self._said_short_nmt:
+                    self._said_short_nmt = True
+                    self.message.emit(
+                        f"NMT frames (0x000) with {len(data)} data byte(s) are on the bus, "
+                        "where a command is two: a device is sending them. Ignored.",
+                        WARNING,
+                    )
+                return
+            # Each subscriber on its own, as the library does it, but a failure
+            # says which frame it was: the library logs only the exception, a
+            # line a frame with nothing in it to say where to look.
+            for callback in list(network.subscribers.get(can_id, ())):
+                try:
+                    callback(can_id, data, timestamp)
+                except Exception as exc:
+                    self._frame_failed(can_id, data, exc)
+            network.scanner.on_message_received(can_id)
+
+        network.notify = notify_unless_short_nmt
         for listener in self.network.listeners:
             self._bus.add_listener(listener)
         for node_id in range(1, 128):
@@ -343,9 +379,89 @@ class CanopenManager(QObject):
         self.forget_labels()  # a node nobody knew of accounts for ids now
         self.node_seen.emit(node_id, state)
 
+    def _frame_failed(self, can_id: int, data: bytes, exc: Exception) -> None:
+        key = (can_id, f"{type(exc).__name__}: {exc}")
+        if key in self._frame_errors_said:
+            return
+        self._frame_errors_said.add(key)
+        shown = bytes(data).hex(" ").upper() or "no data"
+        self.message.emit(
+            f"A frame on 0x{can_id:03X} ({len(data)} bytes: {shown}) could not be handled: "
+            f"{key[1]}. Said once; the trace has each frame.",
+            ERROR,
+        )
+
     def _on_pdo(self, node_id: int, pdo_map: canopen.pdo.base.PdoMap) -> None:
-        values = {var.name: var.raw for var in pdo_map}
-        self.pdo_update.emit(node_id, pdo_map.name, values)
+        received = len(pdo_map.data) * 8
+        if received < pdo_map.length:
+            self._pdo_too_short(node_id, pdo_map, received)
+            return
+        # Each object on its own: one that cannot be read does not cost the
+        # rest of the PDO, and says which it was rather than failing the frame.
+        values = {}
+        for var in pdo_map.map:
+            try:
+                values[var.name] = var.raw
+            except Exception:
+                self._pdo_object_unreadable(node_id, pdo_map, var, received)
+        if values:
+            self.pdo_update.emit(node_id, pdo_map.name, values)
+
+    def _pdo_where(self, node_id: int, pdo_map) -> str:
+        return f"Node {node_id} {pdo_map.name} (0x{pdo_map.cob_id:03X})"
+
+    def _pdo_too_short(self, node_id: int, pdo_map, received: int) -> None:
+        """Say once that a PDO arrives shorter than its mapping.
+
+        Not decoded: reading values past the end of the frame is how the
+        library came to fail on every one of them. With the mapping read from
+        the node, the node is sending frames its own mapping says are longer
+        -- a fault in the node. With only the EDS's, the EDS may be wrong
+        about how this node is set up.
+        """
+        key = (node_id, pdo_map.name)
+        if key in self._pdo_size_said:
+            return
+        self._pdo_size_said.add(key)
+        mapped = ", ".join(f"{var.name} {var.length}" for var in pdo_map.map)
+        said = (
+            f"{self._pdo_where(node_id, pdo_map)}: expected {pdo_map.length} bits, "
+            f"received {received} bits. Mapped ({mapped} bits)"
+        )
+        if node_id in self._mapping_read:
+            self.message.emit(
+                f"{said} as read from the node, so the node is sending it short. "
+                "Not decoded until it is the right length.",
+                ERROR,
+            )
+        else:
+            self.message.emit(
+                f"{said} as the EDS gives it; the node may be mapped differently, and "
+                "Read PDO config reads what it has. Not decoded until then.",
+                WARNING,
+            )
+
+    def _pdo_object_unreadable(self, node_id: int, pdo_map, var, received: int) -> None:
+        """Say once that one mapped object cannot be read out of its PDO.
+
+        The library reads an object at its data type's size wherever it starts
+        on a byte, whatever length the mapping gives it -- so an object mapped
+        as 16 bits whose type is 32 reads past the end of the frame.
+        """
+        key = (node_id, f"{pdo_map.name}:{var.name}")
+        if key in self._pdo_size_said:
+            return
+        self._pdo_size_said.add(key)
+        od = var.od
+        type_bits = len(od)
+        self.message.emit(
+            f"{self._pdo_where(node_id, pdo_map)}: {var.name} ({od.index:04X}:"
+            f"{od.subindex:02X}) is mapped as {var.length} bits from bit {var.offset}, "
+            f"but its type, {type_name(od)}, is {type_bits} bits -- expected "
+            f"{var.offset + type_bits} bits, received {received}. The mapping and the "
+            "EDS disagree about this object; the rest of the PDO is decoded.",
+            WARNING,
+        )
 
     # --- liveness: the heartbeat consumer side ---------------------------------
     def set_heartbeat_timeouts(self, timeouts: dict[int, float]) -> None:
@@ -1012,6 +1128,22 @@ class CanopenManager(QObject):
 
         self._worker.submit(job, done)
 
+    def failures_text(self, node_id: int, failures) -> str:
+        """Each object that failed, by name, under the reason it failed for.
+
+        For the Event Log: the CANopen log has every transfer, which after
+        Read all on a real device is thousands of lines to look through for
+        the few that went wrong.
+        """
+        node = self.node(node_id)
+        lines = []
+        for reason, where in _by_reason(list(failures)).items():
+            lines.append(f"  {reason} ({len(where)}):")
+            for index, sub in where:
+                name = _object_name(node, index, sub) if node is not None else ""
+                lines.append(f"    {index:04X}:{sub:02X} {name}".rstrip())
+        return "\n".join(lines)
+
     def stop_batch(self) -> None:
         """Stop Read all, Save DCF or Apply DCF after the object in hand."""
         self._stop_batch = True
@@ -1100,6 +1232,7 @@ class CanopenManager(QObject):
 
         def job() -> list[str]:
             node.tpdo.read()
+            self._mapping_from_node(node_id)
             return self._decode_tpdos(node_id, node)
 
         def done(names: list[str] | None, error: str | None) -> None:
@@ -1117,6 +1250,11 @@ class CanopenManager(QObject):
             self.pdo_config.emit(node_id)
 
         self._worker.submit(job, done)
+
+    def _mapping_from_node(self, node_id: int) -> None:
+        """The node's own mapping is known now: judge its frames against that, afresh."""
+        self._mapping_read.add(node_id)
+        self._pdo_size_said = {key for key in self._pdo_size_said if key[0] != node_id}
 
     def _decode_tpdos(self, node_id: int, node) -> list[str]:
         """Decode every enabled TPDO into Signals and Plot, each once. Its names.
@@ -1218,6 +1356,7 @@ class CanopenManager(QObject):
 
         def job() -> int:
             node.tpdo.read()
+            self._mapping_from_node(node_id)
             node.rpdo.read()
             self._decode_tpdos(node_id, node)
             return len(self.pdo_configs(node_id))
@@ -1662,10 +1801,15 @@ class CanopenManager(QObject):
                 )
                 said = f"{read} of {total} parameters read and written to {path}."
                 if failures:
+                    self.message.emit(
+                        f"Node {node_id}: Save DCF, {len(failures)} could not be read:\n"
+                        + self.failures_text(node_id, failures),
+                        WARNING,
+                    )
                     said += (
                         f"\n\n{len(failures)} could not be read, and are left out:\n"
                         + totals_text(reason for _i, _s, reason in failures)
-                        + "\n\nThe CANopen log lists each one."
+                        + "\n\nThe Event Log lists each one, by name."
                     )
                 self.dcf_finished.emit(node_id, said, bool(failures))
 
@@ -1756,18 +1900,19 @@ class CanopenManager(QObject):
                 said += (
                     f"\n\n{len(failures)} refused by the node:\n"
                     + totals_text(reason for _i, _s, reason in failures)
-                    + "\n\nThe Event Log says which, and the CANopen log has each write."
+                    + "\n\nThe Event Log lists each one, by name."
                 )
             self.dcf_finished.emit(node_id, said, bool(failures))
             # Grouped by reason rather than listed one per line. A DCF that
             # goes wrong usually goes wrong the same way two hundred times --
             # one read-only object, or one value the node's range rejects --
             # and two hundred identical lines say it worse than one does.
-            for reason, where in _by_reason(failures).items():
-                shown = ", ".join(f"{index:04X}:{sub:02X}" for index, sub in where[:12])
-                more = f" ... and {len(where) - 12} more" if len(where) > 12 else ""
-                self.message.emit(f"  {len(where)} refused -- {reason}", WARNING)
-                self.message.emit(f"    {shown}{more}", WARNING)
+            if failures:
+                self.message.emit(
+                    f"Node {node_id}: {len(failures)} refused by the node:\n"
+                    + self.failures_text(node_id, failures),
+                    WARNING,
+                )
             if written:
                 self.message.emit(VERIFY_NOTE.format(node_id=node_id), INFORMATION)
             self.read_pdo_config(node_id)
@@ -1796,6 +1941,8 @@ class CanopenManager(QObject):
         node = self.node(node_id)
         if node is None:
             return
+        self._mapping_read.discard(node_id)
+        self._pdo_size_said = {key for key in self._pdo_size_said if key[0] != node_id}
         try:
             node.rpdo.read(from_od=True)
             node.tpdo.read(from_od=True)

@@ -1,0 +1,14 @@
+{
+  "cia402": {
+    "version": "1.6",
+    "code": "75d39cd13b926650fb0915746265953a784eb3021d97b1a59f03bf48afbd77ec"
+  },
+  "dcf_compare": {
+    "version": "1.2",
+    "code": "55c1e460ad549bf5828d8b11191dba931011554d22a0b2e43cfded06a5fc47f2"
+  },
+  "firmware": {
+    "version": "1.1",
+    "code": "940d5dd43ca756766c669b6834d3e889b49111e69e8e7e972f342c8f07fa3011"
+  }
+}

@@ -200,7 +200,12 @@ class MainWindow(QMainWindow):
         self._closing = False
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(2000)
+        # Everything is kept, however long the session: the line that matters
+        # is often the first of a thousand, and a log that drops its oldest
+        # lines drops exactly that one. Clear, on the right-click, empties it.
+        self.log.setMaximumBlockCount(0)
+        self.log.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.log.customContextMenuRequested.connect(self._log_menu)
         #: Every line said to the user arrives here with a level, and this is
         #: the only thing that writes to the pane. Warnings and errors open it
         #: if it has been closed; notes do not.
@@ -1521,6 +1526,18 @@ class MainWindow(QMainWindow):
             bar.setValue(bar.maximum())
         if level in PROBLEMS:
             self._surface_log()
+
+    def log_menu(self):
+        """Copy and Select All as usual, and Clear. Built apart from being shown."""
+        menu = self.log.createStandardContextMenu()
+        menu.addSeparator()
+        menu.addAction("Clear", self.log.clear)
+        return menu
+
+    def _log_menu(self, at) -> None:
+        menu = self.log_menu()
+        menu.exec(self.log.viewport().mapToGlobal(at))
+        menu.deleteLater()
 
     def _dark_log(self) -> bool:
         """Which set of colours reads on the Event Log's own background."""

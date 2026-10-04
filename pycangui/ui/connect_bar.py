@@ -61,6 +61,12 @@ EXPAND_TIMEOUT_S = 2.0
 ROLE_EXTRA = 0x0100  # Qt.UserRole: the rest of a detected adapter's configuration
 
 
+BITRATE_TIP = (
+    "The arbitration bitrate, which every node on the bus has to agree\n"
+    "on. Getting it wrong is the usual reason a bus looks idle."
+)
+
+
 class ChannelBox(QComboBox):
     """The channel drop-down, which looks for adapters when it is opened.
 
@@ -120,10 +126,9 @@ class ConnectBar(QToolBar):
         self.channel.currentTextChanged.connect(lambda _t: self._save_settings())
         self.channel.expanded.connect(self._on_channel_expanded)
         self.bitrate = QComboBox()
-        self.bitrate.setToolTip(
-            "The arbitration bitrate, which every node on the bus has to agree\n"
-            "on. Getting it wrong is the usual reason a bus looks idle."
-        )
+        self.bitrate.setToolTip(BITRATE_TIP)
+        #: The channel's own rate while it runs at another, to put back.
+        self._own_bitrate: int | None = None
         for b in BITRATES:
             self.bitrate.addItem(f"{b // 1000} kbit/s", b)
         self.bitrate.setCurrentIndex(self.bitrate.findData(DEFAULT_BITRATE))
@@ -438,6 +443,7 @@ class ConnectBar(QToolBar):
         if not name:
             return
         saved = self.ctx.settings.get(f"channels.{name}", {})
+        self._own_bitrate = None  # another channel's own rate is in its settings
         self._loading = True
         self.interface.setCurrentText(saved.get("interface", "virtual"))
         channel = saved.get("channel", "vcan0")
@@ -490,12 +496,40 @@ class ConnectBar(QToolBar):
         if name == self.selector.currentText():
             self.set_connected(connected)
 
+    def _show_running_rate(self, connected: bool) -> None:
+        """The rate the channel is running at, while that is not its own.
+
+        After a UDS baud rate change the channel runs at the ECUs' new rate
+        for this connection only. The box saying the configured one, greyed
+        while connected, read as the rate in use, which it was not. So it
+        shows the running rate, says so, and goes back on disconnect.
+        Called with saving held off, so the running rate is never saved.
+        """
+        bus = self.channels.get(self.selector.currentText())
+        running = bus.bitrate if connected and bus is not None and bus.is_connected else None
+        own = self._own_bitrate if self._own_bitrate is not None else self.bitrate.currentData()
+        if running is None or running == own:
+            if self._own_bitrate is not None:
+                self.bitrate.setCurrentIndex(self.bitrate.findData(self._own_bitrate))
+                self._own_bitrate = None
+            self.bitrate.setToolTip(BITRATE_TIP)
+            return
+        self._own_bitrate = own
+        if self.bitrate.findData(running) < 0:
+            self.bitrate.addItem(f"{running // 1000} kbit/s", running)
+        self.bitrate.setCurrentIndex(self.bitrate.findData(running))
+        self.bitrate.setToolTip(
+            f"Running at {running // 1000} kbit/s, which the ECUs were moved to. The\n"
+            f"channel's own rate is {own // 1000} kbit/s, and the next connect is at that."
+        )
+
     def set_connected(self, connected: bool) -> None:
         # Block our own handler so syncing the button does not re-trigger it
         was_loading = self._loading
         self._loading = True
         self.button.setChecked(connected)
         self.button.setText("Disconnect" if connected else "Connect")
+        self._show_running_rate(connected)
         for w in (self.interface, self.channel, self.bitrate, self.fd, self.data_bitrate):
             w.setEnabled(not connected)
         if not connected:

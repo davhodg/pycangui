@@ -323,7 +323,10 @@ class J1939Manager(QObject):
         if pgn == PGN_DM4:
             frames = parse_dm4(data)
             if not frames:
-                return f"{who} DM4 freeze frames: none"
+                # With what came, since "none" from a node that sent something
+                # it is not laid out the way J1939-73 says is worth seeing.
+                shown = data.hex(" ").upper() or "no data"
+                return f"{who} DM4 freeze frames: none ({len(data)} bytes: {shown})"
             lines = [f"{who} DM4 freeze frames:"]
             for dtc, values in frames:
                 name = self.spn_description(dtc.spn)

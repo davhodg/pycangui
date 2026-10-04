@@ -454,7 +454,7 @@ class CompareView(QWidget):
 
 API_VERSION = 1
 NAME = "CANopen DCF compare"
-VERSION = "1.1"
+VERSION = "1.2"
 DESCRIPTION = "Two CANopen configurations side by side: file, device or EDS."
 
 

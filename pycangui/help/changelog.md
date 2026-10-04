@@ -18,7 +18,8 @@ since the last version, and comes out in the next one.
 - CANopen **TIME** producer and **SYNC counter**, set up in *Settings...*.
 - A **CANopen log** tab: every SDO, NMT, SYNC, state change, emergency and LSS step.
 - CANopen **Remove node**, and *Move up* / *Move down* for PDO mapped objects.
-- UDS **functional requests**, and a **baud rate change** that follows the ECUs and comes back.
+- UDS **functional requests**, and a **baud rate change** that follows the ECUs and comes back;
+  the top row shows the rate in use meanwhile.
 - Signals and Plot: optional **Min**, **Max**, **Count** and **Rate** columns.
 - **Signal history** limit in *Tools > Settings*, up to five million samples per signal.
 - Custom panes: **Write all**, and *Read all* asks before discarding unwritten changes.
@@ -27,6 +28,9 @@ since the last version, and comes out in the next one.
 ### Changed
 
 - The protocol panes open in a window of their own the first time.
+- The Event Log keeps everything, with *Clear* on its right-click; a library line repeated over
+  and over is shown once and then counted.
+- The CiA 402 (1.6) and DCF compare (1.2) plugins are updated: *Update...* in *Plugins > Manage plugins...*.
 - CANopen *Read all* and *Save DCF* include DOMAIN objects, and they and *Apply DCF* show
   progress, can be stopped, and report failures by abort code.
 - CANopen buttons that cannot act say so in a box, not only in the Event Log.
@@ -41,6 +45,8 @@ since the last version, and comes out in the next one.
 - CAN Trace: *Live refresh*, *Slow refresh* or *Paused* in one choice; Data column sized for
   eight bytes.
 - ASCII Log: **Send enable** and **Send disable** buttons. CiA 402: *Poll* is a tick box.
+- J1939: **Hold broadcasts stopped (DM13)** is a tick box; DM4 with no freeze frames shows what
+  came.
 - *Tools > Settings* submenu; the installer's desktop shortcut is ticked by default.
 - Demo nodes use vendor and manufacturer ID 0, assigned to nobody.
 - Code signing policy, code of conduct and build attestations for releases.
@@ -54,6 +60,8 @@ since the last version, and comes out in the next one.
 - A CRC in a DBC signal was computed over the wrong bytes.
 - A library that is installed but fails to load is reported as such.
 - About wrapped long paths.
+- Frames the canopen library could not handle -- NMT with no data, a PDO that does not fit
+  its mapping -- flooded the Event Log. Each is said once, with the frame or object and the bits.
 - DCF compare: a DOMAIN value made its column too wide to use. Long values are cut short and
   every column can be widened.
 

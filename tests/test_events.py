@@ -320,3 +320,43 @@ def test_only_the_canopen_logger_is_treated_this_way(app):
         bridge.detach()
 
     assert said and "Timeout" not in said[0][1]
+
+
+def test_a_line_said_over_and_over_is_said_once_and_then_counted(app, monkeypatch):
+    """A device sending something the library chokes on, frame after frame,
+    flooded the log with one line a frame."""
+    import logging
+
+    from pycangui.core import logbridge
+    from pycangui.core.logbridge import LogBridge
+
+    now = [100.0]
+    monkeypatch.setattr(logbridge.time, "monotonic", lambda: now[0])
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    flood = logging.getLogger("canopen.network")
+    try:
+        for _ in range(50):
+            flood.error("unpack_from requires a buffer of at least 2 bytes")
+        assert len(said) == 1, "said once"
+        now[0] += logbridge.REPEATS_SAID_EVERY_S
+        flood.error("unpack_from requires a buffer of at least 2 bytes")
+        assert len(said) == 2 and "50" in said[1][1], "then how many more, now and then"
+        flood.error("unpack_from requires a buffer of at least 2 bytes")
+        logging.getLogger("can.interface").warning("something else")
+    finally:
+        bridge.detach()
+    assert len(said) == 4, "the rest counted before the next line"
+    assert "1" in said[2][1] and said[3][1].endswith("something else")
+
+
+def test_the_event_log_keeps_everything_until_cleared(app, window):
+    """The line that matters is often the first of a thousand."""
+    assert window.log.maximumBlockCount() == 0, "no limit"
+    for n in range(2500):
+        window.events.post(f"line {n}", INFORMATION)
+    app.processEvents()
+    assert window.log.document().blockCount() >= 2500
+    clear = next(a for a in window.log_menu().actions() if a.text() == "Clear")
+    clear.trigger()
+    assert window.log.document().isEmpty()

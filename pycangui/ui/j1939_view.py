@@ -12,6 +12,7 @@ import time
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -120,15 +121,18 @@ class J1939View(QWidget):
         send_btn = QPushButton("Send PGN")
         send_btn.clicked.connect(self._send)
 
-        # DM13: held for as long as the button stays down, since nodes start
+        # DM13: held for as long as it is ticked, since nodes start
         # broadcasting again by themselves a few seconds after the last hold.
-        self.broadcast_btn = QPushButton("Stop broadcasts")
-        self.broadcast_btn.setCheckable(True)
+        # A tick rather than a button that stays down and renames itself: it
+        # is a state pycangui is holding the bus in, and a tick says which.
+        self.broadcast_btn = QCheckBox("Hold broadcasts stopped (DM13)")
         self.broadcast_btn.setToolTip(
             "DM13: tell the nodes on this network to stop broadcasting, and\n"
-            "keep telling them until Start -- they begin again by themselves\n"
-            "a few seconds after the last hold. Quietens a busy bus, or one\n"
-            "being flashed. Sent to the node chosen in Request's 'to'."
+            "keep telling them for as long as this is ticked -- they begin\n"
+            "again by themselves a few seconds after the last hold. Untick to\n"
+            "tell them to start. Quietens a busy bus, or one being flashed.\n"
+            "Sent to the node chosen in Request's 'to'. Not every node honours\n"
+            "DM13; one that does not simply carries on."
         )
         self.broadcast_btn.toggled.connect(self._toggle_broadcasts)
 
@@ -281,7 +285,6 @@ class J1939View(QWidget):
     def _on_broadcasts_stopped(self, stopped: bool) -> None:
         self.broadcast_btn.blockSignals(True)
         self.broadcast_btn.setChecked(stopped)
-        self.broadcast_btn.setText("Start broadcasts (holding)" if stopped else "Stop broadcasts")
         self.broadcast_btn.blockSignals(False)
 
     def _send(self) -> None:

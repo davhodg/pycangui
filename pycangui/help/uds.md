@@ -138,7 +138,9 @@ told to, and the channel follows -- it is closed and opened again at the new
 rate, the session is reopened, and tester present carries on at once, since an
 ECU whose session times out falls back to its own rate. The other panes, and a
 recording, see the channel disconnect and connect. The new rate is not saved as
-the channel's own.
+the channel's own; the bitrate in the top row shows the rate in use while the
+channel runs at it, its tooltip says so, and it goes back to the channel's own on
+disconnect.
 
 There is no request to put it back: the new rate lasts for the session it was
 set in. So while the channel is away from its own rate, a **Back to ...** button
