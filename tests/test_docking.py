@@ -8,11 +8,20 @@ from PySide6.QtCore import QRect, QSettings, Qt
 from pycangui.ui.main_window import MainWindow
 
 
+def placed(win):
+    """Every pane placed before, so a protocol pane shown here docks or floats
+    as these tests make it, rather than opening in a window of its own the
+    first time -- which tests/test_panes.py covers."""
+    for name in win.panes.docks:
+        win.panes._note_arranged(name)
+
+
 @pytest.fixture
 def window(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     win = MainWindow()
+    placed(win)
     win.show()
     app.processEvents()
     yield win
@@ -67,6 +76,7 @@ def test_a_hidden_floating_pane_is_not_worth_a_tip(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     first = MainWindow()
+    placed(first)
     first.show()
     settle(app)
     dock = first.panes.docks["canopen"]
@@ -257,6 +267,7 @@ def test_closing_the_main_window_closes_detached_panes(app, tmp_path, monkeypatc
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     win = MainWindow()
+    placed(win)
     win.show()
     app.processEvents()
     float_out(app, win.panes.docks["canopen"])
@@ -325,6 +336,7 @@ def restart(app, tmp_path, previous=None):
         previous.close()
         settle(app)
     window = MainWindow()
+    placed(window)
     window.show()
     settle(app, 10)
     return window

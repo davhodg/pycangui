@@ -1003,7 +1003,7 @@ class CanopenManager(QObject):
                 try:
                     value, error = self._read_one(node_id, node, index, sub), None
                 except Exception as exc:  # this one, not the rest
-                    value, error = None, f"{type(exc).__name__}: {exc}"
+                    value, error = None, _reason(exc)
                 self.sdo_result.emit(node_id, index, sub, value, error)
             return len(wanted)
 
@@ -1033,14 +1033,39 @@ class CanopenManager(QObject):
         same pieces an SDO upload is made of anyway, so it costs nothing.
         """
         self.sdo_progress.emit(node_id, index, sub, 0, 0)
-        data = bytearray()
-        with node.sdo.open(index, sub, "rb", buffering=0) as stream:
-            total = stream.size or 0
-            while chunk := stream.read(7):
-                data += chunk
-                if len(data) % 700 < len(chunk):
-                    self.sdo_progress.emit(node_id, index, sub, len(data), total)
-        return bytes(data)
+
+        def read() -> bytes:
+            data = bytearray()
+            with node.sdo.open(index, sub, "rb", buffering=0) as stream:
+                total = stream.size or 0
+                while chunk := stream.read(7):
+                    data += chunk
+                    if len(data) % 700 < len(chunk):
+                        self.sdo_progress.emit(node_id, index, sub, len(data), total)
+            return bytes(data)
+
+        return self._logged_block(node_id, node, index, sub, read)
+
+    def _logged_block(self, node_id: int, node, index: int, sub: int, read) -> bytes:
+        """A block read a piece at a time, in the CANopen log as one transfer.
+
+        The log sees uploads and downloads; a block read through a stream, to
+        say how far it has got, is neither, and went unrecorded.
+        """
+        at, started = self._bus.now(), time.perf_counter()
+
+        def record(data: bytes | None, error: str | None) -> sdo_log.SdoRecord:
+            name = _object_name(node, index, sub)
+            took = time.perf_counter() - started
+            return sdo_log.SdoRecord(at, node_id, False, index, sub, name, data, error, took)
+
+        try:
+            data = read()
+        except Exception as exc:
+            self.sdo_logged.emit(record(None, _reason(exc)))
+            raise
+        self.sdo_logged.emit(record(data, None))
+        return data
 
     def sdo_write(self, node_id: int, index: int, sub: int, text: str) -> None:
         node = self.node(node_id)
@@ -1535,16 +1560,20 @@ class CanopenManager(QObject):
                 kind = int.from_bytes(node.sdo.upload(STORE_FORMAT, 0)[:2], "little")
             except canopen.SdoAbortedError:
                 kind = 0  # optional, and uncompressed text when it is not there
-            data = bytearray()
-            with node.sdo.open(STORE_EDS, 0, "rb", buffering=0) as stream:
-                total = stream.size or 0
-                while chunk := stream.read(7):
-                    if self._stop_stored_eds:
-                        raise RuntimeError(STOPPED)
-                    data += chunk
-                    if len(data) % 700 < len(chunk):
-                        self.stored_eds_progress.emit(node_id, len(data), total)
-            return bytes(data), kind
+
+            def read() -> bytes:
+                data = bytearray()
+                with node.sdo.open(STORE_EDS, 0, "rb", buffering=0) as stream:
+                    total = stream.size or 0
+                    while chunk := stream.read(7):
+                        if self._stop_stored_eds:
+                            raise RuntimeError(STOPPED)
+                        data += chunk
+                        if len(data) % 700 < len(chunk):
+                            self.stored_eds_progress.emit(node_id, len(data), total)
+                return bytes(data)
+
+            return self._logged_block(node_id, node, STORE_EDS, 0, read), kind
 
         def done(read: tuple[bytes, int] | None, error: str | None) -> None:
             if error:
@@ -1579,6 +1608,7 @@ class CanopenManager(QObject):
             ]
             read = 0
             values: dict[tuple[int, int], object] = {}
+            failures: list[tuple[int, int, str]] = []
             for i, var in enumerate(variables):
                 if self._stop_batch:
                     return None  # half a configuration is not one: nothing written
@@ -1587,9 +1617,10 @@ class CanopenManager(QObject):
                     values[(var.index, var.subindex)] = value
                     var.value = value
                     read += 1
-                except Exception:  # not implemented by this node: leave it out
+                except Exception as exc:  # not implemented by this node: leave it out
                     var.value = None
                     var.value_raw = None
+                    failures.append((var.index, var.subindex, _reason(exc)))
                 if i % 10 == 0:
                     self.dcf_progress.emit(i, len(variables))
             self.dcf_progress.emit(len(variables), len(variables))
@@ -1615,9 +1646,9 @@ class CanopenManager(QObject):
                         var.value_raw = str(var.value)
                 with open(path, "w", encoding="utf-8", newline="") as f:
                     eds.export_dcf(node.object_dictionary, f)  # wants a file, not a path
-            return read, len(variables)
+            return read, len(variables), failures
 
-        def done(counts: tuple[int, int] | None, error: str | None) -> None:
+        def done(counts: tuple | None, error: str | None) -> None:
             if error:
                 self.message.emit(f"Node {node_id}: DCF save failed ({error})", WARNING)
                 self.dcf_finished.emit(node_id, f"The DCF was not saved: {error}", True)
@@ -1625,13 +1656,18 @@ class CanopenManager(QObject):
                 self.message.emit(f"Node {node_id}: DCF save stopped, nothing written", INFORMATION)
                 self.dcf_finished.emit(node_id, "Stopped: no file was written.", False)
             else:
-                read, total = counts
+                read, total, failures = counts
                 self.message.emit(
                     f"Node {node_id}: DCF written, {read}/{total} parameters read", INFORMATION
                 )
-                self.dcf_finished.emit(
-                    node_id, f"{read} of {total} parameters read and written to {path}", False
-                )
+                said = f"{read} of {total} parameters read and written to {path}."
+                if failures:
+                    said += (
+                        f"\n\n{len(failures)} could not be read, and are left out:\n"
+                        + totals_text(reason for _i, _s, reason in failures)
+                        + "\n\nThe CANopen log lists each one."
+                    )
+                self.dcf_finished.emit(node_id, said, bool(failures))
 
         self._worker.submit(job, done)
 
@@ -1717,7 +1753,11 @@ class CanopenManager(QObject):
             )
             said = f"{written} of {total} parameters written{stopped}."
             if failures:
-                said += f" {len(failures)} refused by the node: the Event Log says which and why."
+                said += (
+                    f"\n\n{len(failures)} refused by the node:\n"
+                    + totals_text(reason for _i, _s, reason in failures)
+                    + "\n\nThe Event Log says which, and the CANopen log has each write."
+                )
             self.dcf_finished.emit(node_id, said, bool(failures))
             # Grouped by reason rather than listed one per line. A DCF that
             # goes wrong usually goes wrong the same way two hundred times --
@@ -1811,6 +1851,15 @@ def _object_name(node, index: int, sub: int) -> str:
         except (KeyError, IndexError):
             return obj.name
     return obj.name
+
+
+def totals_text(reasons) -> str:
+    """How many failed for each reason, the commonest first, a line each."""
+    counted: dict[str, int] = {}
+    for reason in reasons:
+        counted[reason] = counted.get(reason, 0) + 1
+    ordered = sorted(counted.items(), key=lambda item: -item[1])
+    return "\n".join(f"  {count} x {reason}" for reason, count in ordered)
 
 
 def _by_reason(failures: list[tuple[int, int, str]]) -> dict[str, list[tuple[int, int]]]:

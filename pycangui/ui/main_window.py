@@ -127,6 +127,9 @@ DEFAULT_VISIBLE = ("trace", "tx", "scope", "log")
 #: 620x460 a new pane gets by default is enough for a trace and not for
 #: these.
 PROTOCOL_PANE_SIZE = (1000, 700)
+#: Set once a workspace's layout has been opened by a version that notes
+#: each pane as it is first placed. See _restore_layout.
+PLACES_KNOWN_KEY = "panes.places_known"
 #: The console is typed into, so it wants width for a line of Python and
 #: enough height to see what the last few commands said.
 CONSOLE_PANE_SIZE = (900, 520)
@@ -823,7 +826,7 @@ class MainWindow(QMainWindow):
                 "CANopen",
                 Qt.RightDockWidgetArea,
                 lambda _name: CanopenView(self.canopen, self.hooks, self.ctx),
-                floating_first=True,
+                detached_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
@@ -831,7 +834,7 @@ class MainWindow(QMainWindow):
                 "UDS",
                 Qt.RightDockWidgetArea,
                 lambda _name: UdsView(self.uds, self.ctx, self.confirm, self.j1939),
-                floating_first=True,
+                detached_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
@@ -839,7 +842,7 @@ class MainWindow(QMainWindow):
                 "J1939",
                 Qt.RightDockWidgetArea,
                 lambda _name: J1939View(self.j1939, self.ctx, self.confirm),
-                floating_first=True,
+                detached_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
@@ -850,7 +853,7 @@ class MainWindow(QMainWindow):
                 "XCP / CCP",
                 Qt.RightDockWidgetArea,
                 lambda _name: XcpView(self.xcp, self.ctx),
-                floating_first=True,
+                detached_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),
             PaneKind(
@@ -1278,14 +1281,19 @@ class MainWindow(QMainWindow):
         if (geo := QSettings().value("geometry")) is not None:
             self.restoreGeometry(geo)
         state = self.ctx.layout.get("window")
-        if state is None and self.ctx.workspace == workspaces.DEFAULT:
-            # Where it lived before there were workspaces. Only for default,
-            # which is what an existing setup became: a new workspace that
-            # inherited the last one's arrangement would not be a new one.
-            state = QSettings().value("windowState")
         # restoreState declines a layout saved under an older LAYOUT_VERSION,
         # which leaves the default in place -- the same as never having run.
         restored = state is not None and self.restoreState(state, LAYOUT_VERSION)
+        if restored:
+            # A pane the saved layout puts on screen has a place already, and
+            # must not be moved into a window of its own as a first time.
+            self.panes.note_placed()
+            if not self.ctx.settings.get(PLACES_KNOWN_KEY, False):
+                # A layout from before pycangui noted which panes had been
+                # opened: one docked and then closed looks the same as one
+                # never opened, so every pane in it keeps the place it has.
+                self.panes.note_placed(every=True)
+        self.ctx.settings.set(PLACES_KNOWN_KEY, True)
         if state is not None and not restored:
             # Said rather than silently starting from the default: somebody
             # who had arranged the panes deserves to know why they moved,

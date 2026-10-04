@@ -63,6 +63,12 @@ into the main window to dock it, or onto another pane to tab the two together;
 wherever you leave it is where it opens next time. Otherwise it behaves like
 any other pane -- pin it, detach it, close it.
 
+The four protocol panes -- CANopen, UDS, J1939 and XCP / CCP -- go further the
+first time: each opens **detached**, in a window of its own with a taskbar
+entry, since they are worked in beside the trace rather than on top of it.
+*Attach* puts one in the main window, and from then on it opens wherever it was
+left.
+
 *View > Rename pane* calls one whatever the job calls it: two traces are much
 clearer as **Drive bus** and **Errors** than as CAN Trace and CAN Trace 2, and
 so are two transmit lists as **Background** and **Scratch**. An empty name

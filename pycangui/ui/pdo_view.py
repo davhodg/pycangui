@@ -140,6 +140,9 @@ class PdoConfigView(QWidget):
     """Editor for one node's PDO configuration."""
 
     changed = Signal()
+    #: Save file was pressed, for a file's PDOs: saving is the pane's to do,
+    #: since it is the same Save as the one under the node list.
+    save_requested = Signal()
 
     def __init__(self, manager: CanopenManager, ctx: Context) -> None:
         super().__init__()
@@ -232,18 +235,24 @@ class PdoConfigView(QWidget):
             self.write_btn.setToolTip(
                 "Write the selected PDO's communication and mapping parameters"
             )
-            self.write_btn.show()
+            self.write_btn.setEnabled(True)
             self.hint.setText("Edit a cell, then Write to node")
         else:
             self.read_btn.setText("Read from file")
             self.read_btn.setToolTip("Show the PDOs as the file's objects have them now.")
-            # Nothing to write: in a file, each change goes into its objects
-            # as it is made, like a value typed into the object dictionary,
-            # and is kept or thrown away with the file. A second step before
-            # Save was a step to forget, and closing the file then lost the
-            # change without a word.
-            self.write_btn.hide()
-            self.hint.setText("Changes go into the file: Save it to keep them")
+            # In a file, each change goes into its objects as it is made, like
+            # a value typed into the object dictionary, so there is nothing to
+            # put anywhere first: what writes is saving the file. A second step
+            # before Save was a step to forget, and closing the file then lost
+            # the change without a word.
+            self.write_btn.setText("Save file")
+            self.write_btn.setToolTip(
+                "Write the file to disk, with every change in it -- the PDOs here\n"
+                "and the values in the object dictionary. The same as Save under\n"
+                "the node list."
+            )
+            self.offer_save()
+            self.hint.setText("Changes go into the file as they are made")
 
     @Slot(int)
     def _on_config_changed(self, node_id: int) -> None:
@@ -397,6 +406,7 @@ class PdoConfigView(QWidget):
             self.refresh()
             return False
         self.refresh()
+        self.offer_save()
         return True
 
     def _add_entry(self) -> None:
@@ -486,14 +496,20 @@ class PdoConfigView(QWidget):
         elif self.node_id is not None:
             self.manager.read_pdo_config(self.node_id)
 
+    def offer_save(self) -> None:
+        """Save file only while the file has something to save."""
+        if self._file is not None:
+            self.write_btn.setEnabled(self._file.unsaved)
+
     def _write(self) -> None:
+        if self._file is not None:
+            self.save_requested.emit()
+            return
         item = self._selected_row()
         if item is None:
-            self.ctx.log("PDO: select a PDO to write")
+            messages.information(self, "Nothing to write", "Select the PDO to write first.")
             return
-        config = self._config_of(item)
-        if self._file is None:
-            self.manager.write_pdo_config(config)
+        self.manager.write_pdo_config(self._config_of(item))
 
 
 def _optional_int(text: str) -> int | None:

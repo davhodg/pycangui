@@ -229,7 +229,7 @@ def test_unmapping_and_disabling_go_straight_into_the_files_objects(app, view, d
     made, so it is saved, or asked about on closing, like any other."""
     source = view.open_file(demo)
     tab = view.pdo_config
-    assert tab.write_btn.isHidden(), "nothing to put anywhere"
+    assert not tab.write_btn.isEnabled(), "Save file, and nothing to save yet"
     row = tab.tree.topLevelItem(0)
     assert tab._config_of(row).direction == "TPDO"
     row.setCheckState(COL_ENABLED, Qt.Unchecked)
@@ -389,3 +389,22 @@ def test_a_node_selected_after_a_file_gets_the_tab_back(view, demo):
     view.open_file(demo)
     view.nodes.setCurrentItem(None)
     assert view.pdo_config._configs == [] and view.pdo_config._file is None
+
+
+def test_save_file_in_the_pdo_tab_saves_the_file(app, view, demo, tmp_path, monkeypatch):
+    """What writes, for a file, is saving it: the same Save as under the list."""
+    source = view.open_file(demo)
+    tab = view.pdo_config
+    tab.tree.topLevelItem(0).setText(COL_TRANS, "1")
+    assert tab.write_btn.isEnabled(), "something to save now"
+    monkeypatch.setattr(folders, "save_file", lambda *a, **k: str(tmp_path / "saved.dcf"))
+    tab.write_btn.click()
+    assert not source.unsaved and (tmp_path / "saved.dcf").is_file()
+    assert not tab.write_btn.isEnabled()
+
+
+def test_with_a_file_selected_remove_node_is_close_file(app, view, eds):
+    source = view.open_file(eds)
+    assert view.remove_btn.isEnabled()
+    view.remove_btn.click()
+    assert view.selected_file() is None and source not in view._files.values()

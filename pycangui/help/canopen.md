@@ -90,7 +90,15 @@ actually sends, and [CAN Transmit](transmit.md) offers the RPDOs it receives. **
 DCF...** and **Apply DCF...** read every parameter out to a file and write one
 back in. Both show how far they have got and can be stopped: a stopped *Save
 DCF* writes no file, since half a configuration is not one, and a stopped
-*Apply DCF* says how many it had written.
+*Apply DCF* says how many it had written. Either ends with a box if any object
+could not be read or written, with how many failed for each reason -- each
+abort code and its meaning -- and the *CANopen log* tab has every
+one.
+
+A DCF is written as CiA 306 describes: the EDS's own text, unchanged, with a
+`ParameterValue` added after the last entry of each object the node gave a value
+for, and a `[DeviceComissioning]` section with the node ID. Numbers are written
+in decimal, strings as text, and DOMAIN and octet-string objects as hex.
 
 A button that cannot do what it was pressed for says so in a box, as well as in
 the Event Log: the log can be behind the window the button was pressed in.
@@ -136,7 +144,9 @@ Tick **Watch** against the objects a job uses and **Watched** shows only those.
 The list is kept per device, so the next controller of the same kind opens with
 the objects you were using on the last one. **Read all** reads every readable
 entry, one SDO at a time, which takes a while on a large node: while it runs,
-a bar in its place says how far it has got, with **Stop** beside it. Only the
+a bar in its place says how far it has got, with **Stop** beside it. Objects
+it could not read are counted rather than each given a warning, and a box at the
+end says how many failed for each reason. Only the
 *Value* column can be typed into, and only for an object that can be written:
 the index, name, type and access are what the EDS says. Select some
 entries and right-click to add them to a [custom pane](custom-panes.md).
@@ -166,9 +176,9 @@ is -- in the units shown, and against the limits the file declares -- and held
 in memory, tinted, until it is saved; the row says *edited* meanwhile.
 Double-click an entry, or press *Read all*, to show the file's value again.
 
-With a file row selected, **Save**, **Save as...** and **Close file** take the
-place of the node's buttons, which are greyed: there is nothing on the bus to
-ask. Save writes a DCF through the file's own text, so its comments -- often
+With a file row selected, **Save** and **Save as...** take the place of the
+node's buttons, which are greyed: there is nothing on the bus to ask. *Remove
+node* above the list becomes **Close file**. Save writes a DCF through the file's own text, so its comments -- often
 where the units and descriptions are -- survive. An EDS is saved under a new
 name, as a DCF, so it keeps the defaults it came with. Closing a file, the pane
 or pycangui with changes not saved asks first. The files open when pycangui
@@ -188,11 +198,11 @@ first for the adapter.
 The *PDO configuration* tab works for a file as it does for a node. It shows the
 file's TPDOs and RPDOs, read out of its communication and mapping objects
 (0x1400, 0x1600, 0x1800 and 0x1A00), and they are edited the same way: a cell,
-*Map object...*, *Unmap object*, *Move up* and *Move down*. There is no *Write
-to node*, and nothing to press instead: each change goes into those objects as
-it is made, as a value typed into the dictionary does, tinted in the tree and
-waiting for *Save* like any other -- so closing the file with it unsaved asks
-first. Only what changed is put in, and no more objects can be mapped than the
+*Map object...*, *Unmap object*, *Move up* and *Move down*. Each change goes
+into those objects as it is made, as a value typed into the dictionary does,
+tinted in the tree, so closing the file with it unsaved asks first. In place of
+*Write to node* is **Save file**, which writes the file to disk -- the same as
+*Save* under the list. Only what changed is put in, and no more objects can be mapped than the
 file's mapping record has entries for; a change that will not go is said in a
 box and the tab goes back to what the file holds. An EDS usually gives a COB-ID as `$NODEID+0x180`; the tab shows
 the base, the tooltip says so, and it stays as that text unless the COB-ID or

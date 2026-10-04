@@ -64,6 +64,8 @@ FILE, NODE = "File", "Node"
 EDS_FILTER = "Device files (*.dcf *.eds);;All files (*)"
 
 HEADINGS = ("Index", "Sub", "Object", "Left", "Right", "")
+#: The widest a column is made by itself, in pixels.
+WIDEST_COLUMN = 360
 
 #: What the access filter offers. Read-only objects are measurements and
 #: nameplate -- a speed, a temperature, a serial number -- so two readings
@@ -227,7 +229,10 @@ class CompareView(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setUniformRowHeights(True)
         self.table.setFont(QFont("Consolas", 9))
-        self.table.header().setSectionResizeMode(2, QHeaderView.Stretch)
+        # Every column can be dragged: a stretched one cannot, and with a
+        # wide value beside it there was no making the table readable.
+        self.table.header().setSectionResizeMode(QHeaderView.Interactive)
+        self.table.header().setStretchLastSection(True)
 
         sides = QGridLayout()
         sides.addWidget(self.left, 0, 0)
@@ -403,9 +408,15 @@ class CompareView(QWidget):
                 ]
             )
             item.setTextAlignment(1, Qt.AlignRight | Qt.AlignVCenter)
+            for column in (2, 3, 4):  # for a column narrower than what is in it
+                item.setToolTip(column, item.text(column))
             self.table.addTopLevelItem(item)
-        for column in (0, 1, 3, 4, 5):
+        # Sized to what is in them, up to a limit: past that a value is
+        # read in its tooltip, or by widening the column.
+        for column in range(len(HEADINGS) - 1):
             self.table.resizeColumnToContents(column)
+            if self.table.columnWidth(column) > WIDEST_COLUMN:
+                self.table.setColumnWidth(column, WIDEST_COLUMN)
 
     def _copy(self) -> None:
         if not self.rows:

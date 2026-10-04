@@ -57,6 +57,7 @@ from pycangui.canopen.manager import (
     STOPPED,
     CanopenManager,
     od_entries,
+    totals_text,
     type_name,
 )
 from pycangui.core import workspace_files
@@ -151,6 +152,7 @@ SYNC_TIP = (
     "is in Settings: a rate is a fact about the bus, agreed once, rather\n"
     "than a decision to take every time this is pressed."
 )
+CLOSE_FILE_TIP = "Take the file out of the list; asks first if it has changes not saved."
 REMOVE_NODE_TIP = (
     "Take the selected node out of the list: one added at the wrong id, or\n"
     "unplugged for good. A node still on the bus comes back with its next\n"
@@ -231,9 +233,11 @@ class CanopenView(QWidget):
             "identified straight away."
         )
         add_node.clicked.connect(self._add_node)
-        self.remove_node_btn = QPushButton("Remove node")
-        self.remove_node_btn.setToolTip(REMOVE_NODE_TIP)
-        self.remove_node_btn.clicked.connect(lambda: self.remove_node(self.selected_node()))
+        # Remove node, or Close file with a file selected: either way the row
+        # goes from the list, so one button beside Add node and Open does it.
+        self.remove_btn = QPushButton("Remove node")
+        self.remove_btn.setToolTip(REMOVE_NODE_TIP)
+        self.remove_btn.clicked.connect(self._remove_selected)
         login = QPushButton("Login...")
         login.setToolTip(
             "Ask the selected node for an access level. CANopen has no standard\n"
@@ -278,7 +282,7 @@ class CanopenView(QWidget):
         # it acts on the list rather than on a row of it.
         nmt_bar = QHBoxLayout()
         nmt_bar.addWidget(add_node)
-        nmt_bar.addWidget(self.remove_node_btn)
+        nmt_bar.addWidget(self.remove_btn)
         open_file = QPushButton("Open DCF/EDS...")
         open_file.setToolTip(OPEN_FILE_TIP)
         open_file.clicked.connect(self._open_file_dialog)
@@ -370,10 +374,7 @@ class CanopenView(QWidget):
         self.save_file_as_btn = QPushButton("Save as...")
         self.save_file_as_btn.setToolTip("Write the values to a new DCF, and go on with that one.")
         self.save_file_as_btn.clicked.connect(lambda: self.save_file_as(self.selected_file()))
-        self.close_file_btn = QPushButton("Close file")
-        self.close_file_btn.setToolTip("Take the file out of the list; asks first if edited.")
-        self.close_file_btn.clicked.connect(lambda: self.close_file(self.selected_file()))
-        self._file_buttons = [self.save_file_btn, self.save_file_as_btn, self.close_file_btn]
+        self._file_buttons = [self.save_file_btn, self.save_file_as_btn]
         for b in self._file_buttons:
             file_bar.addWidget(b)
             b.hide()
@@ -469,6 +470,7 @@ class CanopenView(QWidget):
         objects_l.addLayout(od_bar)
         objects_l.addWidget(self.od)
         self.pdo_config = PdoConfigView(manager, ctx)
+        self.pdo_config.save_requested.connect(lambda: self.save_file(self.selected_file()))
         # One tab each, rather than the dictionary above a strip of tabs.
         # The dictionary, the live PDOs and LSS all want the height, and
         # sharing it between them left every one of them too short to read.
@@ -646,6 +648,7 @@ class CanopenView(QWidget):
             item.setText(2, "edited" if source.unsaved else "offline")
         if source is self.selected_file():
             self.save_file_btn.setEnabled(source.unsaved)
+            self.pdo_config.offer_save()
 
     def _remember_files(self) -> None:
         self.ctx.settings.set(FILES_KEY, [str(s.path) for s in self._files.values()])
@@ -832,6 +835,12 @@ class CanopenView(QWidget):
             return
         if (item := self._node_item(node_id)) is not None:
             self.nodes.setCurrentItem(item)
+
+    def _remove_selected(self) -> None:
+        if (source := self.selected_file()) is not None:
+            self.close_file(source)
+        else:
+            self.remove_node(self.selected_node())
 
     def remove_node(self, node_id: int | None) -> None:
         """Take a node out of the list, and out of what the manager knows."""
@@ -1497,8 +1506,16 @@ class CanopenView(QWidget):
         on_a_node = self._can_act_on(self.selected_node())
         for button in self._node_buttons:
             button.setEnabled(on_a_node)
-        if hasattr(self, "remove_node_btn"):  # a lost node most of all
-            self.remove_node_btn.setEnabled(self.selected_node() is not None)
+        if hasattr(self, "remove_btn"):
+            if self.selected_file() is not None:
+                self.remove_btn.setText("Close file")
+                self.remove_btn.setToolTip(CLOSE_FILE_TIP)
+                self.remove_btn.setEnabled(True)
+            else:
+                self.remove_btn.setText("Remove node")
+                self.remove_btn.setToolTip(REMOVE_NODE_TIP)
+                # A lost node most of all, so not _can_act_on.
+                self.remove_btn.setEnabled(self.selected_node() is not None)
         source = self.selected_file() if hasattr(self, "_file_buttons") else None
         for button in getattr(self, "_file_buttons", []):
             button.setVisible(source is not None)
@@ -1812,6 +1829,10 @@ class CanopenView(QWidget):
         self.read_bar.setRange(0, len(wanted))
         self.read_bar.setValue(0)
         self._show_reading(True)
+        #: Read all's node, and why each object it could not read failed:
+        #: counted rather than a warning each, which on a real device is
+        #: hundreds of lines in the Event Log for objects it does not have.
+        self._reading_node, self._read_failures = node_id, []
         self.manager.read_many(node_id, wanted)
 
     def _show_reading(self, on: bool) -> None:
@@ -1827,8 +1848,22 @@ class CanopenView(QWidget):
     @Slot(int, int, int, bool)
     def _on_read_finished(self, node_id: int, done: int, total: int, stopped: bool) -> None:
         self._show_reading(False)
+        failures, self._read_failures = getattr(self, "_read_failures", []), []
+        self._reading_node = None
         if stopped:
             self.ctx.log(f"Node {node_id}: Read all stopped, {done} of {total} objects read")
+        if not failures:
+            return
+        totals = totals_text(failures)
+        self.ctx.warn(
+            f"Node {node_id}: Read all, {len(failures)} of {done} objects not read:\n{totals}"
+        )
+        messages.warning(
+            self,
+            f"Read all: node {node_id}",
+            f"{done - len(failures)} of {done} objects read. {len(failures)} could not be:\n"
+            f"{totals}\n\nThe CANopen log lists each one, and why.",
+        )
 
     @Slot(int, int, int, int, int)
     def _on_sdo_progress(self, node_id: int, index: int, sub: int, done: int, total: int) -> None:
@@ -1841,7 +1876,9 @@ class CanopenView(QWidget):
 
     @Slot(int, int, int, object, object)
     def on_sdo_result(self, node_id: int, index: int, sub: int, value, error) -> None:
-        if error:
+        if error and node_id == getattr(self, "_reading_node", None):
+            self._read_failures.append(error)  # said once, when Read all is over
+        elif error:
             self.ctx.warn(f"Node {node_id}: SDO {index:04X}:{sub:02X} failed: {error}")
         if node_id != self.selected_node():
             return

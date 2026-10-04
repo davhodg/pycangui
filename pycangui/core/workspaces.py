@@ -11,8 +11,8 @@ screen.
 
 The design constraint is that somebody with one product must never have to
 know the word exists. On first run there is a workspace called ``default``,
-created silently, and pycangui behaves exactly as it did before there were
-any. The name appears in the title bar only when it is *not* ``default``.
+created silently, and pycangui behaves exactly as it would with no
+workspaces at all. The name appears in the title bar only when it is *not* ``default``.
 
 There is no Save, and therefore no unsaved changes: a workspace saves
 continuously, which is what ``settings.json`` has always done. The whole
@@ -45,12 +45,6 @@ DEFAULT = "default"
 #: workspace, because it is the one question asked before there is one.
 ROOT = "workspaces"
 POINTER = "workspaces.json"
-
-#: What was in the user folder before workspaces existed, and what therefore
-#: moves into ``default`` the first time this runs. Anything else -- back
-#: ends, a recorded log somebody left there -- belongs to the machine and is
-#: left exactly where it is.
-MIGRATED = ("settings.json", "hooks", "eds")
 
 MAX_NAME = 64
 #: A workspace name is a folder name, so it has to survive being one. Letters,
@@ -85,9 +79,7 @@ def _pointer() -> Path:
 
 
 def _ensure() -> None:
-    """Make sure there is somewhere to work, migrating an older setup if there is one."""
-    if not root().exists():
-        migrate()
+    """Make sure there is somewhere to work."""
     paths.made(dir_for(DEFAULT))
 
 
@@ -290,29 +282,3 @@ def delete(name: str) -> None:
     if not exists(name):
         raise ValueError(f"There is no workspace called {name}.")
     shutil.rmtree(dir_for(name))
-
-
-# --- the setup that came before -----------------------------------------------------------
-def migrate() -> list[str]:
-    """Move a pre-workspace setup into ``default``, in place.
-
-    The first thing this feature does, not the last. Done any other way it
-    announces itself by losing an existing user's settings, hooks and EDS
-    files, which is the opposite of the intent: somebody who never asked for
-    workspaces should not be able to tell that anything happened.
-
-    Moved rather than copied, so there is one of everything afterwards and no
-    question about which copy is being read.
-    """
-    if root().exists():
-        return []  # already done, or never needed
-    home = paths.user_dir()
-    target = dir_for(DEFAULT)
-    target.mkdir(parents=True, exist_ok=True)
-    moved = []
-    for name in MIGRATED:
-        source = home / name
-        if source.exists():
-            shutil.move(str(source), str(target / name))
-            moved.append(name)
-    return moved

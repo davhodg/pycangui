@@ -26,8 +26,9 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- The protocol panes open in a window of their own the first time.
 - CANopen *Read all* and *Save DCF* include DOMAIN objects, and they and *Apply DCF* show
-  progress and can be stopped.
+  progress, can be stopped, and report failures by abort code.
 - CANopen buttons that cannot act say so in a box, not only in the Event Log.
 - CANopen *Settings...* logs only what changed, and offers to restart a running SYNC.
 - CANopen *Read PDO config* reads both directions; the NMT button says who it goes to.
@@ -53,6 +54,8 @@ since the last version, and comes out in the next one.
 - A CRC in a DBC signal was computed over the wrong bytes.
 - A library that is installed but fails to load is reported as such.
 - About wrapped long paths.
+- DCF compare: a DOMAIN value made its column too wide to use. Long values are cut short and
+  every column can be widened.
 
 ## [0.1.1] - 2026-09-29
 

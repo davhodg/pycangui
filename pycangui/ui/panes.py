@@ -105,6 +105,11 @@ class PaneKind:
     #: edge is a pane somebody has to drag out before it can be read. What
     #: happens after that is the saved layout's business, not this.
     floating_first: bool = False
+    #: Open in a window of its own the first time, rather than floating over
+    #: the main window: for the protocol panes, which are worked in beside
+    #: the trace rather than on top of it, and want a taskbar entry to get
+    #: back to. After that, the saved layout decides, as above.
+    detached_first: bool = False
     #: What it needs to be worth looking at, when it opens in front. A tree
     #: and a table beside each other want more than the default window.
     floating_size: tuple[int, int] | None = None
@@ -285,12 +290,27 @@ class Panes(QObject):
             window.raise_()
             return
         kind = self.kinds.get(self._kind_of.get(name, ""))
-        first_time = kind is not None and kind.floating_first and name not in self._arranged
+        never_shown = kind is not None and name not in self._arranged
+        if never_shown and kind.detached_first and dock.isHidden() and not dock.isFloating():
+            self._note_arranged(name)
+            self.detach(name)
+            return
+        first_time = never_shown and kind.floating_first
         if (floating or first_time) and dock.isHidden() and not dock.isFloating():
             self._float_new(dock, kind.floating_size if kind is not None else None)
         self._note_arranged(name)
         dock.show()
         dock.raise_()
+
+    def note_placed(self, every: bool = False) -> None:
+        """Every pane a restored layout shows has been placed by somebody.
+
+        ``every`` counts the hidden ones too, for a layout saved before panes
+        were noted as they were opened.
+        """
+        for name, dock in self.docks.items():
+            if every or not dock.isHidden():
+                self._note_arranged(name)
 
     def _note_arranged(self, name: str) -> None:
         """This pane has been on screen, so where it goes is settled now."""
@@ -694,7 +714,8 @@ class Panes(QObject):
             except (TypeError, ValueError):  # hand-edited settings.json
                 pass
         wanted = widget.sizeHint()
-        width, height = NEW_PANE_SIZE
+        kind = self.kinds.get(self._kind_of.get(name, ""))
+        width, height = (kind.floating_size if kind is not None else None) or NEW_PANE_SIZE
         window.resize(max(width, wanted.width() + 24), max(height, wanted.height() + 48))
 
     def _reopen_detached(self, name: str, visible: bool) -> None:
@@ -704,7 +725,14 @@ class Panes(QObject):
         Deferred, because Qt is still showing it; and asked again then, because
         Attach shows the dock too, a moment before it says the pane is staying.
         """
-        if visible and name in self.closed_detached and name not in self._moving:
+        if not visible or name in self._moving:
+            return
+        kind = self.kinds.get(self._kind_of.get(name, ""))
+        if kind is not None and kind.detached_first and name not in self._arranged:
+            # The first time, from the View menu as much as from show().
+            self._note_arranged(name)
+            self.closed_detached.add(name)
+        if name in self.closed_detached:
             QTimer.singleShot(0, lambda: self._detach_again(name))
 
     def _detach_again(self, name: str) -> None:
@@ -756,6 +784,7 @@ class Panes(QObject):
 
     def attach(self, name: str) -> None:
         """Bring a detached pane back into the window, and show it."""
+        self._note_arranged(name)  # put here by choice, so it stays here
         if (window := self.detached.get(name)) is not None:
             window.close()  # its closed signal hands the widget back
         self.closed_detached.discard(name)  # back in the window is where it stays

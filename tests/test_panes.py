@@ -459,16 +459,35 @@ def test_a_second_instance_sits_under_the_first(app, window):
 
 
 # --- a pane asked for opens in front, once ----------------------------------------------
-def test_a_protocol_pane_opens_in_front_the_first_time(app, window):
-    """Docked, it arrives as a sliver down the right-hand edge: a tree and a
-    table of values need room before they are worth reading."""
-    dock = window.panes.docks["canopen"]
+@pytest.mark.parametrize("name", ["canopen", "uds", "j1939", "xcp"])
+def test_a_protocol_pane_opens_in_a_window_of_its_own_the_first_time(app, window, name):
+    """Docked, it arrives as a sliver down the right-hand edge; floating, it
+    sits over the trace it is worked beside. A window of its own has room
+    and a taskbar entry to get back to."""
+    dock = window.panes.docks[name]
     assert dock.isHidden(), "not in the opening arrangement"
 
-    window.panes.show("canopen")
+    window.panes.show(name)
 
-    assert dock.isFloating(), "in front of the window, not down the edge"
-    assert dock.width() >= 900 and dock.height() >= 600, "and big enough to read"
+    assert name in window.panes.detached
+    detached = window.panes.detached[name]
+    assert detached.width() >= 900 and detached.height() >= 600, "and big enough to read"
+
+
+def test_from_the_view_menu_too(app, window):
+    window.panes.docks["uds"].toggleViewAction().trigger()  # what the View menu does
+    for _ in range(5):
+        app.processEvents()
+    assert "uds" in window.panes.detached
+
+
+def test_a_pane_the_saved_layout_shows_stays_where_it_was(app, window):
+    """Somebody who docked CANopen before this existed keeps it docked."""
+    dock = window.panes.docks["canopen"]
+    dock.show()  # as a restored layout leaves it, before the window is shown
+    window.panes.note_placed()
+    window.panes.show("canopen")
+    assert "canopen" not in window.panes.detached
 
 
 def test_where_it_was_put_is_where_it_comes_back(app, window):
@@ -493,14 +512,21 @@ def test_a_refused_layout_makes_every_pane_a_first_time_again(app, window):
     """After an update changes the set of panes, Qt declines the saved
     layout and the default is what is left -- in which nothing has been
     placed."""
-    window.panes.show("canopen")
+    window.panes._note_arranged("canopen")  # placed once, docked
     assert "canopen" in window.ctx.settings.get("panes.arranged", [])
 
     window.panes.forget_arrangement()
 
     assert window.ctx.settings.get("panes.arranged") == []
-    dock = window.panes.docks["canopen"]
-    dock.setFloating(False)
-    dock.hide()
     window.panes.show("canopen")
-    assert dock.isFloating(), "so it opens in front again rather than as a sliver"
+    assert "canopen" in window.panes.detached, "so it opens in a window again, not as a sliver"
+
+
+def test_attach_is_a_place_chosen(app, window):
+    """Attach on a pane nobody had placed must not send it back out."""
+    window.panes.show("canopen")
+    window.panes.forget_arrangement()
+    window.panes.attach("canopen")
+    for _ in range(5):
+        app.processEvents()
+    assert "canopen" not in window.panes.detached

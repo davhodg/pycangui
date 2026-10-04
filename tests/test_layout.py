@@ -60,6 +60,7 @@ def test_the_log_takes_about_a_third_of_the_width(app, window):
 
 
 def test_a_hidden_pane_comes_back_where_it_belongs(app, window):
+    window.panes._note_arranged("canopen")  # placed before: not a first time
     dock = window.panes.docks["canopen"]
     assert not dock.isVisible()
     dock.toggleViewAction().trigger()  # what the View menu does

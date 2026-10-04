@@ -28,67 +28,10 @@ def home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def older_setup(home):
-    """A pycangui folder as it was before workspaces existed."""
-    (home / "settings.json").write_text('{"dbc.paths": ["a.dbc"]}', encoding="utf-8")
-    (home / "hooks").mkdir()
-    (home / "hooks" / "canopen.py").write_text("# mine\n", encoding="utf-8")
-    (home / "eds").mkdir()
-    (home / "eds" / "drive.eds").write_text("[FileInfo]\n", encoding="utf-8")
-    (home / "components").mkdir()
-    (home / "components" / "mine.py").write_text("# a component\n", encoding="utf-8")
-
-
-# --- the setup that came before ---------------------------------------------------------
-def test_an_existing_setup_becomes_the_default_workspace(home):
-    older_setup(home)
-    moved = workspaces.migrate()
-
-    assert set(moved) == {"settings.json", "hooks", "eds"}
-    default = workspaces.dir_for(workspaces.DEFAULT)
-    assert json.loads((default / "settings.json").read_text())["dbc.paths"] == ["a.dbc"]
-    assert (default / "hooks" / "canopen.py").read_text() == "# mine\n"
-    assert (default / "eds" / "drive.eds").exists()
-
-
-def test_nothing_is_left_behind_to_disagree_with_it(home):
-    """Moved rather than copied: two of a settings file is one too many."""
-    older_setup(home)
-    workspaces.migrate()
-    assert not (home / "settings.json").exists()
-    assert not (home / "hooks").exists()
-    assert not (home / "eds").exists()
-
-
-def test_your_components_stay_where_they_are(home):
-    """A component is about this machine's ability to talk to a bus at all,
-    not about the product being worked on, so every workspace shares them."""
-    older_setup(home)
-    workspaces.migrate()
-    assert (home / "components" / "mine.py").exists()
-    assert not (workspaces.dir_for(workspaces.DEFAULT) / "components").exists()
-
-
-def test_it_happens_once(home):
-    older_setup(home)
-    assert workspaces.migrate()
-    (home / "settings.json").write_text("{}", encoding="utf-8")  # something new, later
-    assert workspaces.migrate() == [], "already done"
-    assert (home / "settings.json").exists(), "and the later file was not swept up"
-
-
 def test_a_fresh_install_just_gets_a_default(home):
     assert workspaces.active() == workspaces.DEFAULT
     assert workspaces.names() == [workspaces.DEFAULT]
     assert workspaces.dir_for(workspaces.DEFAULT).is_dir()
-
-
-def test_the_context_reads_the_migrated_settings(home):
-    older_setup(home)
-    ctx = Context(log=print)
-    assert ctx.settings.get("dbc.paths") == ["a.dbc"]
-    assert ctx.workspace == workspaces.DEFAULT
-    assert ctx.hooks_dir == workspaces.dir_for(workspaces.DEFAULT) / "hooks"
 
 
 # --- which one is in use -------------------------------------------------------------------
@@ -165,10 +108,18 @@ def test_creating_a_bad_name_raises_rather_than_making_a_mess(home):
 
 
 # --- making, renaming, removing ---------------------------------------------------------------
+def filled_default():
+    """The default workspace with settings and a hook in it."""
+    workspaces._ensure()
+    default = workspaces.dir_for(workspaces.DEFAULT)
+    (default / "settings.json").write_text('{"dbc.paths": ["a.dbc"]}', encoding="utf-8")
+    (default / "hooks").mkdir(exist_ok=True)
+    (default / "hooks" / "canopen.py").write_text("# mine\n", encoding="utf-8")
+
+
 def test_save_as_keeps_what_was_on_screen(home):
     """Somebody asking for it means "keep this and call it something else"."""
-    older_setup(home)
-    workspaces._ensure()
+    filled_default()
     workspaces.create("Pump controller", copy_from=workspaces.DEFAULT)
     forked = workspaces.dir_for("Pump controller")
     assert json.loads((forked / "settings.json").read_text())["dbc.paths"] == ["a.dbc"]
@@ -176,8 +127,7 @@ def test_save_as_keeps_what_was_on_screen(home):
 
 
 def test_a_fork_is_a_copy_and_not_a_share(home):
-    older_setup(home)
-    workspaces._ensure()
+    filled_default()
     workspaces.create("other", copy_from=workspaces.DEFAULT)
     (workspaces.dir_for("other") / "settings.json").write_text("{}", encoding="utf-8")
     default = workspaces.dir_for(workspaces.DEFAULT)
@@ -261,29 +211,37 @@ def test_the_user_folder_itself_is_still_the_user_folder(home):
 
 
 # --- and the window that opens on it -----------------------------------------------------------
-def test_an_existing_arrangement_survives_the_upgrade(app, home):
-    """The dock layout used to live in QSettings. Somebody who had arranged
-    their panes should find them arranged, not reset."""
-    from pycangui.ui.main_window import MainWindow
+def test_a_pane_docked_before_panes_opened_detached_stays_docked(app, home):
+    """A layout saved before each pane was noted as it was first placed: a
+    pane docked there and then closed must not jump into a window of its own
+    the next time it is opened."""
+    from pycangui.ui.main_window import PLACES_KNOWN_KEY, MainWindow
 
     QSettings().clear()
     first = MainWindow()
     first.show()
     app.processEvents()
-    first.panes.docks["canopen"].setVisible(True)
-    first.close()  # writes windowState into the workspace
-    before = first.ctx.layout.get("window")
-    assert before is not None
-
-    # Now pretend that state had been left in QSettings by an older version.
-    QSettings().setValue("windowState", before)
-    (workspaces.layout_path()).unlink()
+    first.panes._note_arranged("uds")
+    dock = first.panes.docks["uds"]
+    dock.setVisible(True)  # docked by hand...
+    app.processEvents()
+    dock.hide()  # ...and closed
+    first.close()
+    # As an older version would have left the workspace: nothing noted.
+    first.ctx.settings.set("panes.arranged", [])
+    first.ctx.settings.set(PLACES_KNOWN_KEY, False)
 
     second = MainWindow()
-    second.show()  # a dock of a window that was never shown reports itself hidden
+    second.show()
     app.processEvents()
-    assert second.panes.docks["canopen"].isVisible(), "found where it was left"
+    second.panes.show("uds")
+    assert "uds" not in second.panes.detached, "docked, where it was left"
+    assert "j1939" in second.ctx.settings.get("panes.arranged", []), "every pane keeps its place"
     second.close()
+
+    third = MainWindow()  # and from now on, a first opening is noted as it happens
+    assert third.ctx.settings.get(PLACES_KNOWN_KEY)
+    third.close()
 
 
 def test_a_new_workspace_does_not_inherit_the_old_layout(app, home):

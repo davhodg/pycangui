@@ -220,13 +220,22 @@ def as_text(rows: list[Row], left: str, right: str, differences_only: bool = Tru
     for row in wanted:
         lines.append(
             f"0x{row.index:04X}  {row.sub:3d}  {row.name[:32]:<32} "
-            f"{shown(row.left):<20} {shown(row.right):<20} {row.state}"
+            f"{shown(row.left, whole=True):<20} {shown(row.right, whole=True):<20} {row.state}"
         )
     return "\n".join(lines)
 
 
-def shown(value: object) -> str:
-    """A raw value as it should read on screen: absent is absent, not None."""
+#: The most bytes of a block shown in a cell. A DOMAIN can be kilobytes, and
+#: shown whole it made its column wider than the screen.
+MOST_BYTES_SHOWN = 32
+
+
+def shown(value: object, whole: bool = False) -> str:
+    """A raw value as it should read on screen: absent is absent, not None.
+
+    A long block of bytes is cut short, with its length, unless ``whole``:
+    copied as text, all of it is what was asked for.
+    """
     if value is None:
         return "--"
     if isinstance(value, bool):
@@ -234,7 +243,10 @@ def shown(value: object) -> str:
     if isinstance(value, int):
         return f"{value} (0x{value:X})" if value > 9 or value < -9 else str(value)
     if isinstance(value, bytes | bytearray):
-        return value.hex(" ").upper()
+        if not whole and len(value) > MOST_BYTES_SHOWN:
+            start = bytes(value[:MOST_BYTES_SHOWN]).hex(" ").upper()
+            return f"{start} ... ({len(value):,} bytes)"
+        return bytes(value).hex(" ").upper()
     return str(value)
 
 

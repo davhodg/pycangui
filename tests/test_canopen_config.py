@@ -459,9 +459,9 @@ def test_remove_node_takes_the_row_and_works_on_a_lost_one(window):
     view.on_node_seen(9, "added by hand")
     view.on_node_lost(9)
     view.nodes.setCurrentItem(view._node_item(9))
-    assert view.remove_node_btn.isEnabled(), "a lost node most of all"
+    assert view.remove_btn.isEnabled(), "a lost node most of all"
     assert not view._node_buttons[0].isEnabled()
-    view.remove_node_btn.click()
+    view.remove_btn.click()
     assert view._node_item(9) is None and 9 not in view._lost
 
 
@@ -480,3 +480,39 @@ def test_a_refused_button_says_so_in_a_box(window, monkeypatch):
     view._read_all()  # no EDS, so nothing to read
     assert len(boxes) == 3
     assert view.read_all_btn.isVisibleTo(view), "and nothing was started"
+
+
+def test_read_all_ends_with_how_many_failed_and_why(window, monkeypatch):
+    """Counted, not a warning each: a real device has hundreds it lacks."""
+    from pycangui.ui import canopen_view
+
+    view = window.canopen_view
+    boxes = []
+    monkeypatch.setattr(canopen_view.messages, "warning", lambda *a, **k: boxes.append(a[2]))
+    view._reading_node, view._read_failures = 5, []
+    for sub in range(3):
+        view.on_sdo_result(5, 0x2000, sub, None, "abort 0x06020000, object does not exist")
+    view.on_sdo_result(5, 0x2001, 0, None, "SdoCommunicationError: No SDO response")
+    view._on_read_finished(5, 10, 10, False)
+    assert len(boxes) == 1
+    assert "3 x abort 0x06020000" in boxes[0] and "1 x SdoCommunicationError" in boxes[0]
+
+    view._reading_node, view._read_failures = 5, []
+    view._on_read_finished(5, 10, 10, False)
+    assert len(boxes) == 1, "nothing failed, nothing to say"
+
+
+def test_totals_are_the_commonest_first():
+    from pycangui.canopen.manager import totals_text
+
+    lines = totals_text(["b", "a", "b", "b", "a", "c"]).splitlines()
+    assert [line.split(" x ")[0].strip() for line in lines] == ["3", "2", "1"]
+
+
+def test_a_domain_read_is_in_the_canopen_log(stack):
+    """A block is read a piece at a time, which the log did not see."""
+    manager, _demo, _tmp = stack
+    records = []
+    manager.sdo_logged.connect(records.append)
+    manager.sdo_read(5, 0x1021, 0)  # the demo device's own EDS, a DOMAIN
+    wait_until(lambda: any(r.index == 0x1021 and r.data for r in records))

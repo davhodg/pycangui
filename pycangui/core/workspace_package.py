@@ -238,7 +238,7 @@ def install(path: str | Path, name: str) -> Path:
     if (reason := workspaces.why_not(name)) != "":
         raise PackageError(reason)
     name = workspaces.clean(name)
-    workspaces.names()  # makes the workspaces folder, migrating an older setup first
+    workspaces.names()  # makes the workspaces folder
     target = workspaces.dir_for(name)
 
     # Beside the workspaces folder rather than in it, where a leftover would

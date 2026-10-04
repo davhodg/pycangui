@@ -47,6 +47,10 @@ device answers only what it implements, so this is common and almost never a
 difference in configuration; those rows say *left only* or *right only* and are
 counted separately.
 
+A long block of bytes -- a DOMAIN object -- is cut short in the table, with its
+length, and shown whole when the comparison is copied. Every column can be
+widened by dragging its edge.
+
 **A value that changed form has not changed.** A file stores `1000` as text
 which a parser turns into a number, and a device hands back a number; a value
 that survived that round trip is not reported as a change.

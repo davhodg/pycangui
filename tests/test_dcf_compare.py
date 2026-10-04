@@ -154,6 +154,15 @@ def test_a_missing_value_reads_as_missing_rather_than_as_None():
     assert "0x" in compare.shown(4096)
 
 
+def test_a_long_block_is_cut_short_on_screen_and_whole_when_copied():
+    """A DOMAIN shown whole made its column wider than the screen."""
+    block = bytes(range(256)) * 4
+    on_screen = compare.shown(block)
+    assert len(on_screen) < 200 and "1,024" in on_screen, "short, and says how long"
+    assert compare.shown(block, whole=True) == block.hex(" ").upper()
+    assert compare.shown(b"") == "01 02", "a short one is shown whole"
+
+
 # --- reading a file --------------------------------------------------------------------------
 def test_an_eds_is_a_readable_side():
     """Comparing a device against the EDS it was built from answers "what has
@@ -379,6 +388,25 @@ def test_a_node_is_read_for_the_objects_the_file_names(app, window, view, tmp_pa
     assert asked["wanted"] == compare.objects_to_read(compare.read_file(view.left.path.text()))
     assert "1 different" in view.summary.text()
     assert view.table.topLevelItem(0).text(4) == compare.shown(250)
+
+
+def test_every_column_can_be_widened_and_none_starts_too_wide(app, window, view, tmp_path):
+    from PySide6.QtWidgets import QHeaderView
+
+    from pycangui.plugins.dcf_compare.plugin import FILE, NODE, WIDEST_COLUMN
+
+    window.canopen.read_objects = lambda node_id, wanted, done: done(
+        {(0x1017, 0): bytes(400)}, None
+    )
+    view.left.kind.setCurrentText(FILE)
+    view.left.path.setText(str(written_dcf(tmp_path, {(0x1017, 0): "1000"}, 5)))
+    view.right.kind.setCurrentText(NODE)
+    view.right.node.addItem("Node 5", 5)
+    view.run()
+    header = view.table.header()
+    columns = range(header.count() - 1)
+    assert all(header.sectionResizeMode(c) == QHeaderView.Interactive for c in columns)
+    assert all(view.table.columnWidth(c) <= WIDEST_COLUMN for c in columns)
 
 
 def test_a_node_that_will_not_answer_is_reported(app, window, view, tmp_path):
