@@ -139,14 +139,8 @@ def test_releasing_stops_the_checking(claiming):
     assert claimed == [0xFE] and not manager._claim_timer.isActive()
 
 
-#: A wait returns as soon as it is answered, so patience costs a passing run
-#: nothing -- and a loaded machine takes several times as long to claim an
-#: address and reassemble a transfer as a quiet one does.
-PATIENCE = 5
-
-
 def wait_until(pred, timeout=5.0):
-    deadline = time.monotonic() + timeout * PATIENCE
+    deadline = time.monotonic() + timeout
     while not pred():
         QCoreApplication.processEvents()
         if time.monotonic() > deadline:
@@ -160,13 +154,15 @@ def stack(app, tmp_path, monkeypatch, demo_device):
     ctx = Context(log=print)
     bus = BusManager()
     manager = J1939Manager(bus, Hooks(ctx))
-    # The demo engine answers from a thread of its own, and on a loaded machine
-    # that thread can be kept waiting longer than a real node is allowed to
-    # take -- which is "no answer", and the late answer is then not shown.
-    # The tests about no answer set their own, short, time.
-    monkeypatch.setattr(manager, "RESPONSE_S", 20.0)
     bus.connect_bus("virtual", "vcan_j1939", 500000, False)
     demo = demo_device(bus, kinds=["j1939_engine"])
+    # Not before the engine has its address. It claims one half a second after
+    # it starts, on a thread of its own, and like any J1939 node it says nothing
+    # to a request until then -- nor afterwards, since a request is sent once.
+    # A test that asked straight after its own claim usually came second, and
+    # on a busy machine came first and waited for an answer that never came.
+    engine = demo["j1939_engine"].state
+    wait_until(lambda: engine.ca.state == engine.library.ControllerApplication.State.NORMAL)
     yield bus, manager, demo
     manager.shutdown()
     bus.disconnect_bus()
@@ -303,7 +299,7 @@ def test_every_request_says_what_came_of_it(stack, monkeypatch):
     # Answered once, though the engine broadcasts DM1 every second.
     manager.request_pgn(PGN_DM1, 0x00)
     wait_until(lambda: any("DM1 active faults: 1 active fault(s)" in s for s in said))
-    deadline = time.monotonic() + 1.5  # long enough for a broadcast to come by
+    deadline = time.monotonic() + manager.RESPONSE_S + 0.3
     while time.monotonic() < deadline:
         QCoreApplication.processEvents()
         time.sleep(0.01)
