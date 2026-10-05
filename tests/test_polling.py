@@ -28,6 +28,21 @@ def pump(app, seconds):
         time.sleep(0.002)
 
 
+def wait_until(app, pred, timeout=5.0):
+    """Until it is so, however long this machine takes to get there: a fixed
+    wait is a guess at how busy the machine is, and a busy one loses it."""
+    end = time.monotonic() + timeout
+    while not pred():
+        assert time.monotonic() < end, "timed out"
+        app.processEvents()
+        time.sleep(0.002)
+
+
+def answered(view) -> bool:
+    """Whether every read the pane has asked for has had its answer."""
+    return not any(view._asked.values())
+
+
 def settle(app, times=5):
     for _ in range(times):
         app.processEvents()
@@ -369,24 +384,24 @@ def test_an_answer_nobody_polled_for_does_not_finish_a_round(app, pane):
     is finished by an answer it never asked for."""
     _window, view = pane
     view.bind(FakeNode(delay_ms=50))
-    pump(app, 0.2)  # let the reads bind() started actually land
+    wait_until(app, lambda: answered(view))  # the reads bind() started have landed
 
     told = []
     view.poller.answered = lambda index, sub: told.append((index, sub))
     view._widgets[0].read_requested.emit(0x2001, 0)  # somebody pressing Read
-    pump(app, 0.15)
+    wait_until(app, lambda: answered(view))  # and that one has been answered
     assert told == [], "a read by hand is not an answer to a poll"
 
 
 def test_an_answer_polling_did_ask_for_reaches_it(app, pane):
     _window, view = pane
     view.bind(FakeNode(delay_ms=10))
-    pump(app, 0.1)
+    wait_until(app, lambda: answered(view))  # the reads bind() started have landed
 
     told = []
     view.poller.answered = lambda index, sub: told.append((index, sub))
     view._on_poll_read(0x2001, 0)
-    pump(app, 0.1)
+    wait_until(app, lambda: answered(view))
     assert told == [(0x2001, 0)]
 
 
