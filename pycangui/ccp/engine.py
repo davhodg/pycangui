@@ -36,7 +36,7 @@ from pycangui.ccp import (
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.components import register_component
 from pycangui.xcp import ConnectInfo
-from pycangui.xcp.engine import NO_ID, XcpEngine
+from pycangui.xcp.engine import NO_ID, AnswerTap, XcpEngine
 
 
 class CcpError(Exception):
@@ -71,14 +71,9 @@ class CanCcpEngine(XcpEngine):
         #: somebody an afternoon.
         self._counter = 0
         self.info: ConnectInfo | None = None
-        bus.frames.connect(self._on_frames)
+        self._answers = AnswerTap(bus, self)
 
     # --- plumbing -----------------------------------------------------------
-    def _on_frames(self, frames: list[Frame]) -> None:
-        for f in frames:
-            if f.rx and f.can_id == self.res_id and f.extended == self.extended:
-                self._responses.put(f.data)
-
     def set_ids(self, cmd_id: int, res_id: int, extended: bool) -> None:
         self.cmd_id, self.res_id, self.extended = cmd_id, res_id, extended
 
@@ -163,7 +158,4 @@ class CanCcpEngine(XcpEngine):
         self.command(CMD_SET_MTA, bytes([0, 0]) + struct.pack(">I", address))
 
     def close(self) -> None:
-        try:
-            self._bus.frames.disconnect(self._on_frames)
-        except (RuntimeError, TypeError):  # already disconnected, or gone
-            pass
+        self._answers.close()

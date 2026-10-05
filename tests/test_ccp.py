@@ -150,3 +150,26 @@ def test_the_pane_asks_for_a_station_only_where_one_is_needed(app, tmp_path, mon
 
     assert not view.station.isHidden(), "CCP does, and cannot connect without one"
     window.close()
+
+
+def test_an_answer_does_not_wait_for_the_window(app, tmp_path, monkeypatch):
+    """As for XCP: asked from this thread, which processes no events while it
+    waits, and answered by a slave that needs nothing of the window either."""
+    from test_xcp import AnswersOnItsOwnThread
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    bus = BusManager()
+    manager = XcpManager(bus, Hooks(ctx), SignalHub(), ctx)
+    manager.set_component("ccp-builtin")
+    bus.connect_bus("virtual", "vcan_ccp_still", 500000, False)
+    # A command return message, acknowledged: 0xFF, no error, the counter.
+    slave = AnswersOnItsOwnThread("vcan_ccp_still", 0x7B0, 0x7B1, bytes([0xFF, 0x00, 0x01]))
+    try:
+        manager.set_ids(0x7B0, 0x7B1, False)
+        manager.set_station(1)
+        assert manager.engine.connect() is not None
+    finally:
+        slave.close()
+        manager.shutdown()
+        bus.disconnect_bus()

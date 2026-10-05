@@ -15,6 +15,10 @@ since the last version, and comes out in the next one.
   a DBC row's database file is in its tooltip, not the Unit column.
 - The status bar says the signal history limit is per signal and the samples a total.
 
+### Fixed
+
+- XCP and CCP: a command could time out while the window was busy, though the slave had answered.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added

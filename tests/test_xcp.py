@@ -332,3 +332,71 @@ def test_nothing_is_called_xcp_in_the_trace_until_the_ids_are_given(app, tmp_pat
     window.xcp.set_ids(0x7A0, 0x7A1, False)
     assert window.xcp.classify(frame) == "XCP cmd"
     window.close()
+
+
+# --- answers come in on the reader's thread --------------------------------------------
+class AnswersOnItsOwnThread:
+    """A slave that needs nothing of the window: a second handle on the bus,
+    answering one command with one frame from its own reader thread. The demo
+    slave will not do here, since its code runs on the window's thread."""
+
+    def __init__(self, channel: str, command_id: int, response_id: int, answer: bytes):
+        import can
+
+        self.bus = can.Bus(interface="virtual", channel=channel)
+        reply = can.Message(arbitration_id=response_id, data=answer, is_extended_id=False)
+
+        def on_frame(msg):
+            if msg.arbitration_id == command_id:
+                self.bus.send(reply)
+
+        self.notifier = can.Notifier(self.bus, [on_frame])
+
+    def close(self) -> None:
+        self.notifier.stop()
+        self.bus.shutdown()
+
+
+def test_an_answer_does_not_wait_for_the_window(app, tmp_path, monkeypatch):
+    """Asked from this thread, which then stands still: no event is processed
+    while the command waits, as when the window is busy drawing. The answer
+    used to come round by the window and so timed out."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    bus = BusManager()
+    manager = XcpManager(bus, Hooks(Context(log=print)), SignalHub(), Context(log=print))
+    bus.connect_bus("virtual", "vcan_xcp_still", 500000, False)
+    # A positive CONNECT: CAL, little-endian, maxCTO 8, maxDTO 8, versions 1.
+    slave = AnswersOnItsOwnThread(
+        "vcan_xcp_still", 0x7A0, 0x7A1, bytes([0xFF, 0x01, 0x00, 0x08, 0x08, 0x00, 0x01, 0x01])
+    )
+    try:
+        manager.set_ids(0x7A0, 0x7A1, False)
+        assert manager.engine.connect().max_cto == 8
+    finally:
+        slave.close()
+        manager.shutdown()
+        bus.disconnect_bus()
+
+
+def test_answers_are_heard_on_a_bus_connected_again_and_not_after_closing(stack):
+    import can
+
+    bus, manager, _demo, _hub, _home = stack
+    engine = manager.engine
+    manager.set_ids(0x7A0, 0x7A1, False)
+    bus.disconnect_bus()
+    bus.connect_bus("virtual", "vcan_xcp", 500000, False)
+
+    def heard(data: bytes) -> bool:
+        """Whether a frame from somebody else on the response id reaches the engine."""
+        with can.Bus(interface="virtual", channel="vcan_xcp") as other:
+            other.send(can.Message(arbitration_id=0x7A1, data=data, is_extended_id=False))
+            deadline = time.monotonic() + 1.0
+            while engine._responses.empty() and time.monotonic() < deadline:
+                time.sleep(0.005)  # no events: it is the reader that delivers
+        return not engine._responses.empty()
+
+    assert heard(bytes([0xFF, 0x01]))
+    engine._responses.get_nowait()
+    engine.close()
+    assert not heard(bytes([0xFF, 0x02])), "an engine put away has stopped listening"

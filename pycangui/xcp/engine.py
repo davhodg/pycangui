@@ -17,6 +17,9 @@ import queue
 import struct
 from abc import ABC, abstractmethod
 
+import can
+from PySide6.QtCore import QObject
+
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.components import register_component
 from pycangui.xcp import (
@@ -101,6 +104,59 @@ class XcpEngine(ABC):
         return None
 
 
+class AnswerTap(can.Listener):
+    """Hands an engine its slave's answers on the thread that reads the bus.
+
+    They used to come round by the window: collected by the reader, handed
+    over every few milliseconds on the window's thread, and only then put
+    where the command was waiting. That is a second's timeout resting on the
+    window not being busy for a second -- redrawing a long trace, loading a
+    large A2L -- when the answer had been in for most of it. CANopen and UDS
+    have always listened here; now these do.
+
+    ``engine`` is anything with ``res_id``, ``extended`` and a ``_responses``
+    queue. The listener follows the bus through a disconnect, a reconnect and
+    a change of channel, since each of those is a new reader.
+    """
+
+    def __init__(self, bus, engine) -> None:
+        self._bus = bus
+        self._engine = engine
+        # Kept to disconnect by: this is not a QObject, and a signal cannot
+        # be disconnected from a plain method by naming the method again.
+        self._links = [
+            bus.connected.connect(self._attach),
+            bus.disconnected.connect(self._detach),
+        ]
+        self._attach()
+
+    def on_message_received(self, msg: can.Message) -> None:
+        engine = self._engine
+        if (
+            msg.is_rx
+            and not msg.is_error_frame
+            and msg.arbitration_id == engine.res_id
+            and bool(msg.is_extended_id) == engine.extended
+        ):
+            engine._responses.put(bytes(msg.data))
+
+    def on_error(self, exc: Exception) -> None:
+        pass  # the bus reports its own
+
+    def _attach(self, *_said) -> None:
+        self._detach()  # never twice on one reader
+        self._bus.add_listener(self)
+
+    def _detach(self) -> None:
+        self._bus.remove_listener(self)
+
+    def close(self) -> None:
+        for link in self._links:
+            QObject.disconnect(link)
+        self._links = []
+        self._detach()
+
+
 @register_component("xcp", "xcp-builtin", "XCP on CAN, implemented in pycangui")
 class NativeCanEngine(XcpEngine):
     """XCP on CAN over the shared python-can bus."""
@@ -116,14 +172,9 @@ class NativeCanEngine(XcpEngine):
         self.res_id = NO_ID
         self.extended = False
         self.info: ConnectInfo | None = None
-        bus.frames.connect(self._on_frames)
+        self._answers = AnswerTap(bus, self)
 
     # --- plumbing -----------------------------------------------------------
-    def _on_frames(self, frames: list[Frame]) -> None:
-        for f in frames:
-            if f.rx and f.can_id == self.res_id and f.extended == self.extended:
-                self._responses.put(f.data)
-
     def set_ids(self, cmd_id: int, res_id: int, extended: bool) -> None:
         self.cmd_id, self.res_id, self.extended = cmd_id, res_id, extended
 
@@ -193,4 +244,4 @@ class NativeCanEngine(XcpEngine):
         self.command(CMD_DOWNLOAD, bytes([len(data)]) + data)
 
     def close(self) -> None:
-        self._bus.frames.disconnect(self._on_frames)
+        self._answers.close()
