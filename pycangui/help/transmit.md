@@ -35,9 +35,13 @@ A DBC or RPDO row takes its name, identifier and data from where it came from,
 so those cells are not typed into -- but its **Period ms** is yours to set,
 like a raw row's. A row added from a database starts at the cycle time the
 database gives the message (`GenMsgCycleTime`) where it gives one, and at
-100 ms where it does not. The Unit column of a DBC row names the database file
-it came from, and goes on naming it -- *not loaded: drive.dbc* -- if that
-database is removed.
+100 ms where it does not. Hover over a DBC row's name for the database file it
+came from. If that database is removed the row says *not loaded*, and the
+same tooltip still names the file to load.
+
+Whether an **ID** is 11-bit or 29-bit is in how it is written, so there is no
+box to tick: anything above `7FF` is 29-bit, and so is an id written out in
+eight digits. `123` is the 11-bit id 0x123, and `00000123` is the 29-bit one.
 
 Select several rows -- Ctrl+A takes the lot -- and *Send selected*, *Remove
 selected* and the space bar all work on the whole selection, so starting or

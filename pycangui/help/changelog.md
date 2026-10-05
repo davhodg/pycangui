@@ -9,6 +9,12 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Changed
+
+- CAN Transmit: no *Ext* column -- an id above `7FF`, or written in eight digits, is 29-bit;
+  a DBC row's database file is in its tooltip, not the Unit column.
+- The status bar says the signal history limit is per signal and the samples a total.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added

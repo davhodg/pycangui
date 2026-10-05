@@ -60,11 +60,10 @@ from pycangui.core.tx_fields import Checksum, Counter
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.tx_fields_dialog import TxFieldsDialog
 
-COL_NAME, COL_ID, COL_EXT, COL_FD, COL_DATA, COL_PERIOD, COL_CYCLIC, COL_UNIT, COL_FIELDS = range(9)
+COL_NAME, COL_ID, COL_FD, COL_DATA, COL_PERIOD, COL_CYCLIC, COL_UNIT, COL_FIELDS = range(8)
 HEADERS = (
     "Message / Signal",
     "ID",
-    "Ext",
     "FD",
     "Data / Value",
     "Period ms",
@@ -105,6 +104,36 @@ MARKS_TIP = (
 
 #: A message's period where nothing says otherwise.
 DEFAULT_PERIOD_MS = 100
+
+#: The largest 11-bit identifier. Above it, a frame can only be 29-bit.
+MAX_11_BIT = 0x7FF
+#: How many hex digits a 29-bit id is written with, here and in the trace.
+WIDE_DIGITS = 8
+ID_TIP = (
+    "The identifier, in hex. Whether it is 11-bit or 29-bit is in how it is\n"
+    "written: anything above 7FF is 29-bit, and so is an id written out in\n"
+    "eight digits -- 00000123 is the 29-bit id 123, and 123 is the 11-bit one."
+)
+
+
+def is_extended(typed: str) -> bool:
+    """Whether an id, as it is written, is a 29-bit one.
+
+    The rule the ASCII Log's id box has, in place of a tick box in a column
+    of its own: only a number of 0x7FF or less is ambiguous, and writing it
+    out in eight digits says which is meant. Not a number is not extended;
+    sending it says what is wrong with it.
+    """
+    typed = typed.strip()
+    try:
+        return int(typed, 16) > MAX_11_BIT or len(typed) == WIDE_DIGITS
+    except ValueError:
+        return False
+
+
+def id_text(can_id: int, extended: bool) -> str:
+    """An id as it is shown: eight digits for a 29-bit one, three otherwise."""
+    return f"{can_id:08X}" if extended else f"{can_id:03X}"
 
 
 def editable_columns(item: QTreeWidgetItem) -> tuple[int, ...]:
@@ -351,6 +380,7 @@ class TxView(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
+        self.tree.headerItem().setToolTip(COL_ID, ID_TIP)
         self.tree.setFont(QFont("Consolas", 9))
         self.tree.setRootIsDecorated(True)
         self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
@@ -443,8 +473,7 @@ class TxView(QWidget):
         item = QTreeWidgetItem(
             [
                 spec.get("name", ""),
-                spec.get("id", ""),
-                "",
+                self._id_as_written(spec),
                 "",
                 spec.get("data", ""),
                 str(spec.get("period", 100)),
@@ -457,7 +486,8 @@ class TxView(QWidget):
         item.setData(0, ROLE_CHECKSUM, spec.get("checksum"))
         flags = item.flags() | Qt.ItemIsEditable
         item.setFlags(flags)
-        item.setCheckState(COL_EXT, Qt.Checked if spec.get("ext") else Qt.Unchecked)
+        # On the cell as well as the heading: it is the cell that is typed in.
+        item.setToolTip(COL_ID, ID_TIP)
         item.setCheckState(COL_FD, Qt.Checked if spec.get("fd") else Qt.Unchecked)
         item.setCheckState(COL_CYCLIC, Qt.Unchecked)
         self.tree.addTopLevelItem(item)
@@ -478,20 +508,17 @@ class TxView(QWidget):
             # database is removed -- and told apart while several are loaded.
             database = self.dbc.source_of(name) or spec.get("database", "")
             item.setData(0, ROLE_DATABASE, database)
-            file_name = Path(database).name if database else ""
+            # Which database is in the tooltip and not in a column: a file
+            # name on every row made the pane wide to say what is rarely
+            # asked. That it is missing is said, since the row cannot be sent.
             if msg is None:
-                item.setText(
-                    COL_UNIT, f"not loaded: {file_name}" if file_name else "database not loaded"
-                )
-                item.setToolTip(COL_UNIT, DATABASE_GONE_TIP.format(path=database or "not known"))
+                item.setText(COL_UNIT, "not loaded")
+                gone = DATABASE_GONE_TIP.format(path=database or "not known")
+                item.setToolTip(COL_NAME, gone)
+                item.setToolTip(COL_UNIT, gone)
             else:
-                item.setText(COL_UNIT, file_name)
-                item.setToolTip(COL_UNIT, DATABASE_TIP.format(path=database))
-                item.setText(
-                    COL_ID,
-                    f"{msg.frame_id:08X}" if msg.is_extended_frame else f"{msg.frame_id:03X}",
-                )
-                item.setCheckState(COL_EXT, Qt.Checked if msg.is_extended_frame else Qt.Unchecked)
+                item.setToolTip(COL_NAME, DATABASE_TIP.format(path=database))
+                item.setText(COL_ID, id_text(msg.frame_id, msg.is_extended_frame))
                 stored = spec.get("signals", {})
                 for signal in msg.signals:
                     value = stored.get(signal.name, _default_value(signal))
@@ -499,7 +526,6 @@ class TxView(QWidget):
                     child = QTreeWidgetItem(
                         [
                             signal.name,
-                            "",
                             "",
                             "",
                             with_its_name(_format(value), choices),
@@ -536,7 +562,7 @@ class TxView(QWidget):
                 for variable in entry[2]:
                     choices = sorted(tables.get(variable, {}).items())
                     value = with_its_name(_format(stored.get(variable, 0)), choices)
-                    child = QTreeWidgetItem([variable, "", "", "", value, "", "", ""])
+                    child = QTreeWidgetItem([variable, "", "", value, "", "", ""])
                     child.setData(0, ROLE_KIND, "signal")
                     child.setFlags(child.flags() | Qt.ItemIsEditable)
                     if choices:
@@ -583,12 +609,29 @@ class TxView(QWidget):
         return None if row < 0 else row
 
     # --- specs and encoding ---------------------------------------------------------
+    @staticmethod
+    def _id_as_written(spec: dict) -> str:
+        """A saved row's id, written so that it says how wide it is.
+
+        A row saved while there was an Ext column could be a short id with
+        the box ticked; that one is written out in eight digits, which is
+        what the tick meant.
+        """
+        typed = str(spec.get("id", ""))
+        if spec.get("ext") and not is_extended(typed):
+            try:
+                return id_text(int(typed, 16), True)
+            except ValueError:
+                pass
+        return typed
+
     def _spec(self, row: int) -> dict:
         item = self.item(row)
         spec = {
             "kind": item.data(0, ROLE_KIND),
             "id": item.text(COL_ID),
-            "ext": item.checkState(COL_EXT) == Qt.Checked,
+            # Kept in what is saved, for a pycangui from before the column went.
+            "ext": is_extended(item.text(COL_ID)),
             "fd": item.checkState(COL_FD) == Qt.Checked,
             "data": item.text(COL_DATA),
             "period": item.text(COL_PERIOD),
@@ -660,7 +703,7 @@ class TxView(QWidget):
         self._loading = True
         item.setText(COL_DATA, data.hex(" ").upper())
         if can_id is not None:
-            item.setText(COL_ID, f"{can_id:03X}")
+            item.setText(COL_ID, id_text(can_id, can_id > MAX_11_BIT))
         self._loading = False
 
     def _message(self, row: int) -> tuple[int, bytes, bool, bool, float]:

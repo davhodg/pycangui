@@ -43,7 +43,9 @@ SHOWN_ORDER = (0, 1, MINIMUM, MAXIMUM, UNIT, PLOT, RIGHT, COUNT, RATE)
 OPTIONAL = {"Min": MINIMUM, "Max": MAXIMUM, "Unit": UNIT, "Count": COUNT, "Rate": RATE}
 DEFAULT_COLUMNS = ("Unit",)
 COLUMN_TIPS = {
-    COUNT: "How many samples of the signal have arrived since the history was last cleared.",
+    COUNT: "How many samples of the signal have arrived since the history was last cleared.\n"
+    "All of them, so it goes on rising past the history limit: the limit is on\n"
+    "how many are kept for the plot and for Export, not on how many are counted.",
     RATE: "Samples a second, over the last second of the signal's own samples:\n"
     "how fast it was arriving when it last arrived.",
     MINIMUM: "The smallest value since the history was last cleared.",

@@ -82,13 +82,19 @@ On the right, **Export...** writes the samples held for every decoded signal --
 plotted or not -- to a file a spreadsheet can read, the same as *File > Export
 signals*, and **Clear history** throws those samples away. Every decoded
 signal is kept whether it is plotted or not, which is why plotting one later
-shows its past -- and the status bar says how much that is: how many signals,
-how many samples between them, and the limit.
+shows its past -- and the status bar says how much that is, as *3 signals
+(200k limit/signal), 1.2M total samples*: how many signals, the most kept of
+any one of them, and how many samples are held between them all.
 
 **The limit, and long traces.** 200,000 samples of each signal are kept to
 begin with, the oldest going first, so a trace that runs long enough loses its
 start: at a thousand samples a second that is a little over three minutes. The
-status bar says *limit ... reached* once any signal has lost samples that way.
+limit is each signal's own, so the total passes it as soon as there are a few
+signals, and a slow signal may never reach it. A signal is let grow to half as
+much again and then cut back to the limit in one go, so the start of a plot
+goes in steps and not a sample at a time. The status bar says how many signals
+have lost samples that way: *2 reached*. The **Count** column is not held to the
+limit: it is every sample that has arrived.
 *Tools > Settings > Signal history* raises it -- 500,000, one million, two or five
 million a signal -- and each choice says what it costs: the samples are held in
 memory, at sixteen bytes each, and only a signal fast enough to fill the limit

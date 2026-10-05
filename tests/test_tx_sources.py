@@ -127,6 +127,30 @@ def test_the_file_is_still_known_once_the_database_is_gone(stack):
     assert ctx.settings.get("tx.messages")[0]["database"] == source
 
 
+def test_how_an_id_is_written_says_how_wide_it_is(stack):
+    _app, _bus, view, _canopen, _demo, _ctx = stack
+    widths = {}
+    for typed in ("123", "7FF", "800", "18FF50E5", "00000123"):
+        row = view.add_message({"kind": "raw", "id": typed, "data": "00"})
+        can_id, _data, extended, _fd, _period = view._message(row)
+        widths[typed] = (can_id, extended)
+    assert widths == {
+        "123": (0x123, False),
+        "7FF": (0x7FF, False),
+        "800": (0x800, True),
+        "18FF50E5": (0x18FF50E5, True),
+        "00000123": (0x123, True),
+    }
+
+
+def test_a_row_saved_with_the_ext_box_ticked_is_still_29_bit(stack):
+    _app, _bus, view, _canopen, _demo, ctx = stack
+    row = view.add_message({"kind": "raw", "id": "123", "ext": True, "data": "00"})
+    can_id, _data, extended, _fd, _period = view._message(row)
+    assert (can_id, extended) == (0x123, True)
+    assert ctx.settings.get("tx.messages")[0]["ext"] is True, "for a pycangui that has the box"
+
+
 def test_a_row_saved_before_files_were_kept_learns_its_own(stack):
     _app, _bus, view, _canopen, _demo, _ctx = stack
     row = view.add_message({"kind": "dbc", "message": "PumpCommand", "database": ""})

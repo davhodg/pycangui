@@ -218,9 +218,9 @@ class SignalHub(QObject):
         """How many signals are held, and how many samples between them."""
         return len(self._series), sum(len(s.times) for s in self._series.values())
 
-    def limit_reached(self) -> bool:
-        """Whether any signal has had its oldest samples dropped to keep to the limit."""
-        return any(s.trimmed for s in self._series.values())
+    def limit_reached(self) -> int:
+        """How many signals have had their oldest samples dropped to keep to the limit."""
+        return sum(1 for s in self._series.values() if s.trimmed)
 
     def set_limit(self, limit: int) -> None:
         """How many samples of each signal to keep, from now on.
@@ -251,9 +251,18 @@ def short_count(samples: int) -> str:
     return f"{samples:,}"
 
 
-def stored_text(signals: int, samples: int, limit: int = 0, reached: bool = False) -> str:
-    """``3 signals, 1.2M samples, limit 200k``: short enough for the status bar."""
-    text = f"{signals} signal{'' if signals == 1 else 's'}, {short_count(samples)} samples"
+def stored_text(signals: int, samples: int, limit: int = 0, reached: int = 0) -> str:
+    """``3 signals (200k limit/signal, 1 reached), 1.2M total samples``, for the status bar.
+
+    ``reached`` is how many of the signals have lost their oldest samples.
+
+    The limit is beside the signals because it is each signal's own, and the
+    samples are called a total because they are all the signals' together:
+    written as "1.2M samples, limit 200k" the one read as having passed the
+    other.
+    """
+    text = f"{signals} signal{'' if signals == 1 else 's'}"
     if limit:
-        text += f", limit {short_count(limit)}" + (" reached" if reached else "")
-    return text
+        gone = f", {int(reached)} reached" if reached else ""
+        text += f" ({short_count(limit)} limit/signal{gone})"
+    return f"{text}, {short_count(samples)} total samples"
