@@ -86,6 +86,12 @@ underneath: a signal that is three bits straddling a byte boundary, in either
 of CAN's two bit-numbering conventions, is the database's problem and not
 yours.
 
+The message's own row says where such a field is, not what it is called: *count
+52:4* is a counter in the signal starting at bit 52, four bits long, as the
+database numbers them. A signal's name can be long and that is one cell of the
+row. Hover over it for the name, or expand the message -- the signal's own row
+is marked.
+
 A checksum named this way is computed over the frame **without its own
 bytes**, exactly as one at a position is, where the signal is whole bytes --
 a CRC in the last byte, say. Where it shares a byte with data that has to

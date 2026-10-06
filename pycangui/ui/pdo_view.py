@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -35,6 +34,7 @@ from pycangui.canopen.manager import CanopenManager, mappable, mapped_bits, od_e
 from pycangui.core.classify import predefined_meaning
 from pycangui.core.context import Context
 from pycangui.ui import messages
+from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.edit_columns import EditColumns
 
 COL_NAME, COL_COBID, COL_ENABLED, COL_TRANS, COL_INHIBIT, COL_TIMER, COL_BITS = range(7)
@@ -165,8 +165,7 @@ class PdoConfigView(QWidget):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
         self.tree.setFont(QFont("Consolas", 9))
-        self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.tree.header().setStretchLastSection(True)
+        self.widths = ColumnWidths(self.tree, ctx.settings, "canopen.pdo_config")
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         # The PDO's settings are typed into; its name and size are not.
         self.tree.setItemDelegate(

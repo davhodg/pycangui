@@ -39,7 +39,7 @@ class ScopeView(QWidget):
     ) -> None:
         super().__init__()
         self.hub = hub
-        self.signals_view = SignalsView(hub)
+        self.signals_view = SignalsView(hub, ctx.settings if ctx is not None else None)
         self.plot = PlotView(hub, now, ctx)
         self.signals_view.plot_toggled.connect(self.plot.set_plotted)
         self.signals_view.axis_toggled.connect(self.plot.set_right)

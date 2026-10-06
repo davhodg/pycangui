@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
@@ -28,6 +27,7 @@ from pycangui.core import workspace_files
 from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.ui import folders, keep_file, seedkey_view
+from pycangui.ui.column_widths import ColumnWidths
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
@@ -178,8 +178,7 @@ class XcpView(QWidget):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Parameter", "Kind", "Type", "Value", "Unit", "Plot"])
         self.tree.setFont(mono)
-        self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.tree.header().setStretchLastSection(True)
+        self.widths = ColumnWidths(self.tree, ctx.settings, "xcp")
         self.tree.itemDoubleClicked.connect(self._on_double_clicked)
         self.tree.itemChanged.connect(self._on_item_changed)
         self._items: dict[str, QTreeWidgetItem] = {}

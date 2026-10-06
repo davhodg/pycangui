@@ -310,9 +310,24 @@ def test_a_named_row_is_still_timed_by_pycangui(app, dbc_view):
     assert row in dbc_view._timers and row not in dbc_view._tasks
 
 
-def test_a_row_says_which_signals_it_is_using(app, dbc_view):
+def test_a_row_says_where_its_fields_are_and_names_them_on_hover(app, dbc_view):
+    """By position on the message's row, since a signal's name is as long as
+    its author liked and this is one cell; by name in the tooltip."""
     row = a_dbc_row(dbc_view, counter=DBC_COUNTER, checksum=DBC_CHECKSUM)
-    assert dbc_view.item(row).text(COL_FIELDS) == "count PumpEnable, sum8 PumpSpeedDemand"
+    item = dbc_view.item(row)
+    for signal in ("PumpEnable", "PumpSpeedDemand"):
+        assert signal not in item.text(COL_FIELDS)
+        assert signal in item.toolTip(COL_FIELDS)
+    assert item.text(COL_FIELDS), "and it does say something"
+
+
+def test_a_field_in_a_signal_the_database_no_longer_has_is_still_named():
+    from pycangui.core import tx_fields
+
+    counter = tx_fields.counter_from_dict(DBC_COUNTER)
+    placed = tx_fields.describe(counter, None, {"PumpEnable": (0, 1)})
+    unplaced = tx_fields.describe(counter, None, {})
+    assert "PumpEnable" in unplaced and "PumpEnable" not in placed
 
 
 def test_a_message_missing_from_the_database_sends_what_it_had(app, dbc_view, dbc_listening):

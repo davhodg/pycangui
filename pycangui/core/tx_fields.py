@@ -558,13 +558,34 @@ def checksum_to_dict(checksum: Checksum | None) -> dict | None:
     }
 
 
-def describe(counter: Counter | None, checksum: Checksum | None) -> str:
-    """A short phrase for the transmit list, so a row says what it is doing."""
+def describe(
+    counter: Counter | None,
+    checksum: Checksum | None,
+    places: dict[str, tuple[int, int]] | None = None,
+) -> str:
+    """A short phrase for the transmit list, so a row says what it is doing.
+
+    ``places`` is where each named signal sits, as (start bit, length), from
+    the database. With it a field in a signal is shown by position --
+    ``count 52:4`` -- and not by name: a signal's name can be as long as its
+    author liked, and this is one cell of a message's row. Without it, or for
+    a signal it does not have, the name is all there is to show.
+    """
+    places = places or {}
+
+    def where(signal: str, at: Placement | None) -> str:
+        if not signal:
+            return _where(at)
+        if signal in places:
+            start, length = places[signal]
+            return f"{start}:{length}"
+        return signal
+
     parts = []
     if counter is not None:
-        parts.append(f"count {counter.signal or _where(counter.at)}")
+        parts.append(f"count {where(counter.signal, counter.at)}")
     if checksum is not None:
-        parts.append(f"{checksum.algorithm} {checksum.signal or _where(checksum.at)}")
+        parts.append(f"{checksum.algorithm} {where(checksum.signal, checksum.at)}")
     return ", ".join(parts)
 
 

@@ -87,6 +87,22 @@ clearing DTCs takes the freeze frames with them, that an RPDO needs the node's
 configuration read first. The obvious ones -- Clear, Remove, Connect -- are
 left alone, since a tooltip repeating its label is noise.
 
+## Column widths
+
+*Tools > Settings > Column widths* decides how wide the columns of the lists are
+-- CAN Transmit, Signals and Plot, the CANopen, J1939 and XCP lists.
+
+- **Automatic**, to begin with: every column is as wide as what is in it. There
+  is nothing to set and nothing can be dragged, and one long name takes the room
+  it needs, whatever that pushes off the pane.
+- **Manual**: a column fits what is in it up to a limit, and can be dragged to
+  any width. A dragged width stays -- new rows do not undo it -- and is kept
+  with the workspace. Double-click a column's edge to have that column fit its
+  contents again.
+
+The last column runs to the edge of the pane either way. The CAN Trace keeps
+its own fixed widths.
+
 ## Light or dark
 
 pycangui follows the operating system's light or dark setting. *Tools > Settings > Theme*

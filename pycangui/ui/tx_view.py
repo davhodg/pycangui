@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -57,6 +56,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.named_values import named, number_in, with_its_name
 from pycangui.core.tx_fields import Checksum, Counter
+from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.tx_fields_dialog import TxFieldsDialog
 
@@ -246,6 +246,12 @@ DATABASE_GONE_TIP = (
     "This row was made from a database that is not loaded now, so it cannot\n"
     "be encoded or sent. File > Load DBC... with:\n{path}"
 )
+FIELDS_TIP = (
+    "What is worked out as each frame is sent: a counter, a checksum, or both.\n"
+    "A field that is a signal of the database is shown by where it is, as\n"
+    "start bit:length in bits -- count 52:4. Hover for its name, or expand the\n"
+    "message: the signal is marked there."
+)
 COMPUTED_TIP = (
     "Worked out as each frame is sent, so whatever is here is ignored.\n"
     "Change it in the Fields dialog, or stop computing it there."
@@ -381,11 +387,10 @@ class TxView(QWidget):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
         self.tree.headerItem().setToolTip(COL_ID, ID_TIP)
+        self.tree.headerItem().setToolTip(COL_FIELDS, FIELDS_TIP)
         self.tree.setFont(QFont("Consolas", 9))
         self.tree.setRootIsDecorated(True)
-        self.tree.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.tree.header().setSectionResizeMode(COL_DATA, QHeaderView.Stretch)
-        self.tree.header().setStretchLastSection(True)
+        self.widths = ColumnWidths(self.tree, ctx.settings, "tx", stretch=COL_DATA)
         # Send selected and Remove selected were always written to work on
         # several rows; the tree was left on single selection, so they never
         # could. Ticking Cyclic in bulk is the same selection, one key.
@@ -491,13 +496,6 @@ class TxView(QWidget):
         item.setCheckState(COL_FD, Qt.Checked if spec.get("fd") else Qt.Unchecked)
         item.setCheckState(COL_CYCLIC, Qt.Unchecked)
         self.tree.addTopLevelItem(item)
-        item.setText(
-            COL_FIELDS,
-            tx_fields.describe(
-                tx_fields.counter_from_dict(spec.get("counter")),
-                tx_fields.checksum_from_dict(spec.get("checksum")),
-            ),
-        )
 
         if kind == "dbc":
             name = spec.get("message", "")
@@ -570,6 +568,7 @@ class TxView(QWidget):
                         child.setToolTip(COL_DATA, CHOICES_TIP)
                     item.addChild(child)
                 item.setExpanded(bool(spec.get("expanded", False)))
+        self._describe_fields(self.tree.indexOfTopLevelItem(item))
         self._loading = False
         if kind in ("dbc", "rpdo"):
             self._mark_computed(self.tree.indexOfTopLevelItem(item))
@@ -901,8 +900,24 @@ class TxView(QWidget):
         return tx_fields.conflict(*self.fields(row))
 
     def _describe_fields(self, row: int) -> None:
+        """Say on the message's row what is computed, briefly; in full on hover.
+
+        Briefly is by position. A database signal's name on every message row
+        made this the widest column in the pane; the name is in the tooltip,
+        and on the signal's own row once the message is expanded.
+        """
+        item = self.item(row)
         counter, checksum = self.fields(row)
-        self.item(row).setText(COL_FIELDS, tx_fields.describe(counter, checksum))
+        message = (
+            self.dbc.message_by_name(item.data(0, ROLE_MESSAGE) or "")
+            if item.data(0, ROLE_KIND) == "dbc"
+            else None
+        )
+        places = {s.name: (s.start, s.length) for s in message.signals} if message else {}
+        was_loading, self._loading = self._loading, True  # not an edit
+        item.setText(COL_FIELDS, tx_fields.describe(counter, checksum, places))
+        item.setToolTip(COL_FIELDS, tx_fields.describe(counter, checksum))
+        self._loading = was_loading
 
     def edit_fields(self, row: int) -> bool:
         """The dialog, for one row. True if something was changed."""

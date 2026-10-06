@@ -14,6 +14,9 @@ since the last version, and comes out in the next one.
 - CAN Transmit: no *Ext* column -- an id above `7FF`, or written in eight digits, is 29-bit;
   a DBC row's database file is in its tooltip, not the Unit column.
 - The status bar says the signal history limit is per signal and the samples a total.
+- *Tools > Settings > Column widths*: *Manual* makes list columns draggable and remembered.
+- CAN Transmit: a counter or checksum in a DBC signal is shown by position, *count 52:4*,
+  with the name in the tooltip.
 
 ### Fixed
 

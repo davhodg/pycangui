@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -31,6 +30,7 @@ from PySide6.QtWidgets import (
 from pycangui.core.context import Context
 from pycangui.j1939 import CLEARING, GLOBAL, REQUESTABLE, Dm1, Name, pgn_label
 from pycangui.j1939.manager import J1939Manager
+from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.persist import remember
 
@@ -172,8 +172,7 @@ class J1939View(QWidget):
         self.nodes.setHeaderLabels(["SA", "NAME", "Decoded", "Last seen"])
         self.nodes.setRootIsDecorated(False)
         self.nodes.setFont(mono)
-        self.nodes.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.nodes.header().setStretchLastSection(True)
+        self.nodes_widths = ColumnWidths(self.nodes, ctx.settings, "j1939.nodes")
 
         # --- faults ----------------------------------------------------------------
         self.faults = QTreeWidget()
@@ -182,16 +181,14 @@ class J1939View(QWidget):
         )
         self.faults.setRootIsDecorated(False)
         self.faults.setFont(mono)
-        self.faults.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.faults.header().setStretchLastSection(True)
+        self.faults_widths = ColumnWidths(self.faults, ctx.settings, "j1939.faults")
 
         # --- messages ----------------------------------------------------------------
         self.messages = QTreeWidget()
         self.messages.setHeaderLabels(["PGN", "SA", "Len", "Data"])
         self.messages.setRootIsDecorated(False)
         self.messages.setFont(mono)
-        self.messages.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.messages.header().setStretchLastSection(True)
+        self.messages_widths = ColumnWidths(self.messages, ctx.settings, "j1939.messages")
         self._message_items: dict[tuple[int, int], QTreeWidgetItem] = {}
 
         splitter = QSplitter(Qt.Vertical)

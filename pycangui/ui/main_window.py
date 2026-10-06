@@ -56,7 +56,15 @@ from pycangui.custom_panes import model as custom_model
 from pycangui.j1939.manager import J1939Manager
 from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
-from pycangui.ui import event_colours, folders, keep_file, message_filter, messages, theme
+from pycangui.ui import (
+    column_widths,
+    event_colours,
+    folders,
+    keep_file,
+    message_filter,
+    messages,
+    theme,
+)
 from pycangui.ui.ascii_view import AsciiView, Stream
 from pycangui.ui.bus_status import BusStatus
 from pycangui.ui.canopen_view import CanopenView
@@ -149,6 +157,16 @@ HISTORY_TIP = (
     "Export. Past it the oldest are dropped, so a long trace loses its start:\n"
     "raise it for one that runs longer. It is all held in memory, and only a\n"
     "signal fast enough to fill it uses it."
+)
+WIDTHS_TIP = "How wide the columns of the lists are, and whether they can be dragged."
+WIDTHS_AUTO_TIP = (
+    "Every column is as wide as what is in it. Nothing to set, and nothing\n"
+    "can be dragged: a long name takes the room it needs."
+)
+WIDTHS_MANUAL_TIP = (
+    "A column fits what is in it up to a limit, and can be dragged to any\n"
+    "width, which is remembered. Double-click a column's edge to have it\n"
+    "fit its contents again."
 )
 #: How many clashing names a warning lists before it counts the rest.
 MOST_CLASHES = 5
@@ -539,6 +557,8 @@ class MainWindow(QMainWindow):
         settings_menu.insertMenu(verbose, self.theme_menu)
         self.history_menu = self._history_menu()
         settings_menu.addMenu(self.history_menu)
+        self.widths_menu = self._widths_menu()
+        settings_menu.addMenu(self.widths_menu)
         # Below the line: not how pycangui behaves, but how this copy of it
         # is set up on this machine. Neither is offered on macOS.
         if shortcut.launcher() is not None or file_types.command() is not None:
@@ -1673,6 +1693,29 @@ class MainWindow(QMainWindow):
                 f"Up to about {megabytes:.0f} MB for each signal fast enough to fill it."
             )
             action.triggered.connect(lambda _=False, n=limit: self._set_history(n))
+            group.addAction(action)
+        return menu
+
+    def _widths_menu(self) -> QMenu:
+        """Tools > Settings > Column widths: fitted, or fitted until dragged."""
+        menu = QMenu("Column widths", self)
+        menu.setToolTipsVisible(True)
+        menu.menuAction().setToolTip(WIDTHS_TIP)
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+        current = column_widths.mode(self.ctx.settings)
+        for wanted, label, tip in (
+            (column_widths.AUTO, "Automatic", WIDTHS_AUTO_TIP),
+            (column_widths.MANUAL, "Manual", WIDTHS_MANUAL_TIP),
+        ):
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(wanted == current)
+            action.setData(wanted)
+            action.setToolTip(tip)
+            action.triggered.connect(
+                lambda _=False, w=wanted: column_widths.set_mode(self.ctx.settings, w)
+            )
             group.addAction(action)
         return menu
 

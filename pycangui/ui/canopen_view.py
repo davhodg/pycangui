@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QHBoxLayout,
-    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -70,6 +69,7 @@ from pycangui.custom_panes.model import names as custom_names
 from pycangui.custom_panes.source import FileSource
 from pycangui.ui import canopen_login, canopen_settings, folders, keep_file, messages
 from pycangui.ui.canopen_log_view import CanopenLogView
+from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.edit_columns import EditColumns
 from pycangui.ui.faults_view import FaultsView
 from pycangui.ui.lss_view import LssView
@@ -385,9 +385,9 @@ class CanopenView(QWidget):
         self.od = QTreeWidget()
         self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value", "Watch"])
         self.od.setFont(mono)
-        self.od.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.od.header().setStretchLastSection(False)
-        self.od.header().setSectionResizeMode(COL_VALUE, QHeaderView.Stretch)
+        self.od_widths = ColumnWidths(
+            self.od, ctx.settings, "canopen.od", stretch=COL_VALUE, last_stretches=False
+        )
         # A row is editable for its value, and only its value: the index,
         # name, type and access are what the EDS says, not settings.
         self.od.setItemDelegate(EditColumns([COL_VALUE], self.od))
@@ -448,8 +448,7 @@ class CanopenView(QWidget):
         self.pdos = QTreeWidget()
         self.pdos.setHeaderLabels(["PDO / variable", "Value", "Count", "Rate"])
         self.pdos.setFont(mono)
-        self.pdos.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.pdos.header().setStretchLastSection(True)
+        self.pdos_widths = ColumnWidths(self.pdos, ctx.settings, "canopen.pdos")
 
         # --- layout -----------------------------------------------------------
         top = QWidget()
@@ -504,8 +503,7 @@ class CanopenView(QWidget):
         # that question is per node.
         self.emcy.setRootIsDecorated(True)
         self.emcy.setFont(mono)
-        self.emcy.header().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.emcy.header().setStretchLastSection(True)
+        self.emcy_widths = ColumnWidths(self.emcy, ctx.settings, "canopen.emcy")
         emcy_box = QWidget()
         emcy_l = QVBoxLayout(emcy_box)
         emcy_l.setContentsMargins(0, 0, 0, 0)
