@@ -316,12 +316,14 @@ def test_a_polled_object_becomes_a_signal(app, pane):
     settle(app)
     view.poll_hz.setValue(20.0)  # the default is a couple a second
     view.poll.setChecked(True)
-    pump(app, 0.5)
 
-    keys = window.signals.keys()
-    assert any("0x2001" in k for k in keys), keys
-    series = window.signals.get(next(k for k in keys if "0x2001" in k))
-    assert len(series.values) > 1, "a series, not one reading"
+    def series():
+        key = next((k for k in window.signals.keys() if "0x2001" in k), None)
+        return window.signals.get(key) if key else None
+
+    # Until there are two, however long this machine takes over them.
+    wait_until(app, lambda: series() is not None and len(series().values) > 1)
+    series = series()
     assert series.unit == "A"
     assert series.values[0] == pytest.approx(123.4), "in its own units, as the pane shows it"
 

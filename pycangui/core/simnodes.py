@@ -26,10 +26,16 @@ needs::
     def stop(node, *, ctx): ...             # once, on the way out
 
 All four are optional -- a node that only listens implements ``on_frame``, one
-that only shouts implements ``poll`` -- and all four run on the GUI thread, so
-nothing in a node file has to think about locks. The other side of that
-bargain is that a node which blocks holds up the window, so a poll that wants
-to take a second should take it in pieces across several polls instead.
+that only shouts implements ``poll``.
+
+**Each node runs on a thread of its own.**  It is a device on the bus, and a
+device does not answer late because the tool's window is busy redrawing a
+trace. All four functions of one node run on that node's thread, one at a
+time, so nothing in a node file has to think about locks: a frame is never
+handed over in the middle of a poll. The other side of the bargain is that a
+node is not part of the window. It talks through ``node`` -- ``send``, ``log``,
+``state`` -- and to the bus, and leaves pycangui's panes and widgets alone.
+A node that blocks holds up only itself: its own polls and frames wait.
 
 ``node`` is the instance, and is where per-node state lives: two of the same
 kind on two channels get a ``node.state`` each and never see each other's.
@@ -40,7 +46,9 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import queue
 import sys
+import threading
 import traceback
 from collections import deque
 from dataclasses import dataclass
@@ -50,7 +58,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import can
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, Signal
 
 #: Copied into the workspace on first run, the way hook defaults are.
 DEFAULTS_PACKAGE = "pycangui.nodes"
@@ -60,9 +68,9 @@ DEFAULTS_PACKAGE = "pycangui.nodes"
 DEFAULT_RATE_HZ = 10.0
 FUNCTIONS = ("start", "poll", "on_frame", "stop")
 
-#: Slower than this and a timer is the wrong tool; faster and the GUI thread
-#: is the wrong place. Both ends are held to rather than warned about,
-#: because a typo in a rate should not be a frozen window.
+#: Slower than this and polling is the wrong tool; faster and Python is the
+#: wrong language. Both ends are held to rather than warned about, because a
+#: typo in a rate should not be a thread that never sleeps.
 MIN_RATE_HZ = 0.01
 MAX_RATE_HZ = 1000.0
 
@@ -84,6 +92,14 @@ VIRTUAL_BITRATE = 500000
 #: milliseconds, and anything older is not an echo.
 ECHO_MEMORY = 256
 ECHO_SECONDS = 2.0
+
+#: How long stopping waits for a node to finish what it is in the middle of.
+#: Past it the node's buses are closed under it, which ends most waits, and
+#: its thread is left to finish when it does: it cannot hold the window up.
+STOP_WAIT_S = 2.0
+
+#: On a node's queue, between the frames: time to go.
+_STOP = object()
 
 
 class NodeError(RuntimeError):
@@ -165,10 +181,6 @@ class Node(QObject):
     server from ``canopen()`` rather than building one by hand.
     """
 
-    #: A frame arrived, already back on the GUI thread. Internal: a node file
-    #: implements ``on_frame`` and never sees this.
-    _received = Signal(object)
-
     def __init__(
         self,
         kind: Kind,
@@ -213,13 +225,22 @@ class Node(QObject):
         #: one is the right one to claim; short-lived, because a bus that
         #: does not echo at all must not fill it.
         self._sent_echoes: deque[tuple[tuple, float]] = deque(maxlen=ECHO_MEMORY)
+        #: Sent from the node's thread and claimed back on the reader's.
+        self._echo_lock = threading.Lock()
         #: (channel, listener) for everything this node put on a channel's
         #: notifier -- its own frame forwarder, and any CANopen server it
         #: built. A list of pairs because one channel can carry several.
         self._listeners: list[tuple[str, can.Listener]] = []
         self._networks: list[Any] = []
-        self._timer: QTimer | None = None
+        #: Frames for ``on_frame``, and the word to stop, in the order they came.
+        self._jobs: queue.Queue = queue.Queue()
+        self._thread: threading.Thread | None = None
         self._running = False
+        #: Taken by whoever stops the node, so that it is stopped once: the
+        #: window can ask at the moment the node gives up on its own.
+        self._stop_lock = threading.Lock()
+        #: One of its functions raised: its thread is to finish, not carry on.
+        self._gave_up = False
 
     # --- what a node file may use -------------------------------------------
     @property
@@ -284,7 +305,8 @@ class Node(QObject):
             frame = message
         else:
             frame = can.Message(arbitration_id=message, data=data or b"", is_extended_id=extended)
-        self._sent_echoes.append((_signature(frame), monotonic()))
+        with self._echo_lock:
+            self._sent_echoes.append((_signature(frame), monotonic()))
         self.bus(channel).send(frame)
 
     def claim_echo(self, msg: can.Message) -> bool:
@@ -299,13 +321,14 @@ class Node(QObject):
         if msg.is_rx:
             return False  # plainly somebody else's
         now = monotonic()
-        while self._sent_echoes and now - self._sent_echoes[0][1] > ECHO_SECONDS:
-            self._sent_echoes.popleft()
         signature = _signature(msg)
-        for index, (candidate, _when) in enumerate(self._sent_echoes):
-            if candidate == signature:
-                del self._sent_echoes[index]
-                return True
+        with self._echo_lock:
+            while self._sent_echoes and now - self._sent_echoes[0][1] > ECHO_SECONDS:
+                self._sent_echoes.popleft()
+            for index, (candidate, _when) in enumerate(self._sent_echoes):
+                if candidate == signature:
+                    del self._sent_echoes[index]
+                    return True
         return False
 
     def canopen(self, eds: str | Path, node_id: int, channel: str | None = None):
@@ -342,30 +365,43 @@ class Node(QObject):
             return
         for channel in self.channels:
             self._open(channel)
-        self._received.connect(self._deliver)
         self._running = True
-        # Not _call(): a node that cannot set itself up has not started, and
-        # whoever asked for it is owed the reason rather than a line in the
-        # log and an entry in the running list that is doing nothing.
-        if (setup := self._functions.get("start")) is not None:
-            try:
-                setup(self, ctx=self.ctx)
-            except Exception:
-                self.stop()
-                raise
-        if "poll" in self._functions:
-            interval = max(1, round(1000.0 / self.rate_hz))
-            self._timer = QTimer(self, interval=interval, timeout=lambda: self._call("poll"))
-            self._timer.start()
+        # Waited for, and not _call(): a node that cannot set itself up has
+        # not started, and whoever asked for it is owed the reason rather
+        # than a line in the log and an entry in the running list that is
+        # doing nothing.
+        began = _Began()
+        self._thread = threading.Thread(
+            target=self._run, args=(began,), name=f"node {self.name}", daemon=True
+        )
+        self._thread.start()
+        began.done.wait()
+        if began.error is not None:
+            self.stop()
+            raise began.error
 
     def stop(self) -> None:
-        if not self._running:
+        """Stop the node: its ``stop`` function, on its own thread, then its buses."""
+        if not self._claim_stop():
             return
-        self._running = False  # first: a teardown that raises must not run twice
-        if self._timer is not None:
-            self._timer.stop()
-            self._timer = None
-        self._call("stop")
+        thread = self._thread
+        if thread is not None and thread is not threading.current_thread():
+            self._jobs.put(_STOP)
+            thread.join(STOP_WAIT_S)
+            if thread.is_alive():
+                self.ctx.warn(
+                    f"Simulated node {self.name} has not finished what it was doing; "
+                    "its bus is being closed under it."
+                )
+        self._teardown()
+
+    def _claim_stop(self) -> bool:
+        """Whether this caller is the one to stop the node: the first to ask."""
+        with self._stop_lock:
+            was, self._running = self._running, False
+        return was
+
+    def _teardown(self) -> None:
         # No notifiers to stop: a node never owns one. It puts listeners on
         # the channel's notifier and takes them off again below.
         self._networks.clear()
@@ -436,10 +472,43 @@ class Node(QObject):
         if "on_frame" in self._functions:
             self.listen(_Forwarder(self, channel), channel)
 
+    def _run(self, began: _Began) -> None:
+        """The node's own thread: set up, then polls and frames until told to stop.
+
+        One thing at a time, which is what lets a node file be written with
+        no locks in it. A poll that is due goes before the next frame, so a
+        busy bus cannot keep a node from its own timing; a poll that was
+        missed is not made up for with a burst of them.
+        """
+        try:
+            if (setup := self._functions.get("start")) is not None:
+                setup(self, ctx=self.ctx)
+        except Exception as exc:
+            began.error = exc
+            began.done.set()
+            return
+        began.done.set()
+
+        period = 1.0 / self.rate_hz if "poll" in self._functions else None
+        due = monotonic() + period if period else None
+        while not self._gave_up:
+            if due is not None and self._running and monotonic() >= due:
+                self._call("poll")
+                due = max(due + period, monotonic())
+                continue
+            try:
+                job = self._jobs.get(timeout=None if due is None else max(0.0, due - monotonic()))
+            except queue.Empty:
+                continue  # the poll is due
+            if job is _STOP:
+                self._call("stop")
+                return  # whoever asked takes the buses down
+            self._call("on_frame", job)
+
     def _deliver(self, frame: can.Message) -> None:
-        """A frame, on the GUI thread, on its way to the node file."""
+        """A frame, from the reader's thread, on its way to the node's own."""
         if self._running:
-            self._call("on_frame", frame)
+            self._jobs.put(frame)
 
     def _call(self, what: str, *args: Any) -> None:
         """Run one of the node's functions, and survive whatever it does.
@@ -459,8 +528,12 @@ class Node(QObject):
                 f"Simulated node {self.name} raised in {what}() and has been stopped:\n"
                 + traceback.format_exc()
             )
-            if what != "stop":
-                self.stop()
+            self._gave_up = True
+            if what != "stop" and self._claim_stop():
+                # On its own thread, so nobody is waited for: its stop()
+                # function, then its buses.
+                self._call("stop")
+                self._teardown()
 
 
 def _signature(msg: can.Message) -> tuple:
@@ -496,12 +569,21 @@ class _Received(can.Listener):
         pass
 
 
-class _Forwarder(can.Listener):
-    """Moves a frame off the reader thread and onto the GUI thread.
+class _Began:
+    """How a node's ``start`` went, for the thread that asked to wait on."""
 
-    python-can reads on a thread of its own, and a node file called from there
-    could touch a widget and take the process down with it. The signal is a
-    queued connection, so ``on_frame`` runs where every other hook runs.
+    def __init__(self) -> None:
+        self.done = threading.Event()
+        self.error: Exception | None = None
+
+
+class _Forwarder(can.Listener):
+    """Moves a frame off the reader thread and onto the node's own.
+
+    python-can reads on a thread of its own, and a node file run there would
+    hold up every other listener on the bus for as long as it took -- and
+    would meet its own ``poll`` halfway through. So the frame is queued, and
+    ``on_frame`` runs where the rest of the node does.
     """
 
     def __init__(self, node: Node, channel: str) -> None:
@@ -510,7 +592,7 @@ class _Forwarder(can.Listener):
 
     def on_message_received(self, msg: can.Message) -> None:
         msg.channel = self._channel  # which bus, for a node bound to several
-        self._node._received.emit(msg)
+        self._node._deliver(msg)
 
     def on_error(self, exc: Exception) -> None:
         pass

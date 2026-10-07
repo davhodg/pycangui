@@ -88,12 +88,9 @@ def spin(app, seconds=1.0, until=None):
 
 
 def pump(app, bus, seconds=1.0):
-    """Turn the event loop until a frame turns up, or give up.
-
-    A node answers on the GUI thread by way of a queued signal, so nothing
-    happens at all unless somebody is running the loop -- and a sleep would
-    only make the test slow and still empty.
-    """
+    """Wait for a frame to turn up, or give up, with the event loop turning
+    for whatever in the test does need it. The node itself does not: it has
+    a thread of its own."""
     from time import monotonic
 
     deadline = monotonic() + seconds
@@ -189,6 +186,56 @@ def test_a_node_hears_what_is_on_its_channel_and_can_answer(app, folder, manager
         assert got is not None and got.arbitration_id == 0x101
     finally:
         other.shutdown()
+
+
+def test_a_node_answers_while_the_window_stands_still(app, folder, manager):
+    """It is a device on the bus: no event is processed here between the
+    frame going out and the answer coming back."""
+    write(
+        folder,
+        "echo",
+        "def on_frame(node, frame, *, ctx):\n"
+        "    if frame.arbitration_id == 0x100:\n"
+        "        node.send(0x101, bytes(frame.data))\n",
+    )
+    with can.Bus(interface="virtual", channel="vtest_still") as other:
+        manager.start("echo", "vtest_still")
+        other.send(can.Message(arbitration_id=0x100, data=bytes([0xAA]), is_extended_id=False))
+        got = other.recv(timeout=2.0)
+    assert got is not None and got.arbitration_id == 0x101
+
+
+def test_a_nodes_functions_all_run_on_its_one_thread(app, folder, manager):
+    """Which is what lets a node file have no locks in it: a frame never
+    arrives in the middle of a poll, because one thread does both."""
+    write(
+        folder,
+        "threads",
+        "import threading\n"
+        "RATE_HZ = 100\n"
+        "def start(node, *, ctx): node.state.seen = {threading.get_ident()}\n"
+        "def poll(node, *, ctx): node.state.seen.add(threading.get_ident())\n"
+        "def on_frame(node, frame, *, ctx):\n"
+        "    node.state.seen.add(threading.get_ident())\n"
+        "    node.state.heard = True\n"
+        "def stop(node, *, ctx): node.state.seen.add(threading.get_ident())\n",
+    )
+    import threading
+
+    with can.Bus(interface="virtual", channel="vtest_threads") as other:
+        node = manager.start("threads", "vtest_threads")
+        other.send(can.Message(arbitration_id=0x100, data=bytes(1), is_extended_id=False))
+        assert spin(app, 2.0, until=lambda: getattr(node.state, "heard", False))
+        manager.stop(node)
+    assert len(node.state.seen) == 1, "one thread for all four"
+    assert threading.get_ident() not in node.state.seen, "and it is not the window's"
+
+
+def test_a_node_that_cannot_set_itself_up_has_not_started(app, folder, manager):
+    write(folder, "broken", "def start(node, *, ctx): raise ValueError('no')\n")
+    with pytest.raises(NodeError):
+        manager.start("broken", "vtest_broken")
+    assert manager.running() == []
 
 
 def test_stopping_puts_the_bus_down(app, folder, manager):

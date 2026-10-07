@@ -94,12 +94,16 @@ frame out, and `node.canopen(eds, node_id)` hands back a whole CANopen server
 -- SDO, heartbeat, NMT, PDOs -- built from your EDS, because every CANopen
 node wants the same several hundred lines of it.
 
-Everything runs on the same thread as the window, so nothing in a node file
-has to think about locks. The other side of that is that a node which blocks
-holds the window up, so a `poll` with a second's work to do should take it in
-pieces across several polls. A node that raises says so in the [Event
-Log](event-log.md) and stops, rather than raising ten times a second for the
-rest of the day.
+Each node runs on a thread of its own. It is a device on the bus, and a device
+does not answer late because the window is busy redrawing a trace. All four of
+a node's functions run on that node's thread, one at a time, so nothing in a
+node file has to think about locks: a frame is never handed to `on_frame` in
+the middle of a `poll`. The other side of that is that a node is not part of
+the window. It talks through `node` -- `send`, `log`, `state` -- and to the bus,
+and should leave pycangui's panes alone: nothing in the window expects to be
+called from a node's thread. A node that blocks holds up only itself. A node
+that raises says so in the [Event Log](event-log.md) and stops, rather than
+raising ten times a second for the rest of the day.
 
 ### The ones supplied
 
