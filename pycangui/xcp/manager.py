@@ -16,7 +16,7 @@ import threading
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from pycangui.ccp import engine as _ccp_engine  # noqa: F401  (registers the CCP engine)
-from pycangui.core import seedkey, workspace_files
+from pycangui.core import named_values, seedkey, workspace_files
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
@@ -222,6 +222,19 @@ class XcpManager(QObject):
             f"A2L loaded: {where} ({len(self.a2l.measurements())} measurements, "
             f"{len(self.a2l.characteristics())} characteristics)"
         )
+        # Listed, so the file is seen whole, and said to be more than is read.
+        if unread := self.a2l.unreadable():
+            self.result.emit(
+                f"A2L: {len(unread)} of them are listed but not read -- curves, maps, "
+                "arrays and text. Hover over one for why."
+            )
+        if (ids := self.a2l.xcp_on_can) is not None:
+            self.result.emit(
+                f"A2L: it gives XCP on CAN as command 0x{ids.command_id:X}, "
+                f"response 0x{ids.response_id:X}"
+                + (", 29-bit" if ids.extended else "")
+                + (f", {ids.bitrate} bit/s" if ids.bitrate else "")
+            )
 
     def clear_a2l(self) -> None:
         """Forget the A2L. Polling goes with it: it is named parameters that
@@ -231,45 +244,80 @@ class XcpManager(QObject):
         self.a2l_loaded.emit(0)
 
     # --- read / write ------------------------------------------------------------------
-    def _read_value(self, param: Parameter) -> float:
+    def _big_endian(self, param: Parameter) -> bool:
+        """Which way round this parameter's bytes are.
+
+        The parameter's own BYTE_ORDER if it has one, then the file's, then
+        what the slave said on connecting: the A2L describes the memory, and
+        the slave's answer is only a guess at it where the file says nothing.
+        """
+        if param.big_endian is not None:
+            return param.big_endian
+        if self.a2l is not None and self.a2l.big_endian is not None:
+            return self.a2l.big_endian
+        return bool(self.info and self.info.big_endian)
+
+    def _read_raw(self, param: Parameter) -> float:
+        """The stored value, whole: before any bit mask or conversion."""
         size = DATATYPES[param.datatype][1]
-        big = bool(self.info and self.info.big_endian)
-        raw = decode_value(self.engine.read(param.address, size), param.datatype, big)
+        data = self.engine.read(param.address, size)
+        return decode_value(data, param.datatype, self._big_endian(param))
+
+    def _read_value(self, param: Parameter) -> float:
+        raw = self._read_raw(param)
+        if (mask := _mask(param)) is not None:
+            raw = (int(raw) & mask) >> _shift(mask)
         return param.conversion.to_phys(raw) if param.conversion else raw
+
+    def shown(self, name: str, phys: float) -> str:
+        """A value as it is shown: by name where the A2L names it, *Run (1)*."""
+        param = self.a2l.parameters.get(name) if self.a2l else None
+        named = named_values.shown(phys, param.choices) if param and param.choices else None
+        return named or f"{phys:g}"
 
     def read(self, name: str) -> None:
         param = self.a2l.parameters.get(name) if self.a2l else None
         if param is None:
             self.result.emit(f"read {name}: unknown parameter")
             return
+        if not param.readable:
+            self.result.emit(f"read {name}: {param.unreadable}")
+            return
 
         def fn() -> str:
             phys = self._read_value(param)
             self.value.emit(name, phys)
             unit = f" {param.unit}" if param.unit else ""
-            return f"{name} = {phys:g}{unit}"
+            return f"{name} = {self.shown(name, phys)}{unit}"
 
         self._submit(f"read {name}", fn)
 
     def write(self, name: str, text: str) -> None:
         param = self.a2l.parameters.get(name) if self.a2l else None
         if param is None or not param.writable:
-            self.result.emit(f"write {name}: not a writable characteristic")
+            why = param.unreadable if param is not None and param.unreadable else ""
+            self.result.emit(f"write {name}: {why or 'not a writable characteristic'}")
             return
 
         def fn() -> str:
-            phys = float(text)
+            # A name, a number, or both as they are shown: Run, 1, Run (1).
+            phys = float(named_values.plain(text, param.choices))
             raw = param.conversion.to_raw(phys) if param.conversion else phys
-            big = bool(self.info and self.info.big_endian)
-            self.engine.write(param.address, encode_value(raw, param.datatype, big))
-            return f"{name} <- {phys:g}"
+            if (mask := _mask(param)) is not None:
+                # Only its own bits: the rest of the stored value is somebody
+                # else's, and is read first so that it can be put back.
+                kept = int(self._read_raw(param)) & ~mask
+                raw = kept | ((round(raw) << _shift(mask)) & mask)
+            data = encode_value(raw, param.datatype, self._big_endian(param))
+            self.engine.write(param.address, data)
+            return f"{name} <- {self.shown(name, phys)}"
 
         self._submit(f"write {name}", fn)
 
     # --- polling ---------------------------------------------------------------------
     def set_polled(self, name: str, on: bool) -> None:
         param = self.a2l.parameters.get(name) if self.a2l else None
-        if param is None:
+        if param is None or not param.readable:
             return
         if on:
             self._polled[name] = param
@@ -289,6 +337,8 @@ class XcpManager(QObject):
                 phys = self._read_value(p)
                 self.value.emit(n, phys)
                 self._signals.push("XCP", n, self._bus.now(), phys, p.unit)
+                if p.choices:
+                    self._signals.set_choices(f"XCP/{n}", p.choices)
                 return ""
 
             self._submit(f"poll {name}", fn)
@@ -296,3 +346,18 @@ class XcpManager(QObject):
     # --- trace labelling ---------------------------------------------------------------
     def classify(self, frame: Frame) -> str | None:
         return self.engine.owns_frame(frame) if self.engine else None
+
+
+def _mask(param: Parameter) -> int | None:
+    """A parameter's bit mask, where it has one that means anything.
+
+    Not for a float: a mask over the bits of one is not a number.
+    """
+    if not param.bit_mask or DATATYPES[param.datatype][0] in "efd":
+        return None
+    return param.bit_mask
+
+
+def _shift(mask: int) -> int:
+    """How far down a masked value is moved: to its own lowest bit."""
+    return (mask & -mask).bit_length() - 1

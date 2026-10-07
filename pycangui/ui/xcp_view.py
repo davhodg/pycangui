@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QFont, QPalette, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -86,6 +86,7 @@ def _searchable(param) -> str:
         for part in (
             param.name,
             param.kind,
+            param.shape,
             param.datatype,
             param.unit,
             param.description,
@@ -93,6 +94,33 @@ def _searchable(param) -> str:
             param.address,
         )
     ).lower()
+
+
+def _kind(param) -> str:
+    """MEAS or CHAR for a single value; what it is instead for anything else."""
+    if param.kind == "CHARACTERISTIC" and param.shape != "VALUE":
+        return param.shape
+    return param.kind[:4]
+
+
+def _about(param) -> str:
+    """A parameter's tooltip: what it is, where, and why it is not read if it is not."""
+    lines = [param.description] if param.description else []
+    lines.append(f"0x{param.address:X}" + (f", {param.datatype}" if param.datatype else ""))
+    if param.bit_mask:
+        lines.append(f"Bit mask 0x{param.bit_mask:X}")
+    if param.lower is not None and param.upper is not None:
+        lines.append(f"{param.lower:g} to {param.upper:g}")
+    if param.conversion is not None and not param.conversion.exact:
+        lines.append(
+            f"Shown raw: its conversion, {param.conversion.name} ({param.conversion.kind}),\n"
+            "is not one pycangui works out."
+        )
+    if param.read_only:
+        lines.append("Marked read-only in the A2L.")
+    if param.unreadable:
+        lines.append(f"Not read: {param.unreadable}.")
+    return "\n".join(lines)
 
 
 class XcpView(QWidget):
@@ -369,16 +397,25 @@ class XcpView(QWidget):
         self._items.clear()
         a2l = self.manager.a2l
         if a2l is not None:
+            grey = self.palette().brush(QPalette.Disabled, QPalette.Text)
             for param in a2l.parameters.values():
                 item = QTreeWidgetItem(
-                    [param.name, param.kind[:4], param.datatype, "", param.unit, ""]
+                    [param.name, _kind(param), param.datatype, "", param.unit, ""]
                 )
                 item.setData(0, ROLE_NAME, param.name)
                 item.setData(0, ROLE_SEARCH, _searchable(param))
+                item.setToolTip(0, _about(param))
                 if param.writable:
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                item.setCheckState(5, Qt.Unchecked)
+                if param.readable:
+                    item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                    item.setCheckState(5, Qt.Unchecked)
+                else:
+                    # Listed, so the file is seen whole; grey, and nothing to
+                    # tick, because there is nothing here that reads it.
+                    for column in range(self.tree.columnCount()):
+                        item.setForeground(column, grey)
+                        item.setToolTip(column, _about(param))
                 self.tree.addTopLevelItem(item)
                 self._items[param.name] = item
         self._updating = False
@@ -420,7 +457,7 @@ class XcpView(QWidget):
         item = self._items.get(name)
         if item is not None:
             self._updating = True
-            item.setText(3, f"{value:g}")
+            item.setText(3, self.manager.shown(name, value))
             self._updating = False
 
     @Slot(str)

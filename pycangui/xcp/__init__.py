@@ -86,6 +86,7 @@ DATATYPES = {
     "SLONG": ("i", 4),
     "A_UINT64": ("Q", 8),
     "A_INT64": ("q", 8),
+    "FLOAT16_IEEE": ("e", 2),
     "FLOAT32_IEEE": ("f", 4),
     "FLOAT64_IEEE": ("d", 8),
 }

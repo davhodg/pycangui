@@ -12,6 +12,10 @@ ASAP2_VERSION 1 60
     COEFFS 0 100 0 0 0 1
 /end COMPU_METHOD
 
+/begin RECORD_LAYOUT RL_UWORD
+    FNC_VALUES 1 UWORD COLUMN_DIR DIRECT
+/end RECORD_LAYOUT
+
 /begin MEASUREMENT EngineSpeed "Engine speed"
     UWORD rpm_conv 0 0 0 8000
     ECU_ADDRESS 0x1000
@@ -27,14 +31,12 @@ ASAP2_VERSION 1 60
     ECU_ADDRESS 0x1004
 /end MEASUREMENT
 
-/begin CHARACTERISTIC SpeedLimit "Maximum engine speed" VALUE 0x2000 __UWORD rpm_conv 0 8000
-    UWORD rpm_conv 0 0 0 8000
-    ECU_ADDRESS 0x2000
+/begin CHARACTERISTIC SpeedLimit "Maximum engine speed"
+    VALUE 0x2000 RL_UWORD 0 rpm_conv 0 8000
 /end CHARACTERISTIC
 
-/begin CHARACTERISTIC IdleTarget "Idle speed target" VALUE 0x2002 __UWORD rpm_conv 0 2000
-    UWORD rpm_conv 0 0 0 2000
-    ECU_ADDRESS 0x2002
+/begin CHARACTERISTIC IdleTarget "Idle speed target"
+    VALUE 0x2002 RL_UWORD 0 rpm_conv 0 2000
 /end CHARACTERISTIC
 
 /end MODULE

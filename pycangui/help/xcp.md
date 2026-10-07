@@ -47,6 +47,33 @@ is reported at startup and then sits there marked *(missing)*. The demo device
 answers XCP on 0x7A0/0x7A1 and CCP on 0x7B0/0x7B1 at station 1, and both match
 `resources/demo.a2l`.
 
+## What is read from an A2L
+
+Single values, in full:
+
+- **Measurements**, and **characteristics** of type `VALUE`. A characteristic's
+  data type comes from the record layout it names, as the standard has it.
+- **Conversions** that are a straight line: `LINEAR`, `IDENTICAL`, and a
+  `RAT_FUNC` whose coefficients make one. Any other -- a formula, a table to
+  interpolate -- and the value is shown **raw**, with *raw* as its unit: a true
+  raw number rather than a wrong converted one.
+- **Named values** from a `COMPU_VTAB` or `COMPU_VTAB_RANGE`: shown as *Run (1)*,
+  and written as the name, the number, or both.
+- **Bit masks.** A masked value is read as its own bits. Writing one reads the
+  stored value first and puts the other bits back as they were.
+- **Byte order**: the parameter's own where it states one, then the file's, and
+  only then what the slave said when it connected.
+- **Included files** (`/include`), beside the file that names them.
+
+Listed, in grey, and not read: curves, maps, blocks of values, text, arrays,
+anything in an address extension other than 0, and a characteristic whose record
+layout is missing. They are listed so that the file is seen whole; hover over
+one for why. A characteristic marked `READ_ONLY` is read and cannot be edited.
+Hovering over any parameter gives its description, address, type and limits.
+
+Where the A2L gives the XCP on CAN identifiers, loading it says so in the pane's
+output. They are not filled in for you: type them into **Tx ID** and **Rx ID**.
+
 The A2L is loaded again next time. One kept outside the workspace can be copied
 into it when you load it, so it travels with the workspace; see
 [Workspaces](workspaces.md).
