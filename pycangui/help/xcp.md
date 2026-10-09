@@ -74,12 +74,20 @@ Single values, and rows of them:
   Double-click it to read every value, which opens it into a row for each,
   `name[0]` onwards; or expand it and read, edit or tick *Plot* on one value.
   The output gives the whole row on one line. An array is written one value at
-  a time, not as a whole. One of more than 1,024 values is not read, and nor is
-  one with more than one dimension, since which way round its rows are stored
-  is a second question the file answers separately.
+  a time, not as a whole. One of more than 1,024 values is not read.
+- **Arrays of two and three dimensions**, shown as `UBYTE[2][24]`. The values
+  are read in the order they are stored and named the way C names them, so the
+  names count up with the last index changing fastest: `name[0][0]` to
+  `name[0][23]`, then `name[1][0]`. An A2L gives the sizes as `MATRIX_DIM 24 2`
+  and stores the values row by row unless it says column by column; row by row,
+  the first size is the one that changes fastest, so that is two rows of
+  twenty-four. Generators do not all agree on this, so the array's tooltip says
+  what the file wrote and how it was taken. If the sizes look the wrong way
+  round for your controller, the values are still each at the right address,
+  in order: only the split into rows is in question.
 
-Listed, in grey, and not read: curves, maps, text, arrays of more than one
-dimension or more than 1,024 values, a measurement the file gives no address,
+Listed, in grey, and not read: curves, maps, text, arrays of more than 1,024
+values, a measurement the file gives no address,
 and a characteristic whose record layout is missing. They are listed so that
 the file is seen whole; hover over
 one for why. A characteristic marked `READ_ONLY` is read and cannot be edited.

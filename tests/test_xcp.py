@@ -254,6 +254,9 @@ ARRAYS = """
 /begin CHARACTERISTIC Limits "A block" VAL_BLK 0x2000 RL_UWORD 0 NO_COMPU_METHOD 0 8000
   NUMBER 3
 /end CHARACTERISTIC
+/begin MEASUREMENT Channels "Two rows of three" UBYTE NO_COMPU_METHOD 0 0 0 255
+  ECU_ADDRESS 0x1100 MATRIX_DIM 3 2
+/end MEASUREMENT
 """
 
 
@@ -266,8 +269,18 @@ def test_an_arrays_values_are_rows_made_when_it_is_opened(app, tmp_path, monkeyp
     path.write_text(ARRAYS, encoding="utf-8")
     window.xcp.load_a2l(str(path))
 
-    rows = {view.tree.topLevelItem(i).text(0): view.tree.topLevelItem(i) for i in range(2)}
-    wheels, limits = rows["Wheels"], rows["Limits"]
+    rows = {view.tree.topLevelItem(i).text(0): view.tree.topLevelItem(i) for i in range(3)}
+    wheels, limits, channels = rows["Wheels"], rows["Limits"], rows["Channels"]
+    channels.setExpanded(True)
+    assert [channels.child(i).text(0) for i in range(channels.childCount())] == [
+        "Channels[0][0]",
+        "Channels[0][1]",
+        "Channels[0][2]",
+        "Channels[1][0]",
+        "Channels[1][1]",
+        "Channels[1][2]",
+    ]
+    channels.setExpanded(False)
     assert wheels.childCount() == 0, "not until somebody looks"
 
     wheels.setExpanded(True)

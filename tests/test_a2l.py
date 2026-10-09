@@ -30,6 +30,7 @@ ASAP2_VERSION 1 71
     /begin RECORD_LAYOUT RL_UWORD FNC_VALUES 1 UWORD COLUMN_DIR DIRECT /end RECORD_LAYOUT
     /begin RECORD_LAYOUT RL_FLOAT FNC_VALUES 1 FLOAT32_IEEE COLUMN_DIR DIRECT /end RECORD_LAYOUT
     /begin RECORD_LAYOUT RL_ODD FNC_VALUES 1 A_UINT128 COLUMN_DIR DIRECT /end RECORD_LAYOUT
+    /begin RECORD_LAYOUT RL_ROWS FNC_VALUES 1 UWORD ROW_DIR DIRECT /end RECORD_LAYOUT
     /begin RECORD_LAYOUT RL_COUNTED NO_AXIS_PTS_X 1 UBYTE FNC_VALUES 2 UWORD COLUMN_DIR DIRECT
     /end RECORD_LAYOUT
 
@@ -63,6 +64,15 @@ ASAP2_VERSION 1 71
     /begin MEASUREMENT Kelvin "Kelvin" SWORD sum 0 0 0 500 ECU_ADDRESS 0x100A /end MEASUREMENT
     /begin MEASUREMENT Wheels "Four of them" UWORD rpm 0 0 0 8000
       ECU_ADDRESS 0x1010 MATRIX_DIM 4
+    /end MEASUREMENT
+    /begin MEASUREMENT Channels "uint8 table[2][24], as a generator writes it" UBYTE
+      NO_COMPU_METHOD 0 0 0 255 ECU_ADDRESS 0x1100 MATRIX_DIM 24 2
+    /end MEASUREMENT
+    /begin MEASUREMENT Cube "Three ways" UBYTE NO_COMPU_METHOD 0 0 0 255
+      ECU_ADDRESS 0x1200 MATRIX_DIM 4 3 2 LAYOUT COLUMN_DIR
+    /end MEASUREMENT
+    /begin MEASUREMENT sensors[1].raw "Brackets in its own name" UWORD NO_COMPU_METHOD 0 0 0 9
+      ECU_ADDRESS 0x1300 MATRIX_DIM 3 2
     /end MEASUREMENT
     /begin MEASUREMENT Nowhere "Computed in the tool" UWORD rpm 0 0 0 8000 /end MEASUREMENT
     /begin MEASUREMENT Period "Stored as a period" UWORD hertz 0 0 0 1000
@@ -104,7 +114,10 @@ ASAP2_VERSION 1 71
     /begin CHARACTERISTIC Limits "A block of values" VAL_BLK 0x3500 RL_UWORD 0 rpm 0 8000
       NUMBER 3
     /end CHARACTERISTIC
-    /begin CHARACTERISTIC Grid "Rows and columns" VAL_BLK 0x3600 RL_UWORD 0 rpm 0 8000
+    /begin CHARACTERISTIC Grid "Column by column" VAL_BLK 0x3600 RL_UWORD 0 rpm 0 8000
+      MATRIX_DIM 4 3
+    /end CHARACTERISTIC
+    /begin CHARACTERISTIC GridByRow "Row by row" VAL_BLK 0x3640 RL_ROWS 0 rpm 0 8000
       MATRIX_DIM 4 3
     /end CHARACTERISTIC
     /begin CHARACTERISTIC Huge "Too many to read" VAL_BLK 0x3700 RL_UWORD 0 rpm 0 8000
@@ -155,7 +168,7 @@ def test_fields_are_read_by_position_and_not_by_what_they_look_like(a2l):
 
 
 def test_comments_hide_what_is_in_them(a2l):
-    assert len(a2l.measurements()) == 14 and len(a2l.characteristics()) == 14
+    assert len(a2l.measurements()) == 17 and len(a2l.characteristics()) == 15
 
 
 def test_linear_conversions_are_worked_both_ways(a2l):
@@ -240,6 +253,50 @@ def test_a_block_of_values_is_written_one_value_at_a_time(a2l):
     assert all(e.writable for e in a2l.elements(limits))
 
 
+# --- more than one dimension -----------------------------------------------------------------
+def test_the_names_count_up_in_the_order_the_values_are_stored(a2l):
+    """Whatever the file calls its dimensions, the values are read in the
+    order they lie, and named so that the last index is the one that moves."""
+    for name in ("Channels", "Cube", "Grid", "GridByRow", "sensors[1].raw"):
+        array = a2l.parameters[name]
+        elements = a2l.elements(array)
+        size = elements[1].address - elements[0].address
+        assert len(elements) == array.count
+        assert [e.address for e in elements] == [
+            array.address + i * size for i in range(array.count)
+        ], name
+        assert [e.index for e in elements] == list(range(array.count))
+        assert elements[1].name.endswith("[1]"), "the last index is the one that moves"
+
+
+def test_stored_row_by_row_the_first_size_is_the_one_that_changes_fastest(a2l):
+    """``MATRIX_DIM 24 2`` is two rows of twenty-four: what a generator
+    working from ``uint8 table[2][24]`` writes."""
+    channels = a2l.parameters["Channels"]
+    assert channels.sizes == (2, 24) and channels.written == (24, 2)
+    assert a2l.find("Channels[0][23]").address == 0x1100 + 23
+    assert a2l.find("Channels[1][0]").address == 0x1100 + 24
+    assert a2l.find("Channels[2][0]") is None and a2l.find("Channels[0][24]") is None
+    assert a2l.find("Channels[5]") is None, "one index is not enough for two dimensions"
+    assert a2l.parameters["GridByRow"].sizes == (3, 4)
+
+
+def test_stored_column_by_column_it_is_the_last(a2l):
+    """Said by the measurement itself, or by a block of values' record layout."""
+    cube = a2l.parameters["Cube"]
+    assert cube.sizes == (4, 3, 2) and cube.column_dir
+    assert a2l.find("Cube[1][0][0]").address == 0x1200 + 6
+    assert a2l.find("Cube[3][2][1]").address == 0x1200 + 23
+    grid = a2l.parameters["Grid"]
+    assert grid.sizes == (4, 3) and a2l.find("Grid[1][0]").address == 0x3600 + 3 * 2
+
+
+def test_an_array_with_brackets_in_its_own_name_is_still_found_by_element(a2l):
+    assert a2l.parameters["sensors[1].raw"].sizes == (2, 3)
+    assert a2l.find("sensors[1].raw[1][2]").address == 0x1300 + 5 * 2
+    assert a2l.find("sensors[1].raw[2][0]") is None
+
+
 def test_an_element_is_found_by_name_and_one_past_the_end_is_not(a2l):
     assert a2l.find("Wheels[3]").address == 0x1016
     assert a2l.find("Wheels[4]") is None
@@ -260,7 +317,7 @@ def test_the_elements_are_not_counted_as_parameters_of_the_file(a2l):
 
 # --- what is listed and not read ------------------------------------------------------------
 @pytest.mark.parametrize(
-    "name", ["TorqueMap", "Ramp", "Name", "Orphan", "Wide", "Nowhere", "Grid", "Huge", "Counted"]
+    "name", ["TorqueMap", "Ramp", "Name", "Orphan", "Wide", "Nowhere", "Huge", "Counted"]
 )
 def test_what_cannot_be_read_is_listed_and_says_why(a2l, name):
     parameter = a2l.parameters[name]
@@ -276,7 +333,6 @@ def test_the_readable_ones_are_all_the_rest(a2l):
         "Orphan",
         "Wide",
         "Nowhere",
-        "Grid",
         "Huge",
         "Counted",
     }
@@ -407,6 +463,16 @@ def test_reading_an_array_reads_every_value_of_it(calibrating):
     settle(1)
     assert [values[f"Wheels[{i}]"] for i in range(4)] == pytest.approx([1000, 2000, 3000, 4000])
     assert len(said) == 1, "one line for the row, not one for each value"
+
+
+def test_a_two_dimensional_array_is_read_in_the_order_it_is_stored(calibrating):
+    manager, memory, said, values, settle = calibrating
+    memory.bytes[0x1100 : 0x1100 + 48] = bytes(range(48))
+    manager.read("Channels")
+    settle(1)
+    assert values["Channels[0][0]"] == 0 and values["Channels[0][23]"] == 23
+    assert values["Channels[1][0]"] == 24 and values["Channels[1][23]"] == 47
+    assert len(values) == 48 and len(said) == 1
 
 
 def test_one_value_of_a_block_is_written_where_it_lives(calibrating):

@@ -40,6 +40,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field, replace
+from itertools import product
 from pathlib import Path
 
 from pycangui.xcp import DATATYPES
@@ -91,8 +92,8 @@ _MORE_THAN_VALUES = (
     "IDENTIFICATION",
 )
 
-#: ``name[3]``: one value of an array.
-_ELEMENT = re.compile(r"(.+)\[(\d+)\]")
+#: The indices on the end of ``name[3]`` or ``name[1][3]``: one value of an array.
+_INDICES = re.compile(r"(?:\[\d+\])+$")
 
 #: How many files an ``/include`` may go down, one inside another. A file that
 #: includes itself is a mistake, not a reason to run out of stack.
@@ -202,6 +203,15 @@ class Parameter:
     unreadable: str = ""
     #: How many values it is: more than one for an array or a block of values.
     count: int = 1
+    #: An array's size along each of its dimensions, in the order its values
+    #: are stored: the last one is the one that changes fastest, as in C. So
+    #: ``(2, 24)`` is two rows of twenty-four, and ``name[1][0]`` is the
+    #: twenty-fifth value.
+    sizes: tuple[int, ...] = ()
+    #: The same sizes as the file wrote them, and which way round it stores
+    #: them, for saying how ``sizes`` was arrived at.
+    written: tuple[int, ...] = ()
+    column_dir: bool = False
     #: For one value of an array, ``name[3]``: the array's name, and which.
     element_of: str = ""
     index: int = 0
@@ -248,6 +258,8 @@ class A2l:
         self.layouts: dict[str, str] = {}
         #: The layouts that hold the values and nothing before them.
         self._only_values: set[str] = set()
+        #: The layouts that store their values column by column.
+        self._by_column: set[str] = set()
         #: Elements already asked for, by name: made when wanted, since a big
         #: file has a hundred thousand of them and uses a handful.
         self._elements: dict[str, Parameter] = {}
@@ -282,23 +294,44 @@ class A2l:
         return [p for p in self.parameters.values() if p.kind == "CHARACTERISTIC"]
 
     def find(self, name: str) -> Parameter | None:
-        """A parameter by name, or one value of an array as ``name[3]``.
+        """A parameter by name, or one value of an array as ``name[3]`` or
+        ``name[1][3]``.
 
         A parameter the file itself calls ``table[3]`` is found first, as
         itself: files generated from C structures are full of those.
         """
         if (found := self.parameters.get(name) or self._elements.get(name)) is not None:
             return found
-        match = _ELEMENT.fullmatch(name)
-        array = self.parameters.get(match.group(1)) if match else None
-        if array is None or not array.is_array or int(match.group(2)) >= array.count:
+        match = _INDICES.search(name)
+        if match is None:
             return None
-        index = int(match.group(2))
+        indices = [int(digits) for digits in re.findall(r"\d+", match.group(0))]
+        array = None
+        # The array may have brackets in its own name, so the name is tried
+        # with each number of indices taken off the end: ``a[2].b[1][3]`` is
+        # ``a[2].b`` with two, before it is ``a[2].b[1]`` with one.
+        for taken in range(len(indices), 0, -1):
+            base = name[: match.start()] + "".join(f"[{i}]" for i in indices[:-taken])
+            candidate = self.parameters.get(base)
+            if (
+                candidate is not None
+                and candidate.is_array
+                and len(candidate.sizes) == taken
+                and all(i < size for i, size in zip(indices[-taken:], candidate.sizes, strict=True))
+            ):
+                array, indices = candidate, indices[-taken:]
+                break
+        if array is None:
+            return None
+        index = 0
+        for position, size in zip(indices, array.sizes, strict=True):
+            index = index * size + position  # the last index changes fastest
         element = replace(
             array,
             name=name,
             address=array.address + index * DATATYPES[array.datatype][1],
             count=1,
+            sizes=(),
             element_of=array.name,
             index=index,
         )
@@ -306,10 +339,14 @@ class A2l:
         return element
 
     def elements(self, array: Parameter) -> list[Parameter]:
-        """Each value of an array, in order; nothing for what is not one."""
+        """Each value of an array, in the order they are stored; nothing for
+        what is not one."""
         if not array.is_array:
             return []
-        return [self.find(f"{array.name}[{index}]") for index in range(array.count)]
+        return [
+            self.find(array.name + "".join(f"[{i}]" for i in indices))
+            for indices in product(*(range(size) for size in array.sizes))
+        ]
 
     def unreadable(self) -> list[Parameter]:
         """The ones listed and not read: curves, maps, types not known."""
@@ -340,6 +377,8 @@ class A2l:
                 # and with one part it says nothing. Tools number it 0 or 1.
                 if not more:
                     self._only_values.add(fields[0])
+                if (how := block.after("FNC_VALUES", 3)) and how[2] == "COLUMN_DIR":
+                    self._by_column.add(fields[0])
         for block in module.blocks("MEASUREMENT"):
             if (parameter := self._measurement(block)) is not None:
                 self.parameters[parameter.name] = parameter
@@ -370,7 +409,8 @@ class A2l:
         if address is None:
             parameter.unreadable = "the file gives it no address"
         else:
-            _sized(parameter, _dimensions(block, "MATRIX_DIM", "ARRAY_SIZE"))
+            by_column = bool((layout := block.after("LAYOUT")) and layout[0] == "COLUMN_DIR")
+            _sized(parameter, _dimensions(block, "MATRIX_DIM", "ARRAY_SIZE"), by_column)
         self._common(block, parameter)
         return parameter
 
@@ -410,7 +450,7 @@ class A2l:
                 "start is not worked out"
             )
         else:
-            _sized(parameter, dimensions)
+            _sized(parameter, dimensions, f[4] in self._by_column)
         self._common(block, parameter)
         return parameter
 
@@ -528,25 +568,36 @@ def _values(dimensions: list[int]) -> int:
     return math.prod(dimensions) if dimensions else 1
 
 
-def _sized(parameter: Parameter, dimensions: list[int]) -> None:
-    """Make a parameter the row of values its dimensions say, where it is one.
+def _sized(parameter: Parameter, dimensions: list[int], by_column: bool) -> None:
+    """Make a parameter the array its dimensions say, where it is one.
 
     ``ARRAY_SIZE 1`` and ``MATRIX_DIM 1 1 1`` are written by tools that say
-    it for everything, and are one value all the same. More than one
-    dimension is not read: which way round the rows and columns are stored
-    is a second question, and a wrong answer shows every value in the wrong
-    place.
+    it for everything, and are one value all the same.
+
+    **Which value is which, in more than one dimension.**  The values are
+    read in the order they are stored, which is never in doubt. What has to
+    be decided is what to call each one. ``MATRIX_DIM x y z`` gives the
+    sizes, and the storage is row by row unless the file says column by
+    column: row by row, x is the one that changes fastest; column by column,
+    it is the last. Here the sizes are put in the order of storage, slowest
+    first, so that an element is named as C would name it and the names
+    count up in the order the values lie: ``MATRIX_DIM 24 2`` stored row by
+    row is two rows of twenty-four, ``[0][0]`` to ``[1][23]``. That is what
+    a generator working from ``uint8 table[2][24]`` writes. The file's own
+    numbers are kept beside it, to be shown, because generators are not
+    agreed on this and somebody may need to see what theirs said.
     """
     count = _values(dimensions)
     if count <= 1:
         return
-    if sum(1 for size in dimensions if size > 1) > 1:
-        shape = " by ".join(str(size) for size in dimensions if size > 1)
-        parameter.unreadable = f"it is {shape} values, and a single row of them is what is read"
-    elif count > MOST_ELEMENTS:
+    if count > MOST_ELEMENTS:
         parameter.unreadable = f"it is {count} values, and up to {MOST_ELEMENTS} are read"
-    else:
-        parameter.count = count
+        return
+    more_than_one = [size for size in dimensions if size > 1]
+    parameter.count = count
+    parameter.written = tuple(dimensions)
+    parameter.column_dir = by_column
+    parameter.sizes = tuple(more_than_one if by_column else reversed(more_than_one))
 
 
 def _older_address(block: _Block) -> int | None:

@@ -104,8 +104,10 @@ def _kind(param) -> str:
 
 
 def _type(param) -> str:
-    """The data type, and for an array how many of it: ``UWORD[16]``."""
-    return f"{param.datatype}[{param.count}]" if param.is_array else param.datatype
+    """The data type, and for an array how many of it: ``UWORD[16]``, ``UBYTE[2][24]``."""
+    if not param.is_array:
+        return param.datatype
+    return param.datatype + "".join(f"[{size}]" for size in param.sizes)
 
 
 def _about(param) -> str:
@@ -118,6 +120,14 @@ def _about(param) -> str:
             f"{param.count} values. Double-click to read them all;\n"
             "expand the row to read, write or plot one."
         )
+        if len(param.sizes) > 1:
+            shape = " by ".join(str(size) for size in param.sizes)
+            wrote = " ".join(str(size) for size in param.written)
+            how = "column by column" if param.column_dir else "row by row"
+            lines.append(
+                f"{shape}, named in the order they are stored: the last index\n"
+                f"changes fastest. The A2L gives the sizes as {wrote}, stored {how}."
+            )
     if param.bit_mask:
         lines.append(f"Bit mask 0x{param.bit_mask:X}")
     if param.lower is not None and param.upper is not None:
