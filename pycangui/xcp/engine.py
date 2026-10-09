@@ -88,11 +88,17 @@ class XcpEngine(ABC):
         """UNLOCK with the key computed from the seed."""
 
     @abstractmethod
-    def read(self, address: int, size: int) -> bytes:
-        """Read *size* bytes from *address* (SHORT_UPLOAD or equivalent)."""
+    def read(self, address: int, size: int, extension: int = 0) -> bytes:
+        """Read *size* bytes from *address* (SHORT_UPLOAD or equivalent).
+
+        *extension* is the address extension, which of the slave's address
+        spaces is meant. It is only passed when it is not 0, so an engine
+        written before it existed goes on working for every slave that has
+        one address space, which is most of them.
+        """
 
     @abstractmethod
-    def write(self, address: int, data: bytes) -> None:
+    def write(self, address: int, data: bytes, extension: int = 0) -> None:
         """Write *data* at *address* (SET_MTA + DOWNLOAD or equivalent)."""
 
     def owns_frame(self, frame: Frame) -> str | None:
@@ -234,13 +240,13 @@ class NativeCanEngine(XcpEngine):
     def unlock(self, key: bytes) -> None:
         self.command(CMD_UNLOCK, bytes([len(key), *key]))
 
-    def read(self, address: int, size: int) -> bytes:
-        return self.command(
-            CMD_SHORT_UPLOAD, bytes([size, 0x00, 0x00]) + self._pack_address(address)
-        )
+    def read(self, address: int, size: int, extension: int = 0) -> bytes:
+        where = bytes([size, 0x00, extension & 0xFF]) + self._pack_address(address)
+        return self.command(CMD_SHORT_UPLOAD, where)
 
-    def write(self, address: int, data: bytes) -> None:
-        self.command(CMD_SET_MTA, bytes([0x00, 0x00, 0x00]) + self._pack_address(address))
+    def write(self, address: int, data: bytes, extension: int = 0) -> None:
+        where = bytes([0x00, 0x00, extension & 0xFF]) + self._pack_address(address)
+        self.command(CMD_SET_MTA, where)
         self.command(CMD_DOWNLOAD, bytes([len(data)]) + data)
 
     def close(self) -> None:

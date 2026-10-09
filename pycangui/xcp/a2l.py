@@ -36,6 +36,7 @@ an A2L carries a great deal that a calibration pane has no use for.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -111,10 +112,13 @@ class _Block:
 class Conversion:
     """A COMPU_METHOD: how a raw value becomes the number, or the name, shown.
 
-    Linear ones are worked both ways. A table of names (``choices``) leaves
-    the number alone and says what it is called. Anything else -- a formula, a
-    table to interpolate, a rational function that is not a straight line --
-    is ``exact = False``: the raw value is shown as it is, and said to be raw.
+    Linear ones are worked both ways, and so is the other rational function
+    real files use: one over a straight line, which is how a period is
+    stored for something shown as a frequency. A table of names
+    (``choices``) leaves the number alone and says what it is called.
+    Anything else -- a formula, a table to interpolate, a rational function
+    with a square in it -- is ``exact = False``: the raw value is shown as
+    it is, and said to be raw.
     """
 
     name: str
@@ -127,11 +131,23 @@ class Conversion:
     exact: bool = True
     #: What kind it is in the file: RAT_FUNC, LINEAR, TAB_VERB, IDENTICAL, FORM...
     kind: str = ""
+    #: ``(b, c, e, f)`` of ``raw = (b*phys + c) / (e*phys + f)``, for a rational
+    #: function that is not a straight line; None for one that is.
+    fraction: tuple[float, float, float, float] | None = None
 
     def to_phys(self, raw: float) -> float:
+        if self.fraction is not None:
+            b, c, e, f = self.fraction
+            below = e * raw - b
+            # The one raw value with no physical one: a period of zero.
+            return (c - f * raw) / below if below else math.inf
         return raw * self.factor + self.offset
 
     def to_raw(self, phys: float) -> float:
+        if self.fraction is not None:
+            b, c, e, f = self.fraction
+            below = e * phys + f
+            return (b * phys + c) / below if below else 0.0
         return (phys - self.offset) / self.factor if self.factor else 0.0
 
 
@@ -151,6 +167,8 @@ class Parameter:
     bit_mask: int | None = None
     #: Its own byte order where it states one: True for most significant first.
     big_endian: bool | None = None
+    #: Which of the slave's address spaces it is in: ECU_ADDRESS_EXTENSION.
+    extension: int = 0
     #: Marked READ_ONLY in the file: a characteristic not meant to be written.
     read_only: bool = False
     #: Why pycangui cannot read it, or "" when it can.
@@ -254,12 +272,14 @@ class A2l:
         f = block.fields()
         if len(f) < 8:
             return None
-        address = block.after("ECU_ADDRESS")
+        address = _integer(found[0]) if (found := block.after("ECU_ADDRESS")) else None
+        if address is None:
+            address = _older_address(block)
         parameter = Parameter(
             name=f[0],
             kind="MEASUREMENT",
             datatype=f[2],
-            address=_integer(address[0]) if address else 0,
+            address=address or 0,
             description=_plain(f[1]),
             conversion=self.conversions.get(f[3]),
             lower=_number(f[6]),
@@ -267,7 +287,7 @@ class A2l:
         )
         if address is None:
             parameter.unreadable = "the file gives it no address"
-        elif block.has("MATRIX_DIM") or block.has("ARRAY_SIZE"):
+        elif _is_array(block, "MATRIX_DIM", "ARRAY_SIZE"):
             parameter.unreadable = "it is an array, and single values are what is read"
         self._common(block, parameter)
         return parameter
@@ -300,7 +320,7 @@ class A2l:
             parameter.unreadable = f"it is {what}, and single values are what is read"
         elif not parameter.datatype:
             parameter.unreadable = f"its record layout, {f[4]}, is not in the file"
-        elif block.has("MATRIX_DIM") or block.has("NUMBER"):
+        elif _is_array(block, "MATRIX_DIM", "NUMBER"):
             parameter.unreadable = "it is an array, and single values are what is read"
         self._common(block, parameter)
         return parameter
@@ -313,11 +333,8 @@ class A2l:
             parameter.big_endian = BYTE_ORDERS[order[0]]
         if parameter.readable and parameter.datatype not in DATATYPES:
             parameter.unreadable = f"its data type, {parameter.datatype}, is not one pycangui reads"
-        extension = block.after("ECU_ADDRESS_EXTENSION")
-        if parameter.readable and extension and _integer(extension[0]):
-            parameter.unreadable = (
-                f"it is in address extension {extension[0]}, and only extension 0 is read"
-            )
+        if extension := block.after("ECU_ADDRESS_EXTENSION"):
+            parameter.extension = _integer(extension[0]) or 0
         if parameter.conversion is not None and not parameter.conversion.exact:
             # Read, and shown raw: better a true number than a wrong one.
             parameter.conversion = Conversion(
@@ -332,7 +349,9 @@ def _conversion(block: _Block, tables: dict[str, dict[int, str] | None]) -> Conv
     RAT_FUNC's six coefficients give the raw value from the physical one,
     ``raw = (a*p*p + b*p + c) / (d*p*p + e*p + f)``. With a, d and e zero that
     is a straight line, ``raw = (b*p + c) / f``, which turns round to
-    ``p = (f/b)*raw - c/b``. LINEAR's two go the other way already.
+    ``p = (f/b)*raw - c/b``. With only a and d zero it is one straight line
+    over another, which turns round as well: ``p = (c - f*raw) / (e*raw - b)``.
+    LINEAR's two go the other way already.
     """
     f = block.fields()
     if len(f) < 5:
@@ -347,9 +366,13 @@ def _conversion(block: _Block, tables: dict[str, dict[int, str] | None]) -> Conv
             return conversion
     if rational := block.after("COEFFS", 6):
         a, b, c, d, e, g = (_number(x) for x in rational)
-        if None not in (a, b, c, d, e, g) and a == 0 and d == 0 and e == 0 and b and g:
-            conversion.factor, conversion.offset = g / b, -c / b
-            return conversion
+        if None not in (a, b, c, d, e, g) and a == 0 and d == 0:
+            if e == 0 and b and g:
+                conversion.factor, conversion.offset = g / b, -c / b
+                return conversion
+            if b * g != c * e:  # equal, and raw does not depend on the value at all
+                conversion.fraction = (b, c, e, g)
+                return conversion
     if (reference := block.after("COMPU_TAB_REF")) and tables.get(reference[0]):
         conversion.choices = tables[reference[0]]
         return conversion
@@ -389,6 +412,47 @@ def _table(block: _Block) -> tuple[str, dict[int, str] | None] | None:
                 names[value] = _plain(name)
         return f[0], names or None
     return (f[0], None) if f else None
+
+
+def _is_array(block: _Block, *keywords: str) -> bool:
+    """Whether a block says it is more than one value.
+
+    ``ARRAY_SIZE 1`` and ``MATRIX_DIM 1 1 1`` are written by tools that say
+    it for everything, and are one value all the same.
+    """
+    for keyword in keywords:
+        fields = block.fields()
+        for at, item in enumerate(fields):
+            if item != keyword or isinstance(item, _Text):
+                continue
+            count = 1
+            for size in fields[at + 1 : at + 4]:  # up to three dimensions
+                if isinstance(size, _Text) or not str(size).isdigit():
+                    break
+                count *= int(size)
+            if count != 1:
+                return True
+    return False
+
+
+def _older_address(block: _Block) -> int | None:
+    """A measurement's address from its IF_DATA, as files from before
+    ``ECU_ADDRESS`` have it: ``KP_BLOB``, in a block named for the interface.
+
+    Each interface laid its blob out its own way. CCP's is the address
+    extension and then the address; the others seen put the address first.
+    An interface not known here gives no address, rather than a guess at one.
+    """
+    for data in block.blocks("IF_DATA"):
+        fields = data.fields()
+        if not fields or "KP_BLOB" not in fields:
+            continue
+        blob = fields[fields.index("KP_BLOB") + 1 :]
+        if fields[0] == "ASAP1B_CCP" and len(blob) >= 2:
+            return _integer(blob[1])
+        if fields[0] in ("ETK", "ASAP1B_ETK", "ASAP1B_KWP2000", "ASAP1B_ADDRESS") and blob:
+            return _integer(blob[0])
+    return None
 
 
 def _xcp_on_can(module: _Block) -> XcpOnCan | None:

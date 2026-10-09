@@ -106,7 +106,8 @@ def _kind(param) -> str:
 def _about(param) -> str:
     """A parameter's tooltip: what it is, where, and why it is not read if it is not."""
     lines = [param.description] if param.description else []
-    lines.append(f"0x{param.address:X}" + (f", {param.datatype}" if param.datatype else ""))
+    where = f"0x{param.address:X}" + (f", extension {param.extension}" if param.extension else "")
+    lines.append(where + (f", {param.datatype}" if param.datatype else ""))
     if param.bit_mask:
         lines.append(f"Bit mask 0x{param.bit_mask:X}")
     if param.lower is not None and param.upper is not None:

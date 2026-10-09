@@ -136,26 +136,27 @@ class CanCcpEngine(XcpEngine):
     def unlock(self, key: bytes) -> None:
         self.command(CMD_UNLOCK, key[:MOST_PER_FRAME])
 
-    def read(self, address: int, size: int) -> bytes:
+    def read(self, address: int, size: int, extension: int = 0) -> bytes:
         if size <= MOST_PER_FRAME:
             # SHORT_UP carries the address with it, so one frame does it.
-            return self.command(CMD_SHORT_UP, bytes([size, 0]) + struct.pack(">I", address))[:size]
-        self._set_mta(address)
+            where = bytes([size, extension & 0xFF]) + struct.pack(">I", address)
+            return self.command(CMD_SHORT_UP, where)[:size]
+        self._set_mta(address, extension)
         out = b""
         while len(out) < size:
             want = min(MOST_PER_FRAME, size - len(out))
             out += self.command(CMD_UPLOAD, bytes([want]))[:want]
         return out
 
-    def write(self, address: int, data: bytes) -> None:
-        self._set_mta(address)
+    def write(self, address: int, data: bytes, extension: int = 0) -> None:
+        self._set_mta(address, extension)
         for start in range(0, len(data), MOST_PER_FRAME):
             chunk = data[start : start + MOST_PER_FRAME]
             self.command(CMD_DNLOAD, bytes([len(chunk)]) + chunk)
 
-    def _set_mta(self, address: int) -> None:
+    def _set_mta(self, address: int, extension: int = 0) -> None:
         """Point the slave's transfer address at somewhere, MTA 0 as usual."""
-        self.command(CMD_SET_MTA, bytes([0, 0]) + struct.pack(">I", address))
+        self.command(CMD_SET_MTA, bytes([0, extension & 0xFF]) + struct.pack(">I", address))
 
     def close(self) -> None:
         self._answers.close()

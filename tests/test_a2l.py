@@ -35,6 +35,8 @@ ASAP2_VERSION 1 71
     /begin COMPU_METHOD volts "volts" LINEAR "%5.2" "V" COEFFS_LINEAR 0.01 -5 /end COMPU_METHOD
     /begin COMPU_METHOD same "same" IDENTICAL "%3.0" "counts" /end COMPU_METHOD
     /begin COMPU_METHOD curve "bent" RAT_FUNC "%6.1" "Nm" COEFFS 1 2 3 0 0 1 /end COMPU_METHOD
+    /begin COMPU_METHOD hertz "one over" RAT_FUNC "%6.1" "Hz" COEFFS 0 0 1000 0 1 0
+    /end COMPU_METHOD
     /begin COMPU_METHOD sum "formula" FORM "%6.1" "K"
       /begin FORMULA "X1+273" /end FORMULA
     /end COMPU_METHOD
@@ -61,6 +63,18 @@ ASAP2_VERSION 1 71
       ECU_ADDRESS 0x1010 MATRIX_DIM 4
     /end MEASUREMENT
     /begin MEASUREMENT Nowhere "Computed in the tool" UWORD rpm 0 0 0 8000 /end MEASUREMENT
+    /begin MEASUREMENT Period "Stored as a period" UWORD hertz 0 0 0 1000
+      ECU_ADDRESS 0x1030
+    /end MEASUREMENT
+    /begin MEASUREMENT OneOfOne "An array of one" UWORD rpm 0 0 0 8000
+      ECU_ADDRESS 0x1032 ARRAY_SIZE 1 MATRIX_DIM 1 1 1
+    /end MEASUREMENT
+    /begin MEASUREMENT Older "Before ECU_ADDRESS" UBYTE NO_COMPU_METHOD 1 100 0 255
+      /begin IF_DATA ETK KP_BLOB 0x1040 EXTERN 0x1 /end IF_DATA
+    /end MEASUREMENT
+    /begin MEASUREMENT OlderCcp "Before ECU_ADDRESS, over CCP" UBYTE NO_COMPU_METHOD 1 100 0 255
+      /begin IF_DATA ASAP1B_CCP KP_BLOB 0x0 0x1041 1 /end IF_DATA
+    /end MEASUREMENT
     /begin MEASUREMENT Paged "On another page" UWORD rpm 0 0 0 8000
       ECU_ADDRESS 0x1020 ECU_ADDRESS_EXTENSION 2
     /end MEASUREMENT
@@ -124,7 +138,7 @@ def test_fields_are_read_by_position_and_not_by_what_they_look_like(a2l):
 
 
 def test_comments_hide_what_is_in_them(a2l):
-    assert len(a2l.measurements()) == 10 and len(a2l.characteristics()) == 9
+    assert len(a2l.measurements()) == 14 and len(a2l.characteristics()) == 9
 
 
 def test_linear_conversions_are_worked_both_ways(a2l):
@@ -170,9 +184,31 @@ def test_the_xcp_on_can_identifiers_are_found(a2l):
     )
 
 
+def test_one_over_a_straight_line_is_worked_both_ways(a2l):
+    """How a period is stored for something shown as a frequency."""
+    hertz = a2l.parameters["Period"].conversion
+    assert hertz.exact
+    assert hertz.to_phys(20) == pytest.approx(50) and hertz.to_raw(50) == pytest.approx(20)
+    assert hertz.to_phys(0) == float("inf"), "a period of nothing is not an error"
+
+
+def test_an_array_of_one_is_one_value(a2l):
+    assert a2l.parameters["OneOfOne"].readable
+
+
+def test_an_older_files_address_is_found_in_its_if_data(a2l):
+    assert a2l.parameters["Older"].address == 0x1040 and a2l.parameters["Older"].readable
+    assert a2l.parameters["OlderCcp"].address == 0x1041
+
+
+def test_an_address_extension_is_kept_with_the_address(a2l):
+    assert a2l.parameters["Paged"].extension == 2 and a2l.parameters["Paged"].readable
+    assert a2l.parameters["EngineSpeed"].extension == 0
+
+
 # --- what is listed and not read ------------------------------------------------------------
 @pytest.mark.parametrize(
-    "name", ["TorqueMap", "Ramp", "Name", "Orphan", "Wide", "Wheels", "Nowhere", "Paged"]
+    "name", ["TorqueMap", "Ramp", "Name", "Orphan", "Wide", "Wheels", "Nowhere"]
 )
 def test_what_cannot_be_read_is_listed_and_says_why(a2l, name):
     parameter = a2l.parameters[name]
@@ -189,7 +225,6 @@ def test_the_readable_ones_are_all_the_rest(a2l):
         "Wide",
         "Wheels",
         "Nowhere",
-        "Paged",
     }
 
 
@@ -251,11 +286,14 @@ class Memory:
     def __init__(self) -> None:
         self.bytes = bytearray(0x4000)
         self.writes: list[tuple[int, bytes]] = []
+        #: The address extension of each read, None for a read made without one.
+        self.spaces: list[int | None] = []
 
-    def read(self, address: int, size: int) -> bytes:
+    def read(self, address: int, size: int, **space) -> bytes:
+        self.spaces.append(space.get("extension"))
         return bytes(self.bytes[address : address + size])
 
-    def write(self, address: int, data: bytes) -> None:
+    def write(self, address: int, data: bytes, **_space) -> None:
         self.writes.append((address, bytes(data)))
         self.bytes[address : address + len(data)] = data
 
@@ -294,6 +332,16 @@ def test_the_files_byte_order_wins_over_the_slaves(calibrating):
     manager.read("EngineSpeed")
     settle(1)
     assert values["EngineSpeed"] == pytest.approx(1000)
+
+
+def test_an_address_extension_goes_out_with_the_address_and_only_then(calibrating):
+    """Only when there is one, so that an engine written before extensions
+    still works for every slave that has a single address space."""
+    manager, memory, _said, _values, settle = calibrating
+    manager.read("EngineSpeed")
+    manager.read("Paged")
+    settle(2)
+    assert memory.spaces == [None, 2]
 
 
 def test_a_masked_value_is_read_as_its_own_bits(calibrating):

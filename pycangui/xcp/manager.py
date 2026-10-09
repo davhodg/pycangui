@@ -260,7 +260,7 @@ class XcpManager(QObject):
     def _read_raw(self, param: Parameter) -> float:
         """The stored value, whole: before any bit mask or conversion."""
         size = DATATYPES[param.datatype][1]
-        data = self.engine.read(param.address, size)
+        data = self.engine.read(param.address, size, **_space(param))
         return decode_value(data, param.datatype, self._big_endian(param))
 
     def _read_value(self, param: Parameter) -> float:
@@ -309,7 +309,7 @@ class XcpManager(QObject):
                 kept = int(self._read_raw(param)) & ~mask
                 raw = kept | ((round(raw) << _shift(mask)) & mask)
             data = encode_value(raw, param.datatype, self._big_endian(param))
-            self.engine.write(param.address, data)
+            self.engine.write(param.address, data, **_space(param))
             return f"{name} <- {self.shown(name, phys)}"
 
         self._submit(f"write {name}", fn)
@@ -346,6 +346,12 @@ class XcpManager(QObject):
     # --- trace labelling ---------------------------------------------------------------
     def classify(self, frame: Frame) -> str | None:
         return self.engine.owns_frame(frame) if self.engine else None
+
+
+def _space(param: Parameter) -> dict:
+    """The address extension, as a keyword and only when there is one: an
+    engine written before extensions takes an address and nothing else."""
+    return {"extension": param.extension} if param.extension else {}
 
 
 def _mask(param: Parameter) -> int | None:
