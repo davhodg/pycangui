@@ -49,7 +49,7 @@ answers XCP on 0x7A0/0x7A1 and CCP on 0x7B0/0x7B1 at station 1, and both match
 
 ## What is read from an A2L
 
-Single values, in full:
+Single values, and rows of them:
 
 - **Measurements**, and **characteristics** of type `VALUE`. A characteristic's
   data type comes from the record layout it names, as the standard has it.
@@ -69,11 +69,19 @@ Single values, in full:
 - **Older files**, from before `ECU_ADDRESS`: a measurement's address is taken
   from the `KP_BLOB` in its `IF_DATA`, for the CCP, ETK and KWP2000 layouts.
 - **Included files** (`/include`), beside the file that names them.
+- **Arrays**: a measurement with `MATRIX_DIM` or `ARRAY_SIZE`, and a `VAL_BLK`
+  characteristic. The row shows the type and how many, `UWORD[16]`.
+  Double-click it to read every value, which opens it into a row for each,
+  `name[0]` onwards; or expand it and read, edit or tick *Plot* on one value.
+  The output gives the whole row on one line. An array is written one value at
+  a time, not as a whole. One of more than 1,024 values is not read, and nor is
+  one with more than one dimension, since which way round its rows are stored
+  is a second question the file answers separately.
 
-Listed, in grey, and not read: curves, maps, blocks of values, text, arrays of
-more than one value, a measurement the file gives no address, and a
-characteristic whose record layout is missing. They are listed so that the file
-is seen whole; hover over
+Listed, in grey, and not read: curves, maps, text, arrays of more than one
+dimension or more than 1,024 values, a measurement the file gives no address,
+and a characteristic whose record layout is missing. They are listed so that
+the file is seen whole; hover over
 one for why. A characteristic marked `READ_ONLY` is read and cannot be edited.
 Hovering over any parameter gives its description, address, type and limits.
 

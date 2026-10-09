@@ -271,17 +271,20 @@ class XcpManager(QObject):
 
     def shown(self, name: str, phys: float) -> str:
         """A value as it is shown: by name where the A2L names it, *Run (1)*."""
-        param = self.a2l.parameters.get(name) if self.a2l else None
+        param = self.a2l.find(name) if self.a2l else None
         named = named_values.shown(phys, param.choices) if param and param.choices else None
         return named or f"{phys:g}"
 
     def read(self, name: str) -> None:
-        param = self.a2l.parameters.get(name) if self.a2l else None
+        param = self.a2l.find(name) if self.a2l else None
         if param is None:
             self.result.emit(f"read {name}: unknown parameter")
             return
         if not param.readable:
             self.result.emit(f"read {name}: {param.unreadable}")
+            return
+        if param.is_array:
+            self._read_array(param)
             return
 
         def fn() -> str:
@@ -292,8 +295,29 @@ class XcpManager(QObject):
 
         self._submit(f"read {name}", fn)
 
+    def _read_array(self, array: Parameter) -> None:
+        """Every value of an array, one read each, as one job.
+
+        One job so that the values come out together and in order, and so
+        that a row of a hundred is one line in the output and not a hundred.
+        """
+        elements = self.a2l.elements(array)
+
+        def fn() -> str:
+            shown = []
+            for element in elements:
+                phys = self._read_value(element)
+                self.value.emit(element.name, phys)
+                shown.append(self.shown(element.name, phys))
+            listed = ", ".join(shown[:ARRAY_SHOWN])
+            more = f", ... ({len(shown)} values)" if len(shown) > ARRAY_SHOWN else ""
+            unit = f" {array.unit}" if array.unit else ""
+            return f"{array.name} = [{listed}{more}]{unit}"
+
+        self._submit(f"read {array.name}", fn)
+
     def write(self, name: str, text: str) -> None:
-        param = self.a2l.parameters.get(name) if self.a2l else None
+        param = self.a2l.find(name) if self.a2l else None
         if param is None or not param.writable:
             why = param.unreadable if param is not None and param.unreadable else ""
             self.result.emit(f"write {name}: {why or 'not a writable characteristic'}")
@@ -316,9 +340,9 @@ class XcpManager(QObject):
 
     # --- polling ---------------------------------------------------------------------
     def set_polled(self, name: str, on: bool) -> None:
-        param = self.a2l.parameters.get(name) if self.a2l else None
-        if param is None or not param.readable:
-            return
+        param = self.a2l.find(name) if self.a2l else None
+        if param is None or not param.readable or param.is_array:
+            return  # one of an array's values is plotted, not the row of them
         if on:
             self._polled[name] = param
             if self._connected and not self._poll_timer.isActive():
@@ -346,6 +370,10 @@ class XcpManager(QObject):
     # --- trace labelling ---------------------------------------------------------------
     def classify(self, frame: Frame) -> str | None:
         return self.engine.owns_frame(frame) if self.engine else None
+
+
+#: How many of an array's values the output line lists before it counts the rest.
+ARRAY_SHOWN = 16
 
 
 def _space(param: Parameter) -> dict:

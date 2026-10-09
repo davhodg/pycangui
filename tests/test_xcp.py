@@ -246,6 +246,53 @@ def test_two_words_must_both_match(app, tmp_path, monkeypatch):
     window.close()
 
 
+ARRAYS = """
+/begin RECORD_LAYOUT RL_UWORD FNC_VALUES 1 UWORD COLUMN_DIR DIRECT /end RECORD_LAYOUT
+/begin MEASUREMENT Wheels "Four of them" UWORD NO_COMPU_METHOD 0 0 0 8000
+  ECU_ADDRESS 0x1010 MATRIX_DIM 4
+/end MEASUREMENT
+/begin CHARACTERISTIC Limits "A block" VAL_BLK 0x2000 RL_UWORD 0 NO_COMPU_METHOD 0 8000
+  NUMBER 3
+/end CHARACTERISTIC
+"""
+
+
+def test_an_arrays_values_are_rows_made_when_it_is_opened(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import Qt
+
+    window = _xcp_window(tmp_path, monkeypatch)
+    view = window.xcp_view
+    path = tmp_path / "arrays.a2l"
+    path.write_text(ARRAYS, encoding="utf-8")
+    window.xcp.load_a2l(str(path))
+
+    rows = {view.tree.topLevelItem(i).text(0): view.tree.topLevelItem(i) for i in range(2)}
+    wheels, limits = rows["Wheels"], rows["Limits"]
+    assert wheels.childCount() == 0, "not until somebody looks"
+
+    wheels.setExpanded(True)
+    limits.setExpanded(True)
+    assert [wheels.child(i).text(0) for i in range(wheels.childCount())] == [
+        "Wheels[0]",
+        "Wheels[1]",
+        "Wheels[2]",
+        "Wheels[3]",
+    ]
+    assert not wheels.child(0).flags() & Qt.ItemIsEditable, "a measurement"
+    assert limits.child(0).flags() & Qt.ItemIsEditable, "a characteristic's value"
+    assert not limits.flags() & Qt.ItemIsEditable, "but not the row of them"
+
+    wheels.setExpanded(False)
+    wheels.setExpanded(True)
+    assert wheels.childCount() == 4, "made once"
+
+    view.plotted_only.setChecked(True)
+    assert _shown(view) == []
+    wheels.child(2).setCheckState(5, Qt.Checked)
+    assert _shown(view) == ["Wheels"], "an array is shown for the value of it being plotted"
+    window.close()
+
+
 def test_showing_only_the_plotted_ones(app, tmp_path, monkeypatch):
     from PySide6.QtCore import Qt
 

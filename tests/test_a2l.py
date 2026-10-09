@@ -30,6 +30,8 @@ ASAP2_VERSION 1 71
     /begin RECORD_LAYOUT RL_UWORD FNC_VALUES 1 UWORD COLUMN_DIR DIRECT /end RECORD_LAYOUT
     /begin RECORD_LAYOUT RL_FLOAT FNC_VALUES 1 FLOAT32_IEEE COLUMN_DIR DIRECT /end RECORD_LAYOUT
     /begin RECORD_LAYOUT RL_ODD FNC_VALUES 1 A_UINT128 COLUMN_DIR DIRECT /end RECORD_LAYOUT
+    /begin RECORD_LAYOUT RL_COUNTED NO_AXIS_PTS_X 1 UBYTE FNC_VALUES 2 UWORD COLUMN_DIR DIRECT
+    /end RECORD_LAYOUT
 
     /begin COMPU_METHOD rpm "speed" RAT_FUNC "%6.1" "rpm" COEFFS 0 4 0 0 0 1 /end COMPU_METHOD
     /begin COMPU_METHOD volts "volts" LINEAR "%5.2" "V" COEFFS_LINEAR 0.01 -5 /end COMPU_METHOD
@@ -99,6 +101,21 @@ ASAP2_VERSION 1 71
     /end CHARACTERISTIC
     /begin CHARACTERISTIC Name "Text" ASCII 0x3200 RL_UWORD 0 NO_COMPU_METHOD 0 255 NUMBER 16
     /end CHARACTERISTIC
+    /begin CHARACTERISTIC Limits "A block of values" VAL_BLK 0x3500 RL_UWORD 0 rpm 0 8000
+      NUMBER 3
+    /end CHARACTERISTIC
+    /begin CHARACTERISTIC Grid "Rows and columns" VAL_BLK 0x3600 RL_UWORD 0 rpm 0 8000
+      MATRIX_DIM 4 3
+    /end CHARACTERISTIC
+    /begin CHARACTERISTIC Huge "Too many to read" VAL_BLK 0x3700 RL_UWORD 0 rpm 0 8000
+      MATRIX_DIM 5000
+    /end CHARACTERISTIC
+    /begin CHARACTERISTIC Counted "Values after a count" VAL_BLK 0x3800 RL_COUNTED 0 rpm 0 8000
+      NUMBER 3
+    /end CHARACTERISTIC
+    /begin CHARACTERISTIC Limits[1] "Named like an element, and its own" VALUE 0x3900 RL_UWORD
+      0 rpm 0 8000
+    /end CHARACTERISTIC
     /begin CHARACTERISTIC Orphan "No layout" VALUE 0x3300 RL_MISSING 0 rpm 0 8000
     /end CHARACTERISTIC
     /begin CHARACTERISTIC Wide "A type not read" VALUE 0x3400 RL_ODD 0 rpm 0 8000
@@ -138,7 +155,7 @@ def test_fields_are_read_by_position_and_not_by_what_they_look_like(a2l):
 
 
 def test_comments_hide_what_is_in_them(a2l):
-    assert len(a2l.measurements()) == 14 and len(a2l.characteristics()) == 9
+    assert len(a2l.measurements()) == 14 and len(a2l.characteristics()) == 14
 
 
 def test_linear_conversions_are_worked_both_ways(a2l):
@@ -206,9 +223,44 @@ def test_an_address_extension_is_kept_with_the_address(a2l):
     assert a2l.parameters["EngineSpeed"].extension == 0
 
 
+# --- a row of values -----------------------------------------------------------------------
+def test_an_array_is_a_row_of_values_each_with_its_own_address(a2l):
+    wheels = a2l.parameters["Wheels"]
+    assert wheels.is_array and wheels.count == 4 and not wheels.writable
+    elements = a2l.elements(wheels)
+    assert [e.name for e in elements] == ["Wheels[0]", "Wheels[1]", "Wheels[2]", "Wheels[3]"]
+    assert [e.address for e in elements] == [0x1010, 0x1012, 0x1014, 0x1016], "two bytes each"
+    assert all(e.conversion is wheels.conversion and not e.is_array for e in elements)
+
+
+def test_a_block_of_values_is_written_one_value_at_a_time(a2l):
+    limits = a2l.parameters["Limits"]
+    assert limits.is_array and limits.count == 3
+    assert not limits.writable, "the row as a whole is not typed into"
+    assert all(e.writable for e in a2l.elements(limits))
+
+
+def test_an_element_is_found_by_name_and_one_past_the_end_is_not(a2l):
+    assert a2l.find("Wheels[3]").address == 0x1016
+    assert a2l.find("Wheels[4]") is None
+    assert a2l.find("EngineSpeed[0]") is None, "not an array"
+    assert a2l.find("NoSuchThing") is None
+
+
+def test_a_parameter_the_file_names_like_an_element_is_itself(a2l):
+    """Files made from C structures are full of names with brackets in."""
+    assert a2l.find("Limits[1]").address == 0x3900
+    assert a2l.find("Limits[2]").address == 0x3504
+
+
+def test_the_elements_are_not_counted_as_parameters_of_the_file(a2l):
+    a2l.elements(a2l.parameters["Wheels"])
+    assert "Wheels[0]" not in a2l.parameters
+
+
 # --- what is listed and not read ------------------------------------------------------------
 @pytest.mark.parametrize(
-    "name", ["TorqueMap", "Ramp", "Name", "Orphan", "Wide", "Wheels", "Nowhere"]
+    "name", ["TorqueMap", "Ramp", "Name", "Orphan", "Wide", "Nowhere", "Grid", "Huge", "Counted"]
 )
 def test_what_cannot_be_read_is_listed_and_says_why(a2l, name):
     parameter = a2l.parameters[name]
@@ -223,8 +275,10 @@ def test_the_readable_ones_are_all_the_rest(a2l):
         "Name",
         "Orphan",
         "Wide",
-        "Wheels",
         "Nowhere",
+        "Grid",
+        "Huge",
+        "Counted",
     }
 
 
@@ -342,6 +396,25 @@ def test_an_address_extension_goes_out_with_the_address_and_only_then(calibratin
     manager.read("Paged")
     settle(2)
     assert memory.spaces == [None, 2]
+
+
+def test_reading_an_array_reads_every_value_of_it(calibrating):
+    manager, memory, said, values, settle = calibrating
+    for index in range(4):  # 4000, 8000, 12000, 16000 raw, most significant first
+        raw = 4000 * (index + 1)
+        memory.bytes[0x1010 + 2 * index : 0x1012 + 2 * index] = raw.to_bytes(2, "big")
+    manager.read("Wheels")
+    settle(1)
+    assert [values[f"Wheels[{i}]"] for i in range(4)] == pytest.approx([1000, 2000, 3000, 4000])
+    assert len(said) == 1, "one line for the row, not one for each value"
+
+
+def test_one_value_of_a_block_is_written_where_it_lives(calibrating):
+    manager, memory, _said, _values, settle = calibrating
+    manager.write("Limits[2]", "1000")
+    manager.write("Limits", "1000")  # the row as a whole: refused
+    settle(2)
+    assert memory.writes == [(0x3504, (4000).to_bytes(2, "big"))]
 
 
 def test_a_masked_value_is_read_as_its_own_bits(calibrating):

@@ -103,11 +103,21 @@ def _kind(param) -> str:
     return param.kind[:4]
 
 
+def _type(param) -> str:
+    """The data type, and for an array how many of it: ``UWORD[16]``."""
+    return f"{param.datatype}[{param.count}]" if param.is_array else param.datatype
+
+
 def _about(param) -> str:
     """A parameter's tooltip: what it is, where, and why it is not read if it is not."""
     lines = [param.description] if param.description else []
     where = f"0x{param.address:X}" + (f", extension {param.extension}" if param.extension else "")
     lines.append(where + (f", {param.datatype}" if param.datatype else ""))
+    if param.is_array:
+        lines.append(
+            f"{param.count} values. Double-click to read them all;\n"
+            "expand the row to read, write or plot one."
+        )
     if param.bit_mask:
         lines.append(f"Bit mask 0x{param.bit_mask:X}")
     if param.lower is not None and param.upper is not None:
@@ -209,6 +219,7 @@ class XcpView(QWidget):
         self.tree.setFont(mono)
         self.widths = ColumnWidths(self.tree, ctx.settings, "xcp")
         self.tree.itemDoubleClicked.connect(self._on_double_clicked)
+        self.tree.itemExpanded.connect(self._fill)
         self.tree.itemChanged.connect(self._on_item_changed)
         self._items: dict[str, QTreeWidgetItem] = {}
         self._updating = False
@@ -400,15 +411,18 @@ class XcpView(QWidget):
         if a2l is not None:
             grey = self.palette().brush(QPalette.Disabled, QPalette.Text)
             for param in a2l.parameters.values():
-                item = QTreeWidgetItem(
-                    [param.name, _kind(param), param.datatype, "", param.unit, ""]
-                )
+                item = QTreeWidgetItem([param.name, _kind(param), _type(param), "", param.unit, ""])
                 item.setData(0, ROLE_NAME, param.name)
                 item.setData(0, ROLE_SEARCH, _searchable(param))
                 item.setToolTip(0, _about(param))
                 if param.writable:
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
-                if param.readable:
+                if param.is_array:
+                    # Its values are rows of their own, made when the row is
+                    # opened: a big file has a hundred thousand of them, and
+                    # anybody looks at a handful.
+                    item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+                elif param.readable:
                     item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                     item.setCheckState(5, Qt.Unchecked)
                 else:
@@ -422,13 +436,38 @@ class XcpView(QWidget):
         self._updating = False
         self._apply_filter()  # a new A2L arrives into whatever filter is set
 
+    def _fill(self, item: QTreeWidgetItem) -> None:
+        """Give an array's row a row for each of its values, the first time it is wanted."""
+        a2l = self.manager.a2l
+        array = a2l.find(item.data(0, ROLE_NAME) or "") if a2l is not None else None
+        if array is None or not array.is_array or item.childCount():
+            return
+        was_updating, self._updating = self._updating, True
+        for element in a2l.elements(array):
+            child = QTreeWidgetItem(
+                [element.name, _kind(element), element.datatype, "", element.unit, ""]
+            )
+            child.setData(0, ROLE_NAME, element.name)
+            child.setToolTip(0, _about(element))
+            flags = child.flags() | Qt.ItemIsUserCheckable
+            child.setFlags(flags | Qt.ItemIsEditable if element.writable else flags)
+            child.setCheckState(5, Qt.Unchecked)
+            item.addChild(child)
+            self._items[element.name] = child
+        self._updating = was_updating
+
     def _apply_filter(self) -> None:
         """Hide what does not match. Nothing is unloaded and nothing is read."""
         needles = self.search.text().lower().split()
         polled_only = self.plotted_only.isChecked()
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
-            if polled_only and item.checkState(5) != Qt.Checked:
+            # An array is plotted through its values, so it is one of those
+            # being plotted when any of them is.
+            plotted = item.checkState(5) == Qt.Checked or any(
+                item.child(c).checkState(5) == Qt.Checked for c in range(item.childCount())
+            )
+            if polled_only and not plotted:
                 item.setHidden(True)
                 continue
             haystack = item.data(0, ROLE_SEARCH) or ""
@@ -436,7 +475,14 @@ class XcpView(QWidget):
 
     def _on_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
         if column != 3:
-            self.manager.read(item.data(0, ROLE_NAME))
+            self._read(item)
+
+    def _read(self, item: QTreeWidgetItem) -> None:
+        """Read a row: one value, or every value of an array, into rows made for them."""
+        self._fill(item)
+        if item.childCount():
+            item.setExpanded(True)
+        self.manager.read(item.data(0, ROLE_NAME))
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if self._updating:
@@ -451,7 +497,7 @@ class XcpView(QWidget):
 
     def _read_selected(self) -> None:
         for item in self.tree.selectedItems():
-            self.manager.read(item.data(0, ROLE_NAME))
+            self._read(item)
 
     @Slot(str, float)
     def _on_value(self, name: str, value: float) -> None:

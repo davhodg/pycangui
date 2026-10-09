@@ -4,8 +4,9 @@
 
 It lists a file's MEASUREMENTs and CHARACTERISTICs with where each one is, what
 type it is, and how its raw value becomes a number somebody recognises. Single
-values are read in full. Curves, maps, value blocks and text are listed, so
-that the file is seen whole, and marked as not readable here.
+values are read in full, and so is a row of them: an array measurement or a
+block of values, element by element. Curves, maps and text are listed, so that
+the file is seen whole, and marked as not readable here.
 
 A2L is nested blocks of positional fields and optional keywords::
 
@@ -38,7 +39,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from pycangui.xcp import DATATYPES
@@ -53,8 +54,9 @@ _TOKEN = re.compile(
     re.S | re.X,
 )
 
-#: A characteristic that is one value, which is what can be read and written.
+#: A characteristic that is one value, and one that is a row of them.
 VALUE = "VALUE"
+VAL_BLK = "VAL_BLK"
 
 #: What ``BYTE_ORDER`` can say, as whether the first byte is the most
 #: significant. MSB_FIRST and BIG_ENDIAN are Motorola order; the standard
@@ -66,6 +68,31 @@ BYTE_ORDERS = {
     "MSB_LAST": False,
     "LITTLE_ENDIAN": False,
 }
+
+#: The most values in one array that are read. Each is a read of its own, so
+#: a table of thousands is minutes on a CAN bus and not something to start by
+#: double-clicking a row.
+MOST_ELEMENTS = 1024
+
+#: A record layout with one of these in it holds more than the values: axis
+#: points, counts, addresses. Where the values then start is worked out from
+#: the rest, which this reader does not do.
+_MORE_THAN_VALUES = (
+    "AXIS_",
+    "NO_AXIS",
+    "FIX_NO_AXIS",
+    "NO_RESCALE",
+    "OFFSET_",
+    "SHIFT_OP",
+    "DIST_OP",
+    "SRC_ADDR",
+    "RIP_ADDR",
+    "RESERVED",
+    "IDENTIFICATION",
+)
+
+#: ``name[3]``: one value of an array.
+_ELEMENT = re.compile(r"(.+)\[(\d+)\]")
 
 #: How many files an ``/include`` may go down, one inside another. A file that
 #: includes itself is a mistake, not a reason to run out of stack.
@@ -173,13 +200,25 @@ class Parameter:
     read_only: bool = False
     #: Why pycangui cannot read it, or "" when it can.
     unreadable: str = ""
+    #: How many values it is: more than one for an array or a block of values.
+    count: int = 1
+    #: For one value of an array, ``name[3]``: the array's name, and which.
+    element_of: str = ""
+    index: int = 0
 
     @property
     def readable(self) -> bool:
         return not self.unreadable
 
     @property
+    def is_array(self) -> bool:
+        """A row of values, read and written through its elements."""
+        return self.count > 1 and self.readable
+
+    @property
     def writable(self) -> bool:
+        if self.is_array:
+            return False  # one of its values is; the row as a whole is not typed in
         return self.kind == "CHARACTERISTIC" and self.readable and not self.read_only
 
     @property
@@ -207,6 +246,11 @@ class A2l:
         self.conversions: dict[str, Conversion] = {}
         #: Record layout name -> the data type of the values it lays out.
         self.layouts: dict[str, str] = {}
+        #: The layouts that hold the values and nothing before them.
+        self._only_values: set[str] = set()
+        #: Elements already asked for, by name: made when wanted, since a big
+        #: file has a hundred thousand of them and uses a handful.
+        self._elements: dict[str, Parameter] = {}
         #: The file's own byte order, True for most significant first; None
         #: where it does not say, and the slave's own answer stands.
         self.big_endian: bool | None = None
@@ -237,6 +281,36 @@ class A2l:
     def characteristics(self) -> list[Parameter]:
         return [p for p in self.parameters.values() if p.kind == "CHARACTERISTIC"]
 
+    def find(self, name: str) -> Parameter | None:
+        """A parameter by name, or one value of an array as ``name[3]``.
+
+        A parameter the file itself calls ``table[3]`` is found first, as
+        itself: files generated from C structures are full of those.
+        """
+        if (found := self.parameters.get(name) or self._elements.get(name)) is not None:
+            return found
+        match = _ELEMENT.fullmatch(name)
+        array = self.parameters.get(match.group(1)) if match else None
+        if array is None or not array.is_array or int(match.group(2)) >= array.count:
+            return None
+        index = int(match.group(2))
+        element = replace(
+            array,
+            name=name,
+            address=array.address + index * DATATYPES[array.datatype][1],
+            count=1,
+            element_of=array.name,
+            index=index,
+        )
+        self._elements[name] = element
+        return element
+
+    def elements(self, array: Parameter) -> list[Parameter]:
+        """Each value of an array, in order; nothing for what is not one."""
+        if not array.is_array:
+            return []
+        return [self.find(f"{array.name}[{index}]") for index in range(array.count)]
+
     def unreadable(self) -> list[Parameter]:
         """The ones listed and not read: curves, maps, types not known."""
         return [p for p in self.parameters.values() if not p.readable]
@@ -258,6 +332,14 @@ class A2l:
             fields = block.fields()
             if fields and (values := block.after("FNC_VALUES", 2)):
                 self.layouts[fields[0]] = values[1]
+                more = any(
+                    not isinstance(word, _Text) and str(word).startswith(_MORE_THAN_VALUES)
+                    for word in fields[1:]
+                )
+                # Its position is not asked: it is the order among the parts,
+                # and with one part it says nothing. Tools number it 0 or 1.
+                if not more:
+                    self._only_values.add(fields[0])
         for block in module.blocks("MEASUREMENT"):
             if (parameter := self._measurement(block)) is not None:
                 self.parameters[parameter.name] = parameter
@@ -287,8 +369,8 @@ class A2l:
         )
         if address is None:
             parameter.unreadable = "the file gives it no address"
-        elif _is_array(block, "MATRIX_DIM", "ARRAY_SIZE"):
-            parameter.unreadable = "it is an array, and single values are what is read"
+        else:
+            _sized(parameter, _dimensions(block, "MATRIX_DIM", "ARRAY_SIZE"))
         self._common(block, parameter)
         return parameter
 
@@ -309,19 +391,26 @@ class A2l:
             shape=f[2],
             read_only=block.has("READ_ONLY"),
         )
-        if parameter.shape != VALUE:
+        dimensions = _dimensions(block, "MATRIX_DIM", "NUMBER")
+        if parameter.shape not in (VALUE, VAL_BLK):
             what = {
                 "CURVE": "a curve",
                 "MAP": "a map",
                 "CUBOID": "a three-dimensional map",
-                "VAL_BLK": "a block of values",
                 "ASCII": "text",
             }.get(parameter.shape, parameter.shape)
-            parameter.unreadable = f"it is {what}, and single values are what is read"
+            parameter.unreadable = f"it is {what}, and values and rows of them are what is read"
         elif not parameter.datatype:
             parameter.unreadable = f"its record layout, {f[4]}, is not in the file"
-        elif _is_array(block, "MATRIX_DIM", "NUMBER"):
-            parameter.unreadable = "it is an array, and single values are what is read"
+        elif parameter.shape == VAL_BLK and not dimensions:
+            parameter.unreadable = "the file does not say how many values it holds"
+        elif _values(dimensions) > 1 and f[4] not in self._only_values:
+            parameter.unreadable = (
+                f"its record layout, {f[4]}, holds more than the values, and where they "
+                "start is not worked out"
+            )
+        else:
+            _sized(parameter, dimensions)
         self._common(block, parameter)
         return parameter
 
@@ -414,25 +503,50 @@ def _table(block: _Block) -> tuple[str, dict[int, str] | None] | None:
     return (f[0], None) if f else None
 
 
-def _is_array(block: _Block, *keywords: str) -> bool:
-    """Whether a block says it is more than one value.
+def _dimensions(block: _Block, *keywords: str) -> list[int]:
+    """How many values a block says it is, along each dimension; [] if it does not say.
 
-    ``ARRAY_SIZE 1`` and ``MATRIX_DIM 1 1 1`` are written by tools that say
-    it for everything, and are one value all the same.
+    From the first of the keywords it has: ``MATRIX_DIM`` with up to three
+    sizes, or ``ARRAY_SIZE`` or ``NUMBER`` with one.
     """
+    fields = block.fields()
     for keyword in keywords:
-        fields = block.fields()
         for at, item in enumerate(fields):
             if item != keyword or isinstance(item, _Text):
                 continue
-            count = 1
-            for size in fields[at + 1 : at + 4]:  # up to three dimensions
+            sizes = []
+            for size in fields[at + 1 : at + 4]:
                 if isinstance(size, _Text) or not str(size).isdigit():
                     break
-                count *= int(size)
-            if count != 1:
-                return True
-    return False
+                sizes.append(int(size))
+            if sizes:
+                return sizes
+    return []
+
+
+def _values(dimensions: list[int]) -> int:
+    return math.prod(dimensions) if dimensions else 1
+
+
+def _sized(parameter: Parameter, dimensions: list[int]) -> None:
+    """Make a parameter the row of values its dimensions say, where it is one.
+
+    ``ARRAY_SIZE 1`` and ``MATRIX_DIM 1 1 1`` are written by tools that say
+    it for everything, and are one value all the same. More than one
+    dimension is not read: which way round the rows and columns are stored
+    is a second question, and a wrong answer shows every value in the wrong
+    place.
+    """
+    count = _values(dimensions)
+    if count <= 1:
+        return
+    if sum(1 for size in dimensions if size > 1) > 1:
+        shape = " by ".join(str(size) for size in dimensions if size > 1)
+        parameter.unreadable = f"it is {shape} values, and a single row of them is what is read"
+    elif count > MOST_ELEMENTS:
+        parameter.unreadable = f"it is {count} values, and up to {MOST_ELEMENTS} are read"
+    else:
+        parameter.count = count
 
 
 def _older_address(block: _Block) -> int | None:

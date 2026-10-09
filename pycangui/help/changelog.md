@@ -17,8 +17,8 @@ since the last version, and comes out in the next one.
 - *Tools > Settings > Column widths*: *Manual* makes list columns draggable and remembered.
 - CAN Transmit: a counter or checksum in a DBC signal is shown by position, *count 52:4*,
   with the name in the tooltip.
-- XCP / CCP: named values, bit masks, the A2L's byte order and included files are read;
-  curves and maps are listed, in grey.
+- XCP / CCP: arrays and value blocks, named values, bit masks, address extensions, the A2L's
+  byte order and included files are read; curves and maps are listed, in grey.
 - Simulated nodes each run on a thread of their own, and answer while the window is busy.
 
 ### Fixed
