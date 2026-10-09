@@ -17,14 +17,27 @@ A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, X
 
 ## Install and run
 
+To install it:
+
 ```
 pip install pycangui
+```
+
+To run it:
+
+```
 pycangui
+```
+
+To update it:
+
+```
+pip install --upgrade pycangui
 ```
 
 Python 3.12 or newer, on Windows, Linux or macOS. `python -m pycangui` starts it too.
 
-To include everything optional up front -- today that is the reader for MDF and MF4 measurement files -- install `all`. Without it, pycangui offers to install the reader the first time a measurement file is opened.
+To include everything optional up front -- currently that is only the reader for MDF and MF4 measurement files -- install `all`. Without it, pycangui offers to install the reader the first time a measurement file is opened.
 
 ```
 pip install "pycangui[all]"

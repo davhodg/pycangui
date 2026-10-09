@@ -42,16 +42,29 @@ Full details in [the manual](pycangui/help/manual.md), which is also under **Hel
 
 There are three options:
 
-1. **With pip** -- from PyPI, into whichever Python environment you choose. Python 3.12 or newer is needed.
+1. **With pip** -- from [PyPI](https://pypi.org/project/pycangui/), into whichever Python environment you choose. Python 3.12 or newer is needed.
+
+   To install it:
 
    ```
    pip install pycangui
-   pycangui               # installs a command of that name
    ```
 
-   It is an ordinary Python package with an ordinary entry point, so the choice of environment is yours, and `pip install --upgrade pycangui` updates it.
+   To run it:
 
-2. **The Windows installer** -- `pycangui-<version>-setup.exe` from the releases page. Nothing else is needed: **not even Python.** It installs a self-contained application, offers a desktop shortcut, and uninstalls cleanly. This is the one to give somebody who wants a CAN tool rather than a Python package. Your hooks, EDS files and settings stay in `%APPDATA%\pycangui`, and upgrades and uninstalling leave them alone.
+   ```
+   pycangui
+   ```
+
+   To update it:
+
+   ```
+   pip install --upgrade pycangui
+   ```
+
+   It is an ordinary Python package with an ordinary entry point, so the choice of environment is yours.
+
+2. **The Windows installer** -- `pycangui-<version>-setup.exe` from the releases page. Nothing else is needed: **not even Python.** It installs a self-contained application, offers a desktop shortcut, and uninstalls cleanly. This is the one for somebody who wants a CAN tool rather than a Python package. Your hooks, EDS files and settings stay in `%APPDATA%\pycangui`, and upgrades and uninstalling leave them alone.
 
 3. **From a Git clone** -- clone the repository, then double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux). This is the way to have the latest changes before they are released, or to contribute. Python 3.12 or newer must be on the PATH.
 
@@ -104,9 +117,7 @@ pycangui is Apache-2.0 and is a pure-Python application on top of these packages
 | [bincopy](https://github.com/eerimoq/bincopy) | Intel HEX / S-record / binary firmware files | MIT |
 | [asammdf](https://github.com/danielhrisca/asammdf) | Reading MDF / MF4 measurement files | LGPL-3.0 |
 
-XCP, CCP and a basic A2L reader are implemented directly in pycangui.
-
-asammdf, the MDF and MF4 reader, is the one **optional** entry: the Windows installer includes it, and a `pip` installation fetches it the first time a measurement file is opened. `pip install pycangui[all]` includes it up front.
+asammdf, the MDF and MF4 reader, is currently the only **optional** entry: the Windows installer includes it, and a `pip` installation fetches it the first time a measurement file is opened. `pip install pycangui[all]` includes it up front.
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **PySide6-Essentials** rather than the full PySide6, so the GPL-only add-on modules (Qt Charts, Qt Data Visualization and the rest) are never installed. Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the vendor's driver and python-can loads it at run time.
 

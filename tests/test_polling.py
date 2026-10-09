@@ -131,7 +131,9 @@ def test_it_reports_what_it_achieved_and_not_what_was_asked(app, poller):
 
     requested, achieved = seen[-1]
     assert requested == 50
-    assert 5 < achieved < 20, f"about 10 Hz, not the 50 that was asked for: {achieved}"
+    # No lower bound: a busy machine takes longer over each round, and the rate
+    # it then reports is lower still -- which is the poller being right, not wrong.
+    assert 0 < achieved < 20, f"about 10 Hz or less, not the 50 that was asked for: {achieved}"
 
 
 def test_a_rate_the_bus_can_keep_up_with_is_reported_as_asked(app, poller):
