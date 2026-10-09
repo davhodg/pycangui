@@ -37,6 +37,12 @@ pip install --upgrade pycangui
 
 Python 3.12 or newer, on Windows, Linux or macOS. `python -m pycangui` starts it too.
 
+On Linux, Qt needs a system library to draw the window, and Debian, Ubuntu, Linux Mint and the like often leave it out:
+
+```
+sudo apt install libxcb-cursor0
+```
+
 To include everything optional up front -- currently that is only the reader for MDF and MF4 measurement files -- install `all`. Without it, pycangui offers to install the reader the first time a measurement file is opened.
 
 ```

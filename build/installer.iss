@@ -54,7 +54,8 @@ SetupIconFile=..\pycangui\resources\pycangui.ico
 UninstallDisplayIcon={app}\{#AppExe}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Per-user by default so no administrator rights are needed
+; Setup asks who it is for: everybody, which needs administrator rights and
+; is what it suggests, or only the person running it, which needs none.
 PrivilegesRequiredOverridesAllowed=dialog commandline
 ; For the fileassoc task: Explorer is told to look again.
 ChangesAssociations=yes

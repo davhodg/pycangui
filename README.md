@@ -64,22 +64,26 @@ There are three options:
 
    It is an ordinary Python package with an ordinary entry point, so the choice of environment is yours.
 
-2. **The Windows installer** -- `pycangui-<version>-setup.exe` from the releases page. Nothing else is needed: **not even Python.** It installs a self-contained application, offers a desktop shortcut, and uninstalls cleanly. This is the one for somebody who wants a CAN tool rather than a Python package. Your hooks, EDS files and settings stay in `%APPDATA%\pycangui`, and upgrades and uninstalling leave them alone.
+   On Linux, Qt needs one system library first: see *On Linux* below.
+
+2. **The Windows installer** -- `pycangui-<version>-setup.exe` from the releases page. Nothing else is needed: **not even Python.** It installs a self-contained application, offers a desktop shortcut, and uninstalls cleanly. This is the one for somebody who wants a CAN tool rather than a Python package.
+
+   It asks first who it is for: **everybody who uses the computer**, which needs administrator rights, or **only you**, which does not.
 
 3. **From a Git clone** -- clone the repository, then double-click `pycangui.cmd` (Windows) or run `./pycangui.sh` (Linux). This is the way to have the latest changes before they are released, or to contribute. Python 3.12 or newer must be on the PATH.
 
    The first run sets itself up: it creates a *virtual environment* -- a folder called `.venv` holding its own copy of Python and only the libraries pycangui needs, so nothing else on the machine is touched -- and downloads a couple of hundred megabytes into it. That takes a few minutes once; every later start is immediate, and deleting `.venv` undoes the whole thing. If `uv` is installed it is used instead of pip, which makes rebuilding that folder a matter of seconds.
 
-   **On Linux** (Debian, Ubuntu, Linux Mint and the like), run it from a terminal, so its messages can be read:
+   **On Linux**, run it from a terminal, so its messages can be read:
 
    ```
    ./pycangui.sh
    ```
 
-   Two packages these systems often leave out are needed: the one that lets Python create `.venv`, which the launcher names if it is missing, and a library Qt uses to draw the window:
+   Debian, Ubuntu, Linux Mint and the like often leave out the package that lets Python create `.venv`. The launcher names it if it is missing:
 
    ```
-   sudo apt install python3-venv libxcb-cursor0
+   sudo apt install python3-venv
    ```
 
    Double-clicking `pycangui.sh` in a file manager works too: choose *Run in Terminal* when it asks, for the same reason.
@@ -87,6 +91,16 @@ There are three options:
    At the end of the first run it offers to add pycangui to the Start menu, or to the applications menu on Linux, and *Tools > Settings > Add shortcut to Start menu* does the same later. The entry starts the launcher, so a start from the menu after a pull still picks up new libraries.
 
    The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does. To run a checkout in an environment of your own instead, `pip install -e .` installs it there, reading the source.
+
+**On Linux**, however pycangui is installed -- with pip or from a clone -- Qt needs a system library to draw the window, and Debian, Ubuntu, Linux Mint and the like often leave it out:
+
+```
+sudo apt install libxcb-cursor0
+```
+
+Without it pycangui stops as it starts, with a message about the *xcb* platform plugin.
+
+**Where your own files are kept** is the same whichever way it was installed: your workspaces, hooks, EDS files and settings are in `%APPDATA%\pycangui` on Windows, `~/.config/pycangui` on Linux and `~/Library/Application Support/pycangui` on macOS. Upgrading and uninstalling leave that folder alone.
 
 ## Supported systems
 
