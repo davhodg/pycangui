@@ -460,3 +460,129 @@ def test_answers_are_heard_on_a_bus_connected_again_and_not_after_closing(stack)
     engine._responses.get_nowait()
     engine.close()
     assert not heard(bytes([0xFF, 0x02])), "an engine put away has stopped listening"
+
+
+# --- the limits question ----------------------------------------------------------------------
+class _Recorder:
+    """An engine that only remembers what it was asked to write."""
+
+    info = None
+
+    def __init__(self):
+        self.writes = []
+
+    def write(self, address, data, **_space):
+        self.writes.append((address, bytes(data)))
+
+    def read(self, address, size, **_space):
+        return bytes(size)
+
+    def close(self):
+        pass
+
+
+def _typed(window, view, name, text, answer, monkeypatch):
+    """Type a value into a characteristic's row, with the limits question answered."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from pycangui.ui import messages
+
+    asked = []
+    monkeypatch.setattr(
+        messages, "question", lambda *a, **k: asked.append(1) or getattr(QMessageBox, answer)
+    )
+    item = view._items[name]
+    before = len(window.xcp.engine.writes)
+    item.setText(3, text)
+    # Long enough to see a write that is coming; not long, where none is meant to.
+    deadline = time.monotonic() + (0.3 if answer == "Cancel" else 2.0)
+    while len(window.xcp.engine.writes) == before and time.monotonic() < deadline:
+        QCoreApplication.processEvents()
+        time.sleep(0.005)
+    return asked
+
+
+def test_a_value_outside_the_limits_is_asked_about_and_cancel_writes_nothing(
+    app, tmp_path, monkeypatch
+):
+    window = _xcp_window(tmp_path, monkeypatch)
+    view = window.xcp_view
+    window.xcp.engine = _Recorder()
+
+    assert _typed(window, view, "SpeedLimit", "9000", "Cancel", monkeypatch) == [1]
+    assert window.xcp.engine.writes == []
+    assert view._items["SpeedLimit"].text(3) != "9000", "the cell is put back: nothing was written"
+
+    assert _typed(window, view, "SpeedLimit", "9000", "Yes", monkeypatch) == [1]
+    assert len(window.xcp.engine.writes) == 1
+
+    assert _typed(window, view, "SpeedLimit", "7000", "Cancel", monkeypatch) == []
+    assert len(window.xcp.engine.writes) == 2, "inside the limits there is nothing to ask"
+    window.close()
+
+
+# --- whose identifiers ------------------------------------------------------------------------
+WITH_IDS = """
+/begin MEASUREMENT Speed "" UWORD NO_COMPU_METHOD 0 0 0 8000 ECU_ADDRESS 0x1000 /end MEASUREMENT
+/begin IF_DATA XCP
+  /begin XCP_ON_CAN 0x0100 CAN_ID_MASTER {master} CAN_ID_SLAVE {slave} BAUDRATE 500000
+  /end XCP_ON_CAN
+/end IF_DATA
+"""
+
+
+def _with_ids(window, tmp_path, master, slave):
+    path = tmp_path / "ids.a2l"
+    path.write_text(WITH_IDS.format(master=master, slave=slave), encoding="utf-8")
+    window.xcp.load_a2l(str(path))
+
+
+def test_the_a2ls_identifiers_are_offered_only_by_an_a2l_that_has_them(app, tmp_path, monkeypatch):
+    window = _xcp_window(tmp_path, monkeypatch)  # the demo A2L: no identifiers in it
+    view = window.xcp_view
+    assert view.from_a2l.isHidden()
+
+    _with_ids(window, tmp_path, "0x701", "0x702")
+    assert not view.from_a2l.isHidden()
+    view.cmd_id.setText("123")
+
+    view.from_a2l.setChecked(True)
+    assert (view.cmd_id.text(), view.res_id.text()) == ("701", "702")
+    assert not view.cmd_id.isEnabled() and not view.res_id.isEnabled(), "the A2L's, not typed"
+
+    view.from_a2l.setChecked(False)
+    assert view.cmd_id.isEnabled(), "and yours again"
+
+    view._remove_a2l()
+    assert view.from_a2l.isHidden() and view.cmd_id.isEnabled()
+    window.close()
+
+
+def test_how_an_identifier_is_written_says_how_wide_it_is(app, tmp_path, monkeypatch):
+    """No 29-bit box: above 7FF, or eight digits, as in CAN Transmit."""
+    window = _xcp_window(tmp_path, monkeypatch)
+    view = window.xcp_view
+    for command, response, wide in (
+        ("7A0", "7A1", False),
+        ("18FF0001", "18FF0002", True),
+        ("00000123", "00000124", True),
+    ):
+        view.cmd_id.setText(command)
+        view.res_id.setText(response)
+        view._config()
+        assert window.xcp.engine.extended is wide, command
+
+    _with_ids(window, tmp_path, "0x98FF0001", "0x98FF0002")  # bit 31: 29-bit
+    view.from_a2l.setChecked(True)
+    assert view.cmd_id.text() == "18FF0001"
+    view._config()
+    assert window.xcp.engine.extended is True
+    window.close()
+
+
+def test_an_identifier_saved_with_the_29_bit_box_ticked_is_still_29_bit():
+    from pycangui.ui.xcp_view import _as_written, is_extended
+
+    assert is_extended(_as_written({"cmd_id": "123", "ext": True}, "cmd_id"))
+    assert not is_extended(_as_written({"cmd_id": "123", "ext": False}, "cmd_id"))
+    assert _as_written({}, "cmd_id") == ""

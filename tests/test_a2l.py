@@ -120,6 +120,12 @@ ASAP2_VERSION 1 71
     /begin CHARACTERISTIC GridByRow "Row by row" VAL_BLK 0x3640 RL_ROWS 0 rpm 0 8000
       MATRIX_DIM 4 3
     /end CHARACTERISTIC
+    /begin CHARACTERISTIC Big "More than is read in one go" VAL_BLK 0x4000 RL_UWORD 0 rpm 0 8000
+      MATRIX_DIM 2000
+    /end CHARACTERISTIC
+    /begin CHARACTERISTIC Unlimited "A generator with nothing to say" VALUE 0x3A00 RL_UWORD
+      0 rpm 0 0
+    /end CHARACTERISTIC
     /begin CHARACTERISTIC Huge "Too many to read" VAL_BLK 0x3700 RL_UWORD 0 rpm 0 8000
       MATRIX_DIM 5000
     /end CHARACTERISTIC
@@ -168,7 +174,7 @@ def test_fields_are_read_by_position_and_not_by_what_they_look_like(a2l):
 
 
 def test_comments_hide_what_is_in_them(a2l):
-    assert len(a2l.measurements()) == 17 and len(a2l.characteristics()) == 15
+    assert len(a2l.measurements()) == 17 and len(a2l.characteristics()) == 17
 
 
 def test_linear_conversions_are_worked_both_ways(a2l):
@@ -394,7 +400,7 @@ class Memory:
     info = ConnectInfo(resources=0, big_endian=False, max_cto=8, max_dto=8)
 
     def __init__(self) -> None:
-        self.bytes = bytearray(0x4000)
+        self.bytes = bytearray(0x6000)
         self.writes: list[tuple[int, bytes]] = []
         #: The address extension of each read, None for a read made without one.
         self.spaces: list[int | None] = []
@@ -515,3 +521,51 @@ def test_what_is_not_read_is_refused_without_touching_the_slave(calibrating):
     manager.write("Serial", "1")
     settle(3)
     assert memory.writes == [] and values == {}
+
+
+# --- the limits the file gives ----------------------------------------------------------------
+def test_a_value_outside_the_limits_is_not_written_unless_it_is_meant(calibrating):
+    manager, memory, _said, _values, settle = calibrating
+    assert manager.beyond_limits("SpeedLimit", "9000") == (9000, 0, 8000)
+    assert manager.beyond_limits("SpeedLimit", "8000") is None, "the limit itself is inside"
+    assert manager.beyond_limits("SpeedLimit", "-1") == (-1, 0, 8000)
+
+    manager.write("SpeedLimit", "9000")
+    settle(1)
+    assert memory.writes == [], "refused, and the slave never asked"
+
+    manager.write("SpeedLimit", "9000", beyond_limits=True)
+    settle(2)
+    assert memory.writes == [(0x2000, (36000).to_bytes(2, "big"))]
+
+
+def test_limits_that_say_nothing_stop_nothing(calibrating):
+    """0 and 0 is a generator with no limits to give, not a characteristic
+    that may only ever be nought."""
+    manager, memory, _said, _values, settle = calibrating
+    assert manager.beyond_limits("Unlimited", "123") is None
+    manager.write("Unlimited", "123")
+    settle(1)
+    assert len(memory.writes) == 1
+
+
+def test_something_that_is_not_a_number_is_for_the_write_to_refuse(calibrating):
+    manager, _memory, _said, _values, _settle = calibrating
+    assert manager.beyond_limits("SpeedLimit", "fast") is None
+
+
+# --- an array too big to read in one go -------------------------------------------------------
+def test_a_big_array_is_opened_and_read_a_value_at_a_time(calibrating, a2l):
+    manager, memory, _said, values, settle = calibrating
+    big = a2l.parameters["Big"]
+    assert big.is_array and big.count == 2000
+    assert a2l.find("Big[1999]").address == 0x4000 + 1999 * 2
+
+    manager.read("Big")  # all two thousand: refused
+    settle(1)
+    assert values == {}
+
+    memory.bytes[0x4000 + 1999 * 2 : 0x4000 + 2000 * 2] = (4000).to_bytes(2, "big")
+    manager.read("Big[1999]")
+    settle(2)
+    assert values == {"Big[1999]": pytest.approx(1000)}

@@ -19,6 +19,8 @@ since the last version, and comes out in the next one.
   with the name in the tooltip.
 - XCP / CCP: arrays and value blocks, named values, bit masks, address extensions, the A2L's
   byte order and included files are read; curves and maps are listed, in grey.
+- XCP / CCP: **IDs from A2L** in place of the 29-bit box -- an id above `7FF`, or in eight
+  digits, is 29-bit; a value outside the A2L's limits is asked about before it is written.
 - Simulated nodes each run on a thread of their own, and answer while the window is busy.
 
 ### Fixed

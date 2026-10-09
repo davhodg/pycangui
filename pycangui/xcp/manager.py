@@ -23,7 +23,7 @@ from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.signals import SignalHub
 from pycangui.xcp import DATATYPES, decode_value, encode_value
-from pycangui.xcp.a2l import A2l, Parameter
+from pycangui.xcp.a2l import MOST_AT_ONCE, A2l, Parameter
 from pycangui.xcp.engine import XcpEngine, XcpError
 
 #: An engine is named "<protocol>-<implementation>", so that the list says
@@ -284,6 +284,12 @@ class XcpManager(QObject):
             self.result.emit(f"read {name}: {param.unreadable}")
             return
         if param.is_array:
+            if param.count > MOST_AT_ONCE:
+                self.result.emit(
+                    f"read {name}: it is {param.count} values, and up to {MOST_AT_ONCE} are "
+                    "read in one go. Open it and read the ones wanted."
+                )
+                return
             self._read_array(param)
             return
 
@@ -316,11 +322,41 @@ class XcpManager(QObject):
 
         self._submit(f"read {array.name}", fn)
 
-    def write(self, name: str, text: str) -> None:
+    def beyond_limits(self, name: str, text: str) -> tuple[float, float, float] | None:
+        """A value that is outside the limits the A2L gives its characteristic.
+
+        As ``(value, lower, upper)``, or None for one that is within them, or
+        that the file gives no usable limits for, or that is not a number --
+        which the write itself will say.
+        """
+        param = self.a2l.find(name) if self.a2l else None
+        if param is None or param.lower is None or param.upper is None:
+            return None
+        if param.lower >= param.upper:
+            return None  # 0 and 0: a generator that had nothing to say
+        try:
+            phys = float(named_values.plain(text, param.choices))
+        except ValueError:
+            return None
+        if param.lower <= phys <= param.upper:
+            return None
+        return phys, param.lower, param.upper
+
+    def write(self, name: str, text: str, beyond_limits: bool = False) -> None:
+        """Write a characteristic. A value outside the A2L's limits is refused
+        unless ``beyond_limits`` says it is meant: the pane asks first, and a
+        script has to say so in as many words."""
         param = self.a2l.find(name) if self.a2l else None
         if param is None or not param.writable:
             why = param.unreadable if param is not None and param.unreadable else ""
             self.result.emit(f"write {name}: {why or 'not a writable characteristic'}")
+            return
+        if not beyond_limits and (outside := self.beyond_limits(name, text)) is not None:
+            value, lower, upper = outside
+            self.result.emit(
+                f"write {name}: {value:g} is outside the A2L's limits, {lower:g} to {upper:g} "
+                "-- not written"
+            )
             return
 
         def fn() -> str:

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QTreeWidget,
@@ -26,7 +27,7 @@ from PySide6.QtWidgets import (
 from pycangui.core import workspace_files
 from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
-from pycangui.ui import folders, keep_file, seedkey_view
+from pycangui.ui import folders, keep_file, messages, seedkey_view
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
@@ -45,8 +46,42 @@ ID_TIP = (
     "XCP calls them the command and response identifiers, CCP the CRO\n"
     "and the DTO. Neither protocol standardises a pair: they come from\n"
     "the A2L or from the supplier. The demo devices use 7A0/7A1 for XCP\n"
-    "and 7B0/7B1 for CCP."
+    "and 7B0/7B1 for CCP.\n"
+    "\n"
+    "Whether they are 11-bit or 29-bit is in how they are written: anything\n"
+    "above 7FF is 29-bit, and so is an id written out in eight digits."
 )
+FROM_A2L_TIP = (
+    "Take the identifiers from the A2L, which gives them for XCP on CAN.\n"
+    "Ticked, the two boxes show the A2L's and are not typed into; unticked,\n"
+    "they are yours again. Only shown for an A2L that has them."
+)
+LIMITS_TITLE = "Outside the A2L's limits"
+LIMITS_TEXT = (
+    "{name} is given limits of {lower:g} to {upper:g}{unit} by the A2L, and\n"
+    "{value:g} is outside them.\n"
+    "\n"
+    "The limits are whoever wrote the A2L saying what the controller is meant\n"
+    "to be given. Write {value:g} anyway?"
+)
+
+
+def is_extended(typed: str) -> bool:
+    """Whether an id, as it is written, is a 29-bit one: above 7FF, or eight digits.
+
+    The rule CAN Transmit and the ASCII Log have, in place of a tick box.
+    """
+    typed = typed.strip()
+    try:
+        return int(typed, 16) > 0x7FF or len(typed) == 8
+    except ValueError:
+        return False
+
+
+def id_text(can_id: int, extended: bool) -> str:
+    return f"{can_id:08X}" if extended else f"{can_id:03X}"
+
+
 STATION_TIP = (
     "Which controller on these identifiers is being talked to. CCP\n"
     "addresses a station as well as a pair of ids, so several can share\n"
@@ -144,6 +179,21 @@ def _about(param) -> str:
     return "\n".join(lines)
 
 
+def _as_written(cfg: dict, key: str) -> str:
+    """A saved identifier, written so that it says how wide it is.
+
+    Saved while there was a 29-bit box, a short id could have the box ticked;
+    that one is written out in eight digits, which is what the tick meant.
+    """
+    typed = str(cfg.get(key, "") or "")
+    if cfg.get("ext") and not is_extended(typed):
+        try:
+            return id_text(int(typed, 16), True)
+        except ValueError:
+            pass
+    return typed
+
+
 class XcpView(QWidget):
     def __init__(self, manager: XcpManager, ctx: Context) -> None:
         super().__init__()
@@ -157,13 +207,13 @@ class XcpView(QWidget):
         # identifiers, so any default here is a guess dressed up as a
         # setting: it would be sent to whatever happens to answer on it,
         # and it would label frames in the trace as XCP that are not.
-        self.cmd_id = QLineEdit(cfg.get("cmd_id", ""))
+        self.cmd_id = QLineEdit(_as_written(cfg, "cmd_id"))
         self.cmd_id.setPlaceholderText("none")
         self.cmd_id.setToolTip(ID_TIP)
         self.cmd_id.setFont(mono)
         self.cmd_id.setFixedWidth(70)
         self.cmd_id.textChanged.connect(lambda _t: self._ids_changed())
-        self.res_id = QLineEdit(cfg.get("res_id", ""))
+        self.res_id = QLineEdit(_as_written(cfg, "res_id"))
         self.res_id.setPlaceholderText("none")
         self.res_id.setToolTip(ID_TIP)
         self.res_id.setFont(mono)
@@ -174,9 +224,13 @@ class XcpView(QWidget):
         self.station.setToolTip(STATION_TIP)
         self.station.setFont(mono)
         self.station_label = QLabel("Station")
-        self.ext = QCheckBox("29-bit")
-        self.ext.setToolTip("Address the slave with 29-bit identifiers rather than 11-bit")
-        self.ext.setChecked(cfg.get("ext", False))
+        # No 29-bit box: how an identifier is written says how wide it is, as
+        # it does in CAN Transmit. What is asked instead is whose identifiers
+        # these are -- typed here, or the A2L's.
+        self.from_a2l = QCheckBox("IDs from A2L")
+        self.from_a2l.setToolTip(FROM_A2L_TIP)
+        self.from_a2l.setChecked(bool(cfg.get("from_a2l", False)))
+        self.from_a2l.toggled.connect(lambda _on: self._whose_ids())
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.setCheckable(True)
         self.connect_btn.toggled.connect(self._toggle_connect)
@@ -216,7 +270,7 @@ class XcpView(QWidget):
         bar.addWidget(self.res_id)
         bar.addWidget(self.station_label)
         bar.addWidget(self.station)
-        bar.addWidget(self.ext)
+        bar.addWidget(self.from_a2l)
         bar.addWidget(self.connect_btn)
         bar.addWidget(unlock)
         bar.addWidget(seed_key)
@@ -232,6 +286,8 @@ class XcpView(QWidget):
         self.tree.itemExpanded.connect(self._fill)
         self.tree.itemChanged.connect(self._on_item_changed)
         self._items: dict[str, QTreeWidgetItem] = {}
+        #: What each value last read as, to put back when a write is not gone through with.
+        self._last: dict[str, str] = {}
         self._updating = False
 
         read_btn = QPushButton("Read selected")
@@ -292,6 +348,7 @@ class XcpView(QWidget):
         manager.connected.connect(self._on_connected)
         manager.a2l_loaded.connect(lambda _n: self._populate())
         manager.a2l_loaded.connect(lambda _n: self._show_a2l())
+        manager.a2l_loaded.connect(lambda _n: self._whose_ids())
         manager.value.connect(self._on_value)
         manager.connected.connect(lambda _on: self._ids_changed())
         self.engine_box.currentTextChanged.connect(lambda _n: self._engine_changed())
@@ -300,6 +357,7 @@ class XcpView(QWidget):
         self._show_a2l()
         self._ids_changed()
         self._engine_changed()
+        self._whose_ids()
 
     # --- connection -------------------------------------------------------------
     def _engine_changed(self) -> None:
@@ -312,6 +370,31 @@ class XcpView(QWidget):
         wanted = self.manager.needs_station
         self.station.setVisible(wanted)
         self.station_label.setVisible(wanted)
+        if hasattr(self, "from_a2l"):
+            self._whose_ids()  # the A2L's are XCP's, and no use to a CCP engine
+
+    def _a2l_ids(self):
+        """The identifiers the A2L gives, where it gives them and they are this engine's."""
+        a2l = self.manager.a2l
+        if a2l is None or a2l.xcp_on_can is None or self.manager.protocol != "XCP":
+            return None
+        return a2l.xcp_on_can
+
+    def _whose_ids(self) -> None:
+        """Show the A2L's identifiers in the boxes, or hand the boxes back.
+
+        The tick box is only there for an A2L that has identifiers to give.
+        One that has none leaves the boxes as they were, typed.
+        """
+        ids = self._a2l_ids()
+        self.from_a2l.setVisible(ids is not None)
+        using = ids is not None and self.from_a2l.isChecked()
+        if using:
+            self.cmd_id.setText(id_text(ids.command_id, ids.extended))
+            self.res_id.setText(id_text(ids.response_id, ids.extended))
+        for box in (self.cmd_id, self.res_id):
+            box.setReadOnly(using)
+            box.setEnabled(not using)
 
     def _ids_changed(self) -> None:
         """Connect is offered only once there is somewhere to connect to.
@@ -334,16 +417,19 @@ class XcpView(QWidget):
         return value if 0 <= value <= 0x1FFFFFFF else None
 
     def _config(self) -> None:
-        self.manager.set_ids(
-            int(self.cmd_id.text(), 16), int(self.res_id.text(), 16), self.ext.isChecked()
-        )
+        # One width for the pair: a slave is not addressed on an 11-bit id
+        # and answered on a 29-bit one, so either being 29-bit says both are.
+        extended = is_extended(self.cmd_id.text()) or is_extended(self.res_id.text())
+        self.manager.set_ids(int(self.cmd_id.text(), 16), int(self.res_id.text(), 16), extended)
         self.manager.set_station(int(self.station.text().strip() or "0", 16))
         self.ctx.settings.set(
             "xcp.config",
             {
                 "cmd_id": self.cmd_id.text(),
                 "res_id": self.res_id.text(),
-                "ext": self.ext.isChecked(),
+                # Kept, for a pycangui from before the box went.
+                "ext": extended,
+                "from_a2l": self.from_a2l.isChecked(),
                 "station": self.station.text(),
             },
         )
@@ -417,6 +503,7 @@ class XcpView(QWidget):
         self._updating = True
         self.tree.clear()
         self._items.clear()
+        self._last.clear()
         a2l = self.manager.a2l
         if a2l is not None:
             grey = self.palette().brush(QPalette.Disabled, QPalette.Text)
@@ -499,11 +586,38 @@ class XcpView(QWidget):
             return
         name = item.data(0, ROLE_NAME)
         if column == 3:
-            self.manager.write(name, item.text(3))
+            if not self._within_limits_or_meant(name, item.text(3)):
+                self._updating = True
+                item.setText(3, self._last.get(name, ""))  # as it was: nothing was written
+                self._updating = False
+                return
+            self.manager.write(name, item.text(3), beyond_limits=True)
         elif column == 5:
             self.manager.set_polled(name, item.checkState(5) == Qt.Checked)
             if self.plotted_only.isChecked():
                 self._apply_filter()  # unticking one while showing only those
+
+    def _within_limits_or_meant(self, name: str, text: str) -> bool:
+        """Whether to go ahead with a write: it is inside the limits, or was agreed to.
+
+        Asked every time and never remembered. The limits are the one thing
+        in the file that says what the controller is meant to be given, and
+        the next value outside them is a different mistake from this one.
+        """
+        outside = self.manager.beyond_limits(name, text)
+        if outside is None:
+            return True
+        value, lower, upper = outside
+        param = self.manager.a2l.find(name)
+        unit = f" {param.unit}" if param is not None and param.unit else ""
+        answer = messages.question(
+            self,
+            LIMITS_TITLE,
+            LIMITS_TEXT.format(name=name, lower=lower, upper=upper, unit=unit, value=value),
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return answer == QMessageBox.Yes
 
     def _read_selected(self) -> None:
         for item in self.tree.selectedItems():
@@ -516,6 +630,7 @@ class XcpView(QWidget):
             self._updating = True
             item.setText(3, self.manager.shown(name, value))
             self._updating = False
+        self._last[name] = self.manager.shown(name, value)
 
     @Slot(str)
     def _append(self, text: str) -> None:

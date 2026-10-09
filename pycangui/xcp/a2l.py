@@ -70,10 +70,14 @@ BYTE_ORDERS = {
     "LITTLE_ENDIAN": False,
 }
 
-#: The most values in one array that are read. Each is a read of its own, so
+#: The most values of one array read in one go. Each is a read of its own, so
 #: a table of thousands is minutes on a CAN bus and not something to start by
-#: double-clicking a row.
-MOST_ELEMENTS = 1024
+#: double-clicking a row. A bigger array is still opened, and its values read
+#: one at a time.
+MOST_AT_ONCE = 1024
+
+#: The most values an array may have and still be opened into a row for each.
+MOST_ELEMENTS = 4096
 
 #: A record layout with one of these in it holds more than the values: axis
 #: points, counts, addresses. Where the values then start is worked out from
@@ -591,7 +595,9 @@ def _sized(parameter: Parameter, dimensions: list[int], by_column: bool) -> None
     if count <= 1:
         return
     if count > MOST_ELEMENTS:
-        parameter.unreadable = f"it is {count} values, and up to {MOST_ELEMENTS} are read"
+        parameter.unreadable = (
+            f"it is {count} values, and an array of up to {MOST_ELEMENTS} is what is opened"
+        )
         return
     more_than_one = [size for size in dimensions if size > 1]
     parameter.count = count
