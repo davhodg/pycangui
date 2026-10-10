@@ -2,9 +2,18 @@
 
 # CANopen DCF compare
 
-A [plugin](plugins.md) that ships with pycangui. *Plugins > Supplied with
-pycangui* installs it, as does *Plugins > Manage plugins...*; until then it is
-not there.
+Opened with **Compare...** in the [CANopen](canopen.md) pane, which puts the
+node or file selected there on the left. It is a window of the CANopen pane's
+own, there while a comparison is wanted: not a pane, so it is not in the View
+menu and takes no part in the arrangement that is saved. The CANopen pane
+stays usable beside it, to look something up with the differences still in
+front of you. Closing it puts it away; *Compare...* brings the same one back,
+with the comparison still in it, and what its two sides were set to is
+remembered from one day to the next.
+
+It was a plugin until pycangui 0.2. A copy of that plugin left in a workspace
+is no longer run, and *Plugins > Manage plugins...* lists it as switched off,
+saying so; it can be removed there.
 
 Each side is a **DCF or EDS file**, or a **node on the bus**. Pick two, press
 *Compare*, and what comes back is the objects they disagree about.

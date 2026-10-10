@@ -24,7 +24,7 @@ A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, X
 - **Adapters**: every interface python-can supports -- PEAK PCAN, Vector, Kvaser, IXXAT, ETAS, Intrepid neoVI, NI-CAN and NI-XNET, SYS TEC, Neousys, CANalyst-II, CANtact, candleLight and other gs_usb devices, SLCAN (CANable, Lawicel), 8devices USB2CAN, Seeed Studio, Robotell, isCAN and serial adapters; SocketCAN and socketcand on Linux; UDP multicast between computers; and a virtual bus that needs no hardware at all.
 - **Live trace** of every connected channel on one clock, CAN FD included, with filtering that hides rather than discards, recording to six log formats, and replay of a log onto a bus.
 - **Transmit** raw frames, DBC messages edited by signal, or a CANopen RPDO.
-- **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save and apply.
+- **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save, apply and compare.
 - **Custom panes**: the CANopen objects a job needs, laid out as a form with labels and units. Built from the object dictionary with no code, and polled into Signals and Plot.
 - **UDS** over ISO-TP: sessions, security access, DIDs, DTCs, routines, and firmware transfer in either direction.
 - **J1939**: nodes from address claims, DM1 faults with lamp status and the failure mode in words, multi-packet messages (TP.BAM and TP.CM), requesting and sending PGNs, and SPNs decoded from a J1939 DBC.
@@ -32,7 +32,7 @@ A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, X
 - **ASCII Log**: reads any CAN identifier as text, for devices that print a console into the data bytes.
 - **Signals and Plot** from DBC decode, CANopen TPDOs or XCP and CCP polling, and out to CSV for whatever you analyse with.
 - **Python** hooks with hot reload, replaceable components (your own CAN interface, ISO-TP transport, or XCP or CCP engine), a live console and *Run script*.
-- **Plugins** that add a pane of their own, installed from a zip. Three come with pycangui: CANopen firmware download (CiA 302-3), DCF compare, and CiA 402 motor control.
+- **Plugins** that add a pane of their own, installed from a zip. Two come with pycangui: CANopen firmware download (CiA 302-3) and CiA 402 motor control.
 - **Simulated nodes**: devices written as Python files, on a virtual bus or standing on a real adapter, and gateways between channels.
 - **Workspaces**: one per product, holding its hooks, EDS files, databases, channels and layout, and exported as one zip.
 

@@ -124,7 +124,6 @@ Supplied rather than installed: *Plugins > Supplied with pycangui* and
 none of it is meant to run. Each has a page of its own:
 
 - [CANopen firmware (CiA 302-3)](firmware.md) --- downloading a program to a CANopen node
-- [CANopen DCF compare](compare.md) --- two configurations side by side
 - [CANopen motor control (CiA 402)](cia402.md) --- driving a motor controller
 
 pycangui's own plugins are packaged, installed and loaded exactly the way one

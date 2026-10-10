@@ -268,7 +268,7 @@ object is decoded, and sent in an RPDO, as the bits the mapping gives it, signed
 if its type is. **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
-node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is the [CANopen DCF compare](compare.md) plugin.
+node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is **Compare...**, beside them: it opens the [CANopen DCF compare](compare.md) window with the node or file selected on the left.
 
 ### Emergencies: what arrived, and what is still wrong
 

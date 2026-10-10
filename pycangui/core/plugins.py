@@ -69,6 +69,16 @@ ENTRY = "plugin.py"
 #: only way to know which of ours it started life as is for it to say.
 NO_VERSION = "0"
 
+#: Plugins that came with pycangui once and are part of it now, and what to
+#: say about a copy still sitting in a workspace. It is not loaded: see
+#: ``Plugins._note_built_in``.
+NOW_BUILT_IN = {
+    "dcf_compare": (
+        "Part of pycangui now: Compare... in the CANopen pane. This copy is not used "
+        "and can be removed."
+    ),
+}
+
 #: Every plugin is imported as a module under this one, so that two plugins
 #: each carrying a ``drive.py`` get one each rather than one between them.
 PACKAGE = "pycangui_plugins"
@@ -247,13 +257,33 @@ class Plugins:
         sys.dont_write_bytecode = True  # keep __pycache__ out of the user's folders
         try:
             for name, entry in self.found().items():
-                if self.is_active(name):
+                if name in NOW_BUILT_IN:
+                    self._note_built_in(name, entry)
+                elif self.is_active(name):
                     self._load_one(name, entry)
                 else:
                     self._note_inactive(name, entry)
         finally:
             sys.dont_write_bytecode = saved
         self._report()
+
+    def _note_built_in(self, name: str, entry: Path) -> None:
+        """List a plugin that pycangui now does itself, and run none of it.
+
+        Loading it as well would put the same pane on screen twice, under
+        two names, with the older code behind one of them. It is listed as
+        switched off, saying why, so that the folder is seen to be there
+        and can be removed; nothing deletes somebody's files for them.
+        """
+        info = describe(entry)
+        self.loaded[name] = Loaded(
+            name=name,
+            path=entry,
+            title=info.title,
+            description=NOW_BUILT_IN[name],
+            version=info.version,
+            active=False,
+        )
 
     def _note_inactive(self, name: str, entry: Path) -> None:
         """List a switched-off plugin without running a line of it."""

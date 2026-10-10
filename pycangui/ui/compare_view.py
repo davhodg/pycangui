@@ -22,12 +22,16 @@ is the [Apply DCF] button in the CANopen pane, deliberately, because "write
 these seventeen selected differences into the device in front of me" is a
 bigger thing than this pane and deserves its own question.
 
-A plugin rather than part of the tool, on the same line the other two are
-drawn along: pycangui's own job is speaking CANopen -- reading an object,
-writing one, capturing a dictionary into a DCF and putting one back. What
-somebody then *does* with two captured configurations is a workflow built on
-top of that, and workflows are what plugins are for. Uninstall it and the
-CANopen pane is exactly as it was.
+Part of pycangui, and opened from the CANopen pane's *Compare...*, which
+starts it with the node or file selected there on the left. It is a window
+of that pane's -- there while a comparison is wanted, and not a pane of its
+own to be found in a menu and arranged. It was a plugin
+to begin with, on the argument that comparing is a workflow built on
+CANopen rather than part of speaking it. The argument was sound and the
+result was wrong: a commissioning tool that can save a DCF and apply one
+and has nothing to say about what is in between is missing the part people
+look for first, and a plugin somebody has to know to install is one they
+do not find.
 """
 
 from __future__ import annotations
@@ -37,6 +41,7 @@ from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -50,16 +55,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.canopen import compare as comparison
 from pycangui.ui import folders
-
-# Relative, so that the copy of compare.py beside *this* file is the one
-# that runs: an installed plugin naming it absolutely would reach back into
-# the one pycangui ships, and editing your own would do nothing.
-from . import compare as comparison
 
 #: What a side can be. Kept as text because it is what the combo box holds
 #: and what gets written into the settings.
 FILE, NODE = "File", "Node"
+
+#: What its settings are kept under, its title, and what its one pane was
+#: called while it was a plugin.
+KIND = "compare"
+TITLE = "CANopen DCF compare"
+WAS_PLUGIN_PANE = "dcf_compare:main"
+
+#: How big the window opens: two pickers and a table want width.
+WINDOW_SIZE = (980, 620)
 
 EDS_FILTER = "Device files (*.dcf *.eds);;All files (*)"
 
@@ -172,6 +182,31 @@ class Side(QWidget):
             at = self.node.findData(node_id)
             if at >= 0:
                 self.node.setCurrentIndex(at)
+
+
+class CompareWindow(QDialog):
+    """The compare view in a window of the CANopen pane's.
+
+    Not modal: a comparison against a node reads the node while it is up,
+    and somebody will want to look something up in the object dictionary
+    with the differences still in front of them. Closing it puts it away
+    and keeps it, so that opening it again shows the comparison still there.
+    """
+
+    def __init__(self, canopen_manager, ctx, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(TITLE)
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self.resize(*WINDOW_SIZE)
+        self.view = CompareView(canopen_manager, ctx)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.view)
+
+    def closeEvent(self, event) -> None:
+        self.view.save()  # what the two sides were, for next time
+        super().closeEvent(event)
 
 
 class CompareView(QWidget):
@@ -441,8 +476,23 @@ class CompareView(QWidget):
             },
         )
 
+    def start_with(self, node_id: int | None = None, path: str = "") -> None:
+        """Put a node or a file on the left, as whoever asked to compare it means.
+
+        The right is left as it was: what to compare it *against* is the
+        question the pane is there to ask.
+        """
+        self.fill_nodes()
+        if path:
+            self.left.restore({"kind": FILE, "path": path})
+        elif node_id is not None:
+            self.left.restore({"kind": NODE, "node": node_id})
+
     def restore(self) -> None:
-        stored = self.ctx.settings.get(f"compare.{self.key}", {})
+        stored = self.ctx.settings.get(f"compare.{self.key}")
+        if stored is None and self.key == KIND:
+            # What the plugin's one pane was set to, for a workspace that had it.
+            stored = self.ctx.settings.get(f"compare.{WAS_PLUGIN_PANE}", {})
         if not isinstance(stored, dict):
             return
         self.left.restore(stored.get("left", {}))
@@ -450,25 +500,3 @@ class CompareView(QWidget):
         self.differences_only.setChecked(bool(stored.get("differences_only", True)))
         at = self.access.findData(bool(stored.get("writable_only", False)))
         self.access.setCurrentIndex(max(at, 0))
-
-
-API_VERSION = 1
-NAME = "CANopen DCF compare"
-VERSION = "1.2"
-DESCRIPTION = "Two CANopen configurations side by side: file, device or EDS."
-
-
-def register(app) -> None:
-    """Several, because comparing is one question at a time.
-
-    The unit that fails against the one beside it, and the file it was built
-    from against the file it shipped with, are two comparisons somebody wants
-    open together rather than one they keep re-entering.
-    """
-    app.add_pane(
-        "main",
-        "CANopen DCF compare",
-        lambda name: CompareView(app.canopen, app.ctx, key=name),
-        area="right",
-        several=True,
-    )

@@ -70,6 +70,7 @@ from pycangui.custom_panes.source import FileSource
 from pycangui.ui import canopen_login, canopen_settings, folders, keep_file, messages
 from pycangui.ui.canopen_log_view import CanopenLogView
 from pycangui.ui.column_widths import ColumnWidths
+from pycangui.ui.compare_view import CompareView, CompareWindow
 from pycangui.ui.edit_columns import EditColumns
 from pycangui.ui.faults_view import FaultsView
 from pycangui.ui.lss_view import LssView
@@ -153,6 +154,11 @@ SYNC_TIP = (
     "than a decision to take every time this is pressed."
 )
 CLOSE_FILE_TIP = "Take the file out of the list; asks first if it has changes not saved."
+COMPARE_TIP = (
+    "Compare two configurations side by side: a DCF or EDS file, or a node on\n"
+    "the bus, against another. Opens with the node or file selected here on\n"
+    "the left. Nothing is written."
+)
 REMOVE_NODE_TIP = (
     "Take the selected node out of the list: one added at the wrong id, or\n"
     "unplugged for good. A node still on the bus comes back with its next\n"
@@ -196,6 +202,8 @@ class CanopenView(QWidget):
         self.hooks = hooks
         self.ctx = ctx
         self._identities: dict[int, NodeIdentity] = {}
+        #: The compare window, once it has been asked for. See ``compare``.
+        self._compare_window: CompareWindow | None = None
         self._asked: set[str] = set()  # identity keys we already prompted for
         #: Which node the object tree currently holds. Not the node-list
         #: selection: the rows belong to whoever they were filled for, and
@@ -352,6 +360,9 @@ class CanopenView(QWidget):
         apply_dcf = QPushButton("Apply DCF...")
         apply_dcf.setToolTip("Write the parameter values from a .dcf file into the node")
         apply_dcf.clicked.connect(self._apply_dcf)
+        self.compare_btn = QPushButton("Compare...")
+        self.compare_btn.setToolTip(COMPARE_TIP)
+        self.compare_btn.clicked.connect(lambda: self.compare())
         self.read_pdos_btn = QPushButton("Read PDO config")
         self.read_pdos_btn.setToolTip(
             "Read the selected node's PDO mapping, both directions, from the\n"
@@ -378,6 +389,8 @@ class CanopenView(QWidget):
         for b in self._file_buttons:
             file_bar.addWidget(b)
             b.hide()
+        # For a node and for a file alike, so with neither set of buttons.
+        file_bar.addWidget(self.compare_btn)
         file_bar.addStretch()
         self._offer_node_buttons()
 
@@ -581,6 +594,28 @@ class CanopenView(QWidget):
             if item.data(0, ROLE_INDEX) == node_id:
                 return item
         return None
+
+    def compare(self) -> CompareView:
+        """Open the compare window with what is selected here on its left.
+
+        A window of this pane's own, there while it is wanted: not a pane, so
+        not in the View menu and not part of the arrangement that is saved.
+        The one there is comes to the front again; what its two sides were
+        set to is remembered between times. With nothing selected it opens
+        all the same: both sides can be chosen there, and two files need no
+        node at all.
+        """
+        if self._compare_window is None:
+            self._compare_window = CompareWindow(self.manager, self.ctx, self)
+        source = self.selected_file()
+        self._compare_window.view.start_with(
+            None if source is not None else self.selected_node(),
+            str(source.path) if source is not None else "",
+        )
+        self._compare_window.show()
+        self._compare_window.raise_()
+        self._compare_window.activateWindow()
+        return self._compare_window.view
 
     def selected_node(self) -> int | None:
         item = self.nodes.currentItem()

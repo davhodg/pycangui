@@ -14,6 +14,7 @@
 - [Event Log](event-log.md) --- everything the tool says, and at what level
 - [ASCII Log](ascii-log.md) --- reading messages from a single CAN-ID as text
 - [CANopen](canopen.md) --- object dictionary, PDO configuration, EMCY, DCF, LSS
+- [CANopen DCF compare](compare.md) --- two configurations side by side: files or nodes
 - [UDS](uds.md) --- sessions, DIDs, DTCs, routines and firmware transfer over ISO-TP
 - [J1939](j1939.md) --- address claims, DM1 faults, multi-packet messages
 - [XCP / CCP](xcp.md) --- measurements and characteristics from an A2L, in either protocol
@@ -30,7 +31,6 @@
 - [Hooks](hooks.md) --- customisable Python functions to support any device
 - [Plugins](plugins.md) --- code that adds a pane of its own, installed from a file
 - [CANopen firmware (CiA 302-3)](firmware.md) --- a plugin: downloading a program to a CANopen node
-- [CANopen DCF compare](compare.md) --- a plugin: two configurations side by side
 - [CANopen motor control (CiA 402)](cia402.md) --- a plugin: driving a motor controller
 - [Replaceable components](components.md) --- your own CAN interface, transport or engine for testing
 
