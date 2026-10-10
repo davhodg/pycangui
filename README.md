@@ -164,6 +164,8 @@ Linux), and no way of uninstalling touches them; delete that folder to remove th
 
 See [CONTRIBUTING.md](CONTRIBUTING.md): the policy for changes, setting up to work on pycangui, running the tests, and building the Windows installer. Everyone taking part is asked to follow the [code of conduct](CODE_OF_CONDUCT.md).
 
+What is aimed for with a keyboard, a screen reader, large text and high contrast, what has been checked, and how to report a barrier, is in [ACCESSIBILITY.md](ACCESSIBILITY.md).
+
 ## Safety notice
 
 pycangui talks to real equipment. It is intended only for people trained and experienced in working with CAN networks and the equipment connected to them.

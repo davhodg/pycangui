@@ -19,7 +19,7 @@ def read(name: str) -> str:
 
 
 def test_each_form_has_what_github_needs():
-    for name in ("bug_report.yml", "feature_request.yml"):
+    for name in ("bug_report.yml", "feature_request.yml", "accessibility.yml"):
         text = read(name)
         assert text.startswith("name: "), name
         assert "\ndescription: " in text and "\nbody:\n" in text, name
@@ -28,6 +28,12 @@ def test_each_form_has_what_github_needs():
 def test_security_reports_go_where_the_policy_sends_them():
     assert SECURITY_FORM in read("config.yml")
     assert SECURITY_FORM in (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+
+
+def test_the_accessibility_form_and_its_policy_point_at_each_other():
+    policy = (ROOT / "ACCESSIBILITY.md").read_text(encoding="utf-8")
+    assert "issues/new?template=accessibility.yml" in policy
+    assert "blob/master/ACCESSIBILITY.md" in read("accessibility.yml")
 
 
 def test_the_manual_link_is_the_manual():

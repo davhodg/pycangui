@@ -12,6 +12,9 @@
 - [ ] A line in `pycangui/help/changelog.md` under *Unreleased*, if a user would notice it
 - [ ] The help page is updated, if the behaviour it describes changed
 - [ ] Anything that can disturb equipment asks first, through pycangui's confirmations
+- [ ] A change to what is on screen keeps to [ACCESSIBILITY.md](../ACCESSIBILITY.md): no font
+      or pixel size written into a pane, colour never the only signal, every new control
+      reachable by keyboard and named; tried with large text and with the keyboard alone
 - [ ] Any new dependency is explained here and is not GPL-only
 - [ ] No proprietary material: no company DBC, EDS, A2L or log files, identifiers or code
 

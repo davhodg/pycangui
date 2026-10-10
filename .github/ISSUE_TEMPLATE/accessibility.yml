@@ -1,0 +1,61 @@
+name: Accessibility barrier
+description: Something in pycangui that is hard or impossible to use with a keyboard, a screen reader, large text or a high contrast theme.
+labels: ["accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Nobody is asked about a disability here, and you do not need to say why you work the way you do. What has and has not been checked is in [ACCESSIBILITY.md](https://github.com/davhodg/pycangui/blob/master/ACCESSIBILITY.md).
+
+  - type: textarea
+    id: task
+    attributes:
+      label: What you were trying to do
+      placeholder: Read a node's access level in the CANopen pane, using the keyboard only.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What got in the way, and where in the window.
+      placeholder: Tab goes from the node list to the object dictionary and never reaches the Access menu.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: How far it stops you
+      description: Leave it out if you are not sure; it is settled when the report is read.
+      options:
+        - Critical -- it cannot be done at all
+        - Serious -- it can be done, with difficulty or by a way round
+        - Moderate -- it is harder than it should be
+        - Minor -- it is a nuisance
+
+  - type: input
+    id: system
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, Ubuntu 24.04, macOS 15
+
+  - type: textarea
+    id: using
+    attributes:
+      label: What you were using
+      description: Whichever of these matter -- the text size or display scaling, the theme (light, dark, high contrast), and any assistive technology with its version (Narrator, NVDA, JAWS, Orca, VoiceOver, a screen magnifier, voice control).
+      placeholder: Text size 175 %, display scaling 150 %, NVDA 2025.1.
+
+  - type: input
+    id: version
+    attributes:
+      label: pycangui version
+      description: From Help > About pycangui.
+
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: A screenshot or a recording helps and is not required.
