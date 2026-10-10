@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressDialog,
     QPushButton,
-    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -31,6 +30,7 @@ from pycangui.core import workspace_files
 from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.ui import folders, fonts, keep_file, messages, seedkey_view
+from pycangui.ui.buttons import SplitButton
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
@@ -310,19 +310,12 @@ class XcpView(QWidget):
         # two parts. Pressing it unlocks, which is what is done every time;
         # the arrow beside it has the DLL, which is chosen once and was the
         # widest thing on the row.
-        self.unlock_btn = QToolButton()
-        self.unlock_btn.setText("Unlock CAL")
-        self.unlock_btn.setPopupMode(QToolButton.MenuButtonPopup)
-        self.unlock_btn.setToolTip(UNLOCK_TIP)
-        self.unlock_btn.clicked.connect(lambda: self.manager.unlock(RESOURCE_CAL))
-        unlock_menu = QMenu(self.unlock_btn)
-        unlock_menu.setToolTipsVisible(True)
-        seed_key = unlock_menu.addAction("Seed and key DLL...")
-        seed_key.setToolTip(SEED_KEY_TIP)
-        seed_key.triggered.connect(lambda _checked=False: seedkey_view.ask(self.ctx, self))
-        self.unlock_btn.setMenu(unlock_menu)
-        # As tall as the button beside it: a tool button is drawn shorter.
-        self.unlock_btn.setMinimumHeight(self.connect_btn.sizeHint().height())
+        self.unlock_btn = SplitButton(
+            "Unlock CAL", UNLOCK_TIP, lambda: self.manager.unlock(RESOURCE_CAL)
+        )
+        self.unlock_btn.add(
+            "Seed and key DLL...", SEED_KEY_TIP, lambda: seedkey_view.ask(self.ctx, self)
+        )
         self.engine_box = QComboBox()
         self.engine_box.setToolTip(ENGINE_TIP)
         for spec in _specs("xcp"):

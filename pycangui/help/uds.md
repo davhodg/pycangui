@@ -316,7 +316,7 @@ shipping one as a Windows DLL, and pycangui calls whichever the DLL exports:
 | `ASAP1A_CCP_ComputeKeyFromSeed` -- from the CCP specification | | | 1st |
 
 So a maker who has written a seed and key DLL for another tool has already
-written the one pycangui needs. **Seed and key DLL...**, on the row under Unlock, is where
+written the one pycangui needs. **Seed and key DLL...**, under the arrow of the Unlock button, is where
 it is named, and its **Check the DLL** says which function each protocol will
 use.
 

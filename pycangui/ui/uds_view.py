@@ -72,6 +72,7 @@ from pycangui.uds.manager import (
 )
 from pycangui.uds.standard import MAX_SECURITY_LEVEL, security_pair, seed_subfunction
 from pycangui.ui import folders, fonts, seedkey_view, uds_sequence
+from pycangui.ui.buttons import SplitButton
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.field_widgets import PENDING
 from pycangui.ui.persist import remember
@@ -544,18 +545,20 @@ class UdsView(QWidget):
         # After the pair is connected, so a restored level shows its bytes.
         remember(ctx, "uds.security.level", self.level)
         h.addWidget(self.level_pair)
-        unlock = QPushButton("Unlock")
-        unlock.setToolTip(
+        # Pressed, it unlocks; the DLL the key comes from is chosen once, and
+        # is under its arrow. As in the XCP pane, which has the same pair.
+        self.unlock_btn = SplitButton(
+            "Unlock",
             "SecurityAccess (0x27): ask for a seed and answer it with a key.\n"
             "There is no standard algorithm. The key comes from\n"
             "hooks/uds.py::security_key, and where that returns None, from\n"
-            "the seed and key DLL beside this button."
+            "the seed and key DLL chosen under the arrow.",
+            lambda: self.manager.unlock(self.level.value()),
         )
-        unlock.clicked.connect(lambda: self.manager.unlock(self.level.value()))
-        h.addWidget(unlock)
-        seed_key = QPushButton("Seed and key DLL...")
-        seed_key.setToolTip(SEED_KEY_TIP)
-        seed_key.clicked.connect(lambda: seedkey_view.ask(self.ctx, self))
+        self.unlock_btn.add(
+            "Seed and key DLL...", SEED_KEY_TIP, lambda: seedkey_view.ask(self.ctx, self)
+        )
+        h.addWidget(self.unlock_btn)
         self.tp = QCheckBox("Tester present")
         self.tp.setToolTip(
             "Send TesterPresent (0x3E) every couple of seconds -- to every ECU,\n"
@@ -573,11 +576,7 @@ class UdsView(QWidget):
         self.p2.valueChanged.connect(lambda _v: self._timing_changed())
         self.p2_star.valueChanged.connect(lambda _v: self._timing_changed())
         sess_rows.addLayout(
-            # The DLL is chosen once, so it is down here with what is set and
-            # left: beside Unlock it made this the widest row of the pane.
-            _row(
-                self.tp, 12, "Timing", self.timing, "P2", self.p2, "P2*", self.p2_star, 12, seed_key
-            )
+            _row(self.tp, 12, "Timing", self.timing, "P2", self.p2, "P2*", self.p2_star)
         )
         self.manager.set_timing(cfg.timing, cfg.p2_timeout_s, cfg.p2_star_timeout_s)
 
