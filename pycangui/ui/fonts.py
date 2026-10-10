@@ -55,6 +55,17 @@ def text_height() -> int:
     return QFontMetrics(QApplication.font()).height()
 
 
+def width_with_arrows(widget: QWidget, text: str) -> int:
+    """How wide a spin box or a drop-down has to be to show this much.
+
+    The text, and then the arrows beside it, which are about as wide as
+    the box is tall -- twice that, to be sure of a spin box's pair. What
+    such a box says it needs is less than this in some styles once the
+    text is large, and a row then gives it less than its own contents.
+    """
+    return width_for(widget, text) + 2 * widget.sizeHint().height()
+
+
 def width_for(widget: QWidget, text: str) -> int:
     """How wide a box has to be to show this much, in the widget's own font.
 

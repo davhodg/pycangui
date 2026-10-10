@@ -102,6 +102,9 @@ class J1939View(QWidget):
         )
         remember(ctx, "j1939.request_pgn", self.req_pgn)
         self.req_dest = _picker(((GLOBAL, "Global"),), 2)
+        self.req_dest.setMinimumWidth(
+            fonts.width_with_arrows(self.req_dest.lineEdit(), self.req_dest.itemText(0))
+        )
         self.req_dest.setToolTip("Who to ask: every node, or one of those seen")
         req_btn = QPushButton("Request")
         req_btn.setToolTip("Ask for the PGN on the left (a Request, PGN 59904)")
@@ -118,6 +121,13 @@ class J1939View(QWidget):
         self.send_prio.setValue(6)
         self.send_data = QLineEdit("01 02 03 04 05 06 07 08")
         self.send_data.setFont(mono)
+        # Never narrower than what they hold. A row gives a box as little as
+        # it says it can live with, and these say less than their contents:
+        # with large text the address read "0x(" and the first data byte
+        # was off the left of its box.
+        self.send_data.setMinimumWidth(fonts.width_for(self.send_data, "FF FF FF FF FF FF FF FF"))
+        self.address.setMinimumWidth(fonts.width_with_arrows(self.address, "0xFD"))
+        self.send_prio.setMinimumWidth(fonts.width_with_arrows(self.send_prio, "7"))
         send_btn = QPushButton("Send PGN")
         send_btn.clicked.connect(self._send)
 
