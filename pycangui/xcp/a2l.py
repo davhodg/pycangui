@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from itertools import product
 from pathlib import Path
@@ -254,6 +255,21 @@ class XcpOnCan:
     bitrate: int | None = None
 
 
+#: Told how far a read has got, from 0 to 1. A big file is seconds of work,
+#: and whoever asked for it can show that it is going on. It may raise, to
+#: stop the read: nothing here catches it, and nothing has been kept by then.
+Progress = Callable[[float], None]
+
+#: How often it is told: every so many words of the file, and every so many
+#: of its measurements and characteristics.
+WORDS_A_REPORT = 20_000
+BLOCKS_A_REPORT = 1_000
+
+#: How much of the time each part takes, as measured on an 18 MB file:
+#: splitting the text into words, and nesting them, against reading the blocks.
+WORDS_SHARE, NESTED_SHARE = 0.5, 0.6
+
+
 class A2l:
     def __init__(self) -> None:
         self.parameters: dict[str, Parameter] = {}
@@ -277,17 +293,22 @@ class A2l:
         self.path = ""
 
     @classmethod
-    def parse(cls, text: str, folder: Path | None = None) -> A2l:
+    def parse(cls, text: str, folder: Path | None = None, progress: Progress | None = None) -> A2l:
         a2l = cls()
-        tree = _tree(_tokens(text, folder))
+        tree = _tree(_tokens(text, folder, progress=progress))
         modules = _all(tree, "MODULE") or [tree]  # a fragment with no MODULE round it
-        for module in modules:
-            a2l._read_module(module)
+        for number, module in enumerate(modules):
+
+            def of_this_module(part: float, number: int = number) -> None:
+                share = (number + part) / len(modules)
+                progress(NESTED_SHARE + (1 - NESTED_SHARE) * share)
+
+            a2l._read_module(module, of_this_module if progress else None)
         return a2l
 
     @classmethod
-    def load(cls, path: str) -> A2l:
-        a2l = cls.parse(_read(Path(path)), Path(path).parent)
+    def load(cls, path: str, progress: Progress | None = None) -> A2l:
+        a2l = cls.parse(_read(Path(path)), Path(path).parent, progress)
         a2l.path = str(path)
         return a2l
 
@@ -357,7 +378,7 @@ class A2l:
         return [p for p in self.parameters.values() if not p.readable]
 
     # --- one module ---------------------------------------------------------------------
-    def _read_module(self, module: _Block) -> None:
+    def _read_module(self, module: _Block, progress: Progress | None = None) -> None:
         for common in module.blocks("MOD_COMMON"):
             if (order := common.after("BYTE_ORDER")) and order[0] in BYTE_ORDERS:
                 self.big_endian = BYTE_ORDERS[order[0]]
@@ -383,11 +404,14 @@ class A2l:
                     self._only_values.add(fields[0])
                 if (how := block.after("FNC_VALUES", 3)) and how[2] == "COLUMN_DIR":
                     self._by_column.add(fields[0])
-        for block in module.blocks("MEASUREMENT"):
-            if (parameter := self._measurement(block)) is not None:
-                self.parameters[parameter.name] = parameter
-        for block in module.blocks("CHARACTERISTIC"):
-            if (parameter := self._characteristic(block)) is not None:
+        measurements = module.blocks("MEASUREMENT")
+        characteristics = module.blocks("CHARACTERISTIC")
+        readers = [(self._measurement, block) for block in measurements]
+        readers += [(self._characteristic, block) for block in characteristics]
+        for done, (read, block) in enumerate(readers):
+            if progress is not None and not done % BLOCKS_A_REPORT:
+                progress(done / len(readers))
+            if (parameter := read(block)) is not None:
                 self.parameters[parameter.name] = parameter
         if self.xcp_on_can is None:
             self.xcp_on_can = _xcp_on_can(module)
@@ -656,11 +680,19 @@ def _read(path: Path) -> str:
         return data.decode("latin-1")
 
 
-def _tokens(text: str, folder: Path | None, depth: int = 0) -> list[str]:
-    """The words and strings of a file, with the files it includes in place."""
+def _tokens(
+    text: str, folder: Path | None, depth: int = 0, progress: Progress | None = None
+) -> list[str]:
+    """The words and strings of a file, with the files it includes in place.
+
+    How far it has got is how far through the file's own text: what it
+    includes is read in between and not counted.
+    """
     found: list[str] = []
     including = False
-    for match in _TOKEN.finditer(text):
+    for count, match in enumerate(_TOKEN.finditer(text)):
+        if progress is not None and not count % WORDS_A_REPORT:
+            progress(WORDS_SHARE * match.start() / len(text))
         token = match.group(0)
         if token.startswith(("/*", "//")):
             continue

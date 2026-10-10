@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
+    QProgressDialog,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -33,6 +34,66 @@ from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
 ROLE_NAME = Qt.UserRole
+
+#: A big A2L takes seconds to read and longer to list. Nothing is shown for
+#: one that is done inside this long, which is nearly all of them.
+PROGRESS_AFTER_MS = 500
+PROGRESS_STEPS = 1000
+#: How much of the time is the reading, the rest being the listing: as
+#: measured on an 18 MB file with 44,000 parameters.
+READING_SHARE = 0.3
+#: How many rows are listed between one report and the next.
+ROWS_A_REPORT = 500
+
+
+class _CancelledError(Exception):
+    """Cancel was pressed while an A2L was being read."""
+
+
+class _LoadProgress:
+    """A box that says an A2L is being loaded, for one that takes a while.
+
+    The loading is done on the window's own thread, so the box is what lets
+    the window repaint while it goes on: each report is a moment in which it
+    can. Modal for the same reason -- a window that repaints is one that
+    takes clicks, and Load pressed again half way through a load is not
+    something to find out about.
+
+    Cancel is for the reading. Once the file is read it is the one in use,
+    and the listing of it is carried through.
+    """
+
+    def __init__(self, parent: QWidget, name: str) -> None:
+        self.box = QProgressDialog(f"Reading {name}...", "Cancel", 0, PROGRESS_STEPS, parent)
+        self.box.setWindowTitle("Load A2L")
+        self.box.setWindowModality(Qt.ApplicationModal)
+        self.box.setMinimumDuration(PROGRESS_AFTER_MS)
+        # Not closed by reaching the end: the end is said by done().
+        self.box.setAutoClose(False)
+        self.box.setAutoReset(False)
+        self._name = name
+        self._listing = False
+        self.box.setValue(0)
+
+    def reading(self, part: float) -> None:
+        self.box.setValue(int(part * READING_SHARE * PROGRESS_STEPS))
+        if self.box.wasCanceled():
+            raise _CancelledError
+
+    def listing(self, part: float) -> None:
+        if not self._listing:
+            self._listing = True
+            self.box.setCancelButton(None)
+            self.box.setLabelText(f"Listing {self._name}...")
+        share = READING_SHARE + part * (1 - READING_SHARE)
+        self.box.setValue(int(share * PROGRESS_STEPS))
+
+    def done(self) -> None:
+        self.box.reset()
+        self.box.hide()
+        self.box.deleteLater()
+
+
 CONNECT_TIP = (
     "XCP CONNECT to the slave on the identifiers above.\n"
     "This is the XCP session, not the CAN channel."
@@ -286,6 +347,9 @@ class XcpView(QWidget):
         self.tree.itemExpanded.connect(self._fill)
         self.tree.itemChanged.connect(self._on_item_changed)
         self._items: dict[str, QTreeWidgetItem] = {}
+        #: Told how far the listing of an A2L has got, while one is being
+        #: loaded with the box up. See ``load_a2l``.
+        self._listing_progress = None
         #: What each value last read as, to put back when a write is not gone through with.
         self._last: dict[str, str] = {}
         self._updating = False
@@ -461,15 +525,7 @@ class XcpView(QWidget):
         if not path:
             return
 
-        def load(used: str) -> bool:
-            try:
-                self.manager.load_a2l(used)
-            except Exception as exc:  # parser is best-effort
-                self._append(f"A2L load failed: {exc}")
-                return False
-            return True
-
-        value = keep_file.offer_and_load(self, self.ctx, path, workspace_files.A2L, load)
+        value = keep_file.offer_and_load(self, self.ctx, path, workspace_files.A2L, self.load_a2l)
         if value is not None:
             self.ctx.settings.set("xcp.a2l", value)
 
@@ -499,6 +555,26 @@ class XcpView(QWidget):
         self._append("A2L removed")
 
     # --- parameter tree --------------------------------------------------------------
+    def load_a2l(self, path: str) -> bool:
+        """Load an A2L, saying so if it takes a while. False if it was not loaded.
+
+        Cancelled, or not readable, and the A2L there was is still the one in use.
+        """
+        progress = _LoadProgress(self, Path(path).name)
+        self._listing_progress = progress.listing
+        try:
+            self.manager.load_a2l(path, progress.reading)
+        except _CancelledError:
+            self._append("A2L load cancelled")
+            return False
+        except Exception as exc:  # parser is best-effort
+            self._append(f"A2L load failed: {exc}")
+            return False
+        finally:
+            self._listing_progress = None
+            progress.done()
+        return True
+
     def _populate(self) -> None:
         self._updating = True
         self.tree.clear()
@@ -507,7 +583,10 @@ class XcpView(QWidget):
         a2l = self.manager.a2l
         if a2l is not None:
             grey = self.palette().brush(QPalette.Disabled, QPalette.Text)
-            for param in a2l.parameters.values():
+            report, rows = self._listing_progress, len(a2l.parameters)
+            for row, param in enumerate(a2l.parameters.values()):
+                if report is not None and not row % ROWS_A_REPORT:
+                    report(row / rows)
                 item = QTreeWidgetItem([param.name, _kind(param), _type(param), "", param.unit, ""])
                 item.setData(0, ROLE_NAME, param.name)
                 item.setData(0, ROLE_SEARCH, _searchable(param))
@@ -627,9 +706,11 @@ class XcpView(QWidget):
     def _on_value(self, name: str, value: float) -> None:
         item = self._items.get(name)
         if item is not None:
-            self._updating = True
+            # Put back as it was, not to False: a value can arrive while the
+            # list is being filled, which is updating of its own.
+            was_updating, self._updating = self._updating, True
             item.setText(3, self.manager.shown(name, value))
-            self._updating = False
+            self._updating = was_updating
         self._last[name] = self.manager.shown(name, value)
 
     @Slot(str)

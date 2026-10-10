@@ -39,7 +39,9 @@ correct, because slaves in the field are careless with it and refusing a good
 answer over a counter would waste an afternoon.
 
 Set the identifiers, Connect,
-press **Load A2L...** and the MEASUREMENTs and CHARACTERISTICs appear.
+press **Load A2L...** and the MEASUREMENTs and CHARACTERISTICs appear. A file
+big enough to take more than a moment shows how far it has got, and *Cancel*
+while it is being read leaves the A2L there was in use.
 Double-click to read one, edit a characteristic's value to write it (unlock CAL
 first -- the seed-to-key algorithm is
 [`hooks/xcp.py::compute_key`](hooks.md), or the seed and key DLL named

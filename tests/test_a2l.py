@@ -569,3 +569,86 @@ def test_a_big_array_is_opened_and_read_a_value_at_a_time(calibrating, a2l):
     manager.read("Big[1999]")
     settle(2)
     assert values == {"Big[1999]": pytest.approx(1000)}
+
+
+# --- a big file says how far it has got ---------------------------------------------------------
+def many(count: int) -> str:
+    """An A2L with this many measurements: enough for more than one report."""
+    blocks = "".join(
+        f'/begin MEASUREMENT m{n} "" UWORD NO_COMPU_METHOD 0 0 0 65535 '
+        f"ECU_ADDRESS 0x{0x1000 + 2 * n:X} /end MEASUREMENT\n"
+        for n in range(count)
+    )
+    return f'/begin PROJECT p "" /begin MODULE m ""\n{blocks}/end MODULE /end PROJECT\n'
+
+
+def test_reading_says_how_far_it_has_got(tmp_path):
+    from pycangui.xcp import a2l as reader
+
+    path = tmp_path / "many.a2l"
+    path.write_text(many(3 * reader.BLOCKS_A_REPORT), encoding="utf-8")
+    said: list[float] = []
+    read = A2l.load(str(path), said.append)
+    assert len(read.parameters) == 3 * reader.BLOCKS_A_REPORT
+    assert len(said) > 3
+    assert said == sorted(said), "it only goes forward"
+    assert said[0] == 0.0 and said[-1] < 1.0
+
+
+def test_reading_is_the_same_with_nobody_listening(tmp_path):
+    text = many(50)
+    assert (
+        A2l.parse(text).parameters.keys()
+        == A2l.parse(text, progress=lambda _f: None).parameters.keys()
+    )
+
+
+@pytest.fixture
+def pane(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    yield window.panes.view("xcp"), window.xcp, tmp_path
+    window.close()
+
+
+def test_the_pane_loads_a_file_and_leaves_no_box_behind(app, pane):
+    from PySide6.QtWidgets import QProgressDialog
+
+    view, manager, folder = pane
+    path = folder / "many.a2l"
+    path.write_text(many(1200), encoding="utf-8")
+    assert view.load_a2l(str(path)) is True
+    assert len(manager.a2l.parameters) == 1200
+    assert view.tree.topLevelItemCount() == 1200
+    app.processEvents()
+    assert not [box for box in view.findChildren(QProgressDialog) if box.isVisible()]
+    assert view._listing_progress is None
+
+
+def test_cancelling_keeps_the_a2l_there_was(app, pane, monkeypatch):
+    from PySide6.QtWidgets import QProgressDialog
+
+    view, manager, folder = pane
+    first = folder / "first.a2l"
+    first.write_text(many(3), encoding="utf-8")
+    assert view.load_a2l(str(first))
+    before = manager.a2l
+
+    monkeypatch.setattr(QProgressDialog, "wasCanceled", lambda _box: True)
+    second = folder / "second.a2l"
+    second.write_text(many(7), encoding="utf-8")
+    assert view.load_a2l(str(second)) is False
+    assert manager.a2l is before
+    assert view.tree.topLevelItemCount() == 3
+
+
+def test_a_file_that_cannot_be_read_is_not_loaded(app, pane):
+    view, manager, folder = pane
+    before = manager.a2l
+    assert view.load_a2l(str(folder / "not_there.a2l")) is False
+    assert manager.a2l is before

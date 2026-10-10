@@ -214,8 +214,13 @@ class XcpManager(QObject):
         return seedkey.key_for(dll, resource, seed, other, protocol)
 
     # --- A2L -------------------------------------------------------------------------
-    def load_a2l(self, path: str) -> None:
-        self.a2l = A2l.load(path)
+    def load_a2l(self, path: str, progress=None) -> None:
+        """Read an A2L and make it the one in use.
+
+        ``progress`` is told how far the reading has got, 0 to 1, and may
+        raise to stop it: the A2L there was stays the one in use.
+        """
+        self.a2l = A2l.load(path, progress)
         self.a2l_loaded.emit(len(self.a2l.parameters))
         where = workspace_files.shown(path, self._ctx.workspace_dir)
         self.result.emit(
