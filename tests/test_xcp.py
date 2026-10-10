@@ -155,7 +155,7 @@ def test_the_pane_says_which_a2l_and_removes_it(app, tmp_path, monkeypatch):
     assert window.xcp.a2l is None
     assert view.tree.topLevelItemCount() == 0, "the parameters go with it"
     assert window.ctx.settings.get("xcp.a2l", "") == "", "and it stops being remembered"
-    assert not view.remove_a2l_btn.isEnabled(), "nothing left to remove"
+    assert not view.remove_a2l_action.isEnabled(), "nothing left to remove"
     window.close()
 
 

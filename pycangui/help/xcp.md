@@ -39,21 +39,21 @@ correct, because slaves in the field are careless with it and refusing a good
 answer over a counter would waste an afternoon.
 
 Set the identifiers, Connect,
-press **Load A2L...** and the MEASUREMENTs and CHARACTERISTICs appear. A file
+choose **Load...** under the **A2L** button and the MEASUREMENTs and CHARACTERISTICs appear. A file
 big enough to take more than a moment shows how far it has got, and *Cancel*
 while it is being read leaves the A2L there was in use.
 Double-click to read one, edit a characteristic's value to write it (unlock CAL
 first -- the seed-to-key algorithm is
 [`hooks/xcp.py::compute_key`](hooks.md), or the seed and key DLL named
-with **Seed and key DLL...**, which is the same one the [UDS](uds.md) pane
+with **Seed and key DLL...** under the arrow of the **Unlock CAL** button, which is the same one the [UDS](uds.md) pane
 uses and is described there), and tick *Plot* to poll a measurement into the
 **Signals and Plot** pane. A real A2L runs to hundreds of parameters, so the
 box above the list filters them: match on the name, the address in either hex
 or decimal, the type, the unit or the description, with several words all
 having to match, and *MEASUREMENT* or *CHARACTERISTIC* narrowing it to one
 kind. **Plotted** shows only the ones ticked for the plot, which a filter
-would otherwise hide while they went on being read. Which file the names came from is shown under the
-bar, and **Remove A2L** forgets it -- including one that has moved since, which
+would otherwise hide while they went on being read. Which file the names came from is shown beside the
+**A2L** button, and **Remove** under it forgets the file -- including one that has moved since, which
 is reported at startup and then sits there marked *(missing)*. The demo device
 answers XCP on 0x7A0/0x7A1 and CCP on 0x7B0/0x7B1 at station 1, and both match
 `resources/demo.a2l`.

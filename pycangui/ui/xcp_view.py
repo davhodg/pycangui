@@ -15,10 +15,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressDialog,
     QPushButton,
+    QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -34,6 +36,15 @@ from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
 ROLE_NAME = Qt.UserRole
+UNLOCK_TIP = (
+    "GET_SEED and UNLOCK for the calibration resource, which most\n"
+    "slaves want before a value can be written. The key comes from\n"
+    "hooks/xcp.py::compute_key, and where that returns None, from\n"
+    "the seed and key DLL chosen under the arrow."
+)
+A2L_MENU_TIP = (
+    "The file the parameter names come from: load one, or forget the one\nnamed beside this."
+)
 
 #: A big A2L takes seconds to read and longer to list. Nothing is shown for
 #: one that is done inside this long, which is nearly all of them.
@@ -295,23 +306,23 @@ class XcpView(QWidget):
         self.connect_btn = QPushButton("Connect")
         self.connect_btn.setCheckable(True)
         self.connect_btn.toggled.connect(self._toggle_connect)
-        unlock = QPushButton("Unlock CAL")
-        unlock.setToolTip(
-            "GET_SEED and UNLOCK for the calibration resource, which most\n"
-            "slaves want before a value can be written. The key comes from\n"
-            "hooks/xcp.py::compute_key, and where that returns None, from\n"
-            "the seed and key DLL beside this button."
-        )
-        unlock.clicked.connect(lambda: self.manager.unlock(RESOURCE_CAL))
-        seed_key = QPushButton("Seed and key DLL...")
+        # Unlocking, and where the key for it comes from, in one button with
+        # two parts. Pressing it unlocks, which is what is done every time;
+        # the arrow beside it has the DLL, which is chosen once and was the
+        # widest thing on the row.
+        self.unlock_btn = QToolButton()
+        self.unlock_btn.setText("Unlock CAL")
+        self.unlock_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        self.unlock_btn.setToolTip(UNLOCK_TIP)
+        self.unlock_btn.clicked.connect(lambda: self.manager.unlock(RESOURCE_CAL))
+        unlock_menu = QMenu(self.unlock_btn)
+        unlock_menu.setToolTipsVisible(True)
+        seed_key = unlock_menu.addAction("Seed and key DLL...")
         seed_key.setToolTip(SEED_KEY_TIP)
-        seed_key.clicked.connect(lambda: seedkey_view.ask(self.ctx, self))
-        load = QPushButton("Load A2L...")
-        load.setToolTip(
-            "Read the measurements and characteristics out of an A2L, so they\n"
-            "can be used by name and in physical units rather than by address."
-        )
-        load.clicked.connect(self._load_a2l)
+        seed_key.triggered.connect(lambda _checked=False: seedkey_view.ask(self.ctx, self))
+        self.unlock_btn.setMenu(unlock_menu)
+        # As tall as the button beside it: a tool button is drawn shorter.
+        self.unlock_btn.setMinimumHeight(self.connect_btn.sizeHint().height())
         self.engine_box = QComboBox()
         self.engine_box.setToolTip(ENGINE_TIP)
         for spec in _specs("xcp"):
@@ -333,9 +344,7 @@ class XcpView(QWidget):
         bar.addWidget(self.station)
         bar.addWidget(self.from_a2l)
         bar.addWidget(self.connect_btn)
-        bar.addWidget(unlock)
-        bar.addWidget(seed_key)
-        bar.addWidget(load)
+        bar.addWidget(self.unlock_btn)
         bar.addStretch()
 
         # --- parameter tree -----------------------------------------------------
@@ -383,15 +392,29 @@ class XcpView(QWidget):
         # this the file is remembered for ever with nothing on screen saying
         # which one it is, and a file that has moved can only be replaced.
         self.a2l_label = QLabel()
-        self.remove_a2l_btn = QPushButton("Remove A2L")
-        self.remove_a2l_btn.setToolTip(
+        # Loading one and being rid of it, under one button beside its name.
+        # Load was on the row above, among the controls for the connection,
+        # and Remove down here: two halves of one thing on two rows.
+        self.a2l_btn = QPushButton("A2L")
+        self.a2l_btn.setToolTip(A2L_MENU_TIP)
+        a2l_menu = QMenu(self.a2l_btn)
+        a2l_menu.setToolTipsVisible(True)
+        load = a2l_menu.addAction("Load...")
+        load.setToolTip(
+            "Read the measurements and characteristics out of an A2L, so they\n"
+            "can be used by name and in physical units rather than by address."
+        )
+        load.triggered.connect(lambda _checked=False: self._load_a2l())
+        self.remove_a2l_action = a2l_menu.addAction("Remove")
+        self.remove_a2l_action.setToolTip(
             "Forget this A2L. The parameters go with it; the connection and\n"
             "the identifiers stay as they are."
         )
-        self.remove_a2l_btn.clicked.connect(self._remove_a2l)
+        self.remove_a2l_action.triggered.connect(lambda _checked=False: self._remove_a2l())
+        self.a2l_btn.setMenu(a2l_menu)
         row = QHBoxLayout()
+        row.addWidget(self.a2l_btn)
         row.addWidget(self.a2l_label)
-        row.addWidget(self.remove_a2l_btn)
         row.addWidget(self.search, 1)
         row.addWidget(self.plotted_only)
         row.addWidget(read_btn)
@@ -535,16 +558,16 @@ class XcpView(QWidget):
         loaded = self.manager.a2l is not None
         if loaded:
             name = Path(self.manager.a2l.path).name if self.manager.a2l.path else "an A2L"
-            self.a2l_label.setText(f"A2L: {name}")
+            self.a2l_label.setText(name)
         elif remembered:
             # Remembered and not loaded means it has moved or been deleted.
             # Named here as well as in the log, because this is where somebody
             # is when they wonder why the parameters have gone.
-            self.a2l_label.setText(f"A2L: {Path(remembered).name} (missing)")
+            self.a2l_label.setText(f"{Path(remembered).name} (missing)")
         else:
-            self.a2l_label.setText("No A2L loaded")
+            self.a2l_label.setText("none loaded")
         self.a2l_label.setToolTip(remembered)
-        self.remove_a2l_btn.setEnabled(loaded or bool(remembered))
+        self.remove_a2l_action.setEnabled(loaded or bool(remembered))
 
     def _remove_a2l(self) -> None:
         """Forget the A2L, whether or not the file is still where it was."""
