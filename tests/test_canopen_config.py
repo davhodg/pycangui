@@ -552,7 +552,19 @@ def test_failures_are_listed_by_name_under_their_reason(stack):
     assert lines[3].strip().endswith("(1):")
 
 
+def mapping_settled(manager, node_id=5) -> None:
+    """Wait for the mapping read that loading the EDS started.
+
+    It runs on the manager's worker and rebuilds every PDO map as it goes. A
+    test that takes a map and changes it before that has finished has its
+    changes undone under it -- the map back at full length, the frame the test
+    made then too short for it, and nothing decoded.
+    """
+    wait_until(lambda: node_id in manager._mapping_read)
+
+
 def tpdo1(manager):
+    mapping_settled(manager)
     manager.load_pdos_from_eds(5)
     return next(m for m in manager.node(5).tpdo.map.values() if m.name.startswith("TxPDO1"))
 
@@ -615,6 +627,7 @@ def test_a_signed_object_mapped_short_keeps_its_sign(stack):
 def test_an_rpdo_object_mapped_short_is_sent_as_its_mapped_bits(stack):
     """The library wrote the type's full size, over what follows and past the frame."""
     manager, _demo, _tmp = stack
+    mapping_settled(manager)
     manager.load_pdos_from_eds(5)
     number, pdo = next(iter(manager.node(5).rpdo.map.items()))
     var = pdo.map[0]  # a 16-bit object, mapped here as its low 8 bits
