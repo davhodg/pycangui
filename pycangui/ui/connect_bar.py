@@ -122,7 +122,10 @@ class ConnectBar(QToolBar):
         self.channel = ChannelBox()
         self.channel.setEditable(True)
         self.channel.setMinimumWidth(170)
-        self.channel.setToolTip("Pick an adapter, or type a channel. Opening this looks again.")
+        self.channel.setToolTip(
+            "Which of the interface's adapters or ports: pick one, or type it.\n"
+            "Opening this looks again."
+        )
         self.channel.currentTextChanged.connect(lambda _t: self._save_settings())
         self.channel.expanded.connect(self._on_channel_expanded)
         self.bitrate = QComboBox()
@@ -169,7 +172,11 @@ class ConnectBar(QToolBar):
         self.addSeparator()
         for label, widget in (
             ("Interface", self.interface),
-            ("Channel", self.channel),
+            # Port, not Channel: that word is the one on the left, pycangui's
+            # own CAN 1 and CAN 2, and two boxes in one row both labelled
+            # Channel were two different things. This is the adapter's --
+            # what python-can calls its channel.
+            ("Port", self.channel),
         ):
             self.addWidget(QLabel(f" {label}: "))
             self.addWidget(widget)

@@ -9,8 +9,8 @@ adapter, or a second adapter entirely. Use **+** on the toolbar to add a
 channel, then give it its own interface, bitrate and connection; each channel's
 settings are remembered by name. **-** removes the selected channel.
 
-Pick the interface and open the channel list: pycangui asks it which adapters
-are attached and lists them, so the channel is chosen rather than guessed (it
+Pick the interface and open the **Port** list: pycangui asks it which adapters
+are attached and lists them, so the port is chosen rather than guessed (it
 is `can0` on socketcan, `PCAN_USBBUS1` on a PEAK, and plain `0` on an IXXAT).
 Detection also runs in the background when you change interface. It is
 designed only to list adapters, without transmitting or applying a bitrate.

@@ -9,7 +9,7 @@ all.
 
 ## The virtual buses
 
-Pick interface `virtual`, channel **vcan0 (Demo device)**, and press Connect
+Pick interface `virtual`, port **vcan0 (Demo device)**, and press Connect
 -- the channel is the switch, so there is nothing else to turn on. `vcan1`
 and `vcan2` are empty loopbacks, for [replaying a log](channels.md) onto or
 sending your own frames.

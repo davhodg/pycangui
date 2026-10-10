@@ -1385,7 +1385,7 @@ class MainWindow(QMainWindow):
             # The virtual channel is the default, and it is empty until
             # something fills it -- which is not obvious from looking at it.
             self.events.information(
-                "No hardware? Connect on the virtual channel called "
+                "No hardware? Connect on the virtual interface's port called "
                 "Demo device and there will be something to look at."
             )
         self.panes.restore_view_states()

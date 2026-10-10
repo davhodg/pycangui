@@ -72,7 +72,7 @@ The [manual](https://github.com/davhodg/pycangui/blob/master/pycangui/help/manua
 
 Any adapter [python-can](https://github.com/hardbyte/python-can) supports, as listed above. Install the adapter maker's driver and python-can finds it at run time.
 
-No hardware is needed to try it: the `virtual` interface's *Demo device* channel has a simulated device on it that answers CANopen, UDS, J1939, XCP and CCP.
+No hardware is needed to try it: the `virtual` interface's *Demo device* port has a simulated device on it that answers CANopen, UDS, J1939, XCP and CCP.
 
 ## More
 
