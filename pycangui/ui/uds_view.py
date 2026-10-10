@@ -11,6 +11,7 @@ from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -42,6 +43,7 @@ from pycangui.uds import (
     UdsConfig,
     fixed_addressing,
     images,
+    sequence,
 )
 from pycangui.uds.dtc import (
     DEFAULT_STANDARD,
@@ -58,7 +60,6 @@ from pycangui.uds.dtc import (
     STATUS_BITS,
 )
 from pycangui.uds.manager import (
-    CHECK_MEMORY,
     COMM_CONTROLS,
     COMM_MESSAGES,
     ERASE_MEMORY,
@@ -70,7 +71,7 @@ from pycangui.uds.manager import (
     parse_bytes,
 )
 from pycangui.uds.standard import MAX_SECURITY_LEVEL, security_pair, seed_subfunction
-from pycangui.ui import folders, fonts, seedkey_view
+from pycangui.ui import folders, fonts, seedkey_view, uds_sequence
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.field_widgets import PENDING
 from pycangui.ui.persist import remember
@@ -107,6 +108,23 @@ FIXED_FUNC_TIP = (
     "Worked out: 18 DB <target> <tester>. DB is the functional PDU\n"
     "format, and the target is Func TA -- 33 for OBD, or whatever a\n"
     "manufacturer's own diagnostics use."
+)
+BEFORE_TIP = (
+    "What is asked of the ECU before the download, in the order listed.\n"
+    "Tick the steps yours needs: with none ticked, Download is the\n"
+    "download alone. It stops at the first step that fails, and then puts\n"
+    "back what it took from the bus."
+)
+AFTER_TIP = (
+    "What is asked of the ECU once the download is done, in the order\n"
+    "listed. After a reset the channel goes back to its own bitrate by\n"
+    "itself, since that is where the ECUs restart."
+)
+VALUES_TIP = (
+    "The numbers the steps need: a security level for each unlock, how\n"
+    "communication is switched off, the bitrate, the fingerprint, the\n"
+    "check routine, the reset and how long to wait after it. Kept with\n"
+    "the workspace."
 )
 WORKED_OUT_TIP = (
     "The identifiers the addresses work out to: request / response /\n"
@@ -973,10 +991,50 @@ class UdsView(QWidget):
             "HIS/AUTOSAR bootloaders settled on, and yours may differ.\n"
             "What it is sent comes from hooks/uds.py::check_options."
         )
-        self.check_routine = _hex_edit(f"{CHECK_MEMORY:04X}", 4)
-        self.check_routine.setToolTip("Which routine to run afterwards")
         self.erase.toggled.connect(self._on_operation)
         self.check.toggled.connect(self._on_operation)
+        # Both are steps of the sequence now, ticked in its menus with the
+        # rest. The boxes stay, unseen, as what is remembered and what the
+        # menus tick: they are what a download is told.
+        for box in (self.erase, self.check):
+            box.setParent(self)
+            box.hide()
+
+        # --- the sequence round a download -----------------------------------
+        self._transferring = False  # as the manager last said
+        self.sequence = sequence.Sequence(manager, self)
+        self.sequence.said.connect(self._append)
+        self.sequence.running.connect(lambda _on: self._show_busy())
+        self.step_actions: dict[str, QAction] = {}
+        ticked = uds_sequence.chosen(ctx.settings)
+        self.before_btn, self.after_btn = QPushButton(), QPushButton()
+        for button, phase, tip in (
+            (self.before_btn, sequence.BEFORE, BEFORE_TIP),
+            (self.after_btn, sequence.AFTER, AFTER_TIP),
+        ):
+            button.setToolTip(tip)
+            menu = QMenu(button)
+            menu.setToolTipsVisible(True)
+            for step in sequence.STEPS:
+                if step.phase != phase:
+                    continue
+                action = menu.addAction(step.title)
+                action.setCheckable(True)
+                action.setToolTip(step.tip)
+                self.step_actions[step.key] = action
+                box = {"erase": self.erase, "check": self.check}.get(step.key)
+                if box is not None:
+                    action.setChecked(box.isChecked())
+                    action.toggled.connect(box.setChecked)
+                    box.toggled.connect(action.setChecked)
+                else:
+                    action.setChecked(step.key in ticked)
+                action.toggled.connect(lambda _on: self._steps_changed())
+            button.setMenu(menu)
+        self.values_btn = QPushButton("Values...")
+        self.values_btn.setToolTip(VALUES_TIP)
+        self.values_btn.clicked.connect(self._edit_sequence_values)
+        self._show_steps()
 
         self.start = QPushButton("Download")
         self.start.clicked.connect(self._start)
@@ -989,7 +1047,7 @@ class UdsView(QWidget):
             "through one would leave the connection out of step."
         )
         self.stop.setEnabled(False)
-        self.stop.clicked.connect(manager.cancel_transfer)
+        self.stop.clicked.connect(self._cancel)
 
         _narrow(self.operation, 24)
         # A row each, packed left. The nine-column grid made the pane as wide
@@ -1013,7 +1071,11 @@ class UdsView(QWidget):
             file_row,
             where_row,
             _row("Block", self.block, "Width", self.width_bits, "DFI", self.dfi),
-            _row(self.erase, self.check, self.check_routine),
+            _row(
+                self.before_btn,
+                self.after_btn,
+                self.values_btn,
+            ),
             progress_row,
         ):
             x.addLayout(row)
@@ -1025,7 +1087,6 @@ class UdsView(QWidget):
             ("uds.transfer.ecu_path", self.ecu_path),
             ("uds.transfer.erase", self.erase),
             ("uds.transfer.check", self.check),
-            ("uds.transfer.check_routine", self.check_routine),
         ):
             remember(ctx, key, widget)
         self._on_operation()
@@ -1431,7 +1492,8 @@ class UdsView(QWidget):
         # erase first or to have checked afterwards.
         self.erase.setEnabled(op == "download")
         self.check.setEnabled(op == "download")
-        self.check_routine.setEnabled(op == "download" and self.check.isChecked())
+        for control in (self.before_btn, self.after_btn, self.values_btn):
+            control.setEnabled(op == "download")
         labels = {"download": "Download", "upload": "Upload"}
         self.start.setText(labels.get(op) or FILE_MODES[op].capitalize())
         self.start.setToolTip(
@@ -1501,14 +1563,21 @@ class UdsView(QWidget):
             if self._image is None:
                 self._append("Download: no file to send")
                 return
-            self.manager.download(
-                self._image,
-                block,
-                dfi,
-                self._width(),
-                erase=self.erase.isChecked(),
-                check=self._int(self.check_routine) if self.check.isChecked() else 0,
-            )
+            image, width = self._image, self._width()
+            erase = self.erase.isChecked()
+            values = uds_sequence.load(self.ctx.settings)
+            check = values.check_routine if self.check.isChecked() else 0
+
+            def download() -> None:
+                self.manager.download(image, block, dfi, width, erase=erase, check=check)
+
+            # The steps ticked either side of it, with the download in the
+            # middle; with none ticked it is the download and nothing else.
+            chosen = self.steps_chosen()
+            if chosen - sequence.IN_TRANSFER:
+                self.sequence.run(chosen, values, download)
+            else:
+                download()
         elif op == "upload":
             if not self.local.text():
                 self._append("Upload: nowhere to put it -- choose a file first")
@@ -1535,8 +1604,16 @@ class UdsView(QWidget):
         if op == "download":
             what = self._image.summary() if self._image else self.local.text()
             erasing = "\nThe memory it goes in is erased first." if self.erase.isChecked() else ""
+            # Said in full: this is the one place the whole of what is about
+            # to be done to the ECU, and to the bus, is in front of somebody.
+            before, after = sequence.described(self.steps_chosen())
+            steps = ""
+            if before:
+                steps += "\nBefore it: " + "; ".join(before) + "."
+            if after:
+                steps += "\nAfter it: " + "; ".join(after) + "."
             text = (
-                f"About to write to the ECU's memory:\n\n{what}\n{erasing}\n"
+                f"About to write to the ECU's memory:\n\n{what}\n{erasing}{steps}\n\n"
                 "An interrupted or wrong image can leave the ECU unable to start."
             )
         elif op == 2:
@@ -1556,12 +1633,45 @@ class UdsView(QWidget):
 
     @Slot(bool)
     def _on_transferring(self, running: bool) -> None:
-        self.start.setEnabled(not running)
-        self.stop.setEnabled(running)
-        self.operation.setEnabled(not running)
+        self._transferring = running
+        self._show_busy()
         if not running:
             self.bar.reset()
             self.bar.setFormat("")
+
+    def _show_busy(self) -> None:
+        """Start or Cancel, whichever there is something for: a transfer
+        going on, or the steps of a sequence either side of one."""
+        busy = self._transferring or self.sequence.is_running
+        self.start.setEnabled(not busy)
+        self.stop.setEnabled(busy)
+        self.operation.setEnabled(not busy)
+
+    def _cancel(self) -> None:
+        if self.sequence.is_running:
+            self.sequence.cancel()  # which stops the transfer, and puts the bus back
+        else:
+            self.manager.cancel_transfer()
+
+    # --- the sequence round a download ----------------------------------------------------
+    def steps_chosen(self) -> set[str]:
+        return {key for key, action in self.step_actions.items() if action.isChecked()}
+
+    def _steps_changed(self) -> None:
+        kept = sorted(self.steps_chosen() - sequence.IN_TRANSFER)  # those two have their own
+        self.ctx.settings.set(uds_sequence.STEPS_KEY, kept)
+        self._show_steps()
+
+    def _show_steps(self) -> None:
+        """How many are ticked, on each button: what will happen without opening it."""
+        before, after = sequence.described(self.steps_chosen())
+        self.before_btn.setText(f"Before ({len(before)})" if before else "Before")
+        self.after_btn.setText(f"After ({len(after)})" if after else "After")
+
+    def _edit_sequence_values(self) -> None:
+        dialog = uds_sequence.ValuesDialog(self, uds_sequence.load(self.ctx.settings))
+        if dialog.exec() == QDialog.Accepted:
+            uds_sequence.save(self.ctx.settings, dialog.values())
 
     # --- DTCs -------------------------------------------------------------------------
     def _report(self):

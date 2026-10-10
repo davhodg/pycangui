@@ -50,6 +50,10 @@ class TransferCancelledError(Exception):
     """Asked to stop, or the ECU stopped first."""
 
 
+class _FailedError(Exception):
+    """A request that got an answer, and the answer was no."""
+
+
 class RefusedError(Exception):
     """A hook said this image must not be written to this ECU."""
 
@@ -158,6 +162,10 @@ class UdsManager(QObject):
     #: The channel's rate now, and the rate it came from, or 0 when it is back
     #: on its own: what the pane needs to offer the way back.
     rate_moved = Signal(int, int)
+    #: A request is over: whether it did what was asked, and the tag it was
+    #: given with ``tagged``, or None. What a sequence of requests waits on:
+    #: the next step goes out when this one is over, and not if it failed.
+    completed = Signal(bool, object)
 
     def __init__(self, bus: BusManager, hooks: Hooks, ctx: Context) -> None:
         super().__init__()
@@ -174,6 +182,10 @@ class UdsManager(QObject):
         #: What a transfer is waiting on, so a timeout can say which request
         #: it was: "Download: timeout" alone does not say where it stopped.
         self._step = ""
+        #: Whether the transfer now ending went through. Set on the worker.
+        self._transferred = False
+        #: The tag for the next request made. See ``tagged``.
+        self._tag: object = None
         #: How long each DID's value is, learned by reading it, for splitting
         #: snapshots -- which carry DIDs and not their lengths. Kept for the
         #: session: None for one the ECU would not read, so it is not asked again.
@@ -334,23 +346,42 @@ class UdsManager(QObject):
         return seedkey.key_for(dll, level, seed, other, seedkey.UDS)
 
     # --- request plumbing ----------------------------------------------------------
+    def tagged(self, tag: object) -> None:
+        """Mark the next request made, so its ``completed`` can be told from any other.
+
+        A sequence tags each step it starts. A request somebody makes by
+        hand while one is running carries no tag, and the sequence does not
+        take its ending for the end of the step it is waiting on.
+        """
+        self._tag = tag
+
+    def _take_tag(self) -> object:
+        tag, self._tag = self._tag, None
+        return tag
+
     def _run(self, label: str, fn: Callable[[Client], str]) -> None:
+        tag = self._take_tag()
         client = self.client
         if client is None:
             self.result.emit(f"{label}: UDS not open")
+            self.completed.emit(False, tag)
             return
 
-        def job() -> str:
+        def job() -> tuple[bool, str]:
             try:
-                return fn(client)
+                return True, fn(client)
             except NegativeResponseException as exc:
                 r = exc.response
-                return f"{label}: NRC 0x{r.code:02X} {r.code_name}"
+                return False, f"{label}: NRC 0x{r.code:02X} {r.code_name}"
             except TimeoutException:
-                return f"{label}: timeout (no response)"
+                return False, f"{label}: timeout (no response)"
+            except _FailedError as exc:
+                return False, f"{label}: {exc}"
 
-        def done(text: str | None, error: str | None) -> None:
-            self.result.emit(text if error is None else f"{label}: {error}")
+        def done(outcome, error: str | None) -> None:
+            worked, text = (False, f"{label}: {error}") if error is not None else outcome
+            self.result.emit(text)
+            self.completed.emit(worked, tag)
 
         self._worker.submit(job, done)
 
@@ -364,21 +395,31 @@ class UdsManager(QObject):
         """
         if not self.config.goes_to_all(service):
             return False
+        tag = self._take_tag()
         if self.client is None:
             self.result.emit(f"{label}: UDS not open")
+            self.completed.emit(False, tag)
             return True
         wire = functional.suppressed(payload) if suppress else payload
         config, bus, fd = self.config, self._bus, self._fd()
         p2, p2_star = self.timing_in_use()
 
-        def job() -> str:
+        def job() -> tuple[bool, str]:
             try:
                 answers = functional.request(bus, config, wire, p2_s=p2, p2_star_s=p2_star, fd=fd)
             except (can.CanError, ValueError) as exc:
-                return f"{label} (all ECUs): {exc}"
-            return functional.describe(label, answers, quiet_positive=wire != payload)
+                return False, f"{label} (all ECUs): {exc}"
+            # Worked unless one of them said no: with the answer suppressed,
+            # silence is what yes sounds like.
+            said = functional.describe(label, answers, quiet_positive=wire != payload)
+            return not any(a.objected for a in answers), said
 
-        self._worker.submit(job, lambda text, error: self.result.emit(error or text))
+        def done(outcome, error: str | None) -> None:
+            worked, text = (False, error) if error is not None else outcome
+            self.result.emit(text)
+            self.completed.emit(worked, tag)
+
+        self._worker.submit(job, done)
         return True
 
     def _fd(self) -> bool:
@@ -613,8 +654,10 @@ class UdsManager(QObject):
         the kernel's -- where nothing is sent at all.
         """
         label = "LinkControl"
+        tag = self._take_tag()
         if self.client is None:
             self.result.emit(f"{label}: UDS not open")
+            self.completed.emit(False, tag)
             return
         if not self._bus.sets_bitrate:
             self.result.emit(
@@ -622,6 +665,7 @@ class UdsManager(QObject):
                 "has it from outside), so it could not follow the ECUs to another one. "
                 "Nothing was sent."
             )
+            self.completed.emit(False, tag)
             return
         kbit = f"{bitrate // 1000} kbit/s"
         baud = Baudrate(bitrate, Baudrate.Type.Fixed)
@@ -654,6 +698,7 @@ class UdsManager(QObject):
         def done(outcome, error: str | None) -> None:
             if error:
                 self.result.emit(f"{label}: {error}")
+                self.completed.emit(False, tag)
                 return
             moved, text = outcome
             self.result.emit(text)
@@ -661,6 +706,9 @@ class UdsManager(QObject):
                 if self._own_rate is None:
                     self._own_rate = self._bus.bitrate
                 self._follow(bitrate)
+            # Over once the channel has followed, and only worth going on
+            # from if it is open there.
+            self.completed.emit(moved and self.client is not None, tag)
 
         self._worker.submit(job, done)
 
@@ -672,8 +720,10 @@ class UdsManager(QObject):
         -- to every ECU if the change went to every ECU -- and reopens the
         channel at the rate it had before.
         """
+        tag = self._take_tag()
         own = self._own_rate
         if own is None or self.client is None:
+            self.completed.emit(own is None, tag)  # at home already is nothing to do
             return
         client, config, bus, fd = self.client, self.config, self._bus, self._fd()
         everyone = config.goes_to_all("link")
@@ -692,8 +742,22 @@ class UdsManager(QObject):
         def done(text, error: str | None) -> None:
             self.result.emit(error or text)
             self._follow(own)
+            self.completed.emit(self.client is not None, tag)
 
         self._worker.submit(job, done)
+
+    def channel_home(self) -> None:
+        """Reopen the channel at its own rate, with nothing said to the ECUs.
+
+        For after a reset. The ECUs came back at their own rate by
+        themselves, so there is nobody at the other one to tell: asking for
+        the default session there would be a request into an empty bus.
+        """
+        tag = self._take_tag()
+        own = self._own_rate
+        if own is not None:
+            self._follow(own)
+        self.completed.emit(own is None or self.client is not None, tag)
 
     def _follow(self, bitrate: int) -> None:
         """Reopen the channel at ``bitrate``, the session with it, and tester present.
@@ -1083,6 +1147,28 @@ class UdsManager(QObject):
 
         self._run(f"RoutineControl {routine_id:04X}", fn)
 
+    def write_did_bytes(self, did: int, data: bytes) -> None:
+        """WriteDataByIdentifier (0x2E) with the bytes as given.
+
+        For a value that is bytes to begin with, such as the fingerprint a
+        bootloader wants written before it will erase: who is flashing, and
+        when. ``write_did`` takes text and has a hook turn it into bytes,
+        which is the wrong way round for something already in hex.
+        """
+        payload = bytes([0x2E, (did >> 8) & 0xFF, did & 0xFF]) + bytes(data)
+
+        def fn(c: Client) -> str:
+            c.conn.send(payload)
+            raw = c.conn.wait_frame(timeout=self.config.p2_star_timeout_s)
+            if raw is None:
+                raise _FailedError("timeout (no response)")
+            resp = Response.from_payload(raw)
+            if not resp.positive:
+                raise _FailedError(f"NRC 0x{resp.code:02X} {resp.code_name}")
+            return f"Write {self.did_label(did)}: {describe_bytes(bytes(data))} OK"
+
+        self._run(f"WriteDataByIdentifier {did:04X}", fn)
+
     def raw(self, payload: bytes) -> None:
         # As typed: a raw request is somebody's exact bytes, suppress bit and all.
         if self._to_all("raw", "Raw", payload, suppress=False):
@@ -1138,12 +1224,15 @@ class UdsManager(QObject):
 
     def _run_transfer(self, label: str, fn: Callable[[Client], str]) -> None:
         """Like _run, but for something that takes minutes rather than one reply."""
+        tag = self._take_tag()
         client = self.client
         if client is None:
             self.result.emit(f"{label}: UDS not open")
+            self.completed.emit(False, tag)
             return
         if self._busy:
             self.result.emit(f"{label}: a transfer is already running")
+            self.completed.emit(False, tag)
             return
         self._busy = True
         self._cancel.clear()
@@ -1157,8 +1246,11 @@ class UdsManager(QObject):
 
         def job() -> str:
             self._step = ""
+            self._transferred = False
             try:
-                return fn(client)
+                text = fn(client)
+                self._transferred = True
+                return text
             except TransferCancelledError as exc:
                 return f"{label}: cancelled{exc}"
             except RefusedError as exc:
@@ -1182,6 +1274,7 @@ class UdsManager(QObject):
             if resume_tester_present and self.client is not None:
                 self.set_tester_present(True)
             self.result.emit(text if error is None else f"{label}: {error}")
+            self.completed.emit(error is None and self._transferred, tag)
 
         self._worker.submit(job, done)
 

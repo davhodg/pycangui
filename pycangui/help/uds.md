@@ -229,17 +229,54 @@ ECU's own `maxNumberOfBlockLength`, less the two bytes the service id and the
 block counter take out of it; both that and the address width can be overridden
 for bootloaders that insist.
 
-A download is rarely just a download. **Erase first** runs RoutineControl
+A download is rarely just a download, so it can be run as a **sequence**: the
+steps ticked in the **Before** and **After** menus are done either side of it,
+in the order the menus list them, which is the usual order of ISO 14229-1's
+programming sequence. With none ticked, *Download* is the download alone.
+
+| Before | After |
+| --- | --- |
+| Extended session (0x10 03) | Check memory (0x31) |
+| Unlock (0x27) | ECU reset (0x11), then a wait |
+| DTC setting off (0x85 02) | Back to own bitrate |
+| Communication off (0x28) | Extended session (0x10 03) |
+| Programming session (0x10 02) | Unlock (0x27) |
+| Unlock (0x27) | Communication on (0x28 00) |
+| Change bitrate (0x87) | DTC setting on (0x85 01) |
+| Write fingerprint (0x2E) | |
+| Erase memory (0x31 FF00) | |
+
+**Values...** holds the numbers the steps need and the pane has no box for: a
+security level for each of the three unlocks, how communication is switched off
+and for which messages, the bitrate, the fingerprint's identifier and bytes, the
+check routine, the reset type, and how long to wait for the ECU after it. They are kept with the
+workspace, as the ticks are. Whether a step goes to the one ECU or to every ECU
+is what *Functional* says for that service, as it is when the step is done by
+hand.
+
+Each step is named in the pane's log as it starts. The sequence **stops at the
+first step that fails**, and having stopped -- or been cancelled -- it still
+**puts back what it took from the bus**: the channel's bitrate, communication,
+and DTC setting, whichever of them it had got as far as changing. After a reset
+the channel goes back to its own bitrate without being asked, since that is
+where the ECUs restart. The question asked before writing lists every step that
+is about to be done.
+
+The order is fixed. An ECU that needs the steps in another order, or a step
+that is not here, is still flashed by hand from the other tabs, or from a
+plugin.
+
+**Erase memory** runs RoutineControl
 0xFF00 over every segment before the first one is written -- all of them first,
 not each before its own download, because two segments can share a flash block
 and erasing between them would take the first one back out again. **Check
-after** runs a routine once each segment has been sent, so the ECU can check
+memory** runs a routine once each segment has been sent, so the ECU can check
 what it was given. Only the erase is standardised: ISO 14229-1 Annex F names
 four routines in all (erase memory 0xFF00, check programming dependencies
 0xFF01, erase mirror memory DTCs 0xFF02, deploy loop 0xE200) and everything
 from 0x0200 to 0xDFFF is manufacturer specific. The 0x0202 suggested for the
 check is the number the HIS/AUTOSAR bootloaders settled on rather than a
-standard, so it is editable. What either routine is *sent* comes from
+standard, so it is editable, in *Values...*. What either routine is *sent* comes from
 `hooks/uds.py::erase_options` and `::check_options`, which default to an
 address and length in the ISO format; a bootloader wanting a CRC of what it
 was given is a couple of lines there.

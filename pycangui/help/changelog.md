@@ -23,6 +23,8 @@ since the last version, and comes out in the next one.
   *Add / Open* and *Remove* above the list; double-clicking a node's Access column reads
   its level.
 - CANopen: NMT and the producers are framed; TIME is always there, with no setting to show it.
+- UDS: a download can be run as a sequence -- sessions, unlocks, DTC setting, communication,
+  bitrate, fingerprint, erase, check and reset, ticked in *Before* and *After* menus.
 - UDS: in J1939 addressing the worked-out identifiers are one line, not three boxes; ECU
   control is a tab, with *Check* to ask whether a bitrate is possible without changing it.
 - Plot: a Y axis whose signals share named values is marked with the names; right-click

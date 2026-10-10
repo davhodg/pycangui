@@ -510,9 +510,6 @@ def test_the_standard_routines_are_named(manager):
 
 def test_erase_and_check_are_only_offered_for_a_download(view):
     assert view.erase.isEnabled() and view.check.isEnabled()
-    assert not view.check_routine.isEnabled(), "nothing to configure until it is wanted"
-    view.check.setChecked(True)
-    assert view.check_routine.isEnabled()
 
     view.operation.setCurrentIndex(view.operation.findData("upload"))
     assert not view.erase.isEnabled(), "an upload writes nothing, so erases nothing"
@@ -526,7 +523,10 @@ def test_the_pane_passes_them_on(view, images_dir, monkeypatch):
     view._reload_image()
     view.erase.setChecked(True)
     view.check.setChecked(True)
-    view.check_routine.setText("0301")
+    from pycangui.uds.sequence import Values
+    from pycangui.ui import uds_sequence
+
+    uds_sequence.save(view.ctx.settings, Values(check_routine=0x0301))
 
     view.start.click()
     assert [c[1] for c in ecu.calls if c[0] == "routine"] == [0xFF00, 0x0301]
@@ -990,3 +990,92 @@ def test_a_dtc_with_no_status_bits_set_has_no_gap_before_its_description(manager
     manager._hooks.call = lambda *a, **k: "Control Module Performance"
     line = manager._describe_dtc(d)[0]
     assert "status 0x00 - Control Module Performance" in line
+
+
+# --- the sequence round a download ------------------------------------------------------
+def test_the_steps_are_ticked_in_two_menus_in_the_order_they_are_done(view):
+    from pycangui.uds import sequence
+
+    before = [a.text() for a in view.before_btn.menu().actions()]
+    after = [a.text() for a in view.after_btn.menu().actions()]
+    assert before == [s.title for s in sequence.STEPS if s.phase == sequence.BEFORE]
+    assert after == [s.title for s in sequence.STEPS if s.phase == sequence.AFTER]
+    assert view.steps_chosen() == set(), "a download is a download until something is ticked"
+
+
+def test_erase_and_check_are_the_same_ticks_as_before(view):
+    view.step_actions["erase"].setChecked(True)
+    view.step_actions["check"].setChecked(True)
+    assert view.erase.isChecked() and view.check.isChecked()
+    view.erase.setChecked(False)
+    assert not view.step_actions["erase"].isChecked()
+
+
+def test_the_steps_ticked_are_remembered(view):
+    view.step_actions["programming"].setChecked(True)
+    view.step_actions["reset"].setChecked(True)
+    again = UdsView(view.manager, view.ctx)
+    assert again.steps_chosen() == {"programming", "reset"}
+
+
+def test_a_download_with_steps_ticked_is_run_as_a_sequence(view, images_dir, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "exec", lambda _box: QMessageBox.Yes)
+    view.manager.client = ecu = FakeEcu()
+    view.local.setText(images_dir("a.hex", (0x8000, bytes(8))))
+    view._reload_image()
+    ran = []
+    monkeypatch.setattr(view.sequence, "run", lambda chosen, values, transfer: ran.append(chosen))
+
+    view.start.click()
+    assert ran == [] and any(c[0] == "download" for c in ecu.calls), (
+        "none ticked: the download alone"
+    )
+
+    view.step_actions["erase"].setChecked(True)
+    view.start.click()
+    assert ran == [], "erase is part of the download, and no sequence of its own"
+
+    view.step_actions["programming"].setChecked(True)
+    view.start.click()
+    assert ran == [{"erase", "programming"}]
+
+
+def test_the_steps_are_only_offered_for_a_download(view):
+    assert view.before_btn.isEnabled() and view.after_btn.isEnabled()
+    view.operation.setCurrentIndex(1)
+    assert not view.before_btn.isEnabled() and not view.values_btn.isEnabled()
+
+
+def test_cancel_during_a_sequence_stops_the_sequence(view, monkeypatch):
+    stopped = []
+    monkeypatch.setattr(view.sequence, "cancel", lambda: stopped.append("sequence"))
+    monkeypatch.setattr(view.manager, "cancel_transfer", lambda: stopped.append("transfer"))
+    view.stop.setEnabled(True)
+    view.stop.click()
+    view.sequence.is_running = True
+    view.stop.click()
+    view.sequence.is_running = False
+    assert stopped == ["transfer", "sequence"]
+
+
+def test_the_sequence_values_are_asked_for_and_kept(app, view):
+    from pycangui.ui import uds_sequence
+
+    dialog = uds_sequence.ValuesDialog(None, uds_sequence.load(view.ctx.settings))
+    dialog.unlock_programming.setValue(3)
+    dialog.check_routine.setText("0301")
+    dialog.fingerprint_data.setText("zz")
+    assert dialog.problem(), "bytes that are not hex are not taken"
+    dialog.fingerprint_data.setText("20 26 10 10")
+    assert not dialog.problem()
+    uds_sequence.save(view.ctx.settings, dialog.values())
+    again = uds_sequence.load(view.ctx.settings)
+    assert again.unlock_programming == 3 and again.fingerprint_data == "20 26 10 10"
+    assert again.check_routine == 0x0301
+
+
+def test_a_check_routine_typed_in_the_old_box_is_still_the_one_used(view):
+    from pycangui.ui import uds_sequence
+
+    view.ctx.settings.set("uds.transfer.check_routine", "0455")
+    assert uds_sequence.load(view.ctx.settings).check_routine == 0x0455

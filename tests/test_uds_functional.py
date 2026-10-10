@@ -192,3 +192,25 @@ def test_checking_a_rate_asks_every_ecu_and_moves_nobody(ecu):
     wait_until(lambda: len(results) > before)
     QCoreApplication.processEvents()
     assert state.bitrate is None and bus.bitrate == 500_000 and not moved
+
+
+def test_a_sequence_runs_against_the_ecu_and_gives_the_bus_back(ecu):
+    from pycangui.uds.sequence import Sequence, Values
+
+    manager, state, _bus, _results = ecu
+    runner = Sequence(manager)
+    ended: list[bool] = []
+    runner.finished.connect(ended.append)
+    chosen = {"extended", "comm_off", "comm_on"}
+
+    runner.run(chosen, Values(comm_control=1), lambda: manager.change_session(3))
+    wait_until(lambda: ended)
+    assert ended == [True] and state.communication == (0, 1), "off for the transfer, and on again"
+
+    # A transfer the ECU refuses: stopped there, and the bus still given back.
+    ended.clear()
+    runner.run(
+        chosen - {"comm_on"}, Values(comm_control=1), lambda: manager.routine(1, 0xDEAD, b"")
+    )
+    wait_until(lambda: ended)
+    assert ended == [False] and state.communication == (0, 1)
