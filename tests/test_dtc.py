@@ -581,3 +581,23 @@ def test_the_worked_out_identifiers_are_one_line_to_read(app, tmp_path, monkeypa
     assert shown == [box.text() for box in boxes]
     assert shown[0].upper() == "18DA17F9"
     window.close()
+
+
+def test_read_all_is_under_the_arrow_of_read(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+    asked = []
+    monkeypatch.setattr(view.manager, "read_dtc_information", lambda *a, **k: asked.append("one"))
+    monkeypatch.setattr(view.manager, "read_all_dtcs", lambda *a, **k: asked.append(("all", *a)))
+
+    view.read_dtc_btn.click()
+    assert asked == ["one"], "pressed, it is the report chosen"
+    assert view.read_all_action in view.read_dtc_btn.menu().actions()
+
+    view.read_all_supported_action.setChecked(True)
+    assert view.read_all_supported.isChecked(), "the tick in the menu is the one Read all asks"
+    view.read_all_action.trigger()
+    assert asked[-1][0] == "all" and asked[-1][-1] is True
+    window.close()

@@ -180,7 +180,7 @@ remembering that the ECU turns it back on itself when the session ends.
 edition of ISO 14229-1 requests are built to; it matters here because the 2020
 edition withdrew the mirror memory reports.
 
-**Read all** asks for everything the ECU holds about its faults and writes it
+**Read all**, under the arrow of *Read*, asks for everything the ECU holds about its faults and writes it
 to the log as one report, a part at a time: how many DTCs match the status
 mask and which, each one's extended data and severity, which snapshots there
 are and each of them, then the first and most recent failed and confirmed

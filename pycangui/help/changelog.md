@@ -25,6 +25,7 @@ since the last version, and comes out in the next one.
 - CANopen: NMT and the producers are framed; TIME is always there, with no setting to show it.
 - XCP / CCP: loading an A2L and removing it are under one *A2L* button, beside its name;
   the seed and key DLL is under the arrow of *Unlock CAL*, and of *Unlock* in the UDS pane.
+- UDS: *Read all* for DTCs is under the arrow of *Read*.
 - UDS: a download can be run as a sequence -- sessions, unlocks, DTC setting, communication,
   bitrate, fingerprint, erase, check and reset, ticked in *Before* and *After* menus.
 - UDS: in J1939 addressing the worked-out identifiers are one line, not three boxes; ECU

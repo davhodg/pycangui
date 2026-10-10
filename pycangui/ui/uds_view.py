@@ -766,11 +766,13 @@ class UdsView(QWidget):
                 self.report.setItemData(self.report.count() - 1, report.note, Qt.ToolTipRole)
         self.report.currentIndexChanged.connect(self._on_report)
         _narrow(self.report, 30)  # the report names are long
-        read_dtc = QPushButton("Read")
-        read_dtc.setToolTip("Send the report chosen on the left")
-        read_dtc.clicked.connect(self._read_dtcs)
-        read_all = QPushButton("Read all")
-        read_all.setToolTip(
+        # Pressed, it sends the report chosen: the everyday one. Read all, and
+        # whether that includes every DTC the ECU supports, are under its arrow.
+        self.read_dtc_btn = SplitButton(
+            "Read", "Send the report chosen on the left", self._read_dtcs
+        )
+        self.read_all_action = self.read_dtc_btn.add(
+            "Read all",
             "Everything the ECU holds about its faults, as one report: how many\n"
             "and which DTCs match the status mask, each one's extended data and\n"
             "severity, every snapshot, the first and most recent failed and\n"
@@ -778,21 +780,28 @@ class UdsView(QWidget):
             "ones. A report the ECU does not offer is one line in the log.\n"
             "Extended data records are split and named by\n"
             "hooks/uds.py::extended_data_record; a snapshot's DIDs are named and\n"
-            "decoded like any other DID."
+            "decoded like any other DID.",
+            self._read_all_dtcs,
         )
-        read_all.clicked.connect(self._read_all_dtcs)
         self.read_all_supported = QCheckBox("Supported DTCs too")
         self.read_all_supported.setToolTip(
             "Add every DTC the ECU supports, with its status (report 0x0A). It\n"
             "can run to hundreds of lines, so it is left out unless asked for."
         )
+        # A tick in the menu under Read all, which is what it changes. The
+        # box stays, unseen, as what is remembered and what Read all asks.
+        self.read_all_supported.setParent(self)
+        self.read_all_supported.hide()
+        supported = self.read_dtc_btn.menu().addAction(self.read_all_supported.text())
+        supported.setCheckable(True)
+        supported.setToolTip(self.read_all_supported.toolTip())
+        supported.toggled.connect(self.read_all_supported.setChecked)
+        self.read_all_supported.toggled.connect(supported.setChecked)
+        self.read_all_supported_action = supported
         top = QHBoxLayout()
         top.addWidget(QLabel("Report"))
         top.addWidget(self.report, 1)
-        top.addWidget(read_dtc)
-        top.addSpacing(12)
-        top.addWidget(read_all)
-        top.addWidget(self.read_all_supported)
+        top.addWidget(self.read_dtc_btn)
         d.addLayout(top, 0, 0, 1, 7)
 
         self.dtc_mask = _hex_edit("FF", 2)
