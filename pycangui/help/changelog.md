@@ -18,7 +18,7 @@ since the last version, and comes out in the next one.
 - XCP / CCP: loading a large A2L shows its progress, and can be cancelled while it is read.
 - A floating or detached pane that would open partly off the screen is brought onto it.
 - Lists and hex boxes follow the system's text size, and a pane's float and close buttons
-  are as tall as its title.
+  are as tall as its title. The CiA 402 plugin's values do too (plugin 1.7).
 - CANopen: the per-node commands are in four menus -- Node, Access, EDS, DCF -- with
   *Add / Open* and *Remove* above the list; double-clicking a node's Access column reads
   its level.
@@ -27,6 +27,8 @@ since the last version, and comes out in the next one.
   the seed and key DLL is under the arrow of *Unlock CAL*, and of *Unlock* in the UDS pane.
 - UDS: *Read all* for DTCs is under the arrow of *Read*.
 - The toolbar's second *Channel* box, the adapter's, is labelled *Port*.
+- Event Log: a warning's line begins *Warning:* and an error's *Error:*, as well as being
+  coloured.
 - UDS: a download can be run as a sequence -- sessions, unlocks, DTC setting, communication,
   bitrate, fingerprint, erase, check and reset, ticked in *Before* and *After* menus.
 - UDS: in J1939 addressing the worked-out identifiers are one line, not three boxes; ECU

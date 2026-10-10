@@ -360,3 +360,22 @@ def test_the_event_log_keeps_everything_until_cleared(app, window):
     clear = next(a for a in window.log_menu().actions() if a.text() == "Clear")
     clear.trigger()
     assert window.log.document().isEmpty()
+
+
+def test_a_problem_says_what_it_is_in_words_as_well_as_colour():
+    from pycangui.core.events import ERROR, GOOD, INFORMATION, PREFIXES, WARNING, with_level
+
+    for level in (WARNING, ERROR):
+        shown = with_level("the node did not answer", level)
+        assert shown.startswith(PREFIXES[level]) and shown.endswith("the node did not answer")
+    for level in (INFORMATION, GOOD):
+        assert with_level("connected", level) == "connected", "news is news, with nothing in front"
+
+
+def test_the_word_is_not_said_twice():
+    from pycangui.core.events import ERROR, PREFIXES, WARNING, with_level
+
+    for level in (WARNING, ERROR):
+        already = f"{PREFIXES[level]}: written that way by whoever raised it"
+        assert with_level(already, level) == already
+        assert with_level(already.upper(), level) == already.upper()

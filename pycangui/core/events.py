@@ -44,6 +44,24 @@ LEVELS = (INFORMATION, GOOD, WARNING, ERROR)
 #: The levels that mean something needs looking at.
 PROBLEMS = (WARNING, ERROR)
 
+#: The word a problem's line begins with in the Event Log. The pane colours
+#: the line as well, but a colour is no use to somebody who cannot tell red
+#: from amber, or who is having the log read aloud, or who has copied it
+#: into a report: the word is what says it in all three.
+PREFIXES = {WARNING: "Warning", ERROR: "Error"}
+
+
+def with_level(message: str, level: str) -> str:
+    """The message as the log shows it: a problem's begins with what it is.
+
+    Not said twice. Plenty of messages were written to begin "Error ..." or
+    "Warning: ..." by whoever raised them, a device's own text among them.
+    """
+    word = PREFIXES.get(level)
+    if word is None or message.lstrip().lower().startswith(word.lower()):
+        return message
+    return f"{word}: {message}"
+
 
 class EventLog(QObject):
     """The one way in. What listens is somebody else's business."""

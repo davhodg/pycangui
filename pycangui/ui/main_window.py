@@ -43,7 +43,7 @@ from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.detect import DEMO_CHANNEL, summarise
-from pycangui.core.events import PROBLEMS, EventLog
+from pycangui.core.events import PROBLEMS, EventLog, with_level
 from pycangui.core.excepthook import ExceptionLogger
 from pycangui.core.export import write_csv
 from pycangui.core.hooks import Hooks
@@ -1584,7 +1584,7 @@ class MainWindow(QMainWindow):
             shape.setForeground(colour)
         if event_colours.bold_for(level):
             shape.setFontWeight(QFont.Bold)
-        cursor.insertText(message, shape)
+        cursor.insertText(with_level(message, level), shape)
         # Painted again as a whole. Written through a cursor, a line could be
         # drawn before its colour was laid out, and stayed in the plain text
         # colour until scrolling redrew it -- an error that did not look like one.

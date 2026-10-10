@@ -48,8 +48,23 @@ from . import drive as cia402
 from .drive import Drive, Object
 
 API_VERSION = 1
+
+
+def _fixed_pitch() -> QFont:
+    """pycangui's fixed-pitch font, which follows the system's text size.
+
+    Asked for by name on a pycangui from before it had one to give, since a
+    copy of this plugin in a workspace can meet an older pycangui.
+    """
+    try:
+        from pycangui.ui import fonts
+    except ImportError:
+        return QFont("Consolas", 9)
+    return fonts.mono()
+
+
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.6"
+VERSION = "1.7"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -337,7 +352,9 @@ class MotorView(QWidget):
             (cia402.POSITION_ACTUAL, cia402.VELOCITY_ACTUAL, cia402.TORQUE_ACTUAL)
         ):
             value = QLabel("--")
-            value.setFont(QFont("Consolas", 9))
+            # Fixed pitch, so the digits do not move sideways as they change,
+            # and at the size of the text around them.
+            value.setFont(_fixed_pitch())
             value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.actuals[obj.where] = value
             name = QLabel(f"{obj.name}:")

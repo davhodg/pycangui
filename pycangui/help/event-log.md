@@ -16,6 +16,10 @@ is what the line looks like:
 - anything else in the ordinary text colour, because a colour on every line is
   a colour that says nothing.
 
+A warning's line begins *Warning:* and an error's *Error:*, so that what a line
+is does not depend on telling one colour from another, and is still said when
+the log is copied into a report or read aloud.
+
 The colours follow the theme: one set reads against a pale background, another
 against a dark one.
 

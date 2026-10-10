@@ -830,3 +830,19 @@ def test_a_refused_mode_is_not_shown_as_taken(app, view, monkeypatch):
     view._set_mode()
 
     assert view.mode == 0, "what the drive says, not what was asked"
+
+
+def test_its_values_are_in_the_font_that_follows_the_text_size(app):
+    """Not one it names itself, at a size of its own: that one did not grow."""
+    from pycangui.plugins.cia402 import plugin
+    from pycangui.ui import fonts
+
+    assert plugin._fixed_pitch().pointSizeF() == fonts.mono().pointSizeF()
+    bigger = app.font()
+    before = app.font()
+    bigger.setPointSizeF(before.pointSizeF() * 1.5)
+    app.setFont(bigger)
+    try:
+        assert plugin._fixed_pitch().pointSizeF() > before.pointSizeF()
+    finally:
+        app.setFont(before)
