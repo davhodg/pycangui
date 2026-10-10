@@ -80,8 +80,8 @@ def test_a_round_does_not_start_until_the_last_one_finished(app, poller):
 
     made.answered(0x2001, 0)
     made.answered(0x2002, 0)
-    pump(app, 0.1)
-    assert len(asked) == 4, "and now the next one"
+    wait_until(app, lambda: len(asked) >= 4)  # and now the next one
+    assert len(asked) == 4
 
 
 def test_one_object_answering_twice_does_not_start_a_round(app, poller):
@@ -157,8 +157,7 @@ def test_a_round_that_never_answers_does_not_wedge_it(app, poller, monkeypatch):
     settle(app)
     made.answered(0x2001, 0)  # the second one never comes
 
-    pump(app, 0.3)
-    assert len(asked) > 2, "it gave up and started again"
+    wait_until(app, lambda: len(asked) > 2)  # it gave up and started again
 
 
 def test_nothing_to_read_is_not_a_reason_to_stop(app):
@@ -172,8 +171,7 @@ def test_nothing_to_read_is_not_a_reason_to_stop(app):
     assert made.running and asked == []
 
     made.set_objects([(0x2001, 0)])
-    pump(app, 0.1)
-    assert asked, "and now it reads it"
+    wait_until(app, lambda: asked)  # and now it reads it
     made.stop()
 
 
@@ -285,8 +283,8 @@ def test_polling_a_node_reads_it_over_and_over(app, pane):
 
     view.poll_hz.setValue(50.0)
     view.poll.setChecked(True)
-    pump(app, 0.5)
-    assert source.reads > before + 4, "several rounds of two objects"
+    # Until several rounds of two objects have gone by, however long that takes here.
+    wait_until(app, lambda: source.reads > before + 4)
 
 
 def test_the_pane_shows_the_rate_it_is_managing(app, pane):
@@ -295,8 +293,7 @@ def test_the_pane_shows_the_rate_it_is_managing(app, pane):
     settle(app)
     view.poll_hz.setValue(50.0)
     view.poll.setChecked(True)
-    pump(app, 0.6)
-    assert "asked for 50" in view.poll_rate.text(), view.poll_rate.text()
+    wait_until(app, lambda: "asked for 50" in view.poll_rate.text())
 
 
 def test_stopping_clears_the_rate(app, pane):

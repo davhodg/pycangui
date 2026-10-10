@@ -75,7 +75,7 @@ def wait_until(pred, timeout=3.0):
     deadline = time.monotonic() + timeout
     while not pred():
         QCoreApplication.processEvents()
-        if time.monotonic() > deadline:
+        if time.monotonic() > deadline and not pred():
             raise AssertionError("timed out")
         time.sleep(0.005)
 
