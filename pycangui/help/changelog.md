@@ -15,6 +15,8 @@ since the last version, and comes out in the next one.
   a DBC row's database file is in its tooltip, not the Unit column.
 - The status bar says the signal history limit is per signal and the samples a total.
 - *Tools > Settings > Column widths*: *Manual* makes list columns draggable and remembered.
+- Plot: a Y axis whose signals share named values is marked with the names; right-click
+  the plot to turn it off.
 - CAN Transmit: a counter or checksum in a DBC signal is shown by position, *count 52:4*,
   with the name in the tooltip.
 - XCP / CCP: arrays and value blocks, named values, bit masks, address extensions, the A2L's

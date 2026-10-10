@@ -64,6 +64,12 @@ it off the plot. The Y2 axis is only there while a signal is on it, and its
 signals are marked *(Y2)* in the legend. Where every signal on an axis has the
 same unit, the axis is labelled with it.
 
+Where every signal on an axis has the same named values, the axis is marked
+with the names -- *Off*, *Run*, *Fault* -- in place of 0, 1 and 2. An axis
+shared with a signal that has none keeps its numbers, so a state plotted with
+a speed wants the Y2 axis to itself. To have numbers on every axis, right-click
+the plot and untick *Value names on axis*; the choice is remembered.
+
 Each Signals and Plot pane remembers which signals it plots, and on which axis,
 from one run to the next. A signal comes back onto the plot as soon as it
 appears again: when its first frame is decoded, or when its file is imported.

@@ -523,3 +523,77 @@ def test_a_messages_signals_have_entries_of_their_own(app, listed):
     assert forgotten == [], "and nothing else was forgotten"
     signals.plot_all(PLOT, group)
     assert "Other/Pressure" in plot.plotted()
+
+
+# --- names for values, on the axis -------------------------------------------------------------
+STATE = "Live/State"
+STATES = {0: "Off", 1: "Run", 2: "Fault"}
+
+
+def a_state(hub, name="State", names=STATES) -> str:
+    for t in range(10):
+        hub.push("Live", name, float(t), float(t % 3))
+    hub.set_choices(f"Live/{name}", names)
+    return f"Live/{name}"
+
+
+def test_an_axis_of_named_values_is_marked_with_the_names(app, plot):
+    view, hub, _clock = plot
+    view.set_plotted(a_state(hub), True)
+    assert view.axis_names("left") == STATES
+    assert view.axis_names("right") == {}
+
+    view.set_plotted(a_state(hub, "Other"), True)
+    assert view.axis_names("left") == STATES, "two signals that agree"
+
+
+def test_an_axis_shared_with_other_values_keeps_its_numbers(app, plot):
+    view, hub, _clock = plot
+    speed_and_temperature(hub)
+    view.set_plotted(a_state(hub), True)
+    view.set_plotted(SPEED, True)
+    assert view.axis_names("left") == {}
+
+    view.set_right(STATE, True)  # an axis of its own
+    assert view.axis_names("right") == STATES
+    assert view.axis_names("left") == {}
+
+    view.set_plotted(a_state(hub, "Gear", {0: "N", 1: "D"}), True)
+    view.set_right("Live/Gear", True)
+    assert view.axis_names("right") == {}, "two signals that name their values differently"
+
+    view.set_plotted("Live/Gear", False)
+    assert view.axis_names("right") == STATES
+
+
+def test_names_that_arrive_after_the_signal_is_plotted_are_shown(app, plot):
+    view, hub, _clock = plot
+    hub.push("Live", "State", 0.0, 1.0)
+    view.set_plotted(STATE, True)
+    assert view.axis_names("left") == {}
+    hub.set_choices(STATE, STATES)
+    view._redraw()
+    assert view.axis_names("left") == STATES
+
+
+def test_the_names_can_be_turned_off_from_the_plots_own_menu(app, plot):
+    view, hub, _clock = plot
+    view.set_plotted(a_state(hub), True)
+    assert view.names_action in view.plot.getViewBox().menu.actions()
+
+    view.names_action.setChecked(False)
+    assert view.axis_names("left") == {}
+    view.names_action.setChecked(True)
+    assert view.axis_names("left") == STATES
+
+
+def test_turning_the_names_off_is_remembered(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    first = PlotView(SignalHub(), Clock(), ctx)
+    first.names_action.setChecked(False)
+    first.close()
+
+    again = PlotView(SignalHub(), Clock(), ctx)
+    assert not again.names.isChecked() and not again.names_action.isChecked()
+    again.close()

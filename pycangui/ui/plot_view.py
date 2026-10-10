@@ -8,12 +8,16 @@ the hub's history, so the cost is independent of the incoming sample rate.
 A signal can be drawn against a second Y axis on the right, with a scale of
 its own: a speed in thousands and a temperature in tens share one axis badly,
 because the temperature becomes a flat line along the bottom.
+
+An axis whose signals all have the same named values is marked with the
+names -- *Off*, *Run*, *Fault* -- in place of 0, 1 and 2.
 """
 
 from __future__ import annotations
 
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -73,6 +77,14 @@ TIME_ITEM_TIPS = (
     "The plot stays where you put it. Dragging or zooming the plot\nchooses this by itself.",
 )
 WINDOW_TIP = "How many seconds Follow keeps in view."
+NAMES_TEXT = "Value names on axis"
+NAMES_TIP = (
+    "Mark a Y axis with the names of its values -- Off, Run, Fault --\n"
+    "where every signal on it has the same ones. An axis shared with a\n"
+    "signal that has none keeps its numbers: put the named signal on the\n"
+    "other axis, with Plot Y2, to give it one of its own."
+)
+LEFT, RIGHT = "left", "right"
 COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
 
 
@@ -89,12 +101,30 @@ class PlotView(QWidget):
         #: The plotted signals drawn against the right hand axis. Always some
         #: of the keys of ``_curves``: a signal that is not plotted is on no axis.
         self._right: set[str] = set()
+        #: What each Y axis is marked with in place of numbers: value ->
+        #: name, and empty for an axis that shows numbers. See ``_show_names``.
+        self._named: dict[str, dict[int, str]] = {LEFT: {}, RIGHT: {}}
 
         pg.setConfigOptions(antialias=False, background="w", foreground="k")
         self.plot = pg.PlotWidget()
         self.plot.showGrid(x=True, y=True, alpha=0.3)
         self.plot.setLabel("bottom", "time", units="s")
         self.legend = self.plot.addLegend(offset=(10, 10))
+        # A tick underneath, never shown, and an entry in the
+        # plot's own right-click menu: a choice about the axes, made about
+        # once, which is what that menu holds and what the bar has no room for.
+        self.names = QCheckBox(NAMES_TEXT, self)
+        self.names.hide()
+        self.names.setChecked(True)
+        self.names_action = QAction(NAMES_TEXT, self, checkable=True, checked=True)
+        self.names_action.setToolTip(NAMES_TIP)
+        self.names_action.toggled.connect(self.names.setChecked)
+        self.names.toggled.connect(self._on_names)
+        menu = self.plot.getViewBox().menu
+        menu.setToolTipsVisible(True)
+        menu.addSeparator()
+        menu.addAction(self.names_action)
+        # After the tick above: the axes ask it whether to show names.
         self._make_right_axis()
 
         self.window_s = QDoubleSpinBox()
@@ -164,6 +194,7 @@ class PlotView(QWidget):
             # Unlike Pause, this one is restored: a plot that comes back
             # drawing four times a second is still a live plot.
             remember(ctx, "plot.slow", self.slow)
+            remember(ctx, "plot.value_names", self.names)
         self._show_time()
 
     # --- which stretch of time ------------------------------------------------------------
@@ -252,6 +283,7 @@ class PlotView(QWidget):
         # on whatever it is given and label a speed in "krpm".
         self.plot.getAxis("left").setLabel(self._common_unit(left))
         self.plot.getAxis("right").setLabel(self._common_unit(self._right))
+        self._show_names()
 
     def _common_unit(self, keys) -> str:
         """The unit all of these signals are in, or nothing if they differ.
@@ -261,6 +293,48 @@ class PlotView(QWidget):
         """
         units = {s.unit if (s := self.hub.get(key)) else "" for key in keys}
         return units.pop() if len(units) == 1 else ""
+
+    # --- names for values -----------------------------------------------------------------
+    @Slot(bool)
+    def _on_names(self, on: bool) -> None:
+        self.names_action.setChecked(on)
+        self._show_names()
+
+    def _common_names(self, keys) -> dict[int, str]:
+        """The named values all of these signals share, or none if they differ.
+
+        The same rule as the unit, for the same reason: an axis has one set
+        of marks, and *Run* beside 1 is only true of a signal that calls 1
+        that. One signal with no names, or with other ones, and the axis
+        has nothing it can honestly be marked with but numbers.
+        """
+        tables = [s.choices if (s := self.hub.get(key)) else {} for key in keys]
+        if not tables or not tables[0] or any(table != tables[0] for table in tables):
+            return {}
+        return dict(tables[0])
+
+    def _show_names(self) -> None:
+        """Mark each Y axis with names or with numbers, where that has changed.
+
+        Asked on every redraw as well as when the plotted signals change: a
+        signal's names can arrive after it is plotted -- they come with the
+        first frame decoded, and a plot that is restored is there before it.
+        So it is a comparison, and the axis is only touched when they differ.
+        """
+        on = self.names.isChecked()
+        left = [key for key in self._curves if key not in self._right]
+        for side, keys in ((LEFT, left), (RIGHT, self.right_axis())):
+            wanted = self._common_names(keys) if on else {}
+            if wanted == self._named[side]:
+                continue
+            self._named[side] = wanted
+            marks = [(float(value), name) for value, name in sorted(wanted.items())]
+            # None gives the axis back its own numbers.
+            self.plot.getAxis(side).setTicks([marks] if marks else None)
+
+    def axis_names(self, side: str = LEFT) -> dict[int, str]:
+        """What a Y axis is marked with in place of numbers; empty if it shows numbers."""
+        return dict(self._named[side])
 
     def _attach(self, key: str, curve: pg.PlotDataItem) -> None:
         """Put a curve in the view box for its axis, with its legend entry."""
@@ -411,6 +485,7 @@ class PlotView(QWidget):
     def _redraw(self, paused_too: bool = False) -> None:
         if (self.pause.isChecked() and not paused_too) or not self._curves or not self.isVisible():
             return
+        self._show_names()
         following = self.follow.isChecked()
         edge = self._edge()
         # Following, only the last few seconds are wanted and slicing to them
