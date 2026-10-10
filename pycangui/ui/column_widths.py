@@ -22,7 +22,7 @@ from __future__ import annotations
 import weakref
 
 from PySide6.QtCore import QObject, QTimer
-from PySide6.QtWidgets import QHeaderView, QTreeView
+from PySide6.QtWidgets import QAbstractItemView, QHeaderView, QTreeView
 
 #: ``"auto"`` or ``"manual"``.
 MODE_KEY = "ui.column_widths"
@@ -53,21 +53,31 @@ def set_mode(settings, wanted: str) -> None:
 
 
 class ColumnWidths(QObject):
-    """The widths of one tree's columns.
+    """The widths of the columns of one tree, or of one table.
 
     ``key`` names the list in the settings, so that what was dragged is
     remembered; lists of the same kind share it. ``stretch`` is a column that
     takes the room left over in Automatic. The last column always runs to the
     edge when ``last_stretches``, and so is never one that is dragged.
+
+    ``fixed`` is column -> width, for a column whose contents are not to be
+    trusted to say how wide it should be: that wide in Automatic whatever is
+    in it, and at least that wide in Manual until it is dragged.
+
+    ``refit_ms`` is how long Manual waits before fitting to new rows, for a
+    list that gains them many times a second: fitting is a measuring of
+    every row in view, and a trace would otherwise spend its time on it.
     """
 
     def __init__(
         self,
-        view: QTreeView,
+        view: QAbstractItemView,
         settings,
         key: str,
         stretch: int | None = None,
         last_stretches: bool = True,
+        fixed: dict[int, int] | None = None,
+        refit_ms: int = 0,
     ) -> None:
         super().__init__(view)
         self._view = view
@@ -75,13 +85,14 @@ class ColumnWidths(QObject):
         self._key = f"columns.{key}"
         self._stretch = stretch
         self._last_stretches = last_stretches
+        self._fixed = dict(fixed or {})
         self._fitting = False
         #: Column -> width, for the ones somebody has dragged.
         self._dragged: dict[int, int] = self._saved()
-        self._fit_soon = QTimer(self, singleShot=True, interval=0, timeout=self.fit)
+        self._fit_soon = QTimer(self, singleShot=True, interval=refit_ms, timeout=self.fit)
         self._save_soon = QTimer(self, singleShot=True, interval=SAVE_AFTER_MS, timeout=self._save)
 
-        header = view.header()
+        header = self._header()
         header.sectionResized.connect(self._on_resized)
         header.sectionHandleDoubleClicked.connect(self._on_handle_double_clicked)
         model = view.model()
@@ -89,9 +100,14 @@ class ColumnWidths(QObject):
         # and columns that followed it would never keep still.
         for changed in (model.rowsInserted, model.modelReset):
             changed.connect(self._contents_changed)
-        view.expanded.connect(self._contents_changed)
+        if isinstance(view, QTreeView):
+            view.expanded.connect(self._contents_changed)
         _open.add(self)
         self.apply()
+
+    def _header(self) -> QHeaderView:
+        view = self._view
+        return view.header() if isinstance(view, QTreeView) else view.horizontalHeader()
 
     # --- which way --------------------------------------------------------------------
     @property
@@ -100,7 +116,7 @@ class ColumnWidths(QObject):
 
     def apply(self) -> None:
         """Set the columns up for the mode chosen."""
-        header = self._view.header()
+        header = self._header()
         self._fitting = True
         try:
             if self.manual:
@@ -110,6 +126,9 @@ class ColumnWidths(QObject):
                 header.setSectionResizeMode(QHeaderView.ResizeToContents)
                 if self._stretch is not None:
                     header.setSectionResizeMode(self._stretch, QHeaderView.Stretch)
+                for column, width in self._fixed.items():
+                    header.setSectionResizeMode(column, QHeaderView.Fixed)
+                    header.resizeSection(column, width)
                 header.setStretchLastSection(self._last_stretches)
         finally:
             self._fitting = False
@@ -121,7 +140,7 @@ class ColumnWidths(QObject):
         """Give each column its dragged width, or fit it, up to the limit."""
         if not self.manual:
             return
-        header = self._view.header()
+        header = self._header()
         self._fitting = True
         try:
             last = self._last()
@@ -131,14 +150,17 @@ class ColumnWidths(QObject):
                 if column in self._dragged:
                     header.resizeSection(column, self._dragged[column])
                     continue
-                wanted = max(self._view.sizeHintForColumn(column), header.sectionSizeHint(column))
-                header.resizeSection(column, min(wanted, WIDEST_FITTED))
+                # The limit is on what the rows ask for. What the heading asks
+                # for is short, or is a width somebody gave it on purpose.
+                wanted = min(self._view.sizeHintForColumn(column), WIDEST_FITTED)
+                wanted = max(wanted, header.sectionSizeHint(column), self._fixed.get(column, 0))
+                header.resizeSection(column, wanted)
         finally:
             self._fitting = False
 
     def _last(self) -> int:
         """The column showing furthest right: columns can be moved, and hidden."""
-        header = self._view.header()
+        header = self._header()
         for place in range(header.count() - 1, -1, -1):
             column = header.logicalIndex(place)
             if not header.isSectionHidden(column):
@@ -146,11 +168,19 @@ class ColumnWidths(QObject):
         return -1
 
     def _contents_changed(self, *_what) -> None:
-        if self.manual:
+        # Not started again while it is running: rows that keep arriving
+        # would put the fitting off for as long as they did.
+        if self.manual and not self._fit_soon.isActive():
             self._fit_soon.start()
 
-    def _on_resized(self, column: int, _old: int, new: int) -> None:
-        if self._fitting or not self.manual or column == self._last() or new <= 0:
+    def _on_resized(self, column: int, old: int, new: int) -> None:
+        if self._fitting or not self.manual or column == self._last():
+            return
+        if old <= 0 or new <= 0:
+            # Hidden, or shown again: neither is a drag. A column that comes
+            # back is fitted like any other that nobody has set.
+            if new > 0:
+                self._fit_soon.start()
             return
         self._dragged[column] = new
         self._save_soon.start()

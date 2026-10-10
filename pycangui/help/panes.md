@@ -95,7 +95,8 @@ left alone, since a tooltip repeating its label is noise.
 ## Column widths
 
 *Tools > Settings > Column widths* decides how wide the columns of the lists are
--- CAN Transmit, Signals and Plot, the CANopen, J1939 and XCP lists.
+-- the CAN Trace, CAN Transmit, Signals and Plot, the CANopen, J1939 and XCP
+lists.
 
 - **Automatic**, to begin with: every column is as wide as what is in it. There
   is nothing to set and nothing can be dragged, and one long name takes the room
@@ -105,8 +106,8 @@ left alone, since a tooltip repeating its label is noise.
   with the workspace. Double-click a column's edge to have that column fit its
   contents again.
 
-The last column runs to the edge of the pane either way. The CAN Trace keeps
-its own fixed widths.
+The last column runs to the edge of the pane either way. The CAN Trace's ID
+column is wide enough for a 29-bit identifier in both, until it is dragged.
 
 ## Light or dark
 

@@ -3,7 +3,7 @@
 """Column widths: fitted by pycangui, or fitted until somebody drags one."""
 
 import pytest
-from PySide6.QtWidgets import QHeaderView, QTreeWidget, QTreeWidgetItem
+from PySide6.QtWidgets import QHeaderView, QTableWidget, QTreeWidget, QTreeWidgetItem
 
 from pycangui.core.settings import Settings
 from pycangui.ui import column_widths
@@ -74,3 +74,65 @@ def test_changing_the_setting_changes_the_lists_that_are_open(app, settings):
     assert tree.header().sectionResizeMode(0) == QHeaderView.Interactive
     column_widths.set_mode(settings, AUTO)
     assert tree.header().sectionResizeMode(0) == QHeaderView.ResizeToContents
+
+
+def a_table(app, settings, **how):
+    table = QTableWidget(1, 3)
+    table.resize(900, 300)
+    widths = ColumnWidths(table, settings, "test_table", **how)
+    table.show()
+    app.processEvents()
+    return table, widths
+
+
+def test_a_table_is_set_the_same_way_as_a_tree(app, settings):
+    table, _widths = a_table(app, settings)
+    header = table.horizontalHeader()
+    assert header.sectionResizeMode(0) == QHeaderView.ResizeToContents
+    column_widths.set_mode(settings, MANUAL)
+    assert header.sectionResizeMode(0) == QHeaderView.Interactive
+    header.resizeSection(0, 222)
+    table.insertRow(1)
+    app.processEvents()
+    assert header.sectionSize(0) == 222
+
+
+def test_a_fixed_column_is_that_wide_until_it_is_dragged(app, settings):
+    table, _widths = a_table(app, settings, fixed={1: 150})
+    header = table.horizontalHeader()
+    assert header.sectionResizeMode(1) == QHeaderView.Fixed
+    assert header.sectionSize(1) == 150
+
+    column_widths.set_mode(settings, MANUAL)
+    assert header.sectionResizeMode(1) == QHeaderView.Interactive
+    assert header.sectionSize(1) >= 150
+    header.resizeSection(1, 60)
+    table.insertRow(1)
+    app.processEvents()
+    assert header.sectionSize(1) == 60
+
+
+def test_hiding_a_column_and_showing_it_again_is_not_a_drag(app, settings):
+    column_widths.set_mode(settings, MANUAL)
+    table, widths = a_table(app, settings)
+    table.setColumnHidden(0, True)
+    table.setColumnHidden(0, False)
+    app.processEvents()
+    assert 0 not in widths._dragged
+
+
+def test_the_trace_follows_the_setting(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    from pycangui.ui.main_window import MainWindow
+
+    window = MainWindow()
+    try:
+        trace = window.panes.view("trace")
+        for table in (trace.table, trace.latest_table):
+            assert table.horizontalHeader().sectionResizeMode(1) == QHeaderView.ResizeToContents
+        column_widths.set_mode(window.ctx.settings, MANUAL)
+        for table in (trace.table, trace.latest_table):
+            assert table.horizontalHeader().sectionResizeMode(1) == QHeaderView.Interactive
+    finally:
+        column_widths.set_mode(window.ctx.settings, AUTO)
+        window.close()

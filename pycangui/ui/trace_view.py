@@ -38,6 +38,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.classify import ERROR_GROUP, GROUPS, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
+from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.latest_model import COLUMNS as LATEST_COLUMNS
 from pycangui.ui.latest_model import (
     ROLE_CHANNEL,
@@ -121,10 +122,16 @@ WIDEST_ID = "1FFFFFFF"
 EIGHT_BYTES = "FF FF FF FF FF FF FF FF"
 
 
+#: How often a trace's columns are fitted to new rows in *Column widths >
+#: Manual*. Rows arrive twenty times a second, and fitting measures them.
+REFIT_MS = 500
+
+
 class _Header(QHeaderView):
     """A header whose columns are fitted to what is in them, but never
     narrower than given: the Data column is as wide as its heading until the
-    first frame arrives, and then pushes every column after it sideways."""
+    first frame arrives, and then pushes every column after it sideways.
+    Fitted by *Column widths*, in either of its ways, so this holds in both."""
 
     def __init__(self, table: QTableView, at_least: dict[int, int]) -> None:
         super().__init__(Qt.Horizontal, table)
@@ -139,7 +146,7 @@ class _Header(QHeaderView):
         return size
 
 
-def _table(model, font: QFont, id_column: int, data_column: int) -> QTableView:
+def _table(model, font: QFont, id_column: int, data_column: int, settings, key: str) -> QTableView:
     table = QTableView()
     table.setFont(font)
     wide = table.fontMetrics().horizontalAdvance(EIGHT_BYTES) + 16
@@ -147,15 +154,15 @@ def _table(model, font: QFont, id_column: int, data_column: int) -> QTableView:
     table.setModel(model)
     table.verticalHeader().setVisible(False)
     table.verticalHeader().setDefaultSectionSize(18)
-    header = table.horizontalHeader()
-    header.setSectionResizeMode(QHeaderView.ResizeToContents)
-    header.setStretchLastSection(True)
-    # Fixed at eight digits rather than fitted. Fitting measures a sample of
+    # The id at eight digits rather than fitted. Fitting measures a sample of
     # rows, and on a bus that starts with 11-bit ids -- CANopen before J1939
     # has claimed an address -- it settled three digits wide and elided every
-    # 29-bit id after it to "18...".
-    header.setSectionResizeMode(id_column, QHeaderView.Fixed)
-    header.resizeSection(id_column, table.fontMetrics().horizontalAdvance(WIDEST_ID) + 16)
+    # 29-bit id after it to "18...". In Manual it can be dragged narrower:
+    # somebody on a bus of 11-bit ids knows that they are.
+    eight_digits = table.fontMetrics().horizontalAdvance(WIDEST_ID) + 16
+    table.widths = ColumnWidths(
+        table, settings, key, fixed={id_column: eight_digits}, refit_ms=REFIT_MS
+    )
     return table
 
 
@@ -180,11 +187,23 @@ class TraceView(QWidget):
         self._latest_proxy = _TraceFilter()
         self._latest_proxy.setSourceModel(self.latest)
 
+        # The widths are every trace's, as the other lists' are every list's
+        # of their kind: a second trace is for another filter, not another shape.
         self.table = _table(
-            self._trace_proxy, mono, TRACE_COLUMNS.index("ID"), TRACE_COLUMNS.index("Data")
+            self._trace_proxy,
+            mono,
+            TRACE_COLUMNS.index("ID"),
+            TRACE_COLUMNS.index("Data"),
+            ctx.settings,
+            "trace.rows",
         )
         self.latest_table = _table(
-            self._latest_proxy, mono, LATEST_COLUMNS.index("ID"), LATEST_COLUMNS.index("Data")
+            self._latest_proxy,
+            mono,
+            LATEST_COLUMNS.index("ID"),
+            LATEST_COLUMNS.index("Data"),
+            ctx.settings,
+            "trace.latest",
         )
         self.latest_table.setSortingEnabled(True)
         self.latest_table.sortByColumn(0, Qt.AscendingOrder)
