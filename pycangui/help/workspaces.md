@@ -2,7 +2,7 @@
 
 # Workspaces
 
-A workspace is everything about the product you are working on: the
+A workspace is everything about the device or project you are working on: the
 [hooks](hooks.md) that say what its objects mean, its EDS files, its channels and bitrates, its
 databases, its transmit list, its watch lists and its pane arrangement. One
 folder, so it can be exported as one zip file.
@@ -37,7 +37,7 @@ workspaces, and two for moving one between computers.
 *Export...* asks where to save the file and writes the workspace folder into
 it: settings, layout, hooks, simulated nodes, EDS files, custom panes and
 plugins. A few things are left out because they belong to your computer rather
-than to the product:
+than to the device or project:
 
 - the numbered `.bak` copies that *Tools > Reset > Restore supplied files...* keeps of your own edits
 - `__pycache__` folders and `.pyc` files, which Python makes again
@@ -130,7 +130,7 @@ same.
 
 `pycangui --workspace rig` opens *rig* this time only: the next start without
 it opens whichever workspace was last chosen in the window. That makes a
-shortcut per product -- one icon for each rig, each with its own channels and
+shortcut for each one -- an icon for each rig, each with its own channels and
 panes. A name that does not exist is refused, with the names that do.
 
 ## One at a time

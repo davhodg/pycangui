@@ -135,3 +135,23 @@ def test_every_adapter_python_can_supports_is_listed(page):
     assert not unnamed, f"python-can has interfaces the pages do not list: {unnamed}"
     missing = [name for name in ADAPTER_NAMES.values() if name not in page]
     assert not missing, f"not on the page: {missing}"
+
+
+# --- the two pages say the same things ------------------------------------------------------
+def what_it_does(page: str) -> list[str]:
+    """The feature list under *What it does*: one entry a line."""
+    section = re.search(r"^## What it does\n(.*?)(?=^## )", page.replace("\r\n", "\n"), re.M | re.S)
+    assert section, "no What it does section on the page"
+    return [line for line in section.group(1).split("\n") if line.startswith("- ")]
+
+
+def test_the_feature_list_is_the_same_on_github_and_on_pypi():
+    """Two files, because PyPI wants absolute links and a shorter page; one
+    list of features, kept in both, and edited in one is how it stops being
+    the same list."""
+    readme, pypi = what_it_does(README), what_it_does(PYPI)
+    assert readme, "the README has a feature list"
+    only_readme = [line[:60] for line in readme if line not in pypi]
+    only_pypi = [line[:60] for line in pypi if line not in readme]
+    assert not only_readme and not only_pypi, (only_readme, only_pypi)
+    assert readme == pypi, "the same entries, in the same order"
