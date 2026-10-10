@@ -54,13 +54,9 @@ def unwrap(text: str) -> str:
     return "\n".join(lines)
 
 
-#: On every release page, as SignPath Foundation asks of the page its signed
-#: downloads are offered from: the policy by name, and who signs.
+#: On every release page: the policy by name. Who signs, and with what, is
+#: said there and not here, since it is not yet settled.
 POLICY = "https://github.com/davhodg/pycangui/blob/master/CODE_SIGNING.md"
-ATTRIBUTION = (
-    "Free code signing provided by [SignPath.io](https://about.signpath.io/), "
-    "certificate by [SignPath Foundation](https://signpath.org/)"
-)
 
 
 def signing_line(signed: bool) -> str:
@@ -71,7 +67,10 @@ def signing_line(signed: bool) -> str:
     in place should not look like one that has it.
     """
     if signed:
-        return f"**[Code signing policy]({POLICY}):** {ATTRIBUTION}."
+        return (
+            f"**[Code signing policy]({POLICY}):** the Windows build of this release is "
+            "code-signed."
+        )
     return (
         f"**[Code signing policy]({POLICY}):** the Windows build of this release is not "
         "code-signed, so Windows SmartScreen warns about the installer; "

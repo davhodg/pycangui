@@ -5,10 +5,9 @@ installer when it is downloaded and first run, and *More info > Run anyway* goes
 Where an unsigned program is a problem, install from [PyPI](https://pypi.org/project/pycangui/)
 with `pip install pycangui` instead: SmartScreen does not apply to it.
 
-Signing is intended. The plan is SignPath Foundation's free code signing for open-source
-projects, which asks for an established user base first, so it will be applied for once
-pycangui has one. This page says how releases will be signed, and will say from which release
-they are.
+Signing is intended, and how it will be done is not yet settled. This page says what will be
+signed and who is responsible for it, and will say how, and from which release, once that is
+decided.
 
 ## What will be signed
 
@@ -18,10 +17,8 @@ The Windows build attached to each [release](https://github.com/davhodg/pycangui
 - `pycangui-<version>-setup.exe`, the installer that carries it.
 
 Both are built by this repository's GitHub Actions workflow
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) from the tagged commit, and will be
-sent for signing from that workflow. Nothing built anywhere else is to be submitted for
-signing. The workflow has the signing steps in place already, switched off until there is a
-signing service to use.
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) from the tagged commit. Only what
+that workflow built from a tagged commit will be signed: nothing built anywhere else.
 
 Meanwhile every release installer carries a **build attestation**: GitHub signs, with
 [Sigstore](https://www.sigstore.dev/), a record that the file was built by this workflow from
@@ -42,7 +39,7 @@ code-signed; PyPI carries attestations of the workflow that built them instead.
 ## Team roles
 
 pycangui has one maintainer, who holds every role, and uses multi-factor authentication for
-the repository on GitHub and for the project on SignPath.io:
+the repository on GitHub, as will be used for whatever does the signing:
 
 | Role | Members |
 |---|---|
