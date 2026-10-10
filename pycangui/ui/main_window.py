@@ -453,7 +453,7 @@ class MainWindow(QMainWindow):
         # Deferred by a turn of the loop: adding or removing a pane is usually
         # this menu's own action doing it, and clearing a menu while it is
         # delivering a click is not somewhere to be.
-        self.panes.changed.connect(lambda: QTimer.singleShot(0, self._build_view_menu))
+        self.panes.changed.connect(lambda: QTimer.singleShot(0, self, self._build_view_menu))
 
         #: The demo device: the shipped example nodes, running while a
         #: channel is connected to the bus the demo is advertised on.

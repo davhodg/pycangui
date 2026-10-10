@@ -9,11 +9,12 @@ this was built: their settings, their hooks and their EDS files become the
 the feature announces itself by losing an existing setup.
 """
 
+import gc
 import json
 import shutil
 
 import pytest
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings, Qt, Signal
 
 from pycangui import APP_NAME, __version__
 from pycangui.core import paths, workspaces
@@ -567,3 +568,64 @@ def test_a_folder_is_made_once_and_left_alone_after(tmp_path, monkeypatch):
     monkeypatch.setattr(type(wanted), "mkdir", lambda self, **k: made.append(self))
     assert paths.made(wanted) == wanted
     assert made == [], "and does not ask the file system to make it again"
+
+
+def test_the_window_left_behind_is_destroyed_and_not_kept(app, home):
+    """Closing hides a window and no more, and letting go of it does not free
+    it: every workspace looked at used to leave its window behind, whole."""
+    import shiboken6
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    from pycangui.ui.main_window import MainWindow
+    from pycangui.ui.session import Session
+
+    def settled() -> int:
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        gc.collect()  # what Python held of it, which goes in its own time
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+        return len(app.allWidgets())
+
+    QSettings().clear()
+    session = Session(MainWindow)
+    first = session.open()
+    workspaces.create("second")
+    second = session.reopen("second")
+    with_one = settled()
+    assert not shiboken6.isValid(first), "the old window has gone"
+    assert shiboken6.isValid(second)
+
+    from PySide6.QtWidgets import QWidget
+
+    a_window = len(second.findChildren(QWidget))
+    switches = (workspaces.DEFAULT, "second", workspaces.DEFAULT, "second")
+    for name in switches:
+        session.reopen(name)
+    # Not nothing: a plot's own menus are pyqtgraph's to free, and it keeps
+    # them. A small part of a window for each switch, where it was all of one.
+    each = (settled() - with_one) / len(switches)
+    assert each < a_window / 4, "four more switches, and nothing like four more windows"
+    session.window.close()
+
+
+def test_a_window_that_stays_is_not_destroyed(app, home):
+    import shiboken6
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QMainWindow
+
+    from pycangui.ui.session import Session
+
+    class Staying(QMainWindow):
+        reopen_requested = Signal(str)
+
+        def open_files(self, files):
+            pass
+
+        def closeEvent(self, event):
+            event.ignore()
+
+    session = Session(Staying)
+    first = session.open()
+    assert session.reopen("anything") is first
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+    assert shiboken6.isValid(first), "somebody chose to stay, so it is still the window"
+    first.deleteLater()

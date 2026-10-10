@@ -246,7 +246,7 @@ class FileSource(Source):
     def _answer(self, index: int, sub: int, raw: Any, error: str | None) -> None:
         # Through the event loop, so a file behaves the way a node does and the
         # pane has one path through it rather than two.
-        QTimer.singleShot(0, lambda: self.value.emit(index, sub, raw, error))
+        QTimer.singleShot(0, self, lambda: self.value.emit(index, sub, raw, error))
 
     # --- and back out again -------------------------------------------------------------
     @property

@@ -675,15 +675,18 @@ class Panes(QObject):
         if isinstance(watched, QDockWidget) and event.type() in REAPPLY_AFTER:
             # Deferred: Qt is part way through whatever it is doing to this
             # pane, and setWindowFlags hides and re-shows the widget.
-            QTimer.singleShot(0, lambda d=watched: self._apply_on_top(d))
+            # Each of these with this object as its owner, so that one still
+            # waiting when the window is destroyed is dropped with it: with
+            # no owner it ran anyway, on panes that were no longer there.
+            QTimer.singleShot(0, self, lambda d=watched: self._apply_on_top(d))
             # A pane restored floating is shown *after* topLevelChanged says so,
             # so asking then found it invisible and left it without its buttons.
             if name := self._name_of(watched):
-                QTimer.singleShot(0, lambda n=name: self.show_bar(n))
+                QTimer.singleShot(0, self, lambda n=name: self.show_bar(n))
             # As it appears, and not after a drag: where somebody leaves a
             # pane is theirs to choose, half off the screen included.
             if event.type() == QEvent.Show:
-                QTimer.singleShot(0, lambda d=watched: self._keep_floating_in_view(d))
+                QTimer.singleShot(0, self, lambda d=watched: self._keep_floating_in_view(d))
         return super().eventFilter(watched, event)
 
     def _keep_floating_in_view(self, dock: QDockWidget) -> None:
@@ -792,7 +795,7 @@ class Panes(QObject):
             self.show_bar(name)
             window.show()
             # Once it is up: its frame has no size until it is.
-            QTimer.singleShot(0, lambda: self._keep_detached_in_view(name))
+            QTimer.singleShot(0, self, lambda: self._keep_detached_in_view(name))
         finally:
             self._moving.discard(name)
         self.note_shown(name)
@@ -833,7 +836,7 @@ class Panes(QObject):
             self._note_arranged(name)
             self.closed_detached.add(name)
         if name in self.closed_detached:
-            QTimer.singleShot(0, lambda: self._detach_again(name))
+            QTimer.singleShot(0, self, lambda: self._detach_again(name))
 
     def _detach_again(self, name: str) -> None:
         if name in self.closed_detached and name not in self.detached:

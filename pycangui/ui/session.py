@@ -12,7 +12,8 @@ A window cannot do that to itself -- it would be closing the object running
 the code -- so something outside it holds the pair: close the old one, move
 the pointer, open the next. The order matters. Closing first means the
 window writes its layout and its settings into the workspace it was actually
-in, rather than into the one being opened.
+in, rather than into the one being opened. The old window is then destroyed,
+since closing one only hides it.
 """
 
 from __future__ import annotations
@@ -65,6 +66,14 @@ class Session(QObject):
             self.window = previous
             self._open_waiting()
             return previous
+        if previous is not None:
+            # Closed is hidden, and no more than that. Its signals are
+            # connected to functions that hold it, which Python's collector
+            # cannot see round, so without this every window there has been
+            # this session stays for the rest of it: a thousand widgets and
+            # their timers for each workspace looked at. Later, not now:
+            # this is being run from inside one of its own methods.
+            previous.deleteLater()
         if name and workspaces.exists(name):
             workspaces.set_active(name)
         return self.open()

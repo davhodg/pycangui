@@ -49,6 +49,7 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- Switching workspace frees the window it leaves, which used to stay in memory until exit.
 - XCP / CCP: characteristics in a standard A2L were not listed at all.
 - *View*: a detached pane was shown unticked while open, and picking it did not bring it forward.
 - XCP and CCP: a command could time out while the window was busy, though the slave had answered.

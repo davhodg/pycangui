@@ -459,7 +459,7 @@ class J1939Manager(QObject):
         self._requests_made += 1
         serial = self._requests_made
         self._asked[pgn] = (destination, set(), serial)
-        QTimer.singleShot(int(self.RESPONSE_S * 1000), lambda: self._no_answer(pgn, serial))
+        QTimer.singleShot(int(self.RESPONSE_S * 1000), self, lambda: self._no_answer(pgn, serial))
         if self.ca is not None and self.own_address is not None:
             self.ca.send_request(0, pgn, destination)
         else:
