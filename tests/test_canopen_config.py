@@ -658,3 +658,19 @@ def test_a_mapped_size_that_is_not_the_types_is_flagged_when_the_mapping_is_read
     assert len(warned) == 1, "said once for the same mapping"
     manager.flag_mapping_sizes(5, again=True)
     assert len(warned) == 2, "and again when a read was asked for"
+
+
+# --- who a node is, for the display hook --------------------------------------------------
+def test_a_node_is_who_it_said_it_was_and_failing_that_who_its_eds_says(stack):
+    """The display hook was given nobody for a live node, so one hooks file
+    could not tell two products apart on the bus as it could in a file."""
+    from pycangui.canopen import NodeIdentity
+
+    manager, _demo, _tmp = stack
+    from_file = manager.identity(5)
+    assert from_file is not None and from_file.product_code == 0x1234, "the EDS loaded for it"
+
+    manager._identities[5] = NodeIdentity(5, vendor_id=7, product_code=9)
+    assert manager.identity(5).vendor_id == 7, "its own word comes first"
+
+    assert manager.identity(99) is None, "nobody has said anything about this one"

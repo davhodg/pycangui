@@ -14,6 +14,7 @@ created without, and because the split is easy to get backwards.
 
 from __future__ import annotations
 
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -24,7 +25,40 @@ MIT0 = "# SPDX-License-Identifier: MIT-0"
 SKIPPED = {".venv", ".git", "dist", "work", "lib", "__pycache__", ".pytest_cache", ".ruff_cache"}
 
 
+#: Where pycangui's own Python lives. A file somebody has just made here is
+#: checked before it is ever committed, which is when a header gets forgotten.
+OURS = ("pycangui", "tests", "build")
+
+
+def _git(*args: str) -> list[str] | None:
+    """What git lists, or None where there is no git or no checkout to ask."""
+    try:
+        said = subprocess.run(
+            ["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=30, check=True
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return [line for line in said.stdout.splitlines() if line]
+
+
 def sources() -> list[Path]:
+    """The Python files that are this repository's.
+
+    What git tracks, and what is new and not ignored in the folders the code
+    lives in. Not every ``.py`` under the folder: a scratch file left at the
+    top of somebody's checkout is not pycangui's, and failed a build for
+    having no licence header. Without git -- an unpacked source archive --
+    it is every file there is, as it used to be.
+    """
+    tracked = _git("ls-files", "*.py")
+    if tracked is None:
+        return _walked()
+    new = _git("ls-files", "--others", "--exclude-standard", "*.py") or []
+    wanted = set(tracked) | {name for name in new if name.split("/")[0] in OURS}
+    return sorted(Path(name) for name in wanted if (ROOT / name).is_file())
+
+
+def _walked() -> list[Path]:
     found = []
     for path in sorted(ROOT.rglob("*.py")):
         rel = path.relative_to(ROOT)

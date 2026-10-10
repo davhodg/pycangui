@@ -35,6 +35,7 @@ from pycangui.canopen import (
     PdoConfig,
     PdoEntry,
     eds_extras,
+    eds_identity,
     eds_text,
     faults,
     load_od,
@@ -218,6 +219,9 @@ class CanopenManager(QObject):
         #: node -> the EDS it was loaded from, so a DCF can be written
         #: through it rather than rebuilt from the parsed dictionary.
         self._eds_path: dict[int, str] = {}
+        #: What each node said it was when it was asked (0x1018), for the
+        #: display hook: one hooks file serves every product it knows.
+        self._identities: dict[int, NodeIdentity] = {}
         self.emcy_history: list[Emcy] = []
         #: node_id -> what it last said about its own faults, from read_faults.
         #: Kept because it is state rather than an event: the answer stands
@@ -550,6 +554,7 @@ class CanopenManager(QObject):
             self.access_levels,
             self.fault_states,
             self._eds_path,
+            self._identities,
             self._size_mismatches_said,
         ):
             known.pop(node_id, None)
@@ -1044,6 +1049,8 @@ class CanopenManager(QObject):
             if error:
                 self.message.emit(f"Node {node_id}: identify failed ({error})", WARNING)
             else:
+                if identity is not None:
+                    self._identities[node_id] = identity
                 self.identified.emit(identity)
 
         self._worker.submit(job, done)
@@ -1075,6 +1082,26 @@ class CanopenManager(QObject):
         self._worker.submit(job, done)
 
     # --- how an object is shown ------------------------------------------------
+    def identity(self, node_id: int) -> NodeIdentity | None:
+        """Who a node is: what it said when asked, else what its EDS says.
+
+        The node's own word first, since that is the device on the bus. A
+        node not yet asked, or one that would not say, is taken to be what
+        the EDS loaded for it describes -- which is what a file opened with
+        no node is given, too. None where neither says.
+        """
+        if (known := self._identities.get(node_id)) is not None:
+            return known
+        if (path := self._eds_path.get(node_id)) is None:
+            return None
+        try:
+            vendor, product, revision = eds_identity(Path(path))
+        except Exception:  # a file gone since, or one not read as text
+            return None
+        if vendor is None and product is None:
+            return None
+        return NodeIdentity(node_id, vendor_id=vendor, product_code=product, revision=revision)
+
     def extras(self, node_id: int, index: int, sub: int) -> dict[str, str]:
         """What this node's EDS said about the object that the parser dropped."""
         return self._extras.get(node_id, {}).get((index, sub), {})
@@ -1098,7 +1125,12 @@ class CanopenManager(QObject):
         overrides = None
         if self._hooks is not None:
             overrides = self._hooks.call(
-                "canopen", "object_display", index, sub, self.extras(node_id, index, sub), None
+                "canopen",
+                "object_display",
+                index,
+                sub,
+                self.extras(node_id, index, sub),
+                self.identity(node_id),
             )
         return with_overrides(base, overrides if isinstance(overrides, dict) else None)
 

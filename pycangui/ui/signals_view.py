@@ -47,7 +47,7 @@ COLUMN_TIPS = {
     "All of them, so it goes on rising past the history limit: the limit is on\n"
     "how many are kept for the plot and for Export, not on how many are counted.",
     RATE: "Samples a second, over the last second of the signal's own samples:\n"
-    "how fast it was arriving when it last arrived.",
+    "how fast it was arriving when it last arrived, and 0 once it has stopped.",
     MINIMUM: "The smallest value since the history was last cleared.",
     MAXIMUM: "The largest value since the history was last cleared.",
     UNIT: "The unit the value is in, where the database or the EDS gives one.",
@@ -88,9 +88,12 @@ class SignalsView(QWidget):
     #: Which optional columns are showing changed, for whoever remembers it.
     columns_changed = Signal(list)
 
-    def __init__(self, hub: SignalHub, settings=None) -> None:
+    def __init__(self, hub: SignalHub, settings=None, now=None) -> None:
         super().__init__()
         self.hub = hub
+        #: The window's clock, for telling a signal that has stopped from one
+        #: that is slow. Without it a rate is the last one there was.
+        self._now = now
         self._groups: dict[str, QTreeWidgetItem] = {}
         self._items: dict[str, QTreeWidgetItem] = {}
         self._updating = False
@@ -187,11 +190,14 @@ class SignalsView(QWidget):
             if s is not None:
                 self._show_statistics(item, s)
 
+    def _time(self) -> float | None:
+        return self._now() if self._now is not None else None
+
     def _show_statistics(self, item: QTreeWidgetItem, s) -> None:
         """Fill the statistics columns that are showing, and only those."""
         for column, text in (
             (COUNT, lambda: f"{s.count:,}" if s.count else ""),
-            (RATE, lambda: "" if (rate := s.rate()) is None else f"{rate:.4g}"),
+            (RATE, lambda: "" if (rate := s.rate(self._time())) is None else f"{rate:.4g}"),
             (MINIMUM, lambda: _number(s.minimum, s.choices)),
             (MAXIMUM, lambda: _number(s.maximum, s.choices)),
         ):

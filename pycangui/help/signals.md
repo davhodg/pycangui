@@ -46,7 +46,10 @@ that are listed, so with *speed* typed in the filter it plots the speeds.
 The same right-click has **Columns**. **Min** and **Max** sit beside the value
 they are the extremes of; **Count** is the samples received and **Rate** the
 samples a second, over the last second of the signal's own samples -- how fast
-it was arriving when it last arrived. Those four are hidden until asked for.
+it was arriving when it last arrived, and 0 once it has stopped: after a couple
+of seconds with nothing, or three of its own periods if that is longer, so a
+slow signal is not called stopped for being slow. Those four are hidden until
+asked for.
 **Unit** is there too: shown to begin with, and it can be hidden. The
 statistics are kept for every signal as it
 arrives, whether shown or not and however much of the history has been

@@ -24,6 +24,8 @@ since the last version, and comes out in the next one.
 - **DCF compare is part of pycangui**, not a plugin: *Compare...* in the CANopen pane. A copy
   of the plugin left in a workspace is no longer run.
 - Simulated nodes each run on a thread of their own, and answer while the window is busy.
+- CANopen: the `object_display` hook is told which node it is for.
+- Signals and Plot: the Rate of a signal that has stopped arriving is 0.
 
 ### Fixed
 

@@ -45,6 +45,11 @@ def _samples() -> array:
 #: How far back a signal's rate is measured: the last second of its samples.
 RATE_WINDOW_S = 1.0
 
+#: How long without a sample before a live signal's rate is 0: this many
+#: seconds, or this many of its own periods, whichever is longer.
+STOPPED_AFTER_S = 2.0
+STOPPED_AFTER_PERIODS = 3
+
 
 @dataclass
 class SignalSeries:
@@ -63,6 +68,9 @@ class SignalSeries:
     #: samples stay numbers, so they plot and export as before; this is for
     #: showing one to somebody.
     choices: dict[int, str] = field(default_factory=dict)
+    #: Whether it arrives as it happens, on this window's clock. One read from
+    #: a file does not: its times are the file's, and it is never "stopped".
+    live: bool = True
 
     @property
     def key(self) -> str:
@@ -88,20 +96,33 @@ class SignalSeries:
         del self.times[:-limit]
         del self.values[:-limit]
 
-    def rate(self) -> float | None:
+    def rate(self, now: float | None = None) -> float | None:
         """Samples a second, over the last second of samples there is.
 
-        Of the signal's own time stamps, not of the clock: it is how fast the
-        signal was arriving when it last arrived. Worked out when asked for,
-        so it costs nothing while nobody is looking. None with fewer than two
-        samples to measure between.
+        Of the signal's own time stamps: how fast it was arriving when it last
+        arrived. Worked out when asked for, so it costs nothing while nobody
+        is looking. None with fewer than two samples to measure between.
+
+        Told the time, it is 0 for a live signal that has stopped: one whose
+        newest sample is older than a signal at that rate would leave it. A
+        rate that went on saying 100 after the node was unplugged was the
+        column saying something that had stopped being true.
         """
         if len(self.times) < 2:
             return None
         first = bisect_left(self.times, self.times[-1] - RATE_WINDOW_S)
         first = min(first, len(self.times) - 2)
         span = self.times[-1] - self.times[first]
-        return (len(self.times) - 1 - first) / span if span > 0 else None
+        if span <= 0:
+            return None
+        rate = (len(self.times) - 1 - first) / span
+        if now is not None and self.live:
+            # A few periods of grace, and never less than a couple of seconds:
+            # a slow signal is not stopped for being slow, nor a fast one for
+            # one late frame.
+            if now - self.times[-1] > max(STOPPED_AFTER_S, STOPPED_AFTER_PERIODS / rate):
+                return 0.0
+        return rate
 
     @property
     def latest(self) -> float | None:
@@ -167,6 +188,7 @@ class SignalHub(QObject):
             new = False
         series.unit = unit or series.unit
         series.times, series.values = _samples(), _samples()
+        series.live = False
         series.times.frombytes(np.asarray(times, dtype=float).tobytes())
         series.values.frombytes(np.asarray(values, dtype=float).tobytes())
         series.count = len(series.values)

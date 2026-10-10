@@ -302,3 +302,31 @@ def test_the_readout_is_short_whatever_the_size():
     amounts = {stored_text(2, samples) for samples in (5, 50_000, 5_000_000)}
     assert len(amounts) == 3, "small, thousands and millions each read differently"
     assert stored_text(1, 5, 200_000, True) != stored_text(1, 5, 200_000, False)
+
+
+def test_a_signal_that_has_stopped_arriving_has_a_rate_of_nothing():
+    """It went on saying 100 after the node was unplugged."""
+    hub = SignalHub()
+    for i in range(50):
+        hub.push("Live", "Fast", i * 0.01, 1.0)  # 100 a second, until 0.49
+    fast = hub.get("Live/Fast")
+    assert fast.rate(0.5) == pytest.approx(100.0, rel=0.05), "still arriving"
+    assert fast.rate(1.0) == pytest.approx(100.0, rel=0.05), "one late frame is not stopped"
+    assert fast.rate(10.0) == 0.0
+    assert fast.rate() == pytest.approx(100.0, rel=0.05), "not told the time, it cannot say"
+
+
+def test_a_slow_signal_is_not_stopped_for_being_slow():
+    hub = SignalHub()
+    for i in range(5):
+        hub.push("Live", "Slow", i * 10.0, 1.0)  # one every ten seconds, until 40
+    slow = hub.get("Live/Slow")
+    assert slow.rate(55.0) == pytest.approx(0.1), "its next is not due yet, give or take"
+    assert slow.rate(200.0) == 0.0
+
+
+def test_a_signal_read_from_a_file_is_never_stopped():
+    """Its times are the file's, not this window's clock."""
+    hub = SignalHub()
+    hub.set_series("log.mf4", "Speed", [0.0, 0.1, 0.2, 0.3], [1, 2, 3, 4])
+    assert hub.get("log.mf4/Speed").rate(1e6) == pytest.approx(10.0)

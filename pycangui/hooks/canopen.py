@@ -263,6 +263,12 @@ def object_display(index: int, sub: int, extras: dict, identity, *, ctx) -> dict
     ``offset``, ``decimals``, ``choices``, ``low``, ``high``. Anything left
     out keeps what the EDS said; returning None keeps all of it.
 
+    ``identity`` is whose object this is -- vendor, product and revision, as
+    the node gave them when it was identified, or as its EDS states them for a
+    node not yet asked and for a file opened with no node. None where neither
+    says. It is how one hooks file serves two products that use the same
+    index for different things.
+
     ``extras`` is everything the EDS carried about this object that the
     ``canopen`` package did not keep. Mostly that means the maker's own
     comment lines -- CiA 306 defines no key for a unit or for scaling, so a
