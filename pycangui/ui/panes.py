@@ -28,6 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from PySide6.QtCore import QEvent, QObject, QRect, Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDockWidget,
     QMainWindow,
@@ -49,6 +50,40 @@ REAPPLY_AFTER = (
     QEvent.WindowActivate,
     QEvent.NonClientAreaMouseButtonRelease,
 )
+
+
+def keep_in_view(window: QWidget) -> bool:
+    """Bring a window wholly onto a screen, if any of it is off one. True if it moved.
+
+    For a pane as it opens out of the main window. Where it opens was
+    worked out or remembered, not chosen just now: Qt puts a floating pane
+    back by the corner of its contents, so its title bar can be above the
+    top of the screen with nothing to take hold of; and a place remembered
+    on a second monitor is nowhere once that monitor has gone.
+
+    Measured by the frame, which is what has to be reachable. One lying
+    across two screens with every corner on one of them is left alone:
+    somebody put it there. A window bigger than the screen is made to fit.
+    """
+    frame, inner = window.frameGeometry(), window.geometry()
+    screens = QGuiApplication.screens()
+    if not screens:
+        return False
+    corners = (frame.topLeft(), frame.topRight(), frame.bottomLeft(), frame.bottomRight())
+    if all(any(s.availableGeometry().contains(c) for s in screens) for c in corners):
+        return False
+    screen = QGuiApplication.screenAt(frame.center()) or window.screen() or screens[0]
+    area = screen.availableGeometry()
+    width, height = min(frame.width(), area.width()), min(frame.height(), area.height())
+    x = max(area.left(), min(frame.left(), area.left() + area.width() - width))
+    y = max(area.top(), min(frame.top(), area.top() + area.height() - height))
+    # The size is the contents' and the place is the frame's: Qt's own split.
+    window.resize(
+        width - (frame.width() - inner.width()), height - (frame.height() - inner.height())
+    )
+    window.move(x, y)
+    return True
+
 
 #: Qt sends these to every window of the application when a modal dialog opens
 #: and when it closes. A pinned pane has to stand down in between: it is above
@@ -293,6 +328,7 @@ class Panes(QObject):
             window.show()
             window.raise_()
             window.activateWindow()
+            keep_in_view(window)  # asked for by name, so somewhere it can be seen
             return
         kind = self.kinds.get(self._kind_of.get(name, ""))
         never_shown = kind is not None and name not in self._arranged
@@ -602,7 +638,22 @@ class Panes(QObject):
             # so asking then found it invisible and left it without its buttons.
             if name := self._name_of(watched):
                 QTimer.singleShot(0, lambda n=name: self.show_bar(n))
+            # As it appears, and not after a drag: where somebody leaves a
+            # pane is theirs to choose, half off the screen included.
+            if event.type() == QEvent.Show:
+                QTimer.singleShot(0, lambda d=watched: self._keep_floating_in_view(d))
         return super().eventFilter(watched, event)
+
+    def _keep_floating_in_view(self, dock: QDockWidget) -> None:
+        try:
+            if dock.isFloating() and dock.isVisible():
+                keep_in_view(dock)
+        except RuntimeError:  # removed in the moment between
+            pass
+
+    def _keep_detached_in_view(self, name: str) -> None:
+        if (window := self.detached.get(name)) is not None and window.isVisible():
+            keep_in_view(window)
 
     # --- what an undocked pane can be asked to do ---------------------------------------
     def show_bar(self, name: str) -> None:
@@ -698,6 +749,8 @@ class Panes(QObject):
             self.detached[name] = window
             self.show_bar(name)
             window.show()
+            # Once it is up: its frame has no size until it is.
+            QTimer.singleShot(0, lambda: self._keep_detached_in_view(name))
         finally:
             self._moving.discard(name)
         self.note_shown(name)

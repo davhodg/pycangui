@@ -619,3 +619,105 @@ def test_a_pane_closed_in_its_own_window_is_picked_back_into_one(app, window):
     settle(app)
     assert "canopen" in window.panes.detached
     assert window.panes.detached["canopen"].pane.isVisible(), "the pane, not a blank window"
+
+
+# --- a pane that opens out of the window opens where it can be seen -----------------------------
+def _wholly_on_a_screen(widget) -> bool:
+    from PySide6.QtGui import QGuiApplication
+
+    frame = widget.frameGeometry()
+    return any(s.availableGeometry().contains(frame) for s in QGuiApplication.screens())
+
+
+def test_a_window_above_the_top_of_the_screen_is_brought_down(app):
+    from PySide6.QtWidgets import QWidget
+
+    from pycangui.ui.panes import keep_in_view
+
+    area = app.primaryScreen().availableGeometry()
+    window = QWidget()
+    window.setGeometry(area.left() + 40, area.top() - 60, 300, 200)
+    window.show()
+    app.processEvents()
+    left = window.frameGeometry().left()
+    assert keep_in_view(window) is True
+    assert _wholly_on_a_screen(window)
+    assert window.frameGeometry().left() == left, "moved no further than it had to be"
+    assert window.width() == 300 and window.height() == 200
+    window.close()
+
+
+def test_a_window_already_in_view_is_left_where_it_is(app):
+    from PySide6.QtWidgets import QWidget
+
+    from pycangui.ui.panes import keep_in_view
+
+    area = app.primaryScreen().availableGeometry()
+    window = QWidget()
+    window.setGeometry(area.left() + 50, area.top() + 50, 300, 200)
+    window.show()
+    app.processEvents()
+    before = window.geometry()
+    assert keep_in_view(window) is False
+    assert window.geometry() == before
+    window.close()
+
+
+def test_a_window_bigger_than_the_screen_is_made_to_fit(app):
+    from PySide6.QtWidgets import QWidget
+
+    from pycangui.ui.panes import keep_in_view
+
+    area = app.primaryScreen().availableGeometry()
+    window = QWidget()
+    window.setGeometry(area.left() - 100, area.top() - 100, area.width() + 400, area.height() + 400)
+    window.show()
+    app.processEvents()
+    assert keep_in_view(window) is True
+    assert _wholly_on_a_screen(window)
+    window.close()
+
+
+def test_a_floating_pane_shown_off_the_top_comes_into_view(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QRect, QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    window.show()
+    app.processEvents()
+    area = app.primaryScreen().availableGeometry()
+    dock = window.panes.docks["trace"]
+    dock.hide()
+    dock.setFloating(True)
+    dock.setGeometry(QRect(area.left() + 30, area.top() - 80, 320, 240))
+    window.panes.show("trace")
+    for _ in range(5):
+        app.processEvents()
+    assert dock.isFloating() and dock.isVisible()
+    assert _wholly_on_a_screen(dock)
+    window.close()
+
+
+def test_a_detached_pane_remembered_off_the_screen_comes_into_view(app, tmp_path, monkeypatch):
+    from PySide6.QtCore import QSettings
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    window.show()
+    app.processEvents()
+    area = app.primaryScreen().availableGeometry()
+    # As left on a monitor that is no longer there.
+    window.ctx.settings.set(
+        "panes.detached_at.trace", [area.right() + 3000, area.top() - 500, 400, 300]
+    )
+    window.panes.detach("trace")
+    for _ in range(5):
+        app.processEvents()
+    assert _wholly_on_a_screen(window.panes.detached["trace"])
+    window.close()

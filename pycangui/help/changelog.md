@@ -16,6 +16,7 @@ since the last version, and comes out in the next one.
 - The status bar says the signal history limit is per signal and the samples a total.
 - *Tools > Settings > Column widths*: *Manual* makes list columns draggable and remembered.
 - XCP / CCP: loading a large A2L shows its progress, and can be cancelled while it is read.
+- A floating or detached pane that would open partly off the screen is brought onto it.
 - Plot: a Y axis whose signals share named values is marked with the names; right-click
   the plot to turn it off.
 - CAN Transmit: a counter or checksum in a DBC signal is shown by position, *count 52:4*,
