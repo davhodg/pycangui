@@ -446,6 +446,9 @@ class MainWindow(QMainWindow):
         )
         self.reset_layout_action.triggered.connect(self._reset_layout)
         self.view_menu = self.menuBar().addMenu("&View")
+        #: Pane name -> its entry in the View menu. See ``_pane_action``.
+        self._view_actions: dict[str, QAction] = {}
+        self.view_menu.aboutToShow.connect(self._tick_view_menu)
         self._build_view_menu()
         # Deferred by a turn of the loop: adding or removing a pane is usually
         # this menu's own action doing it, and clearing a menu while it is
@@ -1159,6 +1162,45 @@ class MainWindow(QMainWindow):
         order.extend(name for name in self.panes.names() if name not in order)
         return order
 
+    def _pane_action(self, name: str) -> QAction:
+        """A pane's entry in the View menu: ticked while it is on screen, anywhere.
+
+        Not the dock's own show-and-hide action, which knows about the dock
+        and nothing else. A pane out in a window of its own has its dock
+        hidden, so that action showed it unticked while it was open -- and
+        picking it did nothing anybody could see, when what was wanted was
+        the window brought out from behind the one in front of it.
+        """
+        action = QAction(self.panes.docks[name].windowTitle(), self.view_menu)
+        action.setCheckable(True)
+        action.setChecked(self.panes.on_screen(name))
+        action.triggered.connect(lambda _checked=False, n=name: self._view_picked(n))
+        self._view_actions[name] = action
+        return action
+
+    def _view_picked(self, name: str) -> None:
+        """Show a pane, bring its window to the front, or put a docked one away.
+
+        A pane in a window of its own is brought forward and stays open: it
+        has a close button of its own, and somebody reaching for the menu
+        with the window buried is looking for it, not trying to be rid of it.
+        """
+        dock = self.panes.docks.get(name)
+        if dock is None:
+            return
+        if name in self.panes.detached or not self.panes.on_screen(name):
+            self.panes.show(name)
+        else:
+            dock.hide()
+        self._tick_view_menu()
+
+    def _tick_view_menu(self) -> None:
+        """Tick the panes that are on screen, as the menu is opened."""
+        for name, action in self._view_actions.items():
+            if (dock := self.panes.docks.get(name)) is not None:
+                action.setText(dock.windowTitle())
+                action.setChecked(self.panes.on_screen(name))
+
     def _build_view_menu(self) -> None:
         """Every pane, and the two things you can do to the set of them.
 
@@ -1168,6 +1210,7 @@ class MainWindow(QMainWindow):
         drops its title, so a greyed entry is what says the same on every style.
         """
         self.view_menu.clear()
+        self._view_actions = {}
         own, plugins, custom = [], [], []
         for name in self._view_order():
             kind = self.panes.kind_of(name)
@@ -1180,7 +1223,7 @@ class MainWindow(QMainWindow):
                 self.view_menu.addSeparator()
                 self.view_menu.addAction(heading).setEnabled(False)
             for name in names:
-                self.view_menu.addAction(self.panes.docks[name].toggleViewAction())
+                self.view_menu.addAction(self._pane_action(name))
         self.view_menu.addSeparator()
 
         # They are panes -- they open as docks and they are removed under

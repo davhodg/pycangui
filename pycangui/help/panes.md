@@ -37,6 +37,11 @@ where it came from -- floating if that is where it was, docked if not --
 while closing that window closes the pane, as closing a docked one does, and
 *View* shows it again. *View > Dock all panes* gathers everything up.
 
+The *View* menu ticks every pane that is on screen, a detached one included.
+Picking a pane that is out in a window of its own brings that window to the
+front -- from behind the main window, or from minimised -- and leaves it open;
+picking a docked one puts it away, and picking it again brings it back.
+
 Which panes are out on their own, and which are pinned, are remembered like
 the rest of the settings: a pane left on a second monitor is still there next
 time.

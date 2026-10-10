@@ -558,3 +558,64 @@ def test_detached_windows_come_up_in_front_of_the_main_one(app, tmp_path, monkey
     second = restart(app, tmp_path, first)
     assert second.panes.detached["canopen"] in raised
     second.close()
+
+
+# --- the View menu's own entries -------------------------------------------------------------
+def test_a_pane_open_in_its_own_window_is_ticked_in_the_view_menu(app, window):
+    """Its dock is hidden while it is out, so the dock's own action said it
+    was closed while it was open in front of you."""
+    float_out(app, window.panes.docks["canopen"])
+    window.panes.detach("canopen")
+    settle(app)
+    window._tick_view_menu()  # as opening the menu does
+    assert window._view_actions["canopen"].isChecked()
+
+    window.panes.detached["canopen"].close()
+    settle(app)
+    window._tick_view_menu()
+    assert not window._view_actions["canopen"].isChecked()
+
+
+def test_picking_an_open_detached_pane_brings_it_forward_and_leaves_it_open(app, window):
+    """Behind the main window, or minimised: somebody reaching for the menu is
+    looking for it, not trying to be rid of it."""
+    float_out(app, window.panes.docks["canopen"])
+    window.panes.detach("canopen")
+    settle(app)
+    own = window.panes.detached["canopen"]
+    own.showMinimized()
+    settle(app)
+
+    window._view_actions["canopen"].trigger()
+    settle(app)
+    assert window.panes.detached.get("canopen") is own, "still in its own window"
+    assert not own.isHidden() and not own.isMinimized()
+    assert window._view_actions["canopen"].isChecked()
+
+
+def test_picking_a_docked_pane_puts_it_away_and_picking_it_again_brings_it_back(app, window):
+    placed(window)
+    window.panes.show("log")
+    settle(app)
+    assert window.panes.on_screen("log")
+
+    window._view_actions["log"].trigger()
+    settle(app)
+    assert not window.panes.on_screen("log") and not window._view_actions["log"].isChecked()
+
+    window._view_actions["log"].trigger()
+    settle(app)
+    assert window.panes.on_screen("log") and window._view_actions["log"].isChecked()
+
+
+def test_a_pane_closed_in_its_own_window_is_picked_back_into_one(app, window):
+    float_out(app, window.panes.docks["canopen"])
+    window.panes.detach("canopen")
+    settle(app)
+    window.panes.detached["canopen"].close()
+    settle(app)
+
+    window._view_actions["canopen"].trigger()
+    settle(app)
+    assert "canopen" in window.panes.detached
+    assert window.panes.detached["canopen"].pane.isVisible(), "the pane, not a blank window"

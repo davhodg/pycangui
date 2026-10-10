@@ -286,8 +286,13 @@ class Panes(QObject):
         if dock is None:
             return
         if (window := self.detached.get(name)) is not None:
+            # In front and with the keyboard, not merely shown: it may be open
+            # already, behind the main window or minimised.
+            if window.isMinimized():
+                window.showNormal()
             window.show()
             window.raise_()
+            window.activateWindow()
             return
         kind = self.kinds.get(self._kind_of.get(name, ""))
         never_shown = kind is not None and name not in self._arranged
