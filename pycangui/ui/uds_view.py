@@ -7,7 +7,7 @@ go to the pane's own log, shared by every tab."""
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, Slot
-from PySide6.QtGui import QAction, QFont, QTextCursor
+from PySide6.QtGui import QAction, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -70,7 +70,7 @@ from pycangui.uds.manager import (
     parse_bytes,
 )
 from pycangui.uds.standard import MAX_SECURITY_LEVEL, security_pair, seed_subfunction
-from pycangui.ui import folders, seedkey_view
+from pycangui.ui import folders, fonts, seedkey_view
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.field_widgets import PENDING
 from pycangui.ui.persist import remember
@@ -193,10 +193,11 @@ def _id_text(value: int) -> str:
     return "" if value == NO_ID else f"{value:X}"
 
 
-def _hex_edit(text: str, width: int = 70) -> QLineEdit:
+def _hex_edit(text: str, digits: int = 8) -> QLineEdit:
+    """A box for a number in hex, wide enough for this many digits."""
     e = QLineEdit(text)
-    e.setFont(QFont("Consolas", 9))
-    e.setFixedWidth(width)
+    e.setFont(fonts.mono())
+    e.setFixedWidth(fonts.width_for(e, "F" * digits))
     return e
 
 
@@ -211,7 +212,7 @@ def _picker(known: dict[int, str], digits: int, describe=None) -> QComboBox:
     combo = QComboBox()
     combo.setEditable(True)
     combo.setInsertPolicy(QComboBox.NoInsert)
-    combo.lineEdit().setFont(QFont("Consolas", 9))
+    combo.lineEdit().setFont(fonts.mono())
     for number, name in sorted(known.items()):
         combo.addItem(f"{number:0{digits}X}  {name}", number)
         if describe and (text := describe(number)):
@@ -352,11 +353,11 @@ class UdsView(QWidget):
         self.addressing.setCurrentIndex(1 if cfg.fixed else 0)
         self.addressing.currentIndexChanged.connect(lambda _i: self._addressing_changed())
         self.addressing.currentIndexChanged.connect(lambda _i: self._apply_addresses())
-        self.ecu_address = _hex_edit(f"{cfg.ecu_address:02X}", 46)
+        self.ecu_address = _hex_edit(f"{cfg.ecu_address:02X}", 2)
         self.ecu_address.setToolTip(ECU_ADDRESS_TIP)
-        self.tester_address = _hex_edit(f"{cfg.tester_address:02X}", 46)
+        self.tester_address = _hex_edit(f"{cfg.tester_address:02X}", 2)
         self.tester_address.setToolTip(TESTER_ADDRESS_TIP)
-        self.functional_target = _hex_edit(f"{cfg.functional_target:02X}", 46)
+        self.functional_target = _hex_edit(f"{cfg.functional_target:02X}", 2)
         self.functional_target.setToolTip(FUNCTIONAL_TARGET_TIP)
         self.address_labels = {}
         for box in (self.ecu_address, self.tester_address, self.functional_target):
@@ -366,7 +367,7 @@ class UdsView(QWidget):
         # left the other half to a constant nobody could see: which byte.
         # Empty is no padding, the same "empty means none" the identifier
         # boxes above use.
-        self.padding = _hex_edit("" if cfg.padding is None else f"{cfg.padding:02X}", 46)
+        self.padding = _hex_edit("" if cfg.padding is None else f"{cfg.padding:02X}", 2)
         self.padding.setPlaceholderText("none")
         self.padding.setToolTip(PADDING_TIP)
         self.padding.editingFinished.connect(self._save)
@@ -500,7 +501,7 @@ class UdsView(QWidget):
         #: the number rather than inside it: the box holds one thing, and
         #: these two bytes are what an ECU document is written in.
         self.level_pair = QLabel("")
-        self.level_pair.setFont(QFont("Consolas", 9))
+        self.level_pair.setFont(fonts.mono())
         self.level_pair.setToolTip(LEVEL_TIP)
         self.level.valueChanged.connect(self._say_pair)
         self._say_pair(self.level.value())
@@ -629,7 +630,7 @@ class UdsView(QWidget):
         )
         self.did.setCurrentText("F190")
         self.did_value = QLineEdit()
-        self.did_value.setFont(QFont("Consolas", 9))
+        self.did_value.setFont(fonts.mono())
         read_did = QPushButton("Read DID")
         read_did.setToolTip("ReadDataByIdentifier (0x22)")
         read_did.clicked.connect(lambda: self.manager.read_did(_picked(self.did)))
@@ -656,7 +657,7 @@ class UdsView(QWidget):
         )
         self.routine.setCurrentText("0203")
         self.routine_data = QLineEdit()
-        self.routine_data.setFont(QFont("Consolas", 9))
+        self.routine_data.setFont(fonts.mono())
         self.routine_data.setPlaceholderText("option bytes (hex)")
         rbox = QHBoxLayout()
         for label, control in (("Start", 1), ("Stop", 2), ("Result", 3)):
@@ -685,7 +686,7 @@ class UdsView(QWidget):
         raw_box = QGroupBox("Raw request")
         raw_row = QHBoxLayout(raw_box)
         self.raw = QLineEdit("22 F1 90")
-        self.raw.setFont(QFont("Consolas", 9))
+        self.raw.setFont(fonts.mono())
         self.raw.returnPressed.connect(self._send_raw)
         raw_btn = QPushButton("Send raw")
         raw_btn.setToolTip(
@@ -747,30 +748,30 @@ class UdsView(QWidget):
         top.addWidget(self.read_all_supported)
         d.addLayout(top, 0, 0, 1, 7)
 
-        self.dtc_mask = _hex_edit("FF", 50)
+        self.dtc_mask = _hex_edit("FF", 2)
         self.dtc_mask.setToolTip(
             "Which faults to ask about. A bit set means "
             + "include it:\n  "
             + "\n  ".join(STATUS_BITS)
             + "\nFF is everything; 08 is only the confirmed ones."
         )
-        self.severity = _hex_edit("FF", 50)
+        self.severity = _hex_edit("FF", 2)
         self.severity.setToolTip(
             "Severity bits (ISO 14229-1): 0x20 maintenance only,\n"
             "0x40 check at next halt, 0x80 check immediately."
         )
-        self.dtc_number = _hex_edit("FFFFFF", 70)
+        self.dtc_number = _hex_edit("FFFFFF", 6)
         self.dtc_number.setToolTip(
             "The three-byte DTC the report is about, in hex.\n"
             "FFFFFF is how most ECUs are asked for all of them -- a convention\n"
             "rather than something ISO 14229-1 defines for these reports, so an\n"
             "ECU is within its rights to want one particular fault instead."
         )
-        self.record = _hex_edit("FF", 50)
+        self.record = _hex_edit("FF", 2)
         self.record.setToolTip("Which record to read. FF asks for all of them.")
-        self.memory = _hex_edit("00", 50)
+        self.memory = _hex_edit("00", 2)
         self.memory.setToolTip("Which user-defined DTC memory to read from")
-        self.functional_group = _hex_edit("33", 50)
+        self.functional_group = _hex_edit("33", 2)
         self.functional_group.setToolTip(
             "WWH-OBD functional group: 33 is emissions, FE all groups, FF the VOBD system"
         )
@@ -813,7 +814,7 @@ class UdsView(QWidget):
         )
         self.dtc_setting.setChecked(True)
         self.dtc_setting.toggled.connect(self.manager.set_dtc_setting)
-        self.clear_group = _hex_edit("FFFFFF", 70)
+        self.clear_group = _hex_edit("FFFFFF", 6)
         self.clear_group.setToolTip(
             "Which faults to erase. FFFFFF is all of them; a group such as\n"
             "FFFF33 is emissions related only."
@@ -892,7 +893,7 @@ class UdsView(QWidget):
             "fixed width answer anything else with NRC 0x13."
         )
 
-        self.dfi = _hex_edit("00", 40)
+        self.dfi = _hex_edit("00", 2)
         self.dfi.setToolTip(
             "dataFormatIdentifier: high nibble compression, low nibble\n"
             "encryption. 00 is plain bytes, which is what most bootloaders\n"
@@ -906,14 +907,14 @@ class UdsView(QWidget):
         browse.setToolTip("Choose the file on this computer")
         browse.clicked.connect(self._browse)
 
-        self.address = _hex_edit("", 90)
+        self.address = _hex_edit("", 8)
         self.address.setToolTip(
             "Where the bytes go, in hex. A hex or S-record file carries its\n"
             "own address and fills this in; a raw binary has none, so for one\n"
             "of those it has to be typed."
         )
         self.address.editingFinished.connect(self._reload_image)
-        self.byte_count = _hex_edit("", 90)
+        self.byte_count = _hex_edit("", 8)
         self.byte_count.setToolTip("How many bytes to read out of the ECU, in hex")
 
         self.ecu_path = QLineEdit()
@@ -942,7 +943,7 @@ class UdsView(QWidget):
             "HIS/AUTOSAR bootloaders settled on, and yours may differ.\n"
             "What it is sent comes from hooks/uds.py::check_options."
         )
-        self.check_routine = _hex_edit(f"{CHECK_MEMORY:04X}", 50)
+        self.check_routine = _hex_edit(f"{CHECK_MEMORY:04X}", 4)
         self.check_routine.setToolTip("Which routine to run afterwards")
         self.erase.toggled.connect(self._on_operation)
         self.check.toggled.connect(self._on_operation)
@@ -1002,7 +1003,7 @@ class UdsView(QWidget):
         # --- output ---------------------------------------------------------------
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
-        self.output.setFont(QFont("Consolas", 9))
+        self.output.setFont(fonts.mono())
         self.output.setMaximumBlockCount(2000)
 
         # Scrolled for the same reason as the LSS pane: the controls must not

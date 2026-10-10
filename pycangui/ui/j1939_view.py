@@ -10,7 +10,6 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -30,6 +29,7 @@ from PySide6.QtWidgets import (
 from pycangui.core.context import Context
 from pycangui.j1939 import CLEARING, GLOBAL, REQUESTABLE, Dm1, Name, pgn_label
 from pycangui.j1939.manager import J1939Manager
+from pycangui.ui import fonts
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.persist import remember
@@ -50,7 +50,7 @@ def _picker(entries, width: int) -> QComboBox:
     combo = QComboBox()
     combo.setEditable(True)
     combo.setInsertPolicy(QComboBox.NoInsert)
-    combo.lineEdit().setFont(QFont("Consolas", 9))
+    combo.lineEdit().setFont(fonts.mono())
     for number, name in entries:
         combo.addItem(f"{number:0{width}X}  {name}", number)
     return combo
@@ -64,7 +64,7 @@ class J1939View(QWidget):
         self.manager = manager
         self.ctx = ctx
         self.confirm = confirm or Confirmations()
-        mono = QFont("Consolas", 9)
+        mono = fonts.mono()
 
         # --- tester controls -------------------------------------------------
         ctl = QGroupBox("Tester")
@@ -109,10 +109,10 @@ class J1939View(QWidget):
 
         self.send_pgn = QLineEdit("FF10")
         self.send_pgn.setFont(mono)
-        self.send_pgn.setFixedWidth(70)
+        self.send_pgn.setFixedWidth(fonts.width_for(self.send_pgn, "1FFFFF"))
         self.send_dest = QLineEdit("FF")
         self.send_dest.setFont(mono)
-        self.send_dest.setFixedWidth(40)
+        self.send_dest.setFixedWidth(fonts.width_for(self.send_dest, "FF"))
         self.send_prio = QSpinBox()
         self.send_prio.setRange(0, 7)
         self.send_prio.setValue(6)

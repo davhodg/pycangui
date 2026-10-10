@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QFont, QPalette, QTextCursor
+from PySide6.QtGui import QPalette, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 from pycangui.core import workspace_files
 from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
-from pycangui.ui import folders, keep_file, messages, seedkey_view
+from pycangui.ui import folders, fonts, keep_file, messages, seedkey_view
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
@@ -260,7 +260,7 @@ class XcpView(QWidget):
         super().__init__()
         self.manager = manager
         self.ctx = ctx
-        mono = QFont("Consolas", 9)
+        mono = fonts.mono()
         cfg = ctx.settings.get("xcp.config", {})
 
         # --- connection bar --------------------------------------------------
@@ -272,18 +272,18 @@ class XcpView(QWidget):
         self.cmd_id.setPlaceholderText("none")
         self.cmd_id.setToolTip(ID_TIP)
         self.cmd_id.setFont(mono)
-        self.cmd_id.setFixedWidth(70)
+        self.cmd_id.setFixedWidth(fonts.width_for(self.cmd_id, "1FFFFFFF"))
         self.cmd_id.textChanged.connect(lambda _t: self._ids_changed())
         self.res_id = QLineEdit(_as_written(cfg, "res_id"))
         self.res_id.setPlaceholderText("none")
         self.res_id.setToolTip(ID_TIP)
         self.res_id.setFont(mono)
-        self.res_id.setFixedWidth(70)
+        self.res_id.setFixedWidth(fonts.width_for(self.res_id, "1FFFFFFF"))
         self.res_id.textChanged.connect(lambda _t: self._ids_changed())
         self.station = QLineEdit(str(cfg.get("station", "1")))
-        self.station.setFixedWidth(70)
         self.station.setToolTip(STATION_TIP)
         self.station.setFont(mono)
+        self.station.setFixedWidth(fonts.width_for(self.station, "FFFF"))
         self.station_label = QLabel("Station")
         # No 29-bit box: how an identifier is written says how wide it is, as
         # it does in CAN Transmit. What is asked instead is whose identifiers

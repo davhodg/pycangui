@@ -7,7 +7,6 @@ axis, Plot Y2 against the second axis on the right."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
@@ -20,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.named_values import shown
 from pycangui.core.signals import SignalHub
+from pycangui.ui import fonts
 from pycangui.ui.column_widths import ColumnWidths
 
 ROLE_KEY = Qt.UserRole
@@ -109,7 +109,7 @@ class SignalsView(QWidget):
             header.moveSection(header.visualIndex(column), place)
         for name, column in OPTIONAL.items():
             self.tree.setColumnHidden(column, name not in DEFAULT_COLUMNS)
-        self.tree.setFont(QFont("Consolas", 9))
+        self.tree.setFont(fonts.mono())
         self.widths = ColumnWidths(self.tree, settings, "signals")
         self.tree.itemChanged.connect(self._on_item_changed)
 

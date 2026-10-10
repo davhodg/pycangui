@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from canopen.objectdictionary import ODVariable
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -33,7 +33,7 @@ from pycangui.canopen import PdoConfig, PdoEntry, pdo_file
 from pycangui.canopen.manager import CanopenManager, mappable, mapped_bits, od_entries
 from pycangui.core.classify import predefined_meaning
 from pycangui.core.context import Context
-from pycangui.ui import messages
+from pycangui.ui import fonts, messages
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.edit_columns import EditColumns
 
@@ -104,7 +104,7 @@ class ObjectPicker(QDialog):
         self.search.setPlaceholderText("filter...")
         self.search.textChanged.connect(self._filter)
         self.list = QListWidget()
-        self.list.setFont(QFont("Consolas", 9))
+        self.list.setFont(fonts.mono())
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
         if dictionary is None and node_id is not None:
             node = manager.node(node_id)
@@ -164,7 +164,7 @@ class PdoConfigView(QWidget):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
-        self.tree.setFont(QFont("Consolas", 9))
+        self.tree.setFont(fonts.mono())
         self.widths = ColumnWidths(self.tree, ctx.settings, "canopen.pdo_config")
         self.tree.setSelectionMode(QAbstractItemView.SingleSelection)
         # The PDO's settings are typed into; its name and size are not.

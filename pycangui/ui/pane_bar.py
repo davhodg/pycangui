@@ -16,7 +16,10 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QToolButton, QWidget
 
-BAR_HEIGHT = 22
+from pycangui.ui import fonts
+
+#: Above and below the words on the strip's buttons.
+BAR_PADDING = 6
 
 PIN_TIP = (
     "Keep this pane above every other window, pycangui's and everyone else's,\n"
@@ -49,7 +52,8 @@ class PaneBar(QWidget):
 
     def __init__(self, on_top: bool = False) -> None:
         super().__init__()
-        self.setFixedHeight(BAR_HEIGHT)
+        # As tall as its words need, which is not a number of pixels.
+        self.setFixedHeight(fonts.text_height() + BAR_PADDING)
 
         # Words rather than a glyph: there is no icon anybody recognises for
         # either of these, and a mystery button is worse than a small label.

@@ -37,7 +37,7 @@ do not find.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QGuiApplication
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -56,7 +56,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.canopen import compare as comparison
-from pycangui.ui import folders
+from pycangui.ui import folders, fonts
 
 #: What a side can be. Kept as text because it is what the combo box holds
 #: and what gets written into the settings.
@@ -263,7 +263,7 @@ class CompareView(QWidget):
         self.table.setRootIsDecorated(False)
         self.table.setAlternatingRowColors(True)
         self.table.setUniformRowHeights(True)
-        self.table.setFont(QFont("Consolas", 9))
+        self.table.setFont(fonts.mono())
         # Every column can be dragged: a stretched one cannot, and with a
         # wide value beside it there was no making the table readable.
         self.table.header().setSectionResizeMode(QHeaderView.Interactive)

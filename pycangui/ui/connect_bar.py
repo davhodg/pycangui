@@ -30,7 +30,7 @@ from pycangui.core.detect import (
 )
 from pycangui.core.filters import describe
 from pycangui.core.worker import Worker
-from pycangui.ui import message_filter
+from pycangui.ui import fonts, message_filter
 from pycangui.ui.message_filter import (
     FILTER_LABEL,
     FILTER_TIP,
@@ -107,11 +107,11 @@ class ConnectBar(QToolBar):
         self.selector.currentTextChanged.connect(self._on_selected)
         add = QPushButton("+")
         add.setToolTip("Add another channel (a second port, or a second adapter)")
-        add.setFixedWidth(28)
+        add.setFixedWidth(fonts.width_for(add, "+"))
         add.clicked.connect(self._add_channel)
         remove = QPushButton("-")
         remove.setToolTip("Remove this channel")
-        remove.setFixedWidth(28)
+        remove.setFixedWidth(fonts.width_for(remove, "+"))
         remove.clicked.connect(self._remove_channel)
 
         self.interface = QComboBox()

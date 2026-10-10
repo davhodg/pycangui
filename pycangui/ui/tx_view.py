@@ -27,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -56,6 +56,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.named_values import named, number_in, with_its_name
 from pycangui.core.tx_fields import Checksum, Counter
+from pycangui.ui import fonts
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.tx_fields_dialog import TxFieldsDialog
@@ -274,7 +275,7 @@ class MessagePicker(QDialog):
         self.search.setPlaceholderText("filter...")
         self.search.textChanged.connect(self._filter)
         self.list = QListWidget()
-        self.list.setFont(QFont("Consolas", 9))
+        self.list.setFont(fonts.mono())
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
         # Which file, once there is more than one to have come from.
         several = len(dbc.databases) > 1
@@ -319,7 +320,7 @@ class RpdoPicker(QDialog):
         self.setWindowTitle("Add CANopen RPDO")
         self.resize(440, 360)
         self.list = QListWidget()
-        self.list.setFont(QFont("Consolas", 9))
+        self.list.setFont(fonts.mono())
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
         self.choices: list[tuple[int, int]] = []
         network = canopen.network
@@ -388,7 +389,7 @@ class TxView(QWidget):
         self.tree.setHeaderLabels(HEADERS)
         self.tree.headerItem().setToolTip(COL_ID, ID_TIP)
         self.tree.headerItem().setToolTip(COL_FIELDS, FIELDS_TIP)
-        self.tree.setFont(QFont("Consolas", 9))
+        self.tree.setFont(fonts.mono())
         self.tree.setRootIsDecorated(True)
         self.widths = ColumnWidths(self.tree, ctx.settings, "tx", stretch=COL_DATA)
         # Send selected and Remove selected were always written to work on

@@ -38,6 +38,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.classify import ERROR_GROUP, GROUPS, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
+from pycangui.ui import fonts
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.latest_model import COLUMNS as LATEST_COLUMNS
 from pycangui.ui.latest_model import (
@@ -179,7 +180,7 @@ class TraceView(QWidget):
         self._pending: list[Frame] = []  # frames captured while paused
         # Extra labellers tried after the hook, before the CANopen classifier (DBC names)
         self.classifiers: list[Callable[[Frame], str | None]] = []
-        mono = QFont("Consolas", 9)
+        mono = fonts.mono()
         self.model = TraceModel()
         self.latest = LatestModel()
         self._trace_proxy = _TraceFilter()

@@ -28,7 +28,6 @@ import time
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -54,7 +53,7 @@ from pycangui.custom_panes import model
 from pycangui.custom_panes.model import CustomPane, Field
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
 from pycangui.custom_panes.source import FileSource, NodeSource, Source
-from pycangui.ui import field_widgets, folders, messages
+from pycangui.ui import field_widgets, folders, fonts, messages
 from pycangui.ui.persist import remember
 
 #: How many unanswered reads of one object to keep track of. Past this,
@@ -755,7 +754,7 @@ class AddObjects(QDialog):
         self.search.textChanged.connect(self._filter)
 
         self.list = QListWidget()
-        self.list.setFont(QFont("Consolas", 9))
+        self.list.setFont(fonts.mono())
         self.list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
         for index, sub_index, name, access in self._entries:

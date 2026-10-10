@@ -13,7 +13,6 @@ the bytes before anybody puts them on a bus.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -30,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core import tx_fields as tx
-from pycangui.ui import messages
+from pycangui.ui import fonts, messages
 
 TITLE = "Counter and checksum"
 
@@ -208,7 +207,7 @@ class TxFieldsDialog(QDialog):
         # --- what it will send ---
         self.preview = QPlainTextEdit()
         self.preview.setReadOnly(True)
-        self.preview.setFont(QFont("Consolas", 9))
+        self.preview.setFont(fonts.mono())
         self.preview.setFixedHeight(90)
         preview_box = QGroupBox("The next few frames")
         inside = QVBoxLayout(preview_box)

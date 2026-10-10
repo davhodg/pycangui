@@ -17,7 +17,6 @@ The order of operations matters, so the pane is laid out as the workflow:
 from __future__ import annotations
 
 from PySide6.QtCore import Slot
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -36,6 +35,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.canopen.manager import LSS_BIT_TIMINGS, CanopenManager
 from pycangui.core.context import Context
+from pycangui.ui import fonts
 
 WARNING = (
     "LSS talks to nodes that have no node-ID yet. 'All nodes' is only safe "
@@ -45,8 +45,8 @@ WARNING = (
 
 def _hex_edit(text: str = "") -> QLineEdit:
     edit = QLineEdit(text)
-    edit.setFont(QFont("Consolas", 9))
-    edit.setFixedWidth(90)
+    edit.setFont(fonts.mono())
+    edit.setFixedWidth(fonts.width_for(edit, "FFFFFFFF"))
     edit.setPlaceholderText("hex")
     return edit
 
@@ -149,7 +149,7 @@ class LssView(QWidget):
 
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
-        self.output.setFont(QFont("Consolas", 9))
+        self.output.setFont(fonts.mono())
         self.output.setMaximumBlockCount(500)
 
         # The three steps go in a scroll area of their own: this pane is one tab

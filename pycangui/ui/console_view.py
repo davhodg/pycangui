@@ -28,7 +28,7 @@ import traceback
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QKeyEvent, QTextCursor
+from PySide6.QtGui import QKeyEvent, QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.context import Context
-from pycangui.ui import folders
+from pycangui.ui import folders, fonts
 
 BANNER = """pycangui console -- Python {ver}
   ctx       settings, log(), eds_dir ... bus       connect/send/send_periodic
@@ -106,7 +106,7 @@ class ConsoleView(QWidget):
         self.ctx = ctx
         self.namespace = namespace
         self.console = _Console(namespace)
-        mono = QFont("Consolas", 9)
+        mono = fonts.mono()
 
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)

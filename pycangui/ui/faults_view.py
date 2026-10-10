@@ -18,7 +18,6 @@ empty list for both would be the wrong one half the time.
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -33,6 +32,7 @@ from PySide6.QtWidgets import (
 from pycangui.canopen import faults
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.context import Context
+from pycangui.ui import fonts
 from pycangui.ui.column_widths import ColumnWidths
 
 NOTHING_READ = "Nothing read yet -- press Read."
@@ -109,7 +109,7 @@ class FaultsView(QWidget):
         self.active = QTreeWidget()
         self.active.setHeaderLabels(["Code", "Description"])
         self.active.setRootIsDecorated(False)
-        self.active.setFont(QFont("Consolas", 9))
+        self.active.setFont(fonts.mono())
         self.active_widths = ColumnWidths(self.active, ctx.settings, "canopen.faults")
         self.active.setToolTip(ACTIVE_TIP)
         # Capped, and it scrolls past that. A tree asks for a great deal of
@@ -130,7 +130,7 @@ class FaultsView(QWidget):
         self.stored = QTreeWidget()
         self.stored.setHeaderLabels(["#", "Code", "Description", "Manufacturer"])
         self.stored.setRootIsDecorated(False)
-        self.stored.setFont(QFont("Consolas", 9))
+        self.stored.setFont(fonts.mono())
         self.stored_widths = ColumnWidths(self.stored, ctx.settings, "canopen.stored")
         self.stored.setToolTip(STORED_TIP)
         self.note = QLabel(NOTHING_READ)

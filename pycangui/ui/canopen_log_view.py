@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QTimer, Slot
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.canopen.sdo_log import SdoRecord
-from pycangui.ui import folders
+from pycangui.ui import folders, fonts
 
 SDO, NMT, STATE, EMCY, LSS = "SDO", "NMT", "State", "EMCY", "LSS"
 #: Each kind, and what its tick says it covers.
@@ -117,7 +117,7 @@ class CanopenLogView(QWidget):
 
         self.text = QPlainTextEdit()
         self.text.setReadOnly(True)
-        self.text.setFont(QFont("Consolas", 9))
+        self.text.setFont(fonts.mono())
         self.text.setMaximumBlockCount(KEPT)
         self.text.setLineWrapMode(QPlainTextEdit.NoWrap)
         layout = QVBoxLayout(self)

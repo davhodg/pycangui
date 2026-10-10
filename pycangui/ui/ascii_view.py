@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import Signal, Slot
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -43,7 +43,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.ui import messages
+from pycangui.ui import fonts, messages
 
 #: How many lines a stream keeps. A device printing steadily will run to
 #: megabytes over an afternoon, and none of it is worth the memory.
@@ -187,8 +187,8 @@ class AsciiView(QWidget):
         self._loading = False
 
         self.id_edit = QLineEdit()
-        self.id_edit.setFont(QFont("Consolas", 9))
-        self.id_edit.setFixedWidth(80)
+        self.id_edit.setFont(fonts.mono())
+        self.id_edit.setFixedWidth(fonts.width_for(self.id_edit, "1FFFFFFF"))
         self.id_edit.setPlaceholderText("id (hex)")
         self.id_edit.setToolTip(ID_TIP)
         self.id_edit.editingFinished.connect(self._on_changed)
@@ -205,7 +205,7 @@ class AsciiView(QWidget):
         self.send_disable.clicked.connect(lambda: self.send(False))
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("name (optional)")
-        self.name_edit.setFixedWidth(140)
+        self.name_edit.setFixedWidth(fonts.width_for(self.name_edit, "name (optional) "))
         self.name_edit.editingFinished.connect(self._on_changed)
         self.skip = QSpinBox()
         self.skip.setRange(0, 63)
@@ -229,7 +229,7 @@ class AsciiView(QWidget):
 
         self.text = QPlainTextEdit()
         self.text.setReadOnly(True)
-        self.text.setFont(QFont("Consolas", 9))
+        self.text.setFont(fonts.mono())
         self.text.setMaximumBlockCount(MAX_LINES)
         self.text.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.text.setPlaceholderText(NOTHING_YET)

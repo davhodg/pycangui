@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from PySide6.QtCore import QObject, Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication, QImage, QTextDocument
+from PySide6.QtGui import QDesktopServices, QGuiApplication, QImage, QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -49,7 +49,7 @@ from pycangui.core.updates import (
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
 from pycangui.help import manual_text
-from pycangui.ui import messages
+from pycangui.ui import fonts, messages
 
 
 class LicenceFile(NamedTuple):
@@ -265,7 +265,7 @@ class LicenceDialog(QDialog):
         for entry in LICENCE_FILES:
             view = QPlainTextEdit(licence_text(entry))
             view.setReadOnly(True)
-            view.setFont(QFont("Consolas", 9))
+            view.setFont(fonts.mono())
             view.setLineWrapMode(QPlainTextEdit.NoWrap)
             tabs.addTab(view, entry.title)
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
@@ -304,7 +304,7 @@ class KnownIdsDialog(QDialog):
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setFont(QFont("Consolas", 9))
+        self.table.setFont(fonts.mono())
         for row, entry in enumerate(entries):
             for column, text in enumerate((entry.shown, entry.name, entry.source)):
                 item = QTableWidgetItem(text)
@@ -350,7 +350,7 @@ class AboutDialog(QDialog):
         heading.setTextFormat(Qt.RichText)
         details = QPlainTextEdit(environment_report())
         details.setReadOnly(True)
-        details.setFont(QFont("Consolas", 9))
+        details.setFont(fonts.mono())
         # One report line to one line on screen: wrapped, a path ran on under
         # the column of names and the table stopped reading as one. Wide
         # enough for the longest line, up to most of the screen, and a

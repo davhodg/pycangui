@@ -30,15 +30,20 @@ from dataclasses import dataclass, replace
 from PySide6.QtCore import QEvent, QObject, QRect, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
+    QAbstractButton,
+    QApplication,
     QDockWidget,
     QMainWindow,
+    QProxyStyle,
     QScrollArea,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
 
 from pycangui import APP_NAME
 from pycangui.core.context import Context
+from pycangui.ui import fonts
 from pycangui.ui.detached import DetachedPane
 from pycangui.ui.pane_bar import PaneBar
 
@@ -50,6 +55,42 @@ REAPPLY_AFTER = (
     QEvent.WindowActivate,
     QEvent.NonClientAreaMouseButtonRelease,
 )
+
+
+class _TitleButtons(QProxyStyle):
+    """The style of a pane's float and close buttons: the application's, with
+    marks as tall as the title beside them.
+
+    Qt draws them at five eighths of the small icon size, which is ten
+    pixels whatever the size of the text: small to begin with, and smaller
+    against a title somebody has asked to be large. The size is the only
+    thing it will take from a style, so it is asked for the way it is used.
+
+    The buttons' own style and nobody else's. A style written in Python is
+    asked for a measurement on every layout and every repaint, and one put
+    on the application would be asked by every row of the trace.
+    """
+
+    def pixelMetric(self, metric, option=None, widget=None):
+        if metric == QStyle.PM_SmallIconSize:
+            # Eight fifths of what is wanted, for Qt to take five eighths of.
+            return round(fonts.text_height() * fonts.TITLE_BUTTON_SIZE * 8 / 5)
+        return super().pixelMetric(metric, option, widget)
+
+
+#: One for each application style there has been, kept: a widget does not
+#: own the style it is given.
+_title_buttons: dict[str, _TitleButtons] = {}
+
+
+def enlarge_title_buttons(dock: QDockWidget) -> None:
+    """Give a dock's float and close buttons marks the size of its title."""
+    name = QApplication.style().name()
+    if name not in _title_buttons:
+        _title_buttons[name] = _TitleButtons(name)
+    for button in dock.findChildren(QAbstractButton):
+        if button.objectName().startswith("qt_dockwidget_"):
+            button.setStyle(_title_buttons[name])
 
 
 def keep_in_view(window: QWidget) -> bool:
@@ -550,6 +591,7 @@ class Panes(QObject):
     # --- the dock itself ----------------------------------------------------------------
     def _make_dock(self, name: str, title: str, widget: QWidget, area) -> QDockWidget:
         dock = QDockWidget(title, self.window)
+        enlarge_title_buttons(dock)
         self.docks[name] = dock
         dock.setObjectName(name)  # saveState/restoreState identify docks by objectName
         # Wrap in a scroll area so a pane shrunk below its natural minimum gets

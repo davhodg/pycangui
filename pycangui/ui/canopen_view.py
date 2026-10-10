@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QBrush, QColor, QFont
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -67,7 +67,7 @@ from pycangui.core.named_values import plain
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
 from pycangui.custom_panes.source import FileSource
-from pycangui.ui import canopen_login, canopen_settings, folders, keep_file, messages
+from pycangui.ui import canopen_login, canopen_settings, folders, fonts, keep_file, messages
 from pycangui.ui.canopen_log_view import CanopenLogView
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.compare_view import CompareView, CompareWindow
@@ -223,7 +223,7 @@ class CanopenView(QWidget):
         #: is what says which to drop when there are too many.
         self._emcy_nodes: dict[int, QTreeWidgetItem] = {}
         self._emcy_rows: list[QTreeWidgetItem] = []
-        mono = QFont("Consolas", 9)
+        mono = fonts.mono()
 
         # --- nodes ---------------------------------------------------------
         self.nodes = _NodeList()
