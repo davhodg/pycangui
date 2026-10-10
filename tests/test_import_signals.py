@@ -249,16 +249,18 @@ def test_the_window_keeps_running_while_pip_does(app, installing):
     timer = QTimer(interval=50, timeout=look)
     timer.start()
     script = (
-        "import time; print('Collecting asammdf'); time.sleep(0.4); "
-        "print('Downloading asammdf-9.0-py3-none-any.whl (2.1 MB)'); time.sleep(0.4); "
+        "import time; print('Collecting asammdf'); time.sleep(1.0); "
+        "print('Downloading asammdf-9.0-py3-none-any.whl (2.1 MB)'); time.sleep(1.0); "
         "print('Successfully installed asammdf-9.0')"
     )
     assert _install(None, ctx, fake_pip(script))
     timer.stop()
 
-    # More than once is the point; how many times depends on how busy the
-    # machine is, and a frozen window would have managed none.
-    assert len(ticks) >= 2, "the event loop kept turning"
+    # At all is the point: a frozen window would have managed none. How many
+    # times depends on how busy the machine is, and one that is running two
+    # thousand other tests has managed exactly one in most of a second -- so
+    # pip is given a second at each step, for the look at its second line.
+    assert ticks, "the event loop kept turning"
     assert any("Downloading asammdf" in label for label in labels), "and said what pip was doing"
 
 
