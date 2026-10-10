@@ -19,6 +19,10 @@ since the last version, and comes out in the next one.
 - A floating or detached pane that would open partly off the screen is brought onto it.
 - Lists and hex boxes follow the system's text size, and a pane's float and close buttons
   are as tall as its title.
+- CANopen: the per-node commands are in four menus -- Node, Access, EDS, DCF -- with
+  *Add / Open* and *Remove* above the list; double-clicking a node's Access column reads
+  its level.
+- CANopen: NMT and the producers are framed; TIME is always there, with no setting to show it.
 - Plot: a Y axis whose signals share named values is marked with the names; right-click
   the plot to turn it off.
 - CAN Transmit: a counter or checksum in a DBC signal is shown by position, *count 52:4*,

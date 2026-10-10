@@ -22,13 +22,13 @@ choice, the search of the EDS folder and the file dialog are for a node
 nobody has an answer for yet, and a dialog opening every time a heartbeat
 came back would be a way of making people unplug things.
 
-**NMT command**, with the send button beside it, sends Start, Pre-operational,
+**NMT**, with the send button beside it, sends Start, Pre-operational,
 Stop, Reset node or Reset communication to the selected node, or to every node
-when none is selected, and the button says which: *Send NMT to node 5*, or
-*Send NMT to all nodes*. The first node heard is selected for you, so to send
+when none is selected, and the button says which: *Send to node 5*, or
+*Send to all*. The first node heard is selected for you, so to send
 to all of them, click an empty part of the node list, or press Esc in it, to
 select none.
-**SYNC producer** transmits SYNC (0x080) for as long as it is ticked, so
+**SYNC**, in the frame marked *Producers*, transmits SYNC (0x080) for as long as it is ticked, so
 synchronous PDOs are exchanged; how often is under *Settings...*, since a rate
 is a fact about the bus rather than a decision to take each time. So is the
 **SYNC counter**, for devices that use one: under *Settings...*, *none* unless
@@ -40,40 +40,47 @@ settings, since otherwise it carries on as it was; restarting starts the counter
 from 1 again.
 
 **TIME** (0x100) tells every node the date and time, for devices that keep a
-clock. It is shown only once *Settings...* says so -- **Show TIME in the
-CANopen pane** -- and then the pane has **TIME producer**, sending it now and
-again at the period set there, and **Send TIME**, sending it once. CiA 301 does
+clock. In the **Producers** frame beside SYNC, the **TIME** tick sends it now and
+again at the period in *Settings...*, and **Send TIME** sends it once. CiA 301 does
 not say whose midnight it counts from, so *Settings...* also chooses local time
 or UTC; local is what a device showing its clock usually wants.
 
 The list is the dividing line. What is above it acts on the network -- NMT
-and SYNC are services the whole bus hears, and **Add node...** and **Remove
-node** put a row in the list or take one out rather than doing anything to a
+and SYNC are services the whole bus hears, and **Add / Open** and **Remove**
+put a row in the list or take one out rather than doing anything to a
 node. Everything below it acts on the
 node highlighted in it, and is switched off while no node is highlighted, or
 while the highlighted one is lost: a button that looks pressable and then says
 "no node selected" is a worse way to find that out than one that is plainly
 not.
 
+Under the list, what is pressed often is a button and what is done once to a
+node is in one of four menus, each named for what it is about: **Node**
+(Identify, Store, Restore defaults), **Access** (Login, Read access level),
+**EDS** (Load EDS, Read EDS from node) and **DCF** (Save DCF, Apply DCF,
+Compare). Right-clicking a node offers the same. A menu with nothing in it
+that can be done -- no node selected -- cannot be opened.
+
 **Identify** asks the selected node who it is -- 0x1018 and 0x1000 -- which
 is what an EDS is matched from. It happens by itself the first time a node is
 heard, and *only* then: nothing re-reads it afterwards, so a node you have
 reflashed keeps what it said before until this is pressed.
 
+Above the list, **Add / Open** holds the two ways a row gets into it.
 **Add node...** puts in a node that has not been heard from:
 one with its heartbeat switched off, held in pre-operational, or sitting in its
-bootloader. It is identified straight away. **Remove node** takes the selected
+bootloader. It is identified straight away. **Remove** takes the selected
 node out of the list -- one added at the wrong id, or unplugged for good -- and
 works on a lost node too. A node still on the bus comes back with its next
 heartbeat, because it is there. **Login...** asks the selected
 node for an access level, with a password if the device wants one, and **Read
 access level** asks which level is held; the **Access** column shows the
-answer.
+answer, and double-clicking a node's entry in that column asks again.
 CANopen has no standard way to log in, so both are done by `login` and
 `current_level` in [`hooks/canopen.py`](hooks.md), written for your device.
 The password is passed to the hook and is neither logged nor kept.
 
-The second row under the list is what the node holds. **Load EDS...** chooses
+The rest is what the node holds. **Load EDS...** chooses
 its description by hand. **Read EDS from node** is for a node with no EDS to
 hand: it reads the file the device keeps in itself (CiA 301's object 0x1021),
 with no EDS loaded, asks where to save it -- the workspace's EDS folder, named
@@ -166,7 +173,7 @@ cannot be edited in the cell.
 
 ## A DCF or EDS with no node
 
-**Open DCF/EDS...**, beside *Add node...*, puts a configuration file in the node
+**Open DCF/EDS...**, under *Add / Open* with *Add node...*, puts a configuration file in the node
 list as a row of its own -- *File* in the Node column -- with no node on the
 bus and no channel connected. Selecting it fills the object dictionary from the
 file: a DCF's values, and an EDS's defaults where there are none. It is how a
@@ -180,8 +187,8 @@ Double-click an entry to show the file's value again; *Read all* is for a node,
 and is not there for a file.
 
 With a file row selected, **Save** and **Save as...** take the place of the
-node's buttons, which are greyed: there is nothing on the bus to ask. *Remove
-node* above the list becomes **Close file**. Save writes a DCF through the file's own text, so its comments -- often
+node's buttons, which are greyed: there is nothing on the bus to ask. *Remove*
+above the list closes the file, asking first if it has changes not saved. Save writes a DCF through the file's own text, so its comments -- often
 where the units and descriptions are -- survive. An EDS is saved under a new
 name, as a DCF, so it keeps the defaults it came with. Closing a file, the pane
 or pycangui with changes not saved asks first. The files open when pycangui
@@ -268,7 +275,7 @@ object is decoded, and sent in an RPDO, as the bits the mapping gives it, signed
 if its type is. **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
-node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is **Compare...**, beside them: it opens the [CANopen DCF compare](compare.md) window with the node or file selected on the left.
+node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is **Compare...**, in the same menu: it opens the [CANopen DCF compare](compare.md) window with the node or file selected on the left.
 
 ### Emergencies: what arrived, and what is still wrong
 

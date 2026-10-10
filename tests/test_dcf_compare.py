@@ -283,13 +283,13 @@ def test_it_is_a_window_of_the_canopen_panes_and_not_a_pane(app, tmp_path, monke
     assert "dcf_compare" not in [s.name for s in supplied()]
     assert bare.canopen_view._compare_window is None, "nothing until it is asked for"
 
-    bare.canopen_view.compare_btn.click()
+    bare.canopen_view.compare_action.trigger()
     opened = bare.canopen_view._compare_window
     assert opened is not None and not opened.isHidden() and not opened.isModal()
     assert set(bare.panes.docks) == panes_before, "no pane was added for it"
 
     opened.close()
-    bare.canopen_view.compare_btn.click()
+    bare.canopen_view.compare_action.trigger()
     assert bare.canopen_view._compare_window is opened, "the one there is, not a second"
     assert not opened.isHidden()
     bare.close()
@@ -306,7 +306,7 @@ def test_compare_starts_with_what_is_selected_in_the_canopen_pane(app, tmp_path,
     window = MainWindow()
     path = written_dcf(tmp_path, {(0x1017, 0): "1"}, 5, "a.dcf")
     window.canopen_view.open_file(str(path))
-    window.canopen_view.compare_btn.click()
+    window.canopen_view.compare_action.trigger()
     view = window.canopen_view._compare_window.view
     assert view.left.kind.currentText() == FILE and view.left.path.text() == str(path)
 

@@ -70,7 +70,7 @@ def test_the_producer_sends_it_again_at_its_period(manager):
     assert not manager.time_running
 
 
-def test_the_pane_offers_time_only_once_the_settings_say_so(app, tmp_path, monkeypatch):
+def test_the_pane_always_offers_time_at_the_period_in_the_settings(app, tmp_path, monkeypatch):
     from pycangui.ui import canopen_settings
     from pycangui.ui.main_window import MainWindow
 
@@ -80,14 +80,12 @@ def test_the_pane_offers_time_only_once_the_settings_say_so(app, tmp_path, monke
     try:
         view = window.canopen_view
         window.show()
-        assert not canopen_settings.load(window.ctx).time_offered, "off unless asked for"
-        assert view.time_btn.isHidden() and view.send_time_btn.isHidden()
+        assert not view.time_btn.isHidden() and not view.send_time_btn.isHidden()
+        assert not view.time_btn.isChecked(), "there, and not sending until it is ticked"
 
         chosen = canopen_settings.load(window.ctx)
-        chosen.time_offered, chosen.time_period_s, chosen.time_local = True, 5, False
+        chosen.time_period_s, chosen.time_local = 5, False
         canopen_settings.save(window.ctx, chosen)
-        view._offer_time()
-        assert not view.time_btn.isHidden() and not view.send_time_btn.isHidden()
 
         started = []
         monkeypatch.setattr(window.canopen, "start_time", lambda *a: started.append(a))
@@ -109,11 +107,9 @@ def test_the_settings_round_trip(app, tmp_path, monkeypatch):
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     dialog = canopen_settings.CanopenSettingsDialog(None, canopen_settings.load(ctx))
-    assert not dialog.time_period.isEnabled(), "nothing to set until TIME is offered"
-    dialog.time_offered.setChecked(True)
     assert dialog.time_period.isEnabled() and dialog.time_zone.isEnabled()
     dialog.time_period.setValue(30)
     dialog.time_zone.setCurrentIndex(1)
     canopen_settings.save(ctx, dialog.settings())
     again = canopen_settings.load(ctx)
-    assert (again.time_offered, again.time_period_s, again.time_local) == (True, 30, False)
+    assert (again.time_period_s, again.time_local) == (30, False)

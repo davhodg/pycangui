@@ -463,3 +463,64 @@ def test_the_choice_is_kept_in_the_workspace(app, window):
     canopen_settings.save(window.ctx, settings)
 
     assert canopen_settings.load(window.ctx).identify is False
+
+
+# --- what is done once to a node is in a menu, and what is done often is a button --------------
+def _in(button) -> list[str]:
+    return [action.text() for action in button.menu().actions()]
+
+
+def test_the_occasional_commands_are_grouped_by_what_they_are_about(app, window):
+    view = window.canopen_view
+    assert _in(view.node_menu_btn) == ["Identify", "Store", "Restore defaults"]
+    assert _in(view.access_menu_btn) == ["Login...", "Read access level"]
+    assert _in(view.eds_menu_btn) == ["Load EDS...", "Read EDS from node"]
+    assert _in(view.dcf_menu_btn) == ["Save DCF...", "Apply DCF...", "Compare..."]
+
+
+def test_a_menu_with_nothing_to_offer_cannot_be_opened(app, window):
+    view = window.canopen_view
+    assert view.selected_node() is None
+    for button in (view.node_menu_btn, view.access_menu_btn, view.eds_menu_btn):
+        assert not button.isEnabled()
+    assert view.dcf_menu_btn.isEnabled(), "Compare needs no node: two files will do"
+
+    seen_by_hand(window, 7)
+    view.nodes.setCurrentItem(view._node_item(7))
+    assert all(button.isEnabled() for button in view._menu_buttons)
+
+
+def test_a_menu_entry_does_what_the_button_did(app, window, monkeypatch):
+    view = window.canopen_view
+    asked = []
+    monkeypatch.setattr(window.canopen, "read_level", asked.append)
+    seen_by_hand(window, 7)
+    view.nodes.setCurrentItem(view._node_item(7))
+    view.access_menu_btn.menu().actions()[1].trigger()
+    assert asked == [7]
+
+
+def test_double_clicking_a_nodes_access_level_asks_for_it(app, window, monkeypatch):
+    view = window.canopen_view
+    asked = []
+    monkeypatch.setattr(window.canopen, "read_level", asked.append)
+    item = seen_by_hand(window, 7)
+    seen_by_hand(window, 9)
+    view.nodes.setCurrentItem(view._node_item(9))
+
+    view.nodes.itemDoubleClicked.emit(item, canopen_view.COL_LEVEL)
+    assert asked == [7], "the node clicked, not the one that was selected"
+
+    view.nodes.itemDoubleClicked.emit(item, 0)
+    assert asked == [7], "only on the access column"
+
+
+def test_a_row_is_added_or_opened_from_one_button_and_removed_by_another(app, window):
+    view = window.canopen_view
+    assert _in(view.add_menu_btn) == ["Add node...", "Open DCF/EDS..."]
+    assert view.add_menu_btn.isEnabled(), "neither needs a node selected"
+    before = view.remove_btn.text()
+    seen_by_hand(window, 7)
+    view.nodes.setCurrentItem(view._node_item(7))
+    assert view.remove_btn.text() == before, "one word, whatever is selected"
+    assert view.remove_btn.isEnabled()

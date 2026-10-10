@@ -54,7 +54,6 @@ SYNC_KEY = "canopen.sync_period_ms"
 SYNC_COUNTER_KEY = "canopen.sync_counter_overflow"
 IDENTIFY_KEY = "canopen.identify_automatically"
 DOMAINS_KEY = "canopen.read_domain_objects"
-TIME_OFFERED_KEY = "canopen.time_offered"
 TIME_PERIOD_KEY = "canopen.time_period_s"
 TIME_LOCAL_KEY = "canopen.time_local"
 DEFAULT_TIME_S = 10
@@ -105,10 +104,9 @@ IDENTIFY_TIP = (
     "with no EDS until Identify or Load EDS is pressed."
 )
 TIME_TIP = (
-    "TIME (0x100) tells every node the date and time, for devices that keep\n"
-    "a clock. Ticked, the CANopen pane has a TIME producer, sending it at\n"
-    "the period below, and Send TIME, sending it once. Leave it unticked if\n"
-    "nothing on the bus uses it, and the pane stays as it is."
+    "How often the TIME producer sends it. TIME (0x100) tells every node the\n"
+    "date and time, for devices that keep a clock: the pane's TIME tick\n"
+    "sends it at this period, and Send TIME sends it once."
 )
 TIME_ZONE_TIP = (
     "CiA 301 does not say whose midnight TIME counts from. Local time is\n"
@@ -163,7 +161,6 @@ class CanopenSettings:
     read_domains: bool = True
     #: Whether the pane shows TIME at all, how often the producer sends it,
     #: and whether it is local time or UTC.
-    time_offered: bool = False
     time_period_s: float = DEFAULT_TIME_S
     time_local: bool = True
 
@@ -239,7 +236,6 @@ def load(ctx: Context) -> CanopenSettings:
         out.sync_counter_overflow = sync_overflow(overflow)
     out.identify = bool(ctx.settings.get(IDENTIFY_KEY, True))
     out.read_domains = bool(ctx.settings.get(DOMAINS_KEY, True))
-    out.time_offered = bool(ctx.settings.get(TIME_OFFERED_KEY, False))
     if (period := _milliseconds(ctx.settings.get(TIME_PERIOD_KEY))) is not None:
         out.time_period_s = min(max(period, 1), MAX_TIME_S)
     out.time_local = bool(ctx.settings.get(TIME_LOCAL_KEY, True))
@@ -270,7 +266,6 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
     ctx.settings.set(SYNC_COUNTER_KEY, settings.sync_counter_overflow)
     ctx.settings.set(IDENTIFY_KEY, settings.identify)
     ctx.settings.set(DOMAINS_KEY, settings.read_domains)
-    ctx.settings.set(TIME_OFFERED_KEY, settings.time_offered)
     ctx.settings.set(TIME_PERIOD_KEY, settings.time_period_s)
     ctx.settings.set(TIME_LOCAL_KEY, settings.time_local)
     # In hex, the way a COB-ID is spoken, so the file reads as the dialog does.
@@ -315,7 +310,6 @@ _SHOWN = (
     ("sync_counter_overflow", "SYNC counter", _counter),
     ("identify", "identify new nodes", _on_off),
     ("read_domains", "read DOMAIN objects", _on_off),
-    ("time_offered", "show TIME", _on_off),
     ("time_period_s", "TIME period", lambda v: f"{v:g} s"),
     ("time_local", "TIME as", lambda v: "local time" if v else "UTC"),
 )
@@ -409,22 +403,16 @@ class CanopenSettingsDialog(QDialog):
         self.read_domains = QCheckBox("Read DOMAIN objects with Read all and Save DCF")
         self.read_domains.setChecked(settings.read_domains)
         self.read_domains.setToolTip(DOMAINS_TIP)
-        self.time_offered = QCheckBox("Show TIME in the CANopen pane")
-        self.time_offered.setChecked(settings.time_offered)
-        self.time_offered.setToolTip(TIME_TIP)
         self.time_period = QDoubleSpinBox()
         self.time_period.setRange(1, MAX_TIME_S)
         self.time_period.setDecimals(0)
         self.time_period.setSuffix(" s")
         self.time_period.setValue(settings.time_period_s)
-        self.time_period.setToolTip("How often the TIME producer sends it.")
+        self.time_period.setToolTip(TIME_TIP)
         self.time_zone = QComboBox()
         self.time_zone.addItems(["Local time", "UTC"])
         self.time_zone.setCurrentIndex(0 if settings.time_local else 1)
         self.time_zone.setToolTip(TIME_ZONE_TIP)
-        for detail in (self.time_period, self.time_zone):
-            detail.setEnabled(settings.time_offered)
-            self.time_offered.toggled.connect(detail.setEnabled)
         # "Every node" rather than "SDO, every node": the SYNC period is
         # not an SDO setting, and it moved in here the moment the rate
         # stopped being a box beside the button. What each row is about is
@@ -437,7 +425,6 @@ class CanopenSettingsDialog(QDialog):
         form.addRow("SYNC counter:", self.sync_counter)
         form.addRow("", self.identify)
         form.addRow("", self.read_domains)
-        form.addRow("", self.time_offered)
         form.addRow("TIME period:", self.time_period)
         form.addRow("TIME as:", self.time_zone)
 
@@ -571,7 +558,6 @@ class CanopenSettingsDialog(QDialog):
             sync_counter_overflow=sync_overflow(self.sync_counter.value()),
             identify=self.identify.isChecked(),
             read_domains=self.read_domains.isChecked(),
-            time_offered=self.time_offered.isChecked(),
             time_period_s=self.time_period.value(),
             time_local=self.time_zone.currentIndex() == 0,
             channels={

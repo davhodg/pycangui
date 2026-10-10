@@ -17,12 +17,13 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QBrush, QColor
+from PySide6.QtGui import QAction, QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
+    QGroupBox,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -136,6 +137,20 @@ NMT_COMMANDS_UI = (
 )
 
 
+NODE_MENU_TIP = "The selected node: who it is, and what it keeps when the power goes."
+ACCESS_MENU_TIP = (
+    "Logging in to the selected node, and asking which access level is held.\n"
+    "Double-clicking the node's Access column asks too."
+)
+EDS_MENU_TIP = "The file that says what the selected node's objects are."
+DCF_MENU_TIP = (
+    "The selected node's parameter values, to a file and from one, and what\n"
+    "is different between two of them."
+)
+READ_LEVEL_TIP = (
+    "Ask the selected node which access level is held, through\nhooks/canopen.py::current_level."
+)
+ACCESS_COLUMN_TIP = "The access level held. Double-click a node's to ask it again."
 IDENTIFY_TIP = (
     "Read 0x1018 and 0x1000 from the selected node: who it is, which is\n"
     "what an EDS is matched from. A node is identified once, when its row\n"
@@ -154,6 +169,10 @@ SYNC_TIP = (
     "than a decision to take every time this is pressed."
 )
 CLOSE_FILE_TIP = "Take the file out of the list; asks first if it has changes not saved."
+ADD_MENU_TIP = (
+    "Put a row in the list: a node that has not been heard from, or a DCF\n"
+    "or EDS file to look at and change with no node at all."
+)
 COMPARE_TIP = (
     "Compare two configurations side by side: a DCF or EDS file, or a node on\n"
     "the bus, against another. Opens with the node or file selected here on\n"
@@ -164,6 +183,46 @@ REMOVE_NODE_TIP = (
     "unplugged for good. A node still on the bus comes back with its next\n"
     "heartbeat, because it is there."
 )
+
+
+def _framed(name: str) -> tuple[QGroupBox, QHBoxLayout]:
+    """A border round the controls for one service, with its name inside at the left.
+
+    The border says where the group stops, which a gap in a row of buttons
+    does not, and the name is said once for what is inside: the ticks in a
+    frame named Producers are SYNC and TIME, with no "producer" each. The name is
+    inside and not a heading above, because a heading is a line of height
+    for every row that has one. It is the frame's own name as well, for
+    something that reads the screen aloud.
+    """
+    frame = QGroupBox()
+    frame.setAccessibleName(name)
+    inside = QHBoxLayout(frame)
+    inside.setContentsMargins(6, 2, 6, 2)
+    inside.addWidget(QLabel(name))
+    return frame, inside
+
+
+class _MenuButton(QPushButton):
+    """A button that opens a short menu of things about one subject."""
+
+    def __init__(self, text: str, tip: str) -> None:
+        super().__init__(text)
+        self.setToolTip(tip)
+        menu = QMenu(self)
+        menu.setToolTipsVisible(True)
+        self.setMenu(menu)
+
+    def add(self, text: str, tip: str, slot) -> QAction:
+        action = self.menu().addAction(text)
+        action.setToolTip(tip)
+        action.triggered.connect(lambda _checked=False: slot())
+        return action
+
+    def follow(self) -> None:
+        """Pressable while anything in the menu is: an open menu of nothing
+        but grey is a click spent finding out."""
+        self.setEnabled(any(action.isEnabled() for action in self.menu().actions()))
 
 
 class _NodeList(QTreeWidget):
@@ -230,139 +289,82 @@ class CanopenView(QWidget):
         self.nodes.setHeaderLabels(["Node", "Name", "State", "EDS", "Access", "Error"])
         self.nodes.setRootIsDecorated(False)
         self.nodes.currentItemChanged.connect(self._on_node_selected)
+        self.nodes.headerItem().setToolTip(COL_LEVEL, ACCESS_COLUMN_TIP)
+        self.nodes.itemDoubleClicked.connect(self._on_node_double_clicked)
         self.nodes.setContextMenuPolicy(Qt.CustomContextMenu)
         self.nodes.customContextMenuRequested.connect(self._node_menu)
         # Under the list, because each is about the node highlighted in it.
         node_bar = QHBoxLayout()
-        add_node = QPushButton("Add node...")
-        add_node.setToolTip(
+        # The two ways a row gets into the list, under one button: a node
+        # that has not been heard from, or a file with no node at all.
+        self.add_menu_btn = _MenuButton("Add / Open", ADD_MENU_TIP)
+        self.add_menu_btn.add(
+            "Add node...",
             "Put a node in the list that has not been heard from: heartbeat off,\n"
             "held in pre-operational, or sitting in its bootloader. It is\n"
-            "identified straight away."
+            "identified straight away.",
+            self._add_node,
         )
-        add_node.clicked.connect(self._add_node)
-        # Remove node, or Close file with a file selected: either way the row
-        # goes from the list, so one button beside Add node and Open does it.
-        self.remove_btn = QPushButton("Remove node")
+        self.add_menu_btn.add("Open DCF/EDS...", OPEN_FILE_TIP, self._open_file_dialog)
+        # A node or a file, whichever is selected: either way the row goes
+        # from the list, so it is one button with one word on it, and its
+        # tooltip says which of the two it will do.
+        self.remove_btn = QPushButton("Remove")
         self.remove_btn.setToolTip(REMOVE_NODE_TIP)
         self.remove_btn.clicked.connect(self._remove_selected)
-        login = QPushButton("Login...")
-        login.setToolTip(
+        # Under the list, each about the node highlighted in it. What is done
+        # once to a node -- asking who it is, logging in, choosing its EDS,
+        # saving its parameters -- is in a menu under a word for what it is
+        # about. Ten buttons in two rows made the pane wider than a screen
+        # once the text was large, and were ten things to read past on the way
+        # to the one wanted; what is pressed all the time is still a button.
+        self.node_menu_btn = _MenuButton("Node", NODE_MENU_TIP)
+        identify = self.node_menu_btn.add("Identify", IDENTIFY_TIP, self._identify)
+        store = self.node_menu_btn.add(
+            "Store", "Save the node's parameters to non-volatile memory (0x1010)", self._store
+        )
+        restore = self.node_menu_btn.add(
+            "Restore defaults", "Restore the node's default parameters (0x1011)", self._restore
+        )
+        # Login and Read access level are two halves of one question.
+        self.access_menu_btn = _MenuButton("Access", ACCESS_MENU_TIP)
+        login = self.access_menu_btn.add(
+            "Login...",
             "Ask the selected node for an access level. CANopen has no standard\n"
-            "login, so this is hooks/canopen.py::login, written for your device."
+            "login, so this is hooks/canopen.py::login, written for your device.",
+            self._login,
         )
-        login.clicked.connect(self._login)
-        read_level = QPushButton("Read access level")
-        read_level.setToolTip(
-            "Ask the selected node which access level is held, through\n"
-            "hooks/canopen.py::current_level."
-        )
-        read_level.clicked.connect(self._read_level)
-        identify = QPushButton("Identify")
-        identify.setToolTip(IDENTIFY_TIP)
-        identify.clicked.connect(self._identify)
-        load_btn = QPushButton("Load EDS...")
-        load_btn.setToolTip(
+        read_level = self.access_menu_btn.add("Read access level", READ_LEVEL_TIP, self._read_level)
+        self.eds_menu_btn = _MenuButton("EDS", EDS_MENU_TIP)
+        load_eds = self.eds_menu_btn.add(
+            "Load EDS...",
             "Choose the EDS for the selected node by hand. Normally one is\n"
             "found by itself from the node's identity, or by\n"
-            "hooks/canopen.py::eds_for_node."
+            "hooks/canopen.py::eds_for_node.",
+            self._load_eds_clicked,
         )
-        load_btn.clicked.connect(self._load_eds_clicked)
-        read_eds_btn = QPushButton("Read EDS from node")
-        read_eds_btn.setToolTip(READ_EDS_TIP)
-        read_eds_btn.clicked.connect(self._read_stored_eds)
-        # Being allowed to talk to the node, and what says what its objects
-        # are. Login and Read access level are two halves of one question,
-        # so they sit together. Add node is not here: it acts on the list
-        # rather than on a row of it, which puts it above with the network.
-        for b in (identify, login, read_level, load_btn, read_eds_btn):
-            node_bar.addWidget(b)
-        node_bar.addStretch()
-        #: Everything under the list acts on the node highlighted in it, so
-        #: with nothing highlighted there is nothing for them to act on. A
-        #: button that looks pressable and then says "no node selected" is a
-        #: worse way to find that out than a button that is plainly not.
-        self._node_buttons = [identify, login, read_level, load_btn, read_eds_btn]
-        # Above the list: the network, and what changes who is on it. NMT and
-        # SYNC are not about whichever row happens to be highlighted -- they
-        # are services the whole bus hears, and NMT with no node selected
-        # goes to every node on it. Add node is up here for the same reason:
-        # it acts on the list rather than on a row of it.
-        nmt_bar = QHBoxLayout()
-        nmt_bar.addWidget(add_node)
-        nmt_bar.addWidget(self.remove_btn)
-        open_file = QPushButton("Open DCF/EDS...")
-        open_file.setToolTip(OPEN_FILE_TIP)
-        open_file.clicked.connect(self._open_file_dialog)
-        nmt_bar.addWidget(open_file)
-        nmt_bar.addSpacing(16)
-        nmt_bar.addWidget(QLabel("NMT command:"))
-        self.nmt_command = QComboBox()
-        for label, command in NMT_COMMANDS_UI:
-            self.nmt_command.addItem(label, command)
-        self.nmt_command.setToolTip("Command to send to the selected node (or to all nodes)")
-        nmt_bar.addWidget(self.nmt_command)
-        # "Send NMT" rather than "Send": the bar has a second control beside
-        # it and several more below, and a bare Send does not say which of
-        # them it belongs to. It says who it goes to as well, since that is
-        # the selection's doing and a reset sent to every node is not the
-        # same thing as one sent to one of them.
-        self.send_nmt = QPushButton()
-        self.send_nmt.setToolTip(NMT_TARGET_TIP)
-        self.send_nmt.clicked.connect(self._send_nmt)
-        nmt_bar.addWidget(self.send_nmt)
-        self._show_nmt_target()
-        nmt_bar.addSpacing(16)
-        # A tick rather than a button that stays down. It is a state this
-        # tool is in -- producing SYNC or not -- and the label no longer has
-        # to change to say which, since a tick already says it.
-        self.sync_btn = QCheckBox("SYNC producer")
-        self.sync_btn.setToolTip(SYNC_TIP)
-        self.sync_btn.toggled.connect(self._toggle_sync)
-        nmt_bar.addWidget(self.sync_btn)
-        # TIME, for the buses that use it: there only once CANopen settings
-        # say so, so that nobody else has two controls to wonder about.
-        self.time_btn = QCheckBox("TIME producer")
-        self.time_btn.setToolTip(TIME_PRODUCER_TIP)
-        self.time_btn.toggled.connect(self._toggle_time)
-        nmt_bar.addWidget(self.time_btn)
-        self.send_time_btn = QPushButton("Send TIME")
-        self.send_time_btn.setToolTip(SEND_TIME_TIP)
-        self.send_time_btn.clicked.connect(self._send_time)
-        nmt_bar.addWidget(self.send_time_btn)
-        self._offer_time()
-        nmt_bar.addStretch()
-        # What is set once rather than done lives on a dialog of its own: the
-        # bar is for commands, and every setting beside them hid them further.
-        settings_btn = QPushButton("Settings...")
-        settings_btn.setToolTip(
-            "SDO timeout and retries for every node; and, per node, an SDO channel\n"
-            "off the predefined one or a heartbeat timeout of its own."
+        read_eds = self.eds_menu_btn.add("Read EDS from node", READ_EDS_TIP, self._read_stored_eds)
+        self.dcf_menu_btn = _MenuButton("DCF", DCF_MENU_TIP)
+        save_dcf = self.dcf_menu_btn.add(
+            "Save DCF...",
+            "Read every parameter from the node and write a .dcf file",
+            self._save_dcf,
         )
-        settings_btn.clicked.connect(self._open_settings)
-        nmt_bar.addWidget(settings_btn)
-        # Whatever the workspace holds, before anything is asked of a node.
-        canopen_settings.apply(manager, canopen_settings.load(ctx))
-
-        # The node's own parameters: what it is set to now, and the files
-        # that carry those values. A second row rather than one long one,
-        # because eight buttons on a line is wider than a docked pane.
-        file_bar = QHBoxLayout()
-        store_btn = QPushButton("Store")
-        store_btn.setToolTip("Save the node's parameters to non-volatile memory (0x1010)")
-        store_btn.clicked.connect(self._store)
-        restore_btn = QPushButton("Restore defaults")
-        restore_btn.setToolTip("Restore the node's default parameters (0x1011)")
-        restore_btn.clicked.connect(self._restore)
-        save_dcf = QPushButton("Save DCF...")
-        save_dcf.setToolTip("Read every parameter from the node and write a .dcf file")
-        save_dcf.clicked.connect(self._save_dcf)
-        apply_dcf = QPushButton("Apply DCF...")
-        apply_dcf.setToolTip("Write the parameter values from a .dcf file into the node")
-        apply_dcf.clicked.connect(self._apply_dcf)
-        self.compare_btn = QPushButton("Compare...")
-        self.compare_btn.setToolTip(COMPARE_TIP)
-        self.compare_btn.clicked.connect(lambda: self.compare())
+        apply_dcf = self.dcf_menu_btn.add(
+            "Apply DCF...",
+            "Write the parameter values from a .dcf file into the node",
+            self._apply_dcf,
+        )
+        # For a node and for a file alike, so not one of the node's own.
+        self.compare_action = self.dcf_menu_btn.add(
+            "Compare...", COMPARE_TIP, lambda: self.compare()
+        )
+        self._menu_buttons = [
+            self.node_menu_btn,
+            self.access_menu_btn,
+            self.eds_menu_btn,
+            self.dcf_menu_btn,
+        ]
         self.read_pdos_btn = QPushButton("Read PDO config")
         self.read_pdos_btn.setToolTip(
             "Read the selected node's PDO mapping, both directions, from the\n"
@@ -371,9 +373,26 @@ class CanopenView(QWidget):
             "actually sends, and CAN Transmit offers the RPDOs it receives."
         )
         self.read_pdos_btn.clicked.connect(self._read_pdos)
-        for b in (self.read_pdos_btn, store_btn, restore_btn, save_dcf, apply_dcf):
-            file_bar.addWidget(b)
-            self._node_buttons.append(b)
+        node_bar.addWidget(self.read_pdos_btn)
+        for button in self._menu_buttons:
+            node_bar.addWidget(button)
+        #: Everything under the list acts on the node highlighted in it, so
+        #: with nothing highlighted there is nothing for them to act on. A
+        #: button that looks pressable and then says "no node selected" is a
+        #: worse way to find that out than a button that is plainly not.
+        #: Buttons and menu entries alike: each has a text and can be enabled.
+        self._node_buttons = [
+            identify,
+            login,
+            read_level,
+            load_eds,
+            read_eds,
+            self.read_pdos_btn,
+            store,
+            restore,
+            save_dcf,
+            apply_dcf,
+        ]
         # In place of the node's buttons when the row is a file: what can be
         # done to a file is save it or put it away.
         self.save_file_btn = QPushButton("Save")
@@ -387,11 +406,70 @@ class CanopenView(QWidget):
         self.save_file_as_btn.clicked.connect(lambda: self.save_file_as(self.selected_file()))
         self._file_buttons = [self.save_file_btn, self.save_file_as_btn]
         for b in self._file_buttons:
-            file_bar.addWidget(b)
+            node_bar.addWidget(b)
             b.hide()
-        # For a node and for a file alike, so with neither set of buttons.
-        file_bar.addWidget(self.compare_btn)
-        file_bar.addStretch()
+        node_bar.addStretch()
+        # Above the list: the network, and what changes who is on it. NMT and
+        # SYNC are not about whichever row happens to be highlighted -- they
+        # are services the whole bus hears, and NMT with no node selected
+        # goes to every node on it. Add node is up here for the same reason:
+        # it acts on the list rather than on a row of it.
+        nmt_bar = QHBoxLayout()
+        nmt_bar.addWidget(self.add_menu_btn)
+        nmt_bar.addWidget(self.remove_btn)
+        nmt_bar.addSpacing(8)
+        nmt_group, nmt_in = _framed("NMT")
+        self.nmt_command = QComboBox()
+        for label, command in NMT_COMMANDS_UI:
+            self.nmt_command.addItem(label, command)
+        self.nmt_command.setToolTip("Command to send to the selected node (or to all nodes)")
+        nmt_in.addWidget(self.nmt_command)
+        # What is sent is said by the label and the command beside it, so
+        # the button says only who it goes to: that is the selection's
+        # doing, and a reset sent to every node is not the same thing as one
+        # sent to one of them. It was "Send NMT to all nodes", a fifth of
+        # the width of the pane.
+        self.send_nmt = QPushButton()
+        self.send_nmt.setToolTip(NMT_TARGET_TIP)
+        self.send_nmt.clicked.connect(self._send_nmt)
+        nmt_in.addWidget(self.send_nmt)
+        nmt_bar.addWidget(nmt_group)
+        self._show_nmt_target()
+        nmt_bar.addSpacing(8)
+        # A tick rather than a button that stays down. It is a state this
+        # tool is in -- producing SYNC or not -- and the label no longer has
+        # to change to say which, since a tick already says it.
+        producers, producers_in = _framed("Producers")
+        self.sync_btn = QCheckBox("SYNC")
+        self.sync_btn.setToolTip(SYNC_TIP)
+        self.sync_btn.toggled.connect(self._toggle_sync)
+        producers_in.addWidget(self.sync_btn)
+        # TIME beside it, always. It was there only once the settings said
+        # so, to save two controls for the buses that never use it; in a
+        # frame with SYNC it is one tick and one button, and a setting to
+        # find and switch on before either appeared cost more than that.
+        self.time_btn = QCheckBox("TIME")
+        self.time_btn.setToolTip(TIME_PRODUCER_TIP)
+        self.time_btn.toggled.connect(self._toggle_time)
+        producers_in.addWidget(self.time_btn)
+        self.send_time_btn = QPushButton("Send TIME")
+        self.send_time_btn.setToolTip(SEND_TIME_TIP)
+        self.send_time_btn.clicked.connect(self._send_time)
+        producers_in.addWidget(self.send_time_btn)
+        nmt_bar.addWidget(producers)
+        nmt_bar.addStretch()
+        # What is set once rather than done lives on a dialog of its own: the
+        # bar is for commands, and every setting beside them hid them further.
+        settings_btn = QPushButton("Settings...")
+        settings_btn.setToolTip(
+            "SDO timeout and retries for every node; and, per node, an SDO channel\n"
+            "off the predefined one or a heartbeat timeout of its own."
+        )
+        settings_btn.clicked.connect(self._open_settings)
+        nmt_bar.addWidget(settings_btn)
+        # Whatever the workspace holds, before anything is asked of a node.
+        canopen_settings.apply(manager, canopen_settings.load(ctx))
+
         self._offer_node_buttons()
 
         # --- object dictionary ---------------------------------------------
@@ -475,7 +553,6 @@ class CanopenView(QWidget):
         top_l.addLayout(nmt_bar)
         top_l.addWidget(self.nodes)
         top_l.addLayout(node_bar)
-        top_l.addLayout(file_bar)
         objects = QWidget()
         objects_l = QVBoxLayout(objects)
         objects_l.setContentsMargins(0, 0, 0, 0)
@@ -804,8 +881,8 @@ class CanopenView(QWidget):
 
         Right-clicking a node and finding three of the eight things that can
         be done to it is worse than finding none: it reads as a list of what
-        is possible here. The separators are the same grouping as the rows
-        below -- getting at the node, then its parameters.
+        is possible here. The separators are the same grouping as the menus
+        under the list -- the node, access to it, its EDS, its DCF.
         """
         item = self.nodes.itemAt(at)
         if item is not None and item.data(0, ROLE_FILE):
@@ -832,19 +909,21 @@ class CanopenView(QWidget):
         )
         on_a_node = self._can_act_on(node_id)
         for group in (
+            (("Read PDO config", self._read_pdos),),
             (
                 ("Identify", self._identify),
+                ("Store", self._store),
+                ("Restore defaults", self._restore),
+            ),
+            (
                 ("Login...", self._login),
                 ("Read access level", self._read_level),
             ),
             (
                 ("Load EDS...", self._load_eds_clicked),
                 ("Read EDS from node", self._read_stored_eds),
-                ("Read PDO config", self._read_pdos),
             ),
             (
-                ("Store", self._store),
-                ("Restore defaults", self._restore),
                 ("Save DCF...", self._save_dcf),
                 ("Apply DCF...", self._apply_dcf),
             ),
@@ -916,6 +995,14 @@ class CanopenView(QWidget):
             return
         self.manager.identify(node_id)
 
+    def _on_node_double_clicked(self, item, column: int) -> None:
+        """A double click on a node's access level asks the node for it."""
+        if column != COL_LEVEL or item.data(0, ROLE_FILE):
+            return
+        if self._can_act_on(item.data(0, ROLE_INDEX)):
+            self.nodes.setCurrentItem(item)
+            self._read_level()
+
     def _read_level(self) -> None:
         node_id = self.selected_node()
         if node_id is None:
@@ -957,7 +1044,6 @@ class CanopenView(QWidget):
         canopen_settings.save(self.ctx, chosen)
         canopen_settings.apply(self.manager, chosen)
         self.ctx.log("CANopen settings: " + "; ".join(said))
-        self._offer_time()
         if self.time_btn.isChecked() and canopen_settings.changed(
             before, chosen, canopen_settings.TIME_FIELDS
         ):
@@ -1379,13 +1465,6 @@ class CanopenView(QWidget):
         else:
             self.manager.stop_sync()
 
-    def _offer_time(self) -> None:
-        offered = canopen_settings.load(self.ctx).time_offered
-        if not offered:
-            self.time_btn.setChecked(False)
-        for control in (self.time_btn, self.send_time_btn):
-            control.setVisible(offered)
-
     @Slot(bool)
     def _toggle_time(self, on: bool) -> None:
         if on:
@@ -1539,13 +1618,13 @@ class CanopenView(QWidget):
         on_a_node = self._can_act_on(self.selected_node())
         for button in self._node_buttons:
             button.setEnabled(on_a_node)
+        for button in getattr(self, "_menu_buttons", []):
+            button.follow()
         if hasattr(self, "remove_btn"):
             if self.selected_file() is not None:
-                self.remove_btn.setText("Close file")
                 self.remove_btn.setToolTip(CLOSE_FILE_TIP)
                 self.remove_btn.setEnabled(True)
             else:
-                self.remove_btn.setText("Remove node")
                 self.remove_btn.setToolTip(REMOVE_NODE_TIP)
                 # A lost node most of all, so not _can_act_on.
                 self.remove_btn.setEnabled(self.selected_node() is not None)
@@ -1559,9 +1638,7 @@ class CanopenView(QWidget):
 
     def _show_nmt_target(self) -> None:
         node_id = self.selected_node()
-        self.send_nmt.setText(
-            "Send NMT to all nodes" if node_id is None else f"Send NMT to node {node_id}"
-        )
+        self.send_nmt.setText("Send to all" if node_id is None else f"Send to node {node_id}")
 
     def _on_node_selected(self, current: QTreeWidgetItem | None, _previous) -> None:
         self._show_nmt_target()
