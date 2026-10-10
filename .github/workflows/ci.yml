@@ -111,7 +111,8 @@ jobs:
         run: choco install innosetup --no-progress -y
 
       # In two halves, so that the application can be signed before the
-      # installer is built around it: an installer signed with an unsigned
+      # installer is built around it, once there is something to sign it
+      # with (see CODE_SIGNING.md): an installer signed with an unsigned
       # program inside is half the point missed.
       # This job waits for the test jobs, so the Windows tests have passed for
       # this commit on this Python; build.cmd would otherwise run them again.
@@ -123,72 +124,8 @@ jobs:
       - name: Check the licence guard actually ran
         run: python build\check_build.py
 
-      # --- Code signing, through SignPath (see CODE_SIGNING.md) -----------------------
-      # Off until the SignPath project exists: these steps run only once the
-      # repository variable SIGNPATH_ORGANIZATION_ID is set, with the API token in
-      # the secret SIGNPATH_API_TOKEN and the project and policy names in the
-      # variables below, all from SignPath. Until then the build is as before,
-      # unsigned. SignPath takes the files from a workflow artifact, so the
-      # application goes up as one, comes back signed, and replaces the unsigned
-      # one before the installer is made.
-      - name: Upload the application for signing
-        id: unsigned-application
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: pycangui-application-unsigned
-          path: dist/pycangui
-          if-no-files-found: error
-
-      - name: Sign the application
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
-          artifact-configuration-slug: application
-          github-artifact-id: ${{ steps.unsigned-application.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: dist/pycangui-signed
-
-      - name: Use the signed application
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        run: |
-          Remove-Item -Recurse -Force dist/pycangui
-          Move-Item dist/pycangui-signed dist/pycangui
-
       - name: Build the installer
         run: .\build.cmd setup
-
-      - name: Upload the installer for signing
-        id: unsigned-installer
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: pycangui-installer-unsigned
-          path: dist/*-setup.exe
-          if-no-files-found: error
-
-      - name: Sign the installer
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
-          artifact-configuration-slug: installer
-          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: dist/installer-signed
-
-      - name: Use the signed installer
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        run: |
-          Remove-Item dist/*-setup.exe
-          Move-Item dist/installer-signed/*-setup.exe dist/
 
       - uses: actions/upload-artifact@v7
         with:
@@ -214,9 +151,6 @@ jobs:
       # with no section stops here rather than publishing an empty release.
       - name: Release notes
         if: startsWith(github.ref, 'refs/tags/v')
-        # Whether the steps above signed it, for the notes to say so.
-        env:
-          PYCANGUI_SIGNED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
         run: python build\release_notes.py ${{ github.ref_name }} release-notes.md
 
       # A tagged commit publishes the installer as a release asset.
