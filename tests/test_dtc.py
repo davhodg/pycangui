@@ -557,3 +557,27 @@ def test_the_pad_byte_is_kept(app, tmp_path, monkeypatch):
 
     second = UdsView(UdsManager(BusManager(), Hooks(ctx), ctx), Context(log=print))
     assert second.padding.text() == "55"
+
+
+def test_the_worked_out_identifiers_are_one_line_to_read(app, tmp_path, monkeypatch):
+    """In J1939 addressing nobody types an identifier, so there are no boxes
+    for them: the three are shown together, and follow the addresses."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    window = MainWindow()
+    view = window.uds_view
+    boxes = (view.tx_id, view.rx_id, view.functional_id)
+
+    view.addressing.setCurrentIndex(0)
+    assert not any(box.isHidden() for box in boxes) and view.worked_out.isHidden()
+
+    view.addressing.setCurrentIndex(1)
+    assert all(box.isHidden() for box in boxes) and not view.worked_out.isHidden()
+    view.ecu_address.setText("17")
+    view.tester_address.setText("F9")
+    view.functional_target.setText("33")
+    view._apply_addresses()
+    shown = view.worked_out.text().replace(" ", "").split("/")
+    assert shown == [box.text() for box in boxes]
+    assert shown[0].upper() == "18DA17F9"
+    window.close()

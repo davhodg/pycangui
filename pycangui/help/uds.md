@@ -18,11 +18,11 @@ bytes of a request -- service id first, then whatever that service expects --
 and they go out as they are, for the services with no button of their own and
 for reproducing a sequence out of a trace or a specification.
 
-**How the pane is laid out.** Three boxes stay in view whatever else is open,
+**How the pane is laid out.** Two boxes stay in view whatever else is open,
 because every request depends on them: **ECU config** -- which ECU, and how the
-transport reaches it -- then **Session and security**, then **ECU control**.
-Below them are three tabs: **DIDs, routines and raw**, **DTCs** and
-**Transfer**, which remembers the tab it was left on. The pane's log is below
+transport reaches it -- then **Session and security**.
+Below them are four tabs: **DIDs, routines and raw**, **DTCs**, **ECU control**
+and **Transfer**, which remembers the tab it was left on. The pane's log is below
 the tabs and shared by all of them, since a transfer's lines and a DID read's
 are one conversation with the ECU.
 
@@ -30,13 +30,14 @@ are one conversation with the ECU.
 
 **Addressing** says how the identifiers are arrived at. *Identifiers* is the
 plain way: type the request, response and functional ids, anything from three
-hex digits to eight, and nothing is worked out for you. *J1939 addresses* is
+hex digits to eight, and nothing is worked out for you. *J1939* is
 ISO 15765-2 normal fixed addressing, which is how UDS is done on a J1939 bus:
 give the ECU's 8-bit address and your own, and the identifiers follow --
 `18DA<ecu><tester>` for a request, the two addresses the other way round for
 the answer, and `18DB<target><tester>` for a functional one, with *Func TA*
-the target (`33` is OBD's). The identifiers are still shown, so they can be
-compared against a trace, but they are not typed there.
+the target (`33` is OBD's). The identifiers are still shown, as one line beside
+the addresses -- request / response / functional -- so they can be compared
+against a trace, and selected and copied; they are not typed there.
 
 Nothing asks whether these are 29-bit identifiers: an identifier above `7FF`
 is one, and an identifier below it is not. A tick box as well would be a
@@ -124,13 +125,18 @@ even answer, so an unpaired combination cannot be sent anyway. Levels run to
 63, the last pair being 7D and 7E. The log names both, so what went on the
 wire is never inferred: `Security level 2 (req 03 resp 04): unlocked`.
 
-**ECU control** is three things that change how the ECU behaves on the bus.
+The **ECU control** tab is three things that change how the ECU behaves on the
+bus, each in a frame named for its service and number: *ECUReset (0x11)*,
+*CommunicationControl (0x28)* and *LinkControl (0x87)*.
 **Reset** restarts it with the chosen type, and the session and any unlock go
 with it. **Communication** is CommunicationControl (0x28): whether the ECU
 sends and listens, for normal messages, network management or both --
 disabling Tx of normal messages is how a flash is usually made quiet for the
 rest of the bus, and the ECU puts it back itself when the session ends.
-**Baud rate** is LinkControl (0x87), and it goes to every ECU unless *Baud
+**Check** asks whether the bitrate chosen is possible and stops there: the
+first half of a change, with nothing changed and the channel left where it is.
+
+**Change** is the whole of LinkControl (0x87), and it goes to every ECU unless *Baud
 rate change* is unticked under *Functional*: an ECU left at the old rate sees
 nothing but errors from the rest. Each ECU is asked whether it can move to the
 chosen rate, and nothing changes if any refuses or none answers; then they are
@@ -154,7 +160,7 @@ channel could not follow.
 Communication and Baud rate both ask first, since other nodes can stop
 hearing the ECUs, and so does Reset when it goes to every ECU.
 
-**Read DID** and **Write DID** work on the identifier beside
+**Read** and **Write**, in the DID frame, work on the identifier beside
 them. A routine has **Start**, **Stop** and **Result** -- RoutineControl
 sub-functions 1, 2 and 3 -- and the option bytes beside them are sent with
 whichever you press.
@@ -192,7 +198,7 @@ split and named by
 [`hooks/uds.py::extended_data_record`](hooks.md) -- fill in
 `EXTENDED_DATA_RECORDS` with each record's size and name. A record it does not
 know is shown as bytes from there on rather than guessed at. A snapshot holds
-DIDs, the same ones *Read DID* reads, so they are named and decoded the same
+DIDs, the same ones *Read* in the DID frame reads, so they are named and decoded the same
 way. The one thing a snapshot does not carry is how long each value is.
 [`hooks/uds.py::did_size`](hooks.md) is asked first -- fill in `DID_SIZES` --
 and failing it pycangui reads the DID once to find out, keeping the answer for
@@ -273,7 +279,7 @@ shipping one as a Windows DLL, and pycangui calls whichever the DLL exports:
 | `ASAP1A_CCP_ComputeKeyFromSeed` -- from the CCP specification | | | 1st |
 
 So a maker who has written a seed and key DLL for another tool has already
-written the one pycangui needs. **Seed and key DLL...** beside Unlock is where
+written the one pycangui needs. **Seed and key DLL...**, on the row under Unlock, is where
 it is named, and its **Check the DLL** says which function each protocol will
 use.
 

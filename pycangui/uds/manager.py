@@ -551,6 +551,51 @@ class UdsManager(QObject):
 
         self._run("CommunicationControl", fn)
 
+    def check_bitrate(self, bitrate: int) -> None:
+        """LinkControl (0x87), the first half only: ask whether the ECUs can change.
+
+        The verify that ``change_bitrate`` sends before it does anything, and
+        nothing after it: no transition, so no ECU moves and the channel
+        stays where it is. For finding out what a controller supports before
+        a bus full of them is asked to go there. To every ECU when the
+        service is ticked to go that way, to the one otherwise. It can be
+        asked on a channel whose rate pycangui does not set, since nothing
+        has to follow.
+        """
+        label = "LinkControl"
+        if self.client is None:
+            self.result.emit(f"{label}: UDS not open")
+            return
+        kbit = f"{bitrate // 1000} kbit/s"
+        baud = Baudrate(bitrate, Baudrate.Type.Fixed)
+        client, config, bus, fd = self.client, self.config, self._bus, self._fd()
+        everyone = config.goes_to_all("link")
+        p2, p2_star = self.timing_in_use()
+
+        def job() -> str:
+            try:
+                if not everyone:
+                    client.link_control(1, baud)
+                    return f"{label}: the ECU can change to {kbit}. Nothing was changed."
+                verify = bytes([0x87, 0x01]) + baud.get_bytes()
+                answers = functional.request(bus, config, verify, p2_s=p2, p2_star_s=p2_star, fd=fd)
+                said = functional.describe(f"{label} verify {kbit}", answers, False)
+                return f"{said}. Nothing was changed."
+            except NegativeResponseException as exc:
+                return (
+                    f"{label}: the ECU cannot change to {kbit}: "
+                    f"NRC 0x{exc.response.code:02X} {exc.response.code_name}"
+                )
+            except TimeoutException:
+                return f"{label}: timeout (no response)."
+            except (can.CanError, FrameRefusedError) as exc:
+                return f"{label}: {exc}"
+
+        def done(text, error: str | None) -> None:
+            self.result.emit(f"{label}: {error}" if error else text)
+
+        self._worker.submit(job, done)
+
     def change_bitrate(self, bitrate: int) -> None:
         """LinkControl (0x87): move the ECUs to another bitrate, and follow them.
 

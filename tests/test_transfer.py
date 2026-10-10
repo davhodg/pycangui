@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import bincopy
 import pytest
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QGroupBox, QMessageBox
 from udsoncan.connections import BaseConnection
 
 from pycangui.core.bus import BusManager
@@ -809,6 +809,11 @@ def test_a_bitrate_change_is_verified_before_it_is_made(manager, ecu_on_the_wire
     assert ecu_on_the_wire.sent == [bytes([0x87, 0x01, 0x12]), bytes([0x87, 0x03])]
 
 
+def test_a_bitrate_can_be_checked_without_being_changed(manager, ecu_on_the_wire):
+    manager.check_bitrate(500_000)
+    assert ecu_on_the_wire.sent == [bytes([0x87, 0x01, 0x12])], "the verify, and no transition"
+
+
 @pytest.mark.parametrize("button", ["_communication_control", "_change_bitrate"])
 def test_ecu_control_asks_before_it_changes_the_bus(view, monkeypatch, button):
     sent = []
@@ -824,10 +829,10 @@ def test_ecu_control_asks_before_it_changes_the_bus(view, monkeypatch, button):
 
 def test_the_pane_is_in_tabs_and_remembers_which(view):
     titles = [view.tabs.tabText(i) for i in range(view.tabs.count())]
-    assert titles == ["DIDs, routines and raw", "DTCs", "Transfer"]
-    view.tabs.setCurrentIndex(2)
+    assert titles == ["DIDs, routines and raw", "DTCs", "ECU control", "Transfer"]
+    view.tabs.setCurrentIndex(3)
     again = UdsView(view.manager, view.ctx)
-    assert again.tabs.currentIndex() == 2
+    assert again.tabs.currentIndex() == 3
 
 
 def test_the_log_has_the_space_the_controls_do_not_need(app, view):
@@ -847,8 +852,8 @@ def test_the_log_has_the_space_the_controls_do_not_need(app, view):
 
 def test_dids_and_routines_have_a_box_each_and_a_readable_list(view):
     """In one grid they shared columns, and the list was too narrow to read."""
-    assert view.did.parentWidget().title() == "DID"
-    assert view.routine.parentWidget().title() == "Routine"
+    boxes = (view.did.parentWidget(), view.routine.parentWidget())
+    assert all(isinstance(box, QGroupBox) for box in boxes) and boxes[0] is not boxes[1]
     for picker in (view.did, view.routine, view.report):
         listing = picker.view()
         assert listing.minimumWidth() >= listing.sizeHintForColumn(0), "entries are not cut off"

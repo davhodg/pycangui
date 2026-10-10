@@ -168,13 +168,27 @@ def test_a_reset_asks_first_only_when_it_goes_to_every_ecu(view, monkeypatch):
 
 
 def test_the_way_back_is_offered_only_while_the_rate_is_away(view):
+    # Whether it is offered, not whether its tab is the one in front.
     view.manager.rate_moved.emit(250_000, 500_000)
-    assert view.rate_back.isVisibleTo(view)
+    assert not view.rate_back.isHidden()
     view.manager.rate_moved.emit(500_000, 0)
-    assert not view.rate_back.isVisibleTo(view)
+    assert view.rate_back.isHidden()
 
 
 def test_tester_present_is_ticked_again_after_following_the_rate(view):
     view.tp.setChecked(False)
     view.manager.tester_present_resumed.emit()
     assert view.tp.isChecked()
+
+
+def test_checking_a_rate_asks_every_ecu_and_moves_nobody(ecu):
+    manager, state, bus, results = ecu
+    extended_session(manager, state)
+    manager.config.functional = ["link"]
+    moved = []
+    manager.rate_moved.connect(lambda *a: moved.append(a))
+    before = len(results)
+    manager.check_bitrate(250_000)
+    wait_until(lambda: len(results) > before)
+    QCoreApplication.processEvents()
+    assert state.bitrate is None and bus.bitrate == 500_000 and not moved

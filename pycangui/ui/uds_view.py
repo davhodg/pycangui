@@ -108,9 +108,18 @@ FIXED_FUNC_TIP = (
     "format, and the target is Func TA -- 33 for OBD, or whatever a\n"
     "manufacturer's own diagnostics use."
 )
+WORKED_OUT_TIP = (
+    "The identifiers the addresses work out to: request / response /\n"
+    "functional.\n"
+    "Request is 18 DA <ecu> <tester>: priority 6, ISO 15765-2's physical\n"
+    "PDU format, then who it is for and who it is from.\n"
+    "Response is the same pair the other way round.\n"
+    "Functional is 18 DB <target> <tester>, the target being Func TA.\n"
+    "Change an address to change them; they can be selected and copied."
+)
 ADDRESSING_TIP = (
     "How the identifiers are arrived at. Identifiers: type them, which is\n"
-    "what an 11-bit bus wants. J1939 addresses: give the ECU's 8-bit\n"
+    "what an 11-bit bus wants. J1939: give the ECU's 8-bit\n"
     "address and your own, and ISO 15765-2 normal fixed addressing works\n"
     "the identifiers out -- 18DA<ecu><tester> for a request, the two\n"
     "addresses the other way round for the answer."
@@ -349,7 +358,7 @@ class UdsView(QWidget):
         self.addressing = QComboBox()
         self.addressing.setToolTip(ADDRESSING_TIP)
         self.addressing.addItem("Identifiers", False)
-        self.addressing.addItem("J1939 addresses", True)
+        self.addressing.addItem("J1939", True)
         self.addressing.setCurrentIndex(1 if cfg.fixed else 0)
         self.addressing.currentIndexChanged.connect(lambda _i: self._addressing_changed())
         self.addressing.currentIndexChanged.connect(lambda _i: self._apply_addresses())
@@ -360,6 +369,14 @@ class UdsView(QWidget):
         self.functional_target = _hex_edit(f"{cfg.functional_target:02X}", 2)
         self.functional_target.setToolTip(FUNCTIONAL_TARGET_TIP)
         self.address_labels = {}
+        # In J1939 addressing the three identifiers are worked out, not typed:
+        # shown as one line to read and copy, in place of three boxes nobody
+        # can type in, which with the addresses beside them made this the
+        # widest row of the pane.
+        self.worked_out = QLabel()
+        self.worked_out.setFont(fonts.mono())
+        self.worked_out.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.worked_out.setToolTip(WORKED_OUT_TIP)
         for box in (self.ecu_address, self.tester_address, self.functional_target):
             box.textChanged.connect(lambda _t: self._addresses_changed())
             box.editingFinished.connect(self._apply_addresses)
@@ -431,6 +448,7 @@ class UdsView(QWidget):
                 ("Tx ID", self.tx_id),
                 ("Rx ID", self.rx_id),
                 ("Func ID", self.functional_id),
+                ("IDs", self.worked_out),
                 ("", self.functional),
             ),
             (
@@ -520,7 +538,6 @@ class UdsView(QWidget):
         seed_key = QPushButton("Seed and key DLL...")
         seed_key.setToolTip(SEED_KEY_TIP)
         seed_key.clicked.connect(lambda: seedkey_view.ask(self.ctx, self))
-        h.addWidget(seed_key)
         self.tp = QCheckBox("Tester present")
         self.tp.setToolTip(
             "Send TesterPresent (0x3E) every couple of seconds -- to every ECU,\n"
@@ -538,7 +555,11 @@ class UdsView(QWidget):
         self.p2.valueChanged.connect(lambda _v: self._timing_changed())
         self.p2_star.valueChanged.connect(lambda _v: self._timing_changed())
         sess_rows.addLayout(
-            _row(self.tp, 12, "Timing", self.timing, "P2", self.p2, "P2*", self.p2_star)
+            # The DLL is chosen once, so it is down here with what is set and
+            # left: beside Unlock it made this the widest row of the pane.
+            _row(
+                self.tp, 12, "Timing", self.timing, "P2", self.p2, "P2*", self.p2_star, 12, seed_key
+            )
         )
         self.manager.set_timing(cfg.timing, cfg.p2_timeout_s, cfg.p2_star_timeout_s)
 
@@ -547,8 +568,10 @@ class UdsView(QWidget):
         # session, and each changes how the ECU behaves on the bus -- restart
         # it, quieten it, move it to another bitrate. Kept in view rather than
         # in a tab because they are what somebody reaches for in a hurry.
-        control_box = QGroupBox("ECU control")
-        r = QGridLayout(control_box)
+        # A frame for each service, named as ISO 14229 names it and with its
+        # number: that is what is looked for in a trace and in a specification,
+        # and one frame called ECU control round all three, inside a tab called
+        # ECU control, said the same thing twice and named none of them.
         self.reset_type = QComboBox()
         for code, name in RESETS.items():
             self.reset_type.addItem(name.capitalize(), code)
@@ -558,9 +581,8 @@ class UdsView(QWidget):
             "security unlock are lost with it."
         )
         reset.clicked.connect(self._reset)
-        r.addWidget(QLabel("Reset"), 0, 0)
-        r.addWidget(self.reset_type, 0, 1)
-        r.addWidget(reset, 0, 2, alignment=Qt.AlignLeft)  # beside its choice
+        reset_box = QGroupBox("ECUReset (0x11)")
+        QVBoxLayout(reset_box).addLayout(_row(self.reset_type, reset))
 
         self.comm_control = QComboBox()
         for code, name in COMM_CONTROLS.items():
@@ -578,10 +600,8 @@ class UdsView(QWidget):
         comm = QPushButton("Send")
         comm.setToolTip("Send CommunicationControl with the choices on the left")
         comm.clicked.connect(self._communication_control)
-        r.addWidget(QLabel("Communication"), 1, 0)
-        r.addWidget(self.comm_control, 1, 1)
-        r.addWidget(self.comm_messages, 1, 2)
-        r.addWidget(comm, 1, 3)
+        comm_box = QGroupBox("CommunicationControl (0x28)")
+        QVBoxLayout(comm_box).addLayout(_row(self.comm_control, self.comm_messages, comm))
 
         self.link_bitrate = QComboBox()
         for bitrate in LINK_BITRATES:
@@ -596,6 +616,15 @@ class UdsView(QWidget):
             "session it was set in, which is what the button that appears\n"
             "beside Change uses to take everything back."
         )
+        check_rate = QPushButton("Check")
+        check_rate.setToolTip(
+            "Ask whether the ECU can move to the bitrate on the left, and stop\n"
+            "there: the first half of a change, with nothing changed. Every ECU\n"
+            "is asked when Baud rate change is ticked under Functional."
+        )
+        check_rate.clicked.connect(
+            lambda: self.manager.check_bitrate(self.link_bitrate.currentData())
+        )
         change_rate = QPushButton("Change")
         change_rate.setToolTip("Ask the ECU to move to the bitrate on the left")
         change_rate.clicked.connect(self._change_bitrate)
@@ -609,19 +638,20 @@ class UdsView(QWidget):
         self.rate_back.clicked.connect(self._back_to_own_rate)
         self.rate_back.hide()
         self._own_rate = 0  # the channel's own rate while it is away from it
-        r.addWidget(QLabel("Baud rate"), 2, 0)
-        r.addWidget(self.link_bitrate, 2, 1)
-        r.addWidget(change_rate, 2, 2, alignment=Qt.AlignLeft)
-        r.addWidget(self.rate_back, 2, 3, alignment=Qt.AlignLeft)
-        r.setColumnStretch(4, 1)
+        link_box = QGroupBox("LinkControl (0x87)")
+        QVBoxLayout(link_box).addLayout(
+            _row(self.link_bitrate, check_rate, change_rate, self.rate_back)
+        )
 
         # --- data ----------------------------------------------------------------
         # A box each for DIDs and routines, rather than one grid. In a grid
         # the two rows shared columns, so the identifier list was as narrow as
         # the routine buttons beside it allowed, and "F190  VIN" with its
         # description could not be read.
-        did_box = QGroupBox("DID")
-        routine_box = QGroupBox("Routine")
+        # The service bytes beside the names, as on the ECU control tab: read
+        # and write for a DID, the one RoutineControl for a routine.
+        did_box = QGroupBox("DID (0x22 read, 0x2E write)")
+        routine_box = QGroupBox("Routine (0x31)")
         self.did = _picker(manager.did_choices(), 4, manager.did_description)
         self.did.setToolTip(
             "The identifier to read or write. The list is what ISO 14229-1\n"
@@ -631,10 +661,10 @@ class UdsView(QWidget):
         self.did.setCurrentText("F190")
         self.did_value = QLineEdit()
         self.did_value.setFont(fonts.mono())
-        read_did = QPushButton("Read DID")
+        read_did = QPushButton("Read")
         read_did.setToolTip("ReadDataByIdentifier (0x22)")
         read_did.clicked.connect(lambda: self.manager.read_did(_picked(self.did)))
-        write_did = QPushButton("Write DID")
+        write_did = QPushButton("Write")
         write_did.setToolTip(
             "WriteDataByIdentifier (0x2E). What you type is turned into bytes\n"
             "by hooks/uds.py::did_encode -- hex by default."
@@ -1008,7 +1038,7 @@ class UdsView(QWidget):
 
         # Scrolled for the same reason as the LSS pane: the controls must not
         # dictate how small the dock can be made.
-        # The ECU, the session and ECU control stay in view: every tab depends
+        # The ECU and the session stay in view: every tab depends
         # on them, and one hidden behind a tab is how a request goes to the
         # wrong ECU or fails for a session nobody could see. The rest is in
         # tabs, which is what kept the pane from being taller than a screen.
@@ -1016,6 +1046,9 @@ class UdsView(QWidget):
         for title, parts in (
             ("DIDs, routines and raw", (did_box, routine_box, raw_box)),
             ("DTCs", (dtc_box,)),
+            # Reset, communication and bitrate: done now and then, and three
+            # rows of the pane while they were always in view.
+            ("ECU control", (reset_box, comm_box, link_box)),
             ("Transfer", (xfer,)),
         ):
             page = QWidget()
@@ -1029,7 +1062,7 @@ class UdsView(QWidget):
         controls = QWidget()
         controls_layout = QVBoxLayout(controls)
         controls_layout.setContentsMargins(0, 0, 0, 0)
-        for w in (addr, sess, control_box, self.tabs):
+        for w in (addr, sess, self.tabs):
             controls_layout.addWidget(w)
         controls_layout.addStretch()
         scroll = _FittedScroll()
@@ -1077,8 +1110,9 @@ class UdsView(QWidget):
 
         In J1939 addressing the identifiers are worked out rather than
         typed, so they are still shown -- somebody comparing against a
-        trace wants to see them -- but not editable, because editing one
-        would be disagreeing with the addresses above it.
+        trace wants to see them -- but as a line to read, not boxes to
+        type in: editing one would be disagreeing with the addresses
+        beside it.
         """
         fixed = bool(self.addressing.currentData())
         for widget in (self.ecu_address, self.tester_address, self.functional_target):
@@ -1091,6 +1125,11 @@ class UdsView(QWidget):
         ):
             widget.setReadOnly(fixed)
             widget.setToolTip(worked_out if fixed else typed)
+            # Typed in boxes; worked out, they are the one line beside the addresses.
+            widget.setVisible(not fixed)
+            self.address_labels[widget].setVisible(not fixed)
+        self.worked_out.setVisible(fixed)
+        self.address_labels[self.worked_out].setVisible(fixed)
         self._apply_addresses()
 
     @Slot(int)
@@ -1122,6 +1161,7 @@ class UdsView(QWidget):
             box.blockSignals(True)  # these are not somebody typing
             box.setText(f"{value:08X}")
             box.blockSignals(False)
+        self._show_worked_out()
 
     def _address_boxes(self):
         """Each address box and the field it sets, in one place."""
@@ -1145,6 +1185,12 @@ class UdsView(QWidget):
         for box, field in self._address_boxes():
             waiting = self._int(box) != getattr(self.manager.config, field)
             box.setStyleSheet(PENDING if waiting else "")
+
+    def _show_worked_out(self) -> None:
+        """Request / response / functional, as the three boxes hold them."""
+        self.worked_out.setText(
+            " / ".join(box.text() or "none" for box in (self.tx_id, self.rx_id, self.functional_id))
+        )
 
     def _apply_addresses(self) -> None:
         """Hand the addresses to the manager, once a box is finished with.
