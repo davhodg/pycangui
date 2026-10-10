@@ -32,7 +32,7 @@ from pycangui.__main__ import import_can_without_mf4
 
 import_can_without_mf4()
 
-from PySide6.QtCore import QCoreApplication, QSettings  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QEvent, QSettings  # noqa: E402
 from PySide6.QtWidgets import QApplication, QDialog, QMessageBox  # noqa: E402
 
 #: Taken before anything patches it, so a test that wants a real dialog can
@@ -57,6 +57,70 @@ def _isolate_settings(tmp_path_factory):
 @pytest.fixture(scope="session")
 def app():
     return QApplication.instance() or QApplication([])
+
+
+# --- a window a test made goes when the test does ------------------------------
+#: The windows there were before the test now running began.
+_WINDOWS_BEFORE: set = set()
+
+
+def pytest_runtest_setup(item):
+    instance = QApplication.instance()
+    _WINDOWS_BEFORE.clear()
+    if instance is not None:
+        _WINDOWS_BEFORE.update(instance.topLevelWidgets())
+
+
+def _ours_to_destroy(widget) -> bool:
+    """A window of pycangui's own, with nothing above it that will take it away.
+
+    Not one that has a parent: a drop-down's list and a button's menu are
+    windows as far as Qt is concerned, and belong to the widget that made
+    them, which deletes them itself -- destroyed here first, that is the
+    same object deleted twice. And not one of Qt's own classes with no
+    parent: those found here are pyqtgraph's, a plot's control panel and
+    its menus, which the plot's Python side owns, and destroying them under
+    it is a fault when the process exits. What is left is what a test
+    makes and means: a main window, a detached pane, a dialog.
+    """
+    return widget.parent() is None and not type(widget).__module__.startswith("PySide6")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_teardown(item):
+    """Destroy the windows the test made, once its fixtures have finished with them.
+
+    Closing a window hides it and no more. Letting go of it does not free it
+    either: its signals are connected to functions that hold the window, Qt
+    holds the connections, and that is a ring the garbage collector cannot
+    see round. So every window every test made stayed for the rest of the
+    run -- 1,200 widgets each, 200,000 in a process by the end -- and each
+    collection, and anything said to every widget, got slower as they piled
+    up. Destroying the window takes its connections with it, and the rest
+    then goes the ordinary way.
+
+    After the fixtures and not in one: a fixture that closes its window on
+    the way out needs the window to be there. A fixture wider than one test
+    must not make a window, since the first test to use it would take it away.
+    """
+    yield
+    instance = QApplication.instance()
+    if instance is None:
+        return
+    for window in instance.topLevelWidgets():
+        if window in _WINDOWS_BEFORE or not _ours_to_destroy(window):
+            continue
+        if getattr(window, "_closing", None) is False:
+            # A main window its test never closed. Closing is what stops its
+            # threads, and Qt ends the process over a thread destroyed while
+            # it runs. Said to be closing already, so that it does not stop
+            # to ask about anything unsaved: nobody is there to answer.
+            window._closing = True
+            window.close()
+        window.deleteLater()
+    _WINDOWS_BEFORE.clear()
+    # Asked for by name: with no event loop running, nothing else delivers them.
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
 
 @pytest.fixture(autouse=True)

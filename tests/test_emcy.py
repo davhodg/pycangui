@@ -83,7 +83,10 @@ def test_demo_emergency_is_decoded(stack):
 
     # over-speed the demo drive: it raises an over-current emergency
     manager.sdo_write(5, 0x2001, 0, "3000")
-    wait_until(lambda: seen)
+    # Both, and not only the list here. The emergency is announced from the
+    # thread that read it: the list is appended to there and then, and the
+    # manager's own history a moment later, on this one.
+    wait_until(lambda: seen and manager.emcy_history)
     e = seen[0]
     assert e.node_id == 5 and e.code == 0x2310
     assert e.description == "Continuous over current"

@@ -49,7 +49,12 @@ def set_mode(settings, wanted: str) -> None:
     """Choose, and have every open list follow."""
     settings.set(MODE_KEY, wanted if wanted in MODES else AUTO)
     for widths in list(_open):
-        widths.apply()
+        try:
+            widths.apply()
+        except RuntimeError:
+            # Its list has been destroyed, with the window it was in, and
+            # this is all that is left of it: nothing to set, so let it go.
+            _open.discard(widths)
 
 
 class ColumnWidths(QObject):
