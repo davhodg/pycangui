@@ -52,7 +52,8 @@ WHAT_A_PLUGIN_IS = (
 
 REPLACING = (
     "This replaces {label} {old}, which is installed in this workspace now.\n"
-    "Anything you have edited into it is lost."
+    "That copy has no changes of yours in it, so it is overwritten and "
+    "nothing is lost."
 )
 REPLACING_EDITED = (
     "This replaces {label} {old}, which is installed in this workspace now.\n"
@@ -80,7 +81,8 @@ UPDATE_DIFFERS = (
 )
 UPDATE_TO = (
     "Install version {version}, the one this pycangui ships, over the one\n"
-    "in this workspace. Anything edited into the copy here is lost."
+    "in this workspace. A copy you have changed is moved aside and kept;\n"
+    "one you have not is overwritten."
 )
 #: Said once a session, when a plugin in this workspace is behind the one
 #: pycangui now ships. A workspace copy does not change when pycangui is

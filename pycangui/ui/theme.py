@@ -26,6 +26,8 @@ from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
+from pycangui import resources
+
 SETTING = "appearance/theme"
 SYSTEM, LIGHT, DARK = "system", "light", "dark"
 #: In the order the menu offers them.
@@ -34,14 +36,17 @@ CHOICES = ((SYSTEM, "Match the system"), (LIGHT, "Light"), (DARK, "Dark"))
 LIGHT_ONLY = {"windowsvista", "windows"}
 #: Qt's own style, which draws dark as well as light on every platform.
 FUSION = "Fusion"
-#: An outline for a tick box that is not ticked, in a list or on a group box,
-#: for Fusion in the dark. There it is drawn a shade darker than what is
-#: behind it, which is all but nothing: a column of boxes to tick was a
-#: blank column until one of them was. Only the unticked one is described,
-#: so a ticked one is still the style's own.
+#: An outline for a tick box in a list or on a group box, for Fusion in the
+#: dark. There an unticked one is drawn a shade darker than what is behind
+#: it, which is all but nothing: a column of boxes to tick was a blank
+#: column until one of them was. Ticked ones have the outline too, so the
+#: two are plainly the same thing in two states -- and the tick is then
+#: ours to draw, since a box described here is no longer drawn by the style.
 TICK_BOX_OUTLINE = (
-    "QAbstractItemView::indicator:unchecked, QGroupBox::indicator:unchecked "
-    "{ border: 1px solid #9a9a9a; border-radius: 2px; }"
+    "QAbstractItemView::indicator, QGroupBox::indicator "
+    "{ border: 1px solid #9a9a9a; border-radius: 2px; } "
+    "QAbstractItemView::indicator:checked, QGroupBox::indicator:checked "
+    f'{{ image: url("{resources.path("tick.svg").as_posix()}"); }}'
 )
 #: Whether the style in use is Fusion, noted before a style sheet is set:
 #: with one set, the application's style is no longer the one to ask.

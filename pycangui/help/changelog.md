@@ -35,7 +35,6 @@ since the last version, and comes out in the next one.
   control is a tab, with *Check* to ask whether a bitrate is possible without changing it.
 - Plot: a long time axis reads in minutes and hours, *12:30* and *1:02:30*, not thousands
   of seconds.
-- A newer copy of a plugin that pycangui ships is offered each time its workspace opens.
 - Plot: a Y axis whose signals share named values is marked with the names; right-click
   the plot to turn it off.
 - CAN Transmit: a counter or checksum in a DBC signal is shown by position, *count 52:4*,
@@ -54,7 +53,7 @@ since the last version, and comes out in the next one.
 
 - Switching workspace frees the window it leaves, which used to stay in memory until exit.
 - A pane closed in a window of its own opens straight into it, without appearing elsewhere first.
-- In the dark on Windows 10, an unticked box in a list has an outline and can be seen.
+- In the dark on Windows 10, a tick box in a list has an outline and can be seen.
 - DCF compare says in a box, not only the Event Log, why nothing was compared.
 - XCP / CCP: characteristics in a standard A2L were not listed at all.
 - *View*: a detached pane was shown unticked while open, and picking it did not bring it forward.

@@ -216,8 +216,6 @@ class MainWindow(QMainWindow):
         #: True from the moment the window starts closing, so that what is
         #: torn down on the way out is not reported as if somebody did it.
         self._closing = False
-        #: A run with nobody at it (--run): nothing is offered that wants an answer.
-        self.unattended = False
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         # Everything is kept, however long the session: the line that matters
@@ -644,33 +642,12 @@ class MainWindow(QMainWindow):
         # modal dialog in front of a window that has not been shown yet is a
         # dialog with nothing behind it.
         QTimer.singleShot(0, self._run_startup_hook)
-        # After it, and for the same reason deferred: a question with no
-        # window behind it is a question about nothing.
-        QTimer.singleShot(0, self, self._offer_plugin_updates)
         # The detached windows were put back before this one was shown, so
         # it came up in front of them: a pane left on a second screen, hidden
         # behind the main window, might as well have been closed.
         QTimer.singleShot(0, self.panes.raise_detached)
 
     # --- helpers -------------------------------------------------------------
-    def _offer_plugin_updates(self) -> None:
-        """Offer the newer copy of each plugin this pycangui ships, as the workspace opens.
-
-        Every time, until it is taken. A plugin in a workspace is a copy,
-        and stays as it was when pycangui is updated; a line in the Event
-        Log saying so was a line nobody was looking at, and the newer one
-        went on not being used. The offer is the install question itself,
-        which says what is replaced and keeps a copy of one that was
-        edited, and Cancel leaves everything as it is.
-
-        Not on a run nobody is watching: a question there is a script
-        that never starts.
-        """
-        if self._closing or self.unattended:
-            return
-        for name in self.plugin_actions.out_of_date():
-            self.plugin_actions.install_supplied(name, self)
-
     def _run_startup_hook(self) -> None:
         """Tell a workspace's own code that the window is up.
 

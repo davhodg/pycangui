@@ -832,30 +832,3 @@ def test_an_edited_copy_is_not_called_out_of_date(app, window, monkeypatch):
     )
 
     assert window.plugin_actions.changed_since_install() == []
-
-
-def test_a_newer_supplied_plugin_is_offered_as_the_workspace_opens(app, window, monkeypatch):
-    """A line in the Event Log was a line nobody was looking at."""
-    from pycangui.core.plugins import Loaded, supplied
-
-    entry = supplied()[0]
-    window.plugins.loaded[entry.name] = Loaded(
-        name=entry.name,
-        path=window.ctx.workspace_dir / "plugins" / entry.name,
-        title=entry.label,
-        version="0.1",
-    )
-    offered = []
-    monkeypatch.setattr(
-        window.plugin_actions, "install_supplied", lambda name, parent=None: offered.append(name)
-    )
-
-    window._offer_plugin_updates()
-    assert offered == [entry.name]
-
-    window._offer_plugin_updates()
-    assert offered == [entry.name, entry.name], "every time, until it is taken"
-
-    window.unattended = True
-    window._offer_plugin_updates()
-    assert len(offered) == 2, "and not on a run nobody is there to answer"
