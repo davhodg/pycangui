@@ -170,15 +170,17 @@ def stack(app, tmp_path, monkeypatch, demo_device):
 
 def test_manager_against_demo_engine(stack):
     _bus, manager, _demo = stack
-    nodes, dm1s, msgs, claimed = [], [], [], []
-    manager.node_seen.connect(lambda sa, name: nodes.append((sa, name)))
+    dm1s, msgs, claimed = [], [], []
     manager.dm1.connect(lambda sa, d: dm1s.append((sa, d)))
     manager.message.connect(lambda p, pgn, sa, t, data: msgs.append((pgn, sa, data)))
     manager.claimed.connect(claimed.append)
 
-    wait_until(lambda: any(name is not None for _, name in nodes))  # address claim seen
-    sa, name = next((sa, n) for sa, n in nodes if n is not None)
-    assert sa == 0 and name.identity_number == 0x1234 and name.manufacturer_code == 0
+    # What the manager knows, not a signal listened for from here: the engine
+    # claims once, and the fixture has been waiting for it to, so the signal
+    # may be gone before this test is there to hear it.
+    wait_until(lambda: manager.nodes.get(0) is not None)  # address claim seen
+    name = manager.nodes[0]
+    assert name.identity_number == 0x1234 and name.manufacturer_code == 0
     wait_until(lambda: any(pgn == 61444 for pgn, _, _ in msgs))
     wait_until(lambda: dm1s, timeout=3)
     assert dm1s[0][1].dtcs[0].spn == 110 and dm1s[0][1].lamps() == "AWL"
