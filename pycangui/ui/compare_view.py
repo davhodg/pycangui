@@ -56,7 +56,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.canopen import compare as comparison
-from pycangui.ui import folders, fonts
+from pycangui.ui import folders, fonts, messages
 
 #: What a side can be. Kept as text because it is what the combo box holds
 #: and what gets written into the settings.
@@ -160,12 +160,12 @@ class Side(QWidget):
         """The file this side names, read, or None with the reason reported."""
         path = self.path.text().strip()
         if not path:
-            self.ctx.warn("Pick a file for both sides, or a node.")
+            not_compared(self, self.ctx, "Pick a file for both sides, or a node.")
             return None
         try:
             return comparison.read_file(path)
         except Exception as exc:  # a file that is not one, or that will not parse
-            self.ctx.warn(f"{path} could not be read: {exc}")
+            not_compared(self, self.ctx, f"{path} could not be read: {exc}")
             return None
 
     def state(self) -> dict:
@@ -182,6 +182,17 @@ class Side(QWidget):
             at = self.node.findData(node_id)
             if at >= 0:
                 self.node.setCurrentIndex(at)
+
+
+def not_compared(parent: QWidget, ctx, why: str) -> None:
+    """Say that Compare did nothing, and why, where it will be seen.
+
+    In a box as well as in the Event Log. The log may be behind this window
+    or put away, and a button that is pressed and changes nothing on screen
+    reads as a button that does not work.
+    """
+    ctx.warn(why)
+    messages.warning(parent, "Not compared", why)
 
 
 class CompareWindow(QDialog):
@@ -317,7 +328,7 @@ class CompareView(QWidget):
         if not wanted:
             wanted = self._objects_from_eds()
         if not wanted:
-            self.ctx.warn(NOTHING_TO_READ)
+            not_compared(self, self.ctx, NOTHING_TO_READ)
             self.summary.setText(NOTHING_TO_READ)
             return
         self._read_nodes(wanted)
@@ -367,7 +378,7 @@ class CompareView(QWidget):
             self._finish()
             return
         if any(side.node_id is None for _name, side in outstanding):
-            self.ctx.warn("No node selected, or it is not on the bus.")
+            not_compared(self, self.ctx, "No node selected, or it is not on the bus.")
             return
 
         self._busy = True
@@ -390,7 +401,7 @@ class CompareView(QWidget):
                     self._busy = False
                     self.compare_button.setEnabled(True)
                     self.progress.setVisible(False)
-                    self.ctx.warn(f"Node {node_id} could not be read: {error}")
+                    not_compared(self, self.ctx, f"Node {node_id} could not be read: {error}")
                     self.summary.setText(f"Node {node_id} could not be read.")
                     return
                 self._readings[name] = comparison.Reading(

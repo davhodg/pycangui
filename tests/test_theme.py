@@ -22,6 +22,10 @@ class Hints:
         self.asked = []
         self.system = system
         self.scheme = system
+        self.colorSchemeChanged = self  # connected to, and never emitted here
+
+    def connect(self, _slot):
+        pass
 
     def setColorScheme(self, scheme):
         self.asked.append(scheme)
@@ -49,6 +53,13 @@ class App:
     def __init__(self, style="windows11", system=Qt.ColorScheme.Light):
         self.hints = Hints(system)
         self._style = Style(style)
+        self._sheet = ""
+
+    def styleSheet(self):
+        return self._sheet
+
+    def setStyleSheet(self, sheet):
+        self._sheet = sheet
 
     def styleHints(self):
         return self.hints
@@ -100,6 +111,28 @@ def test_switching_on_windows_10_changes_colours_not_the_style():
     theme.apply(theme.LIGHT, app)
     assert app.style().name() == "fusion"
     assert app.hints.asked[-1] == Qt.ColorScheme.Light
+
+
+def test_unticked_boxes_are_outlined_where_the_dark_style_hides_them():
+    """Reported on Windows 10 in the dark: a tick box in a list could not be
+    seen until it was ticked. Fusion draws it a shade darker than what is
+    behind it."""
+    app = App(style="windowsvista")
+    theme.apply(theme.DARK, app)
+    assert app.styleSheet() == theme.TICK_BOX_OUTLINE
+
+    theme.apply(theme.LIGHT, app)
+    assert app.styleSheet() == "", "in the light it is drawn well enough"
+    assert app.style().name() == "fusion", "and the style is still the one it was"
+
+    theme.apply(theme.DARK, app)
+    assert app.styleSheet() == theme.TICK_BOX_OUTLINE
+
+
+def test_a_style_that_draws_them_itself_is_left_alone():
+    app = App(style="windows11", system=Qt.ColorScheme.Dark)
+    theme.apply(theme.DARK, app)
+    assert app.styleSheet() == ""
 
 
 @pytest.mark.parametrize("choice", [theme.SYSTEM, theme.LIGHT, theme.DARK])

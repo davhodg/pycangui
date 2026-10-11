@@ -222,3 +222,46 @@ def test_a_curve_with_data_moves_between_the_axes(app, plot):
     view.set_right(key, True)
     view._redraw()
     assert view.right_axis() == [key] and len(view._curves[key].getData()[0])
+
+
+# --- the time axis is read as a clock, not in thousands of seconds -------------------------
+def test_a_long_time_is_minutes_and_then_hours(app):
+    from pycangui.ui.plot_view import time_text
+
+    assert time_text(150) == "2:30"
+    assert time_text(3750) == "1:02:30"
+    assert time_text(59.5, places=1) == "0:59.5"
+    assert time_text(12.5, places=1, clock=False).startswith("12.5")
+
+
+def test_the_marks_fall_on_whole_minutes_and_whole_hours(app):
+    from pycangui.ui.plot_view import TimeAxis
+
+    axis = TimeAxis("bottom")
+    twenty_minutes = axis.tickSpacing(0, 1200, 800)[0][0]
+    assert twenty_minutes % 60 == 0, "minutes, not round numbers of seconds"
+    six_hours = axis.tickSpacing(0, 6 * 3600, 800)[0][0]
+    assert six_hours % 1800 == 0
+    a_week = axis.tickSpacing(0, 7 * 86400, 800)[0][0]
+    assert a_week % 86400 == 0
+
+
+def test_a_short_stretch_is_still_seconds_and_a_late_one_still_a_clock(app):
+    from pycangui.ui.plot_view import TimeAxis
+
+    axis = TimeAxis("bottom")
+    early = axis.tickStrings([0, 2, 4], 1, 2)
+    assert all(":" not in mark for mark in early), "ten seconds in, it is seconds"
+    late = axis.tickStrings([5000, 5002, 5004], 1, 2)
+    assert late == ["1:23:20", "1:23:22", "1:23:24"], "the same ten seconds, an hour and a half in"
+    fine = axis.tickStrings([5000.0, 5000.5], 1, 0.5)
+    assert fine == ["1:23:20.0", "1:23:20.5"]
+
+
+def test_the_plot_has_the_time_axis(app):
+    from pycangui.core.signals import SignalHub
+    from pycangui.ui.plot_view import PlotView, TimeAxis
+
+    view = PlotView(SignalHub(), lambda: 0.0)
+    assert isinstance(view.plot.getAxis("bottom"), TimeAxis)
+    view.close()

@@ -34,6 +34,20 @@ CHOICES = ((SYSTEM, "Match the system"), (LIGHT, "Light"), (DARK, "Dark"))
 LIGHT_ONLY = {"windowsvista", "windows"}
 #: Qt's own style, which draws dark as well as light on every platform.
 FUSION = "Fusion"
+#: An outline for a tick box that is not ticked, in a list or on a group box,
+#: for Fusion in the dark. There it is drawn a shade darker than what is
+#: behind it, which is all but nothing: a column of boxes to tick was a
+#: blank column until one of them was. Only the unticked one is described,
+#: so a ticked one is still the style's own.
+TICK_BOX_OUTLINE = (
+    "QAbstractItemView::indicator:unchecked, QGroupBox::indicator:unchecked "
+    "{ border: 1px solid #9a9a9a; border-radius: 2px; }"
+)
+#: Whether the style in use is Fusion, noted before a style sheet is set:
+#: with one set, the application's style is no longer the one to ask.
+_fusion = False
+#: The applications whose colour scheme is already being followed.
+_followed: set[int] = set()
 TITLE = "Theme"
 TIP = "Light, dark, or whichever the operating system is set to. Kept for you on this computer."
 
@@ -50,8 +64,11 @@ def apply(choice: str, app: QApplication | None = None) -> None:
     app = app or QApplication.instance()
     if app is None:
         return
-    if app.style().name().lower() in LIGHT_ONLY:
-        app.setStyle(FUSION)
+    global _fusion
+    if not app.styleSheet():  # see _fusion
+        if app.style().name().lower() in LIGHT_ONLY:
+            app.setStyle(FUSION)
+        _fusion = app.style().name().lower() == FUSION.lower()
     hints = app.styleHints()
     if choice == LIGHT:
         hints.setColorScheme(Qt.ColorScheme.Light)
@@ -59,6 +76,19 @@ def apply(choice: str, app: QApplication | None = None) -> None:
         hints.setColorScheme(Qt.ColorScheme.Dark)
     else:
         hints.unsetColorScheme()
+    outline_tick_boxes(app)
+    if id(app) not in _followed:
+        # Matching the system, the scheme changes when the system's does.
+        _followed.add(id(app))
+        hints.colorSchemeChanged.connect(lambda _scheme: outline_tick_boxes(app))
+
+
+def outline_tick_boxes(app: QApplication) -> None:
+    """Give unticked boxes an outline where the style draws them invisibly."""
+    dark = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
+    wanted = TICK_BOX_OUTLINE if (dark and _fusion) else ""
+    if app.styleSheet() != wanted:
+        app.setStyleSheet(wanted)
 
 
 def choose(choice: str, settings: QSettings | None = None, app: QApplication | None = None) -> None:

@@ -301,6 +301,7 @@ def main() -> int:
     note_a_slow_start(window)
     listener.deliver(session.open_files)
     if options.run is not None:
+        window.unattended = True  # so nothing is offered that wants an answer
         run_when_started(window, options.run, loaded)
     finished = app.exec()
     listener.close()

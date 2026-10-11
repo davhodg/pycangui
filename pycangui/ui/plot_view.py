@@ -15,6 +15,8 @@ names -- *Off*, *Run*, *Fault* -- in place of 0, 1 and 2.
 
 from __future__ import annotations
 
+import math
+
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction
@@ -88,6 +90,84 @@ LEFT, RIGHT = "left", "right"
 COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
 
 
+#: Where the marks on the time axis may fall once it shows more than a
+#: minute, in seconds, each with the smaller step drawn between: whole
+#: seconds, then whole minutes, then whole hours, as a clock is read.
+TIME_STEPS = (
+    (1, 0.5),
+    (2, 1),
+    (5, 1),
+    (10, 5),
+    (15, 5),
+    (30, 10),
+    (60, 30),
+    (120, 60),
+    (300, 60),
+    (600, 300),
+    (900, 300),
+    (1800, 600),
+    (3600, 1800),
+    (7200, 3600),
+    (14400, 3600),
+    (21600, 7200),
+    (43200, 21600),
+    (86400, 21600),
+)
+#: About how far apart the marks are wanted, in pixels.
+TIME_MARK_PX = 110
+
+
+class TimeAxis(pg.AxisItem):
+    """The plot's time axis: seconds, then minutes and seconds, then hours.
+
+    pyqtgraph, told the axis is in seconds, scales it by thousands like any
+    other unit, and a trace left running read *ks* along the bottom. Nobody
+    thinks of twenty minutes as 1.2 kiloseconds. So under a minute it is
+    seconds; past that it is written as a clock is, ``12:30`` and then
+    ``1:02:30``, with the marks on whole minutes and whole hours rather than
+    on round numbers of seconds.
+    """
+
+    def __init__(self, orientation: str = "bottom", **kwargs) -> None:
+        super().__init__(orientation, **kwargs)
+        self.enableAutoSIPrefix(False)
+        self.setLabel("time")
+
+    def tickSpacing(self, low, high, size):
+        span = abs(high - low)
+        if not math.isfinite(span) or span < 60 or size <= 0:
+            return super().tickSpacing(low, high, size)  # seconds: tens and fives
+        wanted = span / max(size / TIME_MARK_PX, 2)
+        for major, minor in TIME_STEPS:
+            if major >= wanted:
+                return [(major, 0), (minor, 0)]
+        days = math.ceil(wanted / 86400)
+        return [(days * 86400, 0), (days * 21600, 0)]
+
+    def tickStrings(self, values, scale, spacing):
+        if not values:
+            return []
+        # Decimals for the seconds only where the marks are closer than one.
+        places = max(0, math.ceil(-math.log10(spacing))) if 0 < spacing < 1 else 0
+        clock = max(abs(v) for v in values) >= 60
+        return [time_text(v, places, clock) for v in values]
+
+
+def time_text(seconds: float, places: int = 0, clock: bool = True) -> str:
+    """``12.5 s``, ``2:30`` or ``1:02:30``: a time on the plot's axis."""
+    if not clock:
+        return f"{seconds:.{places}f} s"
+    sign = "-" if seconds < 0 else ""
+    whole = round(abs(seconds), places)
+    hours, rest = divmod(whole, 3600)
+    minutes, secs = divmod(rest, 60)
+    width = places + 3 if places else 2
+    tail = f"{secs:0{width}.{places}f}"
+    if hours:
+        return f"{sign}{int(hours)}:{int(minutes):02d}:{tail}"
+    return f"{sign}{int(minutes)}:{tail}"
+
+
 class PlotView(QWidget):
     #: *Export...* was pressed. The plot holds the samples but not the file
     #: dialogs or the Event Log, so whoever made it does the exporting.
@@ -106,9 +186,8 @@ class PlotView(QWidget):
         self._named: dict[str, dict[int, str]] = {LEFT: {}, RIGHT: {}}
 
         pg.setConfigOptions(antialias=False, background="w", foreground="k")
-        self.plot = pg.PlotWidget()
+        self.plot = pg.PlotWidget(axisItems={"bottom": TimeAxis("bottom")})
         self.plot.showGrid(x=True, y=True, alpha=0.3)
-        self.plot.setLabel("bottom", "time", units="s")
         self.legend = self.plot.addLegend(offset=(10, 10))
         # A tick underneath, never shown, and an entry in the
         # plot's own right-click menu: a choice about the axes, made about

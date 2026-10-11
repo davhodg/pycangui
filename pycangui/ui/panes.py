@@ -377,6 +377,15 @@ class Panes(QObject):
             self._note_arranged(name)
             self.detach(name)
             return
+        if name in self.closed_detached and dock.isHidden():
+            # Closed in a window of its own, so it opens in one again -- and
+            # straight into it. Shown as a dock first, to be caught and moved
+            # a moment later, it appeared at the corner of the screen and
+            # then jumped to where its window had been.
+            self.closed_detached.discard(name)
+            self._note_arranged(name)
+            self.detach(name)
+            return
         first_time = never_shown and kind.floating_first
         if (floating or first_time) and dock.isHidden() and not dock.isFloating():
             self._float_new(dock, kind.floating_size if kind is not None else None)

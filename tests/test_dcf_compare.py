@@ -244,6 +244,18 @@ def test_nothing_names_anything_means_nothing_to_read():
 
 
 # --- and the pane ------------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def told(monkeypatch):
+    """What the window said in a box, in place of the box: nobody is here to press OK."""
+    from pycangui.ui import compare_view
+
+    said: list[str] = []
+    monkeypatch.setattr(
+        compare_view.messages, "warning", lambda _parent, _title, text, *_a, **_k: said.append(text)
+    )
+    return said
+
+
 @pytest.fixture
 def window(app, tmp_path, monkeypatch):
     from PySide6.QtCore import QSettings
@@ -387,6 +399,23 @@ def test_showing_everything_shows_what_agreed_too(app, window, view, tmp_path):
 
     view.differences_only.setChecked(False)
     assert view.table.topLevelItemCount() == 2, "and one that agreed"
+
+
+def test_a_file_that_is_not_there_is_said_in_a_box_and_not_only_the_log(
+    app, window, view, tmp_path, told
+):
+    """The Event Log may be behind this window, or put away: a Compare that
+    did nothing has to say so where it will be seen."""
+    from pycangui.ui.compare_view import FILE
+
+    view.left.kind.setCurrentText(FILE)
+    view.left.path.setText(str(tmp_path / "not_there.dcf"))
+    view.right.kind.setCurrentText(FILE)
+    view.right.path.setText(str(written_dcf(tmp_path, {(0x1017, 0): "1"}, 5)))
+    view.run()
+
+    assert len(told) == 1 and "not_there.dcf" in told[0]
+    assert view.table.topLevelItemCount() == 0
 
 
 def test_a_file_that_will_not_read_is_reported_rather_than_compared(app, window, view, tmp_path):
