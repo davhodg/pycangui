@@ -227,11 +227,49 @@ jobs:
           python -m build
           python -m twine check --strict dist/*
 
+      # The wheel as pip will install it: in an environment of its own, and run
+      # from a folder with no checkout in it. The self-test in the test job runs
+      # from the checkout, where every file is at hand, so it cannot say what a
+      # wheel left out -- which is how 0.2.0 went out unable to find its licence.
+      - name: Self test the wheel
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0
+          python -m venv "$RUNNER_TEMP/wheel"
+          "$RUNNER_TEMP/wheel/bin/python" -m pip install dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel/bin/python" -m pycangui --selftest
+
       - name: Publish to TestPyPI
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+
+      # What was uploaded, fetched back as a user would: this exact version from
+      # TestPyPI, with PyPI for what it depends on. The index takes a moment to
+      # list a new file, so it is asked a few times before that counts as a failure.
+      - name: Self test the upload to TestPyPI
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          version=$(python -c "import re, pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('pycangui/__init__.py').read_text(encoding='utf-8'))[1])")
+          python -m venv "$RUNNER_TEMP/uploaded"
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            "$RUNNER_TEMP/uploaded/bin/python" -m pip install --no-cache-dir \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple/ \
+              "pycangui==$version" && break
+            if [ "$attempt" = 10 ]; then exit 1; fi
+            sleep 30
+          done
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/uploaded/bin/python" -m pycangui --selftest
 
       - name: Publish to PyPI
         if: startsWith(github.ref, 'refs/tags/v')
