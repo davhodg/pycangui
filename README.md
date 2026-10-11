@@ -133,7 +133,7 @@ pycangui is Apache-2.0 and is a pure-Python application on top of these packages
 
 asammdf, the MDF and MF4 reader, is currently the only **optional** entry: the Windows installer includes it, and a `pip` installation fetches it the first time a measurement file is opened. `pip install pycangui[all]` includes it up front.
 
-Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **PySide6-Essentials** rather than the full PySide6, so the GPL-only add-on modules (Qt Charts, Qt Data Visualization and the rest) are never installed. Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the vendor's driver and python-can loads it at run time.
+Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **PySide6-Essentials**, the package that holds them. Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the vendor's driver and python-can loads it at run time.
 
 ## Code signing policy
 
@@ -176,8 +176,8 @@ Know what is on the bus before you join it, and what a device will do before you
 
 ## Licence
 
-pycangui is free software, provided under the Apache License 2.0, without warranty of any kind; see `LICENSE` and `NOTICE`.
+pycangui is free software, provided under the Apache License 2.0, without warranty of any kind; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-The hook and simulated-node templates in `pycangui/hooks` and `pycangui/nodes` are the exception. They are copied into your workspace to be edited, and are released under MIT-0 (`LICENSES/MIT-0.txt`) with no copyright claimed, so what you write in them carries no conditions.
+The hook and simulated-node templates in `pycangui/hooks` and `pycangui/nodes` are the exception. They are copied into your workspace to be edited, and are released under MIT-0 ([LICENSES/MIT-0.txt](LICENSES/MIT-0.txt)) with no copyright claimed, so what you write in them carries no conditions.
 
 Development has made use of Anthropic's Claude.
