@@ -9,54 +9,61 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Added
+
+- UDS: a download can be run as a **sequence** -- sessions, unlocks, DTC setting, communication,
+  bitrate, fingerprint, erase, check and reset, ticked in *Before* and *After* menus.
+- UDS: **Check** asks whether a bitrate is possible without changing to it.
+- **DCF compare** is part of pycangui, not a plugin: *Compare...* in the CANopen pane. A copy
+  of the plugin left in a workspace is no longer run.
+- XCP / CCP: arrays and value blocks, named values, bit masks, address extensions, the A2L's
+  byte order and included files are read; curves and maps are listed, in grey.
+- XCP / CCP: **IDs from A2L**, and a value outside the A2L's limits is asked about before it
+  is written.
+- XCP / CCP: loading a large A2L shows its progress, and can be cancelled while it is read.
+- *Tools > Settings > Column widths*: **Manual** makes list columns draggable and remembered.
+- Plot: a Y axis whose signals share named values is marked with the names; right-click the
+  plot to turn it off.
+- An accessibility statement, `ACCESSIBILITY.md`, and a form for reporting a barrier.
+
 ### Changed
 
-- CAN Transmit: no *Ext* column -- an id above `7FF`, or written in eight digits, is 29-bit;
-  a DBC row's database file is in its tooltip, not the Unit column.
-- The status bar says the signal history limit is per signal and the samples a total.
-- *Tools > Settings > Column widths*: *Manual* makes list columns draggable and remembered.
-- XCP / CCP: loading a large A2L shows its progress, and can be cancelled while it is read.
-- A floating or detached pane that would open partly off the screen is brought onto it.
 - Lists and hex boxes follow the system's text size, and a pane's float and close buttons
   are as tall as its title. The CiA 402 plugin's values do too (plugin 1.7).
+- A floating or detached pane that would open partly off the screen is brought onto it.
+- The toolbar's second *Channel* box, the adapter's, is labelled *Port*.
+- Event Log: a warning's line begins *Warning:* and an error's *Error:*, as well as being
+  coloured.
+- The status bar says the signal history limit is per signal and the samples a total.
+- CAN Transmit: no *Ext* column -- an id above `7FF`, or written in eight digits, is 29-bit;
+  a DBC row's database file is in its tooltip, not the Unit column.
+- CAN Transmit: a counter or checksum in a DBC signal is shown by position, *count 52:4*,
+  with the name in the tooltip.
+- Plot: a long time axis reads in minutes and hours, *12:30* and *1:02:30*, not thousands
+  of seconds.
+- Signals and Plot: the Rate of a signal that has stopped arriving is 0.
 - CANopen: the per-node commands are in four menus -- Node, Access, EDS, DCF -- with
   *Add / Open* and *Remove* above the list; double-clicking a node's Access column reads
   its level.
 - CANopen: NMT and the producers are framed; TIME is always there, with no setting to show it.
+- CANopen: the `object_display` hook is told which node it is for.
+- UDS: ECU control is a tab; in J1939 addressing the worked-out identifiers are one line,
+  not three boxes; *Read all* for DTCs is under the arrow of *Read*.
 - XCP / CCP: loading an A2L and removing it are under one *A2L* button, beside its name;
   the seed and key DLL is under the arrow of *Unlock CAL*, and of *Unlock* in the UDS pane.
-- UDS: *Read all* for DTCs is under the arrow of *Read*.
-- The toolbar's second *Channel* box, the adapter's, is labelled *Port*.
-- Event Log: a warning's line begins *Warning:* and an error's *Error:*, as well as being
-  coloured.
-- UDS: a download can be run as a sequence -- sessions, unlocks, DTC setting, communication,
-  bitrate, fingerprint, erase, check and reset, ticked in *Before* and *After* menus.
-- UDS: in J1939 addressing the worked-out identifiers are one line, not three boxes; ECU
-  control is a tab, with *Check* to ask whether a bitrate is possible without changing it.
-- Plot: a long time axis reads in minutes and hours, *12:30* and *1:02:30*, not thousands
-  of seconds.
-- Plot: a Y axis whose signals share named values is marked with the names; right-click
-  the plot to turn it off.
-- CAN Transmit: a counter or checksum in a DBC signal is shown by position, *count 52:4*,
-  with the name in the tooltip.
-- XCP / CCP: arrays and value blocks, named values, bit masks, address extensions, the A2L's
-  byte order and included files are read; curves and maps are listed, in grey.
-- XCP / CCP: **IDs from A2L** in place of the 29-bit box -- an id above `7FF`, or in eight
-  digits, is 29-bit; a value outside the A2L's limits is asked about before it is written.
-- **DCF compare is part of pycangui**, not a plugin: *Compare...* in the CANopen pane. A copy
-  of the plugin left in a workspace is no longer run.
+- XCP / CCP: no 29-bit box -- an id above `7FF`, or in eight digits, is 29-bit.
 - Simulated nodes each run on a thread of their own, and answer while the window is busy.
-- CANopen: the `object_display` hook is told which node it is for.
-- Signals and Plot: the Rate of a signal that has stopped arriving is 0.
 
 ### Fixed
 
 - Switching workspace frees the window it leaves, which used to stay in memory until exit.
 - A pane closed in a window of its own opens straight into it, without appearing elsewhere first.
+- *View*: a detached pane was shown unticked while open, and picking it did not bring it forward.
 - In the dark on Windows 10, a tick box in a list has an outline and can be seen.
+- J1939: the address, priority, destination and data boxes could be too narrow for what they hold.
 - DCF compare says in a box, not only the Event Log, why nothing was compared.
 - XCP / CCP: characteristics in a standard A2L were not listed at all.
-- *View*: a detached pane was shown unticked while open, and picking it did not bring it forward.
+- *Help > Licences* was empty of the licence and notice in a copy installed with pip.
 - XCP and CCP: a command could time out while the window was busy, though the slave had answered.
 
 ## [0.2.0] - 2026-10-04

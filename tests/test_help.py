@@ -631,3 +631,31 @@ def test_each_installation_asks_its_own_question(app, window, monkeypatch, froze
 
     assert len(asked) == 1 and asks in asked[0]
     assert ("pip install --upgrade pycangui" in questions[0]) is not frozen
+
+
+def test_a_pip_installation_finds_the_licence_in_its_metadata(tmp_path, monkeypatch):
+    """A wheel keeps LICENSE and NOTICE in its dist-info, not beside the code.
+
+    Nothing looked there, so *Help > Licences* had neither in a copy installed
+    with pip -- and the self-test in CI runs from a checkout, where the
+    repository root has them, so it never said.
+    """
+    from pathlib import PurePosixPath
+
+    from pycangui.ui import help_menu
+
+    class Installed(PurePosixPath):
+        def locate(self):
+            return tmp_path / "site" / self
+
+    kept = [Installed("pycangui-1.0.dist-info/licenses/LICENSE"), Installed("pycangui/NOTICE")]
+    for file in kept:
+        file.locate().parent.mkdir(parents=True, exist_ok=True)
+        file.locate().write_text("text", encoding="utf-8")
+    # Installed: the code is in site-packages, with no repository above it.
+    code = tmp_path / "site" / "pycangui" / "ui" / "help_menu.py"
+    monkeypatch.setattr(help_menu, "__file__", str(code))
+    monkeypatch.setattr(help_menu.metadata, "files", lambda name: kept)
+
+    assert help_menu._find("LICENSE") == kept[0].locate()
+    assert help_menu._find("NOTICE") is None  # only what the wheel calls a licence file

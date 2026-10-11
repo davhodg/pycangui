@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import platform
 import sys
+from importlib import metadata
 from pathlib import Path
 from typing import NamedTuple
 
@@ -79,9 +80,10 @@ LICENCE_FILES = (
 def _find(name: str) -> Path | None:
     """Locate a file shipped alongside the application.
 
-    Three places, because the same code runs from a checkout and from an
+    Four places, because the same code runs from a checkout, from an
     installed build, where PyInstaller puts data next to the executable or in
-    its _internal folder depending on the version.
+    its _internal folder depending on the version, and from a pip
+    installation, where a wheel keeps its licence files in its metadata.
     """
     roots = []
     if getattr(sys, "frozen", False):
@@ -93,6 +95,21 @@ def _find(name: str) -> Path | None:
         candidate = root / name
         if candidate.is_file():
             return candidate
+    return _in_metadata(name)
+
+
+def _in_metadata(name: str) -> Path | None:
+    """A licence file a wheel installed: ``<dist-info>/licenses/<name>``."""
+    try:
+        files = metadata.files("pycangui") or []
+    except metadata.PackageNotFoundError:
+        return None
+    for file in files:
+        parts = file.parts
+        if parts[-1] == name and "licenses" in parts[:-1] and parts[0].endswith(".dist-info"):
+            candidate = Path(file.locate())
+            if candidate.is_file():
+                return candidate
     return None
 
 
