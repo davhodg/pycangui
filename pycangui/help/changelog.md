@@ -20,6 +20,10 @@ since the last version, and comes out in the next one.
 - The launchers no longer ask about a Start menu entry: the first start says in the Event
   Log where a shortcut is made.
 
+### Fixed
+
+- A plugin behind the one pycangui ships was also said to differ from it at the same version.
+
 ## [0.3.0] - 2026-10-12
 
 ### Added

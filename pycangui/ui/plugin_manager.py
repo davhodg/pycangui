@@ -349,11 +349,17 @@ class PluginActions(QObject):
         say it is the ordinary mistake, and the copy in the workspace then
         sits there looking current. This asks the files instead: only for a
         copy nobody has edited, because for an edited one "differs from what
-        is shipped" is what being edited means.
+        is shipped" is what being edited means. And only where the version
+        has not moved: where it has, the files differ because it has, which
+        ``out_of_date`` says, and saying "though both call themselves 1.6"
+        beside it was untrue.
         """
         out = []
         for entry in supplied():
-            if entry.name not in self.plugins.loaded or self._edited(entry.name):
+            record = self.plugins.loaded.get(entry.name)
+            if record is None or self._edited(entry.name):
+                continue
+            if record.version != entry.info.version:
                 continue
             was = self._as_installed().get(entry.name)
             if was is not None and was != plugin_package.folder_fingerprint(entry.folder):

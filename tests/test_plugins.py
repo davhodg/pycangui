@@ -816,6 +816,13 @@ def test_a_supplied_plugin_that_changed_without_a_version_bump_is_noticed(app, w
     assert entry.name in window.plugin_actions.changed_since_install()
     assert window.plugin_actions.out_of_date() == {}, "and the versions still agree"
 
+    # A version that did move is the other thing, and is said as that alone:
+    # the Event Log had both lines, the second calling the two the same version.
+    record = window.plugins.loaded[entry.name]
+    monkeypatch.setattr(record, "version", "0.1")
+    assert entry.name in window.plugin_actions.out_of_date()
+    assert window.plugin_actions.changed_since_install() == []
+
 
 def test_an_edited_copy_is_not_called_out_of_date(app, window, monkeypatch):
     """For an edited copy, "differs from what is shipped" is what being
