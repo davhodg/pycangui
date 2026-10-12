@@ -147,17 +147,28 @@ pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://
 The page on PyPI is `PYPI.md`, not the README. A version can never be uploaded twice, to either
 index.
 
-Publishing waits for everything: the tests on Windows, Linux and macOS, and the installer build.
-A reviewer can be required on the `pypi` environment (repository *Settings > Environments*), so
-that a release also waits for somebody to approve it.
+Publishing waits for everything: the tests on Windows, Linux and macOS, the installer build, and
+a self-test of the wheel installed by itself. It then waits to be approved: the `pypi` and
+`testpypi` environments (repository *Settings > Environments*) each require a review, and only
+the maintainer can give it. So a pull request, a fork or a tag pushed by somebody else cannot
+publish anything.
 
-**Making a release:**
+**Making a release** is therefore the maintainer's to do:
 
-1. Bump `__version__` in `pycangui/__init__.py`, commit and push.
-2. Run the CI workflow by hand from the Actions tab. That is every check a release gets -- all
-   the tests, macOS included, the installer build -- plus an upload to TestPyPI.
-3. Look at the TestPyPI page, and install from it into a clean environment.
-4. Tag the same commit, `git tag v<version>`, and push the tag. The same checks run again, then
-   the installer goes to the GitHub release and the package to PyPI.
+1. Bump `__version__` in `pycangui/__init__.py`. In `pycangui/help/changelog.md`, give what is
+   under *Unreleased* the version and the date, and add the version to the links at the foot.
+   Commit and push.
+2. Run the CI workflow by hand from the Actions tab, and approve the `testpypi` environment when
+   it asks. That is every check a release gets -- all the tests, macOS included, the installer
+   build -- plus an upload to TestPyPI, which the run then installs back and self-tests. Push
+   nothing to the branch while it runs: a push cancels it.
+3. Look at the TestPyPI page.
+4. Tag the same commit, `git tag v<version>`, and push the tag. The same checks run again and
+   the installer goes to the GitHub release; the package goes to PyPI once the `pypi`
+   environment is approved.
 
-A tag whose run fails publishes nothing: delete it, fix, and tag again.
+A tag whose Windows or Linux tests or installer build fail publishes nothing: delete it, fix,
+and tag again. The GitHub release is made before PyPI is asked about, and does not wait for
+macOS, so a run that stops after that -- a macOS test failing, not approved, or refused by
+PyPI -- leaves a release with no package behind it: run the failed job again or approve it
+rather than tagging again, since the release is already there.
