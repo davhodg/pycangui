@@ -13,9 +13,12 @@ describes it. The title bar names a workspace only when it is *not* `default`,
 so nothing on screen will ever mention this.
 
 There is no Save and no unsaved changes: a workspace saves as you go, the way
-settings always have. *File > Workspace* has three items for working with
+settings always have. *File > Workspace* has four items for working with
 workspaces, and two for moving one between computers.
 
+- **New...** starts one with nothing in it, under a name you give: the panes as
+  they first open, no databases, fresh copies of the hooks. The workspace you
+  were in is left exactly as you left it.
 - **Save as...** keeps everything as it is now under a new name and carries on
   in that one. It is a fork -- the workspace you were in is left exactly as
   you left it -- because what somebody means by it is "keep this and call it

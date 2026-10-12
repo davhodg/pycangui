@@ -46,6 +46,11 @@ from pycangui.core.plugin_package import PackageError
 from pycangui.core.settings import Settings
 from pycangui.ui import folders, messages
 
+NEW_TIP = (
+    "Start a workspace with nothing in it: the panes as they first open, no\n"
+    "databases, and fresh copies of the hooks. The one you are in is left\n"
+    "exactly as you left it. To carry on from what is here now, Save as..."
+)
 SAVE_AS_TIP = (
     "Keep everything as it is now -- the panes, the channels, the databases,\n"
     "the hooks and the EDS files -- under a new name, and carry on in that.\n"
@@ -114,6 +119,8 @@ class WorkspaceMenu(QObject):
     def _build(self) -> None:
         """Rebuilt each time it opens, so a workspace made elsewhere is in it."""
         self.menu.clear()
+        self.new_action = self.menu.addAction("New...", self.new_empty)
+        self.new_action.setToolTip(NEW_TIP)
         save_as = self.menu.addAction("Save as...", self._save_as)
         save_as.setToolTip(SAVE_AS_TIP)
 
@@ -160,12 +167,12 @@ class WorkspaceMenu(QObject):
         self.switch_requested.emit(workspaces.clean(name))
 
     def new_empty(self) -> None:
-        """A workspace with nothing in it, which is what a reset amounts to.
+        """A workspace with nothing in it, which is also what a reset amounts to.
 
-        Not on this menu, because *New* and *Save as* side by side is a
-        question asked of everybody who only ever wanted to fork the one they
-        are in. It is reached from Tools > Reset > Reset everything, where
-        somebody is already asking for a clean slate.
+        *New...* on this menu, and the button in Tools > Reset > Reset
+        everything. It was the second only, to spare everybody who only ever
+        wanted to fork the one they are in a choice between *New* and *Save
+        as* -- and then nobody looking for an empty one could find it.
         """
         name, chose = QInputDialog.getText(
             self.window,

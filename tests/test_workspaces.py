@@ -282,7 +282,7 @@ def window(app, home):
 def switch_menu(window):
     """The Switch to submenu, rebuilt as opening the menu would rebuild it."""
     window.workspace_menu._build()
-    return window.workspace_menu.menu.actions()[1].menu()
+    return next(a.menu() for a in window.workspace_menu.menu.actions() if a.menu())
 
 
 def test_a_single_product_never_meets_the_word(window):
@@ -306,6 +306,25 @@ def test_switch_to_lists_them_all_and_ticks_the_one_in_use(window):
     actions = switch_menu(window).actions()
     assert [a.text() for a in actions] == [workspaces.DEFAULT, "drive"]
     assert [a.isChecked() for a in actions] == [True, False]
+
+
+def test_new_on_the_menu_makes_an_empty_one_and_asks_to_open_it(window, monkeypatch):
+    """An empty workspace could only be had from Tools > Reset, where nobody
+    wanting a new one would look."""
+    from PySide6.QtWidgets import QInputDialog
+
+    window.ctx.settings.set("dbc.paths", ["mine.dbc"])
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Test rig", True))
+    asked: list[str] = []
+    window.workspace_menu.switch_requested.connect(asked.append)
+
+    window.workspace_menu.menu.aboutToShow.emit()  # it is rebuilt each time it opens
+    assert window.workspace_menu.new_action in window.workspace_menu.menu.actions()
+    window.workspace_menu.new_action.trigger()
+
+    assert asked == ["Test rig"]
+    made = workspaces.dir_for("Test rig") / "settings.json"
+    assert not made.exists() or "dbc.paths" not in json.loads(made.read_text())
 
 
 def test_save_as_forks_what_is_on_screen_and_asks_to_open_it(window, monkeypatch):

@@ -13,6 +13,7 @@ since the last version, and comes out in the next one.
 
 - *Tools > Settings > Add shortcut to desktop* on Windows; both shortcuts for a pip
   installation too.
+- *File > Workspace > New...* starts an empty workspace.
 
 ### Changed
 
