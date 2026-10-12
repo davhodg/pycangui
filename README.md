@@ -88,7 +88,7 @@ There are three options:
 
    Double-clicking `pycangui.sh` in a file manager works too: choose *Run in Terminal* when it asks, for the same reason.
 
-   At the end of the first run it offers to add pycangui to the Start menu, or to the applications menu on Linux, and *Tools > Settings > Add shortcut to Start menu* does the same later. The entry starts the launcher, so a start from the menu after a pull still picks up new libraries.
+   For a shortcut, *Tools > Settings > Add shortcut to Start menu* (the applications menu on Linux) and, on Windows, *Add shortcut to desktop*. The entry starts the launcher, so a start from it after a pull still picks up new libraries.
 
    The launcher keeps its own `.venv` on purpose and will not use an environment you already have. That is the point of it: it is the way in for somebody who does not want to think about Python environments, and one that sometimes used yours and sometimes did not would be worse than one that never does. To run a checkout in an environment of your own instead, `pip install -e .` installs it there, reading the source.
 
@@ -148,11 +148,11 @@ roles, and the privacy policy.
 
 - **The Windows installer:** *Settings > Apps* (or *Add or remove programs*), or *Uninstall
   pycangui* in its Start menu folder. It takes away its file associations and shortcuts too.
-- **pip:** `pip uninstall pycangui`.
-- **A Git clone:** delete the folder. If *Tools > Settings* was used to add a Start menu entry
-  or to open `.dcf` and `.eds` files with it, take those away as well: the entry is
-  `%APPDATA%\Microsoft\Windows\Start Menu\Programs\pycangui.lnk` (on Linux,
-  `~/.local/share/applications/pycangui.desktop`), and the file types are
+- **pip:** `pip uninstall pycangui`, and what *Tools > Settings* added, as for a clone.
+- **A Git clone:** delete the folder. If *Tools > Settings* was used to add a shortcut
+  or to open `.dcf` and `.eds` files with it, take those away as well: the shortcuts are
+  `%APPDATA%\Microsoft\Windows\Start Menu\Programs\pycangui.lnk` and `pycangui.lnk` on
+  the desktop (on Linux, `~/.local/share/applications/pycangui.desktop`), and the file types are
   `HKEY_CURRENT_USER\Software\Classes\pycangui.dcf` and `pycangui.eds` with their entries under
   `.dcf` and `.eds` (on Linux, `pycangui-open.desktop` and `mime/packages/pycangui.xml` under
   `~/.local/share`). The same applies to a pip installation that used them.

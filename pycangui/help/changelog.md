@@ -9,6 +9,16 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Added
+
+- *Tools > Settings > Add shortcut to desktop* on Windows; both shortcuts for a pip
+  installation too.
+
+### Changed
+
+- The launchers no longer ask about a Start menu entry: the first start says in the Event
+  Log where a shortcut is made.
+
 ## [0.3.0] - 2026-10-12
 
 ### Added

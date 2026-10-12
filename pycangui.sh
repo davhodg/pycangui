@@ -99,17 +99,9 @@ BANNER
       fi } || fail "Setup failed. The messages above say why; the usual causes are" \
         "no internet connection, or a proxy that blocks pypi.org."
 
-    # The entry starts this script rather than .venv's Python, so a start
-    # from the menu still notices libraries added by a later pull. Asked
-    # only with somebody at the terminal to answer.
-    if [ -t 0 ] && [ "$(uname -s)" = Linux ]; then
-        echo
-        printf ' Add pycangui to the applications menu? [y/N] '
-        read -r answer
-        case $answer in
-            [Yy]*) .venv/bin/python -m pycangui.core.shortcut ;;
-        esac
-    fi
+    # Nothing is asked here, and no menu entry is made: a question at the end
+    # of several minutes of downloading is one nobody is there to answer.
+    # pycangui says once, in its Event Log, where an entry is made.
 
     cat <<'DONE'
 

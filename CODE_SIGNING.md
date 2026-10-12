@@ -81,7 +81,7 @@ installed, and pycangui is only added to *Open with* -- the default is left alon
 installs an uninstaller, which takes away the program, its shortcuts and its file
 associations.
 
-Inside pycangui, a Start menu entry and opening `.dcf` and `.eds` files are added only from
-*Tools > Settings*, when asked for. The [README](README.md#uninstalling) says how to uninstall
+Inside pycangui, a Start menu entry, a desktop shortcut and opening `.dcf` and `.eds` files
+are added only from *Tools > Settings*, when asked for. The [README](README.md#uninstalling) says how to uninstall
 each way of installing pycangui, those two included. Your own files -- hooks, EDS files,
 settings -- are never removed by uninstalling, and the README says where they are.

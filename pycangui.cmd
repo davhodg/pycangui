@@ -76,18 +76,16 @@ if defined UV (
 )
 if errorlevel 1 goto :fail
 
-rem The entry starts this file rather than .venv's Python, so a start from
-rem the menu still notices libraries added by a later pull.
-echo.
-choice /c yn /n /m " Add pycangui to the Start menu? [Y/N] "
-if errorlevel 2 goto :finished
-".venv\Scripts\python.exe" -m pycangui.core.shortcut
-
-:finished
+rem Nothing is asked here, and no shortcut is made: a question at the end of
+rem several minutes of downloading is one nobody is there to answer. pycangui
+rem says once, in its Event Log, where a shortcut is made.
 echo.
 echo ============================================================
 echo  Setup finished. Starting pycangui...
 echo ============================================================
+echo.
+echo  For a shortcut in the Start menu or on the desktop, see
+echo  Settings in the Tools menu.
 if not defined UV (
     echo.
     echo  Tip: "pip install uv" once, and this setup takes seconds

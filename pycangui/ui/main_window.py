@@ -151,6 +151,9 @@ AT_END = 4
 
 #: What the window opens at, and what Reset layout puts it back to. Wide,
 #: because the trace and the panes beside it are read across rather than down.
+#: In QSettings, not the workspace: whether this person has been told, on
+#: this machine, where a shortcut is made.
+SHORTCUT_TOLD_KEY = "shortcut/told"
 HISTORY_KEY = "signals.history"
 HISTORY_TIP = (
     "How many samples of each decoded signal are kept, for the plot and for\n"
@@ -564,20 +567,26 @@ class MainWindow(QMainWindow):
         settings_menu.addMenu(self.widths_menu)
         # Below the line: not how pycangui behaves, but how this copy of it
         # is set up on this machine. Neither is offered on macOS.
-        if shortcut.launcher() is not None or file_types.command() is not None:
+        if shortcut.start() is not None or file_types.command() is not None:
             settings_menu.addSeparator()
-        # Only for a source folder: the installer makes its own entry.
-        self.shortcut_action = None
-        if shortcut.launcher() is not None:
-            self.shortcut_action = settings_menu.addAction(
-                f"Add shortcut to {shortcut.menu_name()}", self._add_shortcut
-            )
-            self.shortcut_action.setToolTip(
-                f"Start pycangui from the {shortcut.menu_name()}. The entry starts the\n"
-                "launcher in this folder, so after a pull it still picks up new\n"
-                "libraries, as double-clicking the launcher does. Replaces one\n"
-                "made before."
-            )
+        # For a source folder and for pip: the installer makes its own entries.
+        self.shortcut_action = self.desktop_action = None
+        if shortcut.start() is not None:
+            for place in shortcut.places():
+                name = shortcut.place_name(place)
+                action = settings_menu.addAction(
+                    f"Add shortcut to {name}", lambda place=place: self._add_shortcut(place)
+                )
+                action.setToolTip(
+                    f"Start pycangui from the {name}. From a source folder the entry\n"
+                    "starts the launcher, so after a pull it still picks up new\n"
+                    "libraries, as double-clicking the launcher does. Replaces one\n"
+                    "made before."
+                )
+                if place == shortcut.ON_DESKTOP:
+                    self.desktop_action = action
+                else:
+                    self.shortcut_action = action
         # For every way of getting pycangui: the installer offers it as a
         # task, and this is for a source folder, pip, or a task left unticked.
         self.file_types_action = None
@@ -632,6 +641,7 @@ class MainWindow(QMainWindow):
             )
         timing.mark("plugins")
         self._build_plugins_menu()
+        self._say_how_to_add_a_shortcut()
         self.panes.restore_instances()
         self._build_view_menu()
         self._restore_layout()
@@ -1829,14 +1839,30 @@ class MainWindow(QMainWindow):
             else "No folders were being remembered."
         )
 
-    def _add_shortcut(self) -> None:
-        """Tools > Settings > Add shortcut to Start menu, to this folder's launcher."""
+    def _add_shortcut(self, place: str = shortcut.IN_MENU) -> None:
+        """Tools > Settings > Add shortcut to Start menu, or to desktop."""
+        name = shortcut.place_name(place)
         try:
-            path = shortcut.create()
+            path = shortcut.create(place=place)
         except OSError as exc:
-            self.events.error(f"Could not add pycangui to the {shortcut.menu_name()}: {exc}")
+            self.events.error(f"Could not add pycangui to the {name}: {exc}")
             return
-        self.events.good(f"Added pycangui to the {shortcut.menu_name()}: {path}")
+        self.events.good(f"Added pycangui to the {name}: {path}")
+
+    def _say_how_to_add_a_shortcut(self) -> None:
+        """Once for each person on a machine, for a source folder or pip: the
+        launcher no longer asks, and pip never did, so say where it is done.
+        Not where there is one already, nor for the installer, which made its own."""
+        if shortcut.start() is None or QSettings().value(SHORTCUT_TOLD_KEY) is not None:
+            return
+        QSettings().setValue(SHORTCUT_TOLD_KEY, True)
+        if shortcut.made():
+            return
+        names = " or the ".join(shortcut.place_name(place) for place in shortcut.places())
+        self.events.information(
+            f"To start pycangui from the {names}: Tools > Settings > Add shortcut. "
+            "This is said once."
+        )
 
     def _register_file_types(self) -> None:
         """Tools > Settings > Open .dcf and .eds files with pycangui."""
