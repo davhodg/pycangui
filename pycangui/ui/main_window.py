@@ -72,6 +72,7 @@ from pycangui.ui.confirm import Confirmations, Remembered, is_real
 from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.custom_pane_view import CustomPaneView
+from pycangui.ui.database_view import DatabaseView
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.panes import PaneKind, Panes
@@ -339,6 +340,7 @@ class MainWindow(QMainWindow):
         # they are for: what is on the bus and what you put on it, then the
         # protocol panes, then what the tool has to say for itself.
         self.tx = self.panes.view(self.panes.add("tx"))
+        self.database_view = self.panes.view(self.panes.add("database"))
         self._canopen_pane = self.panes.add("canopen")
         self.canopen_view = self.panes.view(self._canopen_pane)
         self.canopen_view.add_to_custom_pane.connect(self._add_to_custom_pane)
@@ -849,6 +851,16 @@ class MainWindow(QMainWindow):
                 self._new_scope,
                 several=True,
             ),
+            PaneKind(
+                # After the three it serves, and before the logs: it is about
+                # what is on the bus, where they are about what happened.
+                "database",
+                "Database",
+                Qt.RightDockWidgetArea,
+                self._new_database,
+                detached_first=True,
+                floating_size=PROTOCOL_PANE_SIZE,
+            ),
             PaneKind("log", "Event Log", Qt.BottomDockWidgetArea, lambda _name: self.log),
             PaneKind(
                 "ascii",
@@ -912,6 +924,29 @@ class MainWindow(QMainWindow):
             ),
         ):
             self.panes.register(kind)
+
+    def _new_database(self, _name: str) -> DatabaseView:
+        view = DatabaseView(self.dbc, self.signals, self.ctx)
+        view.load_wanted.connect(self._load_dbc_dialog)
+        view.transmit_wanted.connect(self._transmit_from_database)
+        view.trace_wanted.connect(self._trace_from_database)
+        view.plot_wanted.connect(self._plot_from_database)
+        return view
+
+    def _transmit_from_database(self, name: str) -> None:
+        """Database > Add to Transmit: as Add from DBC... there, with the message chosen."""
+        self.tx.add_dbc_message(name)
+        self.panes.show("tx")
+
+    def _trace_from_database(self, name: str) -> None:
+        """Database > Show in Trace: the trace's own filter box, filled in."""
+        self.trace.search.setText(name)
+        self.panes.show("trace")
+
+    def _plot_from_database(self, key: str) -> None:
+        self.signals_view.set_plotted(key, True)
+        self.plot.set_plotted(key, True)
+        self.panes.show("scope")
 
     def _new_trace(self, name: str) -> TraceView:
         """A trace, fed the capture and told which settings are its own."""

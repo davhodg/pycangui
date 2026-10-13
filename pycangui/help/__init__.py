@@ -45,6 +45,7 @@ PAGES = (
     "trace.md",
     "transmit.md",
     "signals.md",
+    "database.md",
     "event-log.md",
     "canopen.md",
     "compare.md",

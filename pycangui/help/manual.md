@@ -11,6 +11,7 @@
 - [CAN Trace](trace.md) --- filtering and pausing without discarding anything
 - [CAN Transmit](transmit.md) --- raw, DBC and CANopen RPDO messages, one-shot or cyclic
 - [Databases, signals and the plot](signals.md) --- loading a DBC, watching signals, exporting CSV
+- [Database](database.md) --- what is in a loaded DBC: messages, signals and where their bits are
 - [Event Log](event-log.md) --- everything the tool says, and at what level
 - [ASCII Log](ascii-log.md) --- reading messages from a single CAN-ID as text
 - [CANopen](canopen.md) --- object dictionary, PDO configuration, EMCY, DCF, LSS

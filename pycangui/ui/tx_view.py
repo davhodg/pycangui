@@ -581,10 +581,15 @@ class TxView(QWidget):
     def _add_from_dbc(self) -> None:
         dialog = MessagePicker(self.dbc, self)
         if dialog.exec() == QDialog.Accepted and (name := dialog.chosen()):
-            # What the database says the message's cycle is, where it says.
-            msg = self.dbc.message_by_name(name)
-            period = getattr(msg, "cycle_time", None) or DEFAULT_PERIOD_MS
-            self.add_message({"kind": "dbc", "message": name, "period": period, "expanded": True})
+            self.add_dbc_message(name)
+
+    def add_dbc_message(self, name: str) -> None:
+        """A row for a database's message, by name: from the picker here, and
+        from the Database pane."""
+        # What the database says the message's cycle is, where it says.
+        msg = self.dbc.message_by_name(name)
+        period = getattr(msg, "cycle_time", None) or DEFAULT_PERIOD_MS
+        self.add_message({"kind": "dbc", "message": name, "period": period, "expanded": True})
 
     def _add_rpdo(self) -> None:
         dialog = RpdoPicker(self.canopen, self)

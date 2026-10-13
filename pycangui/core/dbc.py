@@ -30,6 +30,10 @@ class DbcDecoder:
         self._by_id: dict[tuple[int, bool], Message] = {}
         self._by_pgn: dict[int, Message] = {}  # J1939 messages keyed by masked 29-bit id
         self.errors = 0
+        #: Called with nothing, after a database is loaded or removed: for
+        #: whatever shows what is loaded. Plain callables, since this is not
+        #: a Qt object and has no signals to offer.
+        self.listeners: list = []
 
     # --- files ---------------------------------------------------------------------
     def load(self, path: str | Path, strict: bool = True) -> Database:
@@ -95,6 +99,27 @@ class DbcDecoder:
                 if msg.is_extended_frame and (msg.protocol == "j1939" or _looks_j1939(msg)):
                     pgn = (msg.frame_id >> 8) & 0x3FFFF
                     self._by_pgn.setdefault(msg.frame_id & pgn_mask(pgn), msg)
+        for told in list(self.listeners):
+            try:
+                told()
+            except RuntimeError:  # a pane that has been destroyed since it asked
+                self.listeners.remove(told)
+
+    def shadowed(self) -> dict[int, str]:
+        """The messages that are not the ones in use: ``id(message)`` -> the
+        file, loaded before its own, whose message of that name or on that
+        identifier is used instead."""
+        names: dict[str, str] = {}
+        ids: dict[tuple[int, bool], str] = {}
+        out: dict[int, str] = {}
+        for path, db in self.databases.items():
+            for msg in db.messages:
+                key = (msg.frame_id, msg.is_extended_frame)
+                first = names.setdefault(msg.name, path)
+                first_id = ids.setdefault(key, path)
+                if first != path or first_id != path:
+                    out[id(msg)] = first if first != path else first_id
+        return out
 
     @property
     def loaded(self) -> bool:
