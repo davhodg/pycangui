@@ -16,7 +16,12 @@ The **Python Console** pane is a live console with the same objects the GUI uses
 | `send(id, data, ext=False, fd=False)` | put one frame on the selected channel |
 | `wait(seconds)` | let the window and the buses run for that long -- a script's `sleep` |
 
-*Run script...* executes a `.py` file in that namespace.
+*Run script...* executes a `.py` file in that namespace. So does **File > Run
+script...**, which shows the console first, so that what the script prints and
+any traceback can be read. **File > Recent scripts** lists the last five run in
+the workspace, by either, newest first: one click runs one again. A script kept
+in the workspace is remembered relative to it, and found wherever the workspace
+is taken.
 
 `wait` rather than `time.sleep`, because the console runs on the window's
 thread: `time.sleep` stops the window, and the frames, answers and timers a

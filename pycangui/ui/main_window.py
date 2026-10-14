@@ -87,6 +87,7 @@ from pycangui.ui.plugin_manager import (
 from pycangui.ui.replay_action import ReplayAction
 from pycangui.ui.restore_supplied import RestoreSupplied
 from pycangui.ui.scope_view import ScopeView
+from pycangui.ui.scripts_menu import ScriptsMenu
 from pycangui.ui.simnode_dialog import SimulatedNodeDialog
 from pycangui.ui.trace_view import TraceView
 from pycangui.ui.tx_view import TxView
@@ -409,6 +410,11 @@ class MainWindow(QMainWindow):
             "which means decoding it again elsewhere to get back what is\n"
             "already on screen here."
         )
+        file_menu.addSeparator()
+        self.scripts_menu = ScriptsMenu(self, self.ctx)
+        self.scripts_menu.install(file_menu)
+        self.scripts_menu.run_wanted.connect(self.run_script_in_console)
+        self.console.ran.connect(self.scripts_menu.remember)
         file_menu.addSeparator()
         self.workspace_menu = WorkspaceMenu(self, self.ctx)
         self.workspace_menu.install(file_menu)
@@ -924,6 +930,12 @@ class MainWindow(QMainWindow):
             ),
         ):
             self.panes.register(kind)
+
+    def run_script_in_console(self, path: str) -> None:
+        """File > Run script... and Recent scripts: in the console, shown, so
+        that what the script prints is there to be read."""
+        self.panes.show("console")
+        self.console.run_file(path)
 
     def _new_database(self, _name: str) -> DatabaseView:
         view = DatabaseView(self.dbc, self.signals, self.ctx)

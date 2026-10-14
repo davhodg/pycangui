@@ -14,6 +14,7 @@ since the last version, and comes out in the next one.
 - *Tools > Settings > Add shortcut to desktop* on Windows; both shortcuts for a pip
   installation too.
 - *File > Workspace > New...* starts an empty workspace.
+- *File > Run script...* and *File > Recent scripts*, the last five run in the workspace.
 - A **Database** pane: the messages and signals of the loaded databases, each message's bit
   layout, and live values.
 - CANopen **Save network as DBC...**: a CAN database of the network's PDOs, heartbeats and
