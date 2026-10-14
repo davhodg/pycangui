@@ -84,12 +84,10 @@ def test_read_and_write_pdo_config(stack):
     config.event_timer_ms = 0
     config.transmission_type = 254
     config.entries = [PdoEntry(0x2001, 0, 16, "Speed demand")]
-    n = len(messages)
     manager.write_pdo_config(config)
-    wait_until(lambda: len(messages) > n)
-    assert "RPDO1 written to node 5" in messages[-1]
-    # the node really has the new transmission type
-    assert demo["canopen_device"].state.device.get_data(0x1400, 2)[0] == 254
+    # The node really has the new transmission type. Not the next message
+    # said: the read that loading the EDS queued can still be reporting.
+    wait_until(lambda: demo["canopen_device"].state.device.get_data(0x1400, 2)[0] == 254)
 
 
 def test_dcf_save_and_apply(stack):

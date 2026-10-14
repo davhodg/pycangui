@@ -159,7 +159,7 @@ def test_open_files_come_back_with_the_workspace(ctx, eds):
 def test_a_file_row_offers_what_a_file_can_do(view, eds):
     source = view.open_file(eds)
     actions = [a.text() for a in view.file_menu(source).actions() if a.text()]
-    assert actions == ["Save", "Save as...", "Close file"]
+    assert actions == ["Save", "Save as...", "Save as DBC...", "Close file"]
     assert all(not b.isEnabled() for b in view._node_buttons), "nothing to ask of a file"
 
 

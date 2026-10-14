@@ -89,11 +89,16 @@ for the node, which finds it by itself from then on. Few devices keep one, and
 one that does not says so. It is thousands of frames for a real file, so it
 shows how far it has got and can be stopped. A device that says (in 0x1022) it
 keeps the file in a format of its maker's own is not guessed at: what it sent
-can be saved as it came. The demo device keeps its EDS this way. **Read PDO config** reads the selected node's
-PDO mapping, both directions, from the node itself -- the same as *Read from
-node* in the PDO tab. The EDS says how a node shipped; this is how it is set up
-now, so [Signals and Plot](signals.md) decode the TPDOs a remapped node
-actually sends, and [CAN Transmit](transmit.md) offers the RPDOs it receives. **Store** and **Restore defaults** are 0x1010 and 0x1011, and **Save
+can be saved as it came. The demo device keeps its EDS this way. **The PDO configuration is read from
+the node itself** once its EDS is loaded -- both directions, its emergency
+COB-ID (0x1014) and its heartbeat time (0x1017) -- and again when it sends a
+boot-up, and after a write of pycangui's own that changes a mapping. The EDS
+says how a node shipped; this is how it is set up now, so [Signals and
+Plot](signals.md) decode the TPDOs a remapped node actually sends, and [CAN
+Transmit](transmit.md) offers the RPDOs it receives. **Read PDO config** reads
+it again -- the same as *Read from node* in the PDO tab -- for a mapping
+something else has changed since, or for every read where *Settings...* has
+reading it turned off. **Store** and **Restore defaults** are 0x1010 and 0x1011, and **Save
 DCF...** and **Apply DCF...** read every parameter out to a file and write one
 back in. Both show how far they have got and can be stopped: a stopped *Save
 DCF* writes no file, since half a configuration is not one, and a stopped
@@ -117,12 +122,17 @@ reaching for a row of buttons.
 **Settings...** holds what is set once rather than done, and is kept in the
 workspace. *OK* writes what it changed to the Event Log, and only that:
 
-- **Identify a node when it is first heard** is on to begin with, and is the
-  one thing pycangui sends a node without being asked: five SDO uploads as
-  its row appears. Turn it off and nothing goes out that you did not ask for,
-  which is what watching somebody else's live machine wants -- at the cost
-  that a new node stays `Node <id>` with no EDS until *Identify* or *Load
-  EDS* is pressed.
+- **Identify a node when it is first heard** is on to begin with: five SDO
+  uploads as its row appears. Turn it off, and the next one too, and nothing
+  goes out that you did not ask for, which is what watching somebody else's
+  live machine wants -- at the cost that a new node stays `Node <id>` with no
+  EDS until *Identify* or *Load EDS* is pressed.
+- **Read the PDO configuration from each node** is on to begin with: the
+  reading described above, when its EDS is loaded, at each boot-up and after a
+  write that changes a mapping. Off, nothing is read without asking, and the
+  EDS's mapping is shown and decoded by until *Read PDO config* is pressed --
+  for a node that sends a boot-up from its bootloader, which has no PDOs to read
+  and may be busy with something else.
 - **SDO timeout** is how long to wait for a node to answer each SDO request,
   and **retries** is how many more times to ask before giving up. The
   defaults, 300 ms and none, are those of the `canopen` library pycangui uses.
@@ -276,6 +286,44 @@ if its type is. **Store** / **Restore
 defaults** are objects 0x1010 / 0x1011, and **Save DCF** reads every parameter
 from the node into a `.dcf` file while **Apply DCF** writes a `.dcf` back into a
 node -- so a device can be commissioned, captured and cloned. What is *different* between two of them is **Compare...**, in the same menu: it opens the [CANopen DCF compare](compare.md) window with the node or file selected on the left.
+
+### Save as DBC
+
+**DCF > Save network as DBC...** writes a CAN database of every node and file in
+the list, which any tool that reads a DBC can decode the network with -- pycangui
+too, through [File > Load DBC...](signals.md), on a machine with no EDS for the
+devices. One node alone is **Save as DBC...** on its right-click, and one file on
+the file's.
+
+- Each enabled PDO is a message, from its node for a TPDO and to it for an RPDO,
+  with a signal for each mapped object in the order mapped. A dummy entry is a
+  gap. One node's TPDO that another node receives as an RPDO is one message,
+  with both nodes as receivers.
+- **It describes the network as it is set up, which an EDS cannot say.** An
+  EDS's COB-IDs are the predefined connection set's suggestion, its mapping is
+  what the device ships with, and it does not say whether there is a heartbeat
+  or where emergencies go. So a node is described by what was read from it:
+  its PDOs, both directions, its emergency COB-ID (0x1014) and its heartbeat
+  time (0x1017), read when it was found or by **Read PDO config**. It can have
+  gone since; what it said still stands. A node whose configuration was not read has its PDOs left out,
+  and the Event Log says so; saved on its own, a box says so and no file is
+  written.
+- A DCF in the list is described by the values it holds, as saved -- not edits
+  made here since, and none of the EDS defaults it falls back on. An EDS in the
+  list is left out, and cannot be saved as DBC on its own.
+- Signals are named after their objects, made into names a DBC takes: *Motor
+  speed* is *Motor_speed*. Units, scaling and named values are the ones the EDS
+  or [hooks/canopen.py::object_display](hooks.md) give; most EDS files give none,
+  and the values are then raw. The object's index is in each signal's comment.
+- A node's heartbeat, with its states named, is there if one has been heard or
+  the node sends one; its emergency, on whatever COB-ID it is set to, if it has
+  one. For the network, NMT, SYNC and TIME. SDO and LSS are not: their bytes are
+  protocol, not signals, and a DBC cannot say what they mean.
+
+The file is read back once written and compared with what was meant; anything
+that differs, and anything left out -- a PDO on the same identifier as one
+already there, a mapping longer than a frame -- is said in the Event Log.
+Nothing is asked of any node.
 
 ### Emergencies: what arrived, and what is still wrong
 

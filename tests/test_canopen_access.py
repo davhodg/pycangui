@@ -308,8 +308,12 @@ def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
         "Restore defaults",
         "Save DCF...",
         "Apply DCF...",
+        "Save as DBC...",
     }
-    assert offered - {"Add node...", "Remove node"} == {b.text() for b in view._node_buttons}
+    # Save as DBC is the one thing here no button does: the button is for the
+    # whole network, under DCF, and this is for the node clicked.
+    besides = {"Add node...", "Remove node", "Save as DBC..."}
+    assert offered - besides == {b.text() for b in view._node_buttons}
 
 
 def test_the_menu_greys_out_what_needs_a_node_when_none_was_clicked(app, window):
@@ -323,7 +327,8 @@ def test_the_menu_greys_out_what_a_lost_node_cannot_answer(app, window):
     window.canopen.node_lost.emit(7)
     menu = window.canopen_view.node_menu(7)
     live = {a.text() for a in menu.actions() if a.isEnabled() and not a.isSeparator()}
-    assert live == {"Add node...", "Remove node"}, "a lost node can still be taken away"
+    # Taken away, and described from what is known of it: neither asks it anything.
+    assert live == {"Add node...", "Remove node", "Save as DBC..."}
 
 
 def test_a_lost_node_can_no_longer_be_asked_anything(app, window):
@@ -475,7 +480,12 @@ def test_the_occasional_commands_are_grouped_by_what_they_are_about(app, window)
     assert _in(view.node_menu_btn) == ["Identify", "Store", "Restore defaults"]
     assert _in(view.access_menu_btn) == ["Login...", "Read access level"]
     assert _in(view.eds_menu_btn) == ["Load EDS...", "Read EDS from node"]
-    assert _in(view.dcf_menu_btn) == ["Save DCF...", "Apply DCF...", "Compare..."]
+    assert _in(view.dcf_menu_btn) == [
+        "Save DCF...",
+        "Apply DCF...",
+        "Compare...",
+        "Save network as DBC...",
+    ]
 
 
 def test_a_menu_with_nothing_to_offer_cannot_be_opened(app, window):

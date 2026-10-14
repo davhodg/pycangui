@@ -16,9 +16,13 @@ since the last version, and comes out in the next one.
 - *File > Workspace > New...* starts an empty workspace.
 - A **Database** pane: the messages and signals of the loaded databases, each message's bit
   layout, and live values.
+- CANopen **Save network as DBC...**: a CAN database of the network's PDOs, heartbeats and
+  emergencies; one node's or one file's from its right-click.
 
 ### Changed
 
+- CANopen: a node's RPDOs, emergency COB-ID and heartbeat time are read from it with its
+  TPDOs, and again at boot-up; *Settings...* can turn the reading off.
 - The launchers no longer ask about a Start menu entry: the first start says in the Event
   Log where a shortcut is made.
 

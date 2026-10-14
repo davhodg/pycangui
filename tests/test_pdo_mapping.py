@@ -38,7 +38,7 @@ def settle(manager):
     """Wait for the manager's worker to get through its queue, which it does
     in order.
 
-    Loading an EDS also queues a read of the node's TPDOs over SDO, which
+    Loading an EDS also queues a read of the node's PDO configuration over SDO, which
     empties each mapping and refills it one entry at a time. Until it is
     done, TPDO1 can be caught mapping nothing. That read is queued when the
     EDS has loaded, so wait for ``eds_loaded`` first, or this waits for less.

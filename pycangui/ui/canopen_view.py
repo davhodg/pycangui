@@ -68,7 +68,15 @@ from pycangui.core.named_values import plain
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
 from pycangui.custom_panes.source import FileSource
-from pycangui.ui import canopen_login, canopen_settings, folders, fonts, keep_file, messages
+from pycangui.ui import (
+    canopen_dbc,
+    canopen_login,
+    canopen_settings,
+    folders,
+    fonts,
+    keep_file,
+    messages,
+)
 from pycangui.ui.canopen_log_view import CanopenLogView
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.compare_view import CompareView, CompareWindow
@@ -145,7 +153,16 @@ ACCESS_MENU_TIP = (
 EDS_MENU_TIP = "The file that says what the selected node's objects are."
 DCF_MENU_TIP = (
     "The selected node's parameter values, to a file and from one, and what\n"
-    "is different between two of them."
+    "is different between two of them; and the network as a CAN database."
+)
+NETWORK_DBC_TIP = (
+    "Write a CAN database (DBC) of the network as its nodes are set up:\n"
+    "each enabled PDO with its mapped objects, each heartbeat and emergency,\n"
+    "and NMT, SYNC and TIME. From what was read from each node -- Read PDO\n"
+    "config -- and from each DCF in the list; an EDS only suggests, so is\n"
+    "not used. Units, scaling and named values come from the EDS or\n"
+    "hooks/canopen.py::object_display, where they say. SDO and LSS are left\n"
+    "out. Nothing is changed on any node."
 )
 READ_LEVEL_TIP = (
     "Ask the selected node which access level is held, through\nhooks/canopen.py::current_level."
@@ -358,6 +375,11 @@ class CanopenView(QWidget):
         # For a node and for a file alike, so not one of the node's own.
         self.compare_action = self.dcf_menu_btn.add(
             "Compare...", COMPARE_TIP, lambda: self.compare()
+        )
+        # The whole list, so not the selected node's either. One node alone
+        # is on its right-click.
+        self.network_dbc_action = self.dcf_menu_btn.add(
+            "Save network as DBC...", NETWORK_DBC_TIP, self.save_network_dbc
         )
         self._menu_buttons = [
             self.node_menu_btn,
@@ -896,6 +918,11 @@ class CanopenView(QWidget):
         menu = QMenu(self.nodes)
         menu.addAction("Save", lambda: self.save_file(source)).setEnabled(source.unsaved)
         menu.addAction("Save as...", lambda: self.save_file_as(source))
+        # A DCF only: an EDS says what a device can do, not how a node is set up.
+        as_dbc = menu.addAction(
+            "Save as DBC...", lambda: canopen_dbc.save(self, [], [source], False)
+        )
+        as_dbc.setEnabled(canopen_dbc.is_configuration(source))
         menu.addSeparator()
         menu.addAction("Close file", lambda: self.close_file(source))
         return menu
@@ -931,7 +958,15 @@ class CanopenView(QWidget):
             menu.addSeparator()
             for text, slot in group:
                 menu.addAction(text, slot).setEnabled(on_a_node)
+        # Not asked of the node, so there whether or not it answers.
+        menu.addAction(
+            "Save as DBC...", lambda: canopen_dbc.save(self, [node_id], [], False)
+        ).setEnabled(node_id is not None)
         return menu
+
+    def save_network_dbc(self) -> None:
+        """DCF > Save network as DBC...: every node and every file in the list."""
+        canopen_dbc.save(self, self.manager.nodes(), list(self._files.values()), True)
 
     def _add_node(self) -> None:
         if self.manager.network is None:  # said before a node id is asked for, not after

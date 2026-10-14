@@ -70,6 +70,8 @@ NOT_CONNECTED = "the selected CAN channel is not connected; connect it first"
 #: SDO timing as the ``canopen`` package ships it: 300 ms for each answer and
 #: no second try. Settable in the CANopen pane, because a slow node or a busy
 #: bus is found in the field and not at a desk.
+#: The PDO communication and mapping objects, both directions.
+PDO_OBJECTS = range(0x1400, 0x1C00)
 DEFAULT_SDO_TIMEOUT_S = 0.3
 DEFAULT_SDO_RETRIES = 0
 #: The SDO channel CiA 301 predefines: requests to 0x600 + node, answers on
@@ -260,6 +262,10 @@ class CanopenManager(QObject):
         self._labels: dict[int, str] | None = None
         #: Whether DOMAIN objects are read by Read all and Save DCF. See ``reads``.
         self.read_domains = True
+        #: Whether a node's PDO configuration is read from it without being
+        #: asked: once its EDS is loaded, at each boot-up, and after a write of
+        #: ours that changes a mapping. Off, the EDS's is used until asked.
+        self.read_pdos_when_found = True
         #: TIME on a timer, on the GUI thread: seconds apart, so jitter is nothing.
         self._time_timer = QTimer(self)
         self._time_timer.timeout.connect(self._transmit_time)
@@ -273,6 +279,14 @@ class CanopenManager(QObject):
         #: Nodes whose TPDO mapping was read from the node itself, rather than
         #: taken from the EDS: what a frame of the wrong size is judged against.
         self._mapping_read: set[int] = set()
+        #: The same for RPDOs, which are read only when asked for.
+        self._rpdo_read: set[int] = set()
+        #: What the node said its emergency COB-ID (0x1014) and heartbeat
+        #: producer time (0x1017) were, when its PDO configuration was read:
+        #: None for an object it has not got. An EDS's are only suggestions,
+        #: and a description of the network wants the node's.
+        self.emcy_cob_ids: dict[int, int | None] = {}
+        self.heartbeat_times: dict[int, int | None] = {}
         #: (node, PDO) already reported for frames of the wrong size, and the
         #: (CAN-ID, error) already reported for a frame nothing could handle:
         #: each said once rather than once a frame.
@@ -281,6 +295,8 @@ class CanopenManager(QObject):
         #: the same mapping again by itself does not report them again.
         self._size_mismatches_said: dict[int, list[str]] = {}
         self._frame_errors_said: set[tuple[int, str]] = set()
+        # Queued: a boot-up is heard on the bus's thread.
+        self.node_seen.connect(self._on_boot_up)
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
 
@@ -556,9 +572,13 @@ class CanopenManager(QObject):
             self._eds_path,
             self._identities,
             self._size_mismatches_said,
+            self.emcy_cob_ids,
+            self.heartbeat_times,
         ):
             known.pop(node_id, None)
         self.lost_nodes.discard(node_id)
+        self._mapping_read.discard(node_id)
+        self._rpdo_read.discard(node_id)
         node = self.node(node_id)
         if node is not None:
             # The library leaves a read PDO's subscription behind, and its
@@ -580,6 +600,10 @@ class CanopenManager(QObject):
         self.access_levels.clear()
         self.fault_states.clear()
         self._size_mismatches_said.clear()
+        self.emcy_cob_ids.clear()
+        self.heartbeat_times.clear()
+        self._mapping_read.clear()
+        self._rpdo_read.clear()
 
     # --- a node added by hand ----------------------------------------------------
     def add_node(self, node_id: int) -> bool:
@@ -1077,7 +1101,12 @@ class CanopenManager(QObject):
                 node_id, path, node.object_dictionary.device_information.product_name or ""
             )
             self.load_pdos_from_eds(node_id)
-            self.subscribe_pdos(node_id)
+            if self.read_pdos_when_found:
+                self.read_pdo_config(node_id)
+            else:
+                # Decoded by the EDS's mapping, which is all there is to go
+                # by until the node is asked.
+                self._decode_tpdos(node_id, node)
 
         self._worker.submit(job, done)
 
@@ -1262,7 +1291,14 @@ class CanopenManager(QObject):
             var.raw = parse_value(text, var.od)
             return var.raw
 
-        self._worker.submit(job, lambda v, e: self.sdo_result.emit(node_id, index, sub, v, e))
+        def done(value: Any, error: Any) -> None:
+            self.sdo_result.emit(node_id, index, sub, value, error)
+            if not error and PDO_OBJECTS.start <= index < PDO_OBJECTS.stop:
+                # A PDO's communication or mapping changed: what is decoded
+                # and sent by is now out of date.
+                self.refresh_pdo_config(node_id)
+
+        self._worker.submit(job, done)
 
     # --- NMT -----------------------------------------------------------------
     def nmt(self, node_id: int, command: str) -> None:
@@ -1277,34 +1313,6 @@ class CanopenManager(QObject):
         self.nmt_sent.emit(node_id, command)
 
     # --- PDO -----------------------------------------------------------------
-    def subscribe_pdos(self, node_id: int) -> None:
-        """Read the node's TPDO configuration over SDO, then decode them live."""
-        node = self.node(node_id)
-        if node is None or not len(node.object_dictionary):
-            return
-
-        def job() -> list[str]:
-            node.tpdo.read()
-            self._mapping_from_node(node_id)
-            return self._decode_tpdos(node_id, node)
-
-        def done(names: list[str] | None, error: str | None) -> None:
-            if error:
-                self.message.emit(
-                    f"Node {node_id}: PDO configuration read failed ({error})", WARNING
-                )
-                return
-            if names:
-                self.message.emit(f"Node {node_id}: decoding {', '.join(names)}", INFORMATION)
-            self.flag_mapping_sizes(node_id)
-            # The read replaced what the EDS said with what the node maps, so
-            # anything showing the mapping has to ask again -- it may have
-            # been drawn from the EDS, or mid-read, from a map still filling.
-            self.forget_labels()
-            self.pdo_config.emit(node_id)
-
-        self._worker.submit(job, done)
-
     def mapping_size_mismatches(self, node_id: int) -> list[str]:
         """Each mapped object whose mapped size is not its type's, a line each.
 
@@ -1348,6 +1356,28 @@ class CanopenManager(QObject):
             "of the object, or the EDS has its type wrong.",
             WARNING,
         )
+
+    def refresh_pdo_config(self, node_id: int) -> None:
+        """Read the PDO configuration again, where reading it unasked is on."""
+        if self.read_pdos_when_found:
+            self.read_pdo_config(node_id)
+
+    def _on_boot_up(self, node_id: int, state: str) -> None:
+        """A node that has started again may be set up differently: read it again.
+
+        Only one with an EDS, whose first read comes when that is loaded --
+        the first boot-up of a node nobody knows yet is what finds it one.
+        """
+        if state != NMT_STATES[0]:
+            return
+        node = self.node(node_id)
+        if node is not None and len(node.object_dictionary):
+            self.refresh_pdo_config(node_id)
+
+    def read_from_node(self, node_id: int) -> tuple[bool, bool]:
+        """Whether its TPDO and its RPDO configuration were read from the node
+        itself, rather than taken from its EDS, whose are only what it ships with."""
+        return node_id in self._mapping_read, node_id in self._rpdo_read
 
     def _mapping_from_node(self, node_id: int) -> None:
         """The node's own mapping is known now: judge its frames against that, afresh."""
@@ -1456,7 +1486,10 @@ class CanopenManager(QObject):
             node.tpdo.read()
             self._mapping_from_node(node_id)
             node.rpdo.read()
+            self._rpdo_read.add(node_id)
             self._decode_tpdos(node_id, node)
+            self.emcy_cob_ids[node_id] = self._optional(node, 0x1014)[0]
+            self.heartbeat_times[node_id] = self._optional(node, 0x1017)[0]
             return len(self.pdo_configs(node_id))
 
         def done(count: int | None, error: str | None) -> None:
@@ -2040,6 +2073,7 @@ class CanopenManager(QObject):
         if node is None:
             return
         self._mapping_read.discard(node_id)
+        self._rpdo_read.discard(node_id)
         self._pdo_size_said = {key for key in self._pdo_size_said if key[0] != node_id}
         try:
             node.rpdo.read(from_od=True)

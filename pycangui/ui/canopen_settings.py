@@ -54,6 +54,7 @@ SYNC_KEY = "canopen.sync_period_ms"
 SYNC_COUNTER_KEY = "canopen.sync_counter_overflow"
 IDENTIFY_KEY = "canopen.identify_automatically"
 DOMAINS_KEY = "canopen.read_domain_objects"
+READ_PDOS_KEY = "canopen.read_pdo_config"
 TIME_PERIOD_KEY = "canopen.time_period_s"
 TIME_LOCAL_KEY = "canopen.time_local"
 DEFAULT_TIME_S = 10
@@ -97,11 +98,21 @@ IDENTIFY_TIP = (
     "Read 0x1018 and 0x1000 from a node the first time it is heard, which\n"
     "is what matches an EDS to it and what names it in the list.\n"
     "\n"
-    "It is the only thing pycangui sends a node without being asked -- five\n"
-    "SDO uploads as the row appears -- so switching it off makes 'nothing\n"
-    "goes out unless I ask for it' true, which is what watching somebody\n"
-    "else's live machine wants. The cost is that a new node stays Node <id>\n"
-    "with no EDS until Identify or Load EDS is pressed."
+    "Five SDO uploads as the row appears. With Read the PDO configuration\n"
+    "off as well, nothing goes out unless you ask for it, which is what\n"
+    "watching somebody else's live machine wants. The cost is that a new\n"
+    "node stays Node <id> with no EDS until Identify or Load EDS is pressed."
+)
+READ_PDOS_TIP = (
+    "Read each node's PDO configuration from it once its EDS is loaded: both\n"
+    "directions, its emergency COB-ID (0x1014) and its heartbeat time\n"
+    "(0x1017). Read again when it sends a boot-up, and after a write of\n"
+    "pycangui's own that changes a mapping. The EDS's are only what the\n"
+    "device ships with; this is how the node is set up.\n"
+    "\n"
+    "Off, nothing is read without asking: the EDS's mapping is shown and\n"
+    "decoded by until Read PDO config is pressed. For a node that sends a\n"
+    "boot-up from its bootloader, which has no PDOs to read."
 )
 TIME_TIP = (
     "How often the TIME producer sends it. TIME (0x100) tells every node the\n"
@@ -159,6 +170,8 @@ class CanopenSettings:
     identify: bool = True
     #: Whether Read all and Save DCF read DOMAIN objects with the rest.
     read_domains: bool = True
+    #: Whether a node's PDO configuration is read from it without asking.
+    read_pdos: bool = True
     #: Whether the pane shows TIME at all, how often the producer sends it,
     #: and whether it is local time or UTC.
     time_period_s: float = DEFAULT_TIME_S
@@ -236,6 +249,7 @@ def load(ctx: Context) -> CanopenSettings:
         out.sync_counter_overflow = sync_overflow(overflow)
     out.identify = bool(ctx.settings.get(IDENTIFY_KEY, True))
     out.read_domains = bool(ctx.settings.get(DOMAINS_KEY, True))
+    out.read_pdos = bool(ctx.settings.get(READ_PDOS_KEY, True))
     if (period := _milliseconds(ctx.settings.get(TIME_PERIOD_KEY))) is not None:
         out.time_period_s = min(max(period, 1), MAX_TIME_S)
     out.time_local = bool(ctx.settings.get(TIME_LOCAL_KEY, True))
@@ -266,6 +280,7 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
     ctx.settings.set(SYNC_COUNTER_KEY, settings.sync_counter_overflow)
     ctx.settings.set(IDENTIFY_KEY, settings.identify)
     ctx.settings.set(DOMAINS_KEY, settings.read_domains)
+    ctx.settings.set(READ_PDOS_KEY, settings.read_pdos)
     ctx.settings.set(TIME_PERIOD_KEY, settings.time_period_s)
     ctx.settings.set(TIME_LOCAL_KEY, settings.time_local)
     # In hex, the way a COB-ID is spoken, so the file reads as the dialog does.
@@ -310,6 +325,7 @@ _SHOWN = (
     ("sync_counter_overflow", "SYNC counter", _counter),
     ("identify", "identify new nodes", _on_off),
     ("read_domains", "read DOMAIN objects", _on_off),
+    ("read_pdos", "read the PDO configuration", _on_off),
     ("time_period_s", "TIME period", lambda v: f"{v:g} s"),
     ("time_local", "TIME as", lambda v: "local time" if v else "UTC"),
 )
@@ -346,6 +362,7 @@ def changed(old: CanopenSettings, new: CanopenSettings, fields) -> bool:
 
 def apply(manager, settings: CanopenSettings) -> None:
     manager.read_domains = settings.read_domains
+    manager.read_pdos_when_found = settings.read_pdos
     manager.set_sdo_timing(settings.timeout_ms / 1000, settings.retries)
     manager.set_sdo_channels(settings.channels)
     manager.set_heartbeat_timeouts(
@@ -403,6 +420,9 @@ class CanopenSettingsDialog(QDialog):
         self.read_domains = QCheckBox("Read DOMAIN objects with Read all and Save DCF")
         self.read_domains.setChecked(settings.read_domains)
         self.read_domains.setToolTip(DOMAINS_TIP)
+        self.read_pdos = QCheckBox("Read the PDO configuration from each node")
+        self.read_pdos.setChecked(settings.read_pdos)
+        self.read_pdos.setToolTip(READ_PDOS_TIP)
         self.time_period = QDoubleSpinBox()
         self.time_period.setRange(1, MAX_TIME_S)
         self.time_period.setDecimals(0)
@@ -424,6 +444,7 @@ class CanopenSettingsDialog(QDialog):
         form.addRow("SYNC period:", self.sync_period)
         form.addRow("SYNC counter:", self.sync_counter)
         form.addRow("", self.identify)
+        form.addRow("", self.read_pdos)
         form.addRow("", self.read_domains)
         form.addRow("TIME period:", self.time_period)
         form.addRow("TIME as:", self.time_zone)
@@ -558,6 +579,7 @@ class CanopenSettingsDialog(QDialog):
             sync_counter_overflow=sync_overflow(self.sync_counter.value()),
             identify=self.identify.isChecked(),
             read_domains=self.read_domains.isChecked(),
+            read_pdos=self.read_pdos.isChecked(),
             time_period_s=self.time_period.value(),
             time_local=self.time_zone.currentIndex() == 0,
             channels={
