@@ -77,9 +77,10 @@ def test_dbc_row_encodes_from_signals(stack):
 
 def test_rpdo_row_drives_the_demo_node(stack):
     app, _bus, view, canopen, demo, _ctx = stack
-    # loading the EDS is enough: the mapping comes from the file, no bus traffic
+    # Loading the EDS is enough: its mapping at once, then the node's, read
+    # from it -- which empties each map and fills it again, so waited for.
     canopen.load_eds(5, str(resources.path("demo.eds")))
-    wait_until(app, lambda: canopen.rpdos(5))
+    wait_until(app, lambda: canopen.read_from_node(5) == (True, True) and canopen.rpdos(5))
 
     number, name, variables = canopen.rpdos(5)[0]
     assert "Speed demand" in " ".join(variables)

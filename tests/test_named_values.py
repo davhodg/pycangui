@@ -119,7 +119,8 @@ def test_an_rpdo_variable_with_named_values_is_picked_from_a_list(
     demo = demo_device(bus, kinds=["canopen_device"])
     try:
         canopen.load_eds(5, str(resources.path("demo.eds")))
-        wait_until(lambda: canopen.rpdos(5))
+        # Until the node's own mapping is in: reading it empties each map first.
+        wait_until(lambda: canopen.read_from_node(5) == (True, True) and canopen.rpdos(5))
         number = canopen.rpdos(5)[0][0]
         # As a hook would name them: the EDS itself has no key for it.
         real = canopen.display

@@ -54,6 +54,8 @@ def test_pdo_configs_from_the_eds(stack):
     # may still be filling -- and asserting on it caught TPDO1 with two of its
     # three entries whenever the machine was busy enough.
     wait_until(lambda: len(named(manager).get("TPDO1", _Empty()).entries) == 3)
+    # The RPDOs are read after the TPDOs, and fill the same way.
+    wait_until(lambda: manager.read_from_node(5) == (True, True))
     configs = named(manager)
     assert set(configs) >= {"TPDO1", "RPDO1"}
 
@@ -551,14 +553,14 @@ def test_failures_are_listed_by_name_under_their_reason(stack):
 
 
 def mapping_settled(manager, node_id=5) -> None:
-    """Wait for the mapping read that loading the EDS started.
+    """Wait for the mapping read that loading the EDS started, both directions.
 
     It runs on the manager's worker and rebuilds every PDO map as it goes. A
     test that takes a map and changes it before that has finished has its
     changes undone under it -- the map back at full length, the frame the test
     made then too short for it, and nothing decoded.
     """
-    wait_until(lambda: node_id in manager._mapping_read)
+    wait_until(lambda: manager.read_from_node(node_id) == (True, True))
 
 
 def tpdo1(manager):
