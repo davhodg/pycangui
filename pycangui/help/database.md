@@ -39,9 +39,15 @@ signal has a colour and its name across its bits. An Intel signal runs up from
 its start bit; a Motorola one starts at its most significant bit and runs down
 the byte and on from the top of the next, which is why it is easier seen than
 worked out. A bit no signal has shows its number. A bit two signals both have
-is outlined in dashes: in a multiplexed message that is expected, since its
-signals take turns, and anywhere else it is a fault in the database. Point at a
-bit to be told what it is; click one to choose its signal.
+is outlined in dashes: it is a fault in the database. Point at a bit to be told
+what it is; click one to choose its signal.
+
+**A multiplexed message** -- one whose signals take turns at the same bits,
+chosen by the value of one of them -- is drawn for one value of its multiplexer
+at a time, chosen in the box beside *Multiplexer* at the top of the frame. The
+signals that come with that value are drawn, with those that are always there,
+and the others are greyed in the list. Choosing a greyed one draws a value it
+comes with. A multiplexer under the top one is drawn with all of its signals.
 
 **Signals** lists them:
 

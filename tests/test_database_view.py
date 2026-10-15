@@ -215,3 +215,54 @@ def test_whatever_shows_the_databases_is_told_when_they_change(tmp_path):
     dbc.load(path, strict=False)
     dbc.unload(path)
     assert told == [1, 0]
+
+
+# --- a multiplexed message ----------------------------------------------------------------------
+MULTIPLEXED = """VERSION ""
+NS_ :
+BS_:
+BU_: ECU
+BO_ 1536 Paged: 4 ECU
+ SG_ Page M : 0|8@1+ (1,0) [0|0] "" ECU
+ SG_ Speed m0 : 8|16@1+ (1,0) [0|0] "" ECU
+ SG_ Volts m1 : 8|16@1+ (1,0) [0|0] "" ECU
+ SG_ Always : 24|8@1+ (1,0) [0|0] "" ECU
+VAL_ 1536 Page 0 "Drive" 1 "Supply" ;
+"""
+
+
+@pytest.fixture
+def paged(window, tmp_path):
+    path = tmp_path / "paged.dbc"
+    path.write_text(MULTIPLEXED, encoding="utf-8")
+    assert window._load_dbc(str(path))
+    view = window.database_view
+    assert view.select_message("Paged")
+    return view
+
+
+def test_a_multiplexed_message_is_drawn_for_one_value_of_its_multiplexer(paged):
+    """Its signals take turns at the same bits: drawn all at once, they looked
+    like a database in error."""
+    assert [paged.mux.itemData(i) for i in range(paged.mux.count())] == [0, 1]
+    assert paged.multiplexer_value() == 0
+    layout = paged.layout_view
+    assert layout.owners(1, 0) == ["Speed"] and layout.owners(3, 0) == ["Always"]
+    assert layout.overlaps() == []
+
+    paged.set_multiplexer_value(1)
+    assert layout.owners(1, 0) == ["Volts"]
+    assert layout.overlaps() == []
+
+
+def test_choosing_a_signal_draws_a_value_it_comes_with(paged):
+    paged.select_signal("Volts")
+    assert paged.multiplexer_value() == 1
+    paged.select_signal("Always")
+    assert paged.multiplexer_value() == 1, "always there, so nothing to change"
+
+
+def test_a_message_that_is_not_multiplexed_has_no_value_to_choose(sample):
+    sample.select_message("Mixed")
+    assert sample.multiplexer_value() is None
+    assert sample.mux.isHidden()

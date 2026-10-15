@@ -100,6 +100,11 @@ SHADOWED_TIP = (
     "message of this name or on this identifier, and the first one loaded is\n"
     "the one frames are decoded with."
 )
+MUX_TIP = (
+    "Which value of the multiplexer to draw the message for: the signals that\n"
+    "come with it, and those always there. The others are greyed in the list.\n"
+    "Choosing one of them chooses a value it comes with."
+)
 NOTHING_LOADED = "No database is loaded. Load... to choose one."
 NOTHING_CHOSEN = "Choose a message on the left."
 
@@ -165,6 +170,41 @@ def value_text(value: float | None, signal: DbSignal) -> str:
     return f"{number} {signal.unit}" if signal.unit else number
 
 
+def multiplexer(msg: Message | None) -> DbSignal | None:
+    """The signal that says which of the others are in a frame: the one at the
+    top, where a multiplexed signal is itself a multiplexer for others."""
+    if msg is None:
+        return None
+    return next((s for s in msg.signals if s.is_multiplexer and not s.multiplexer_ids), None)
+
+
+def multiplexer_values(msg: Message, top: DbSignal) -> list[int]:
+    """The values of the multiplexer that bring signals of their own."""
+    found: set[int] = set()
+    for signal in msg.signals:
+        if signal.multiplexer_signal == top.name:
+            found.update(signal.multiplexer_ids or ())
+    return sorted(found)
+
+
+def present(msg: Message, value: int | None) -> set[str]:
+    """The signals in a frame whose multiplexer has this value: those that are
+    always there, and those that come with it. A multiplexer under the top one
+    is shown with all of its own, which this does not choose between."""
+    top = multiplexer(msg)
+    by_name = {s.name: s for s in msg.signals}
+
+    def there(signal) -> bool:
+        if not signal.multiplexer_ids:
+            return True
+        if top is not None and signal.multiplexer_signal == top.name:
+            return value in signal.multiplexer_ids
+        parent = by_name.get(signal.multiplexer_signal)
+        return parent is None or there(parent)
+
+    return {s.name for s in msg.signals if there(s)}
+
+
 def about(signal: DbSignal) -> str:
     """One line on a signal: what kind of number, which way round, and its comment."""
     kind = "float" if signal.is_float else ("signed" if signal.is_signed else "unsigned")
@@ -204,12 +244,18 @@ class Layout(QWidget):
         self._colours: dict[str, QColor] = {}
         self._selected = ""
 
-    def show_message(self, msg: Message | None, colours: dict[str, QColor]) -> None:
+    def show_message(
+        self, msg: Message | None, colours: dict[str, QColor], shown: set[str] | None = None
+    ) -> None:
+        """Draw a message's signals: all of them, or the ones in ``shown`` --
+        for a multiplexed message, those in a frame with one multiplexer value."""
         self._length = 0 if msg is None else msg.length
         self._owners = {}
         self._colours = colours
         self._selected = ""
         for signal in [] if msg is None else msg.signals:
+            if shown is not None and signal.name not in shown:
+                continue
             for place in bits_of(signal):
                 self._owners.setdefault(place, []).append(signal.name)
         self.setAccessibleDescription(self.described())
@@ -224,8 +270,8 @@ class Layout(QWidget):
         return list(self._owners.get((byte, bit), []))
 
     def overlaps(self) -> list[tuple[int, int]]:
-        """The bits more than one signal has. A multiplexed message has plenty
-        that are not a fault: its signals take turns at the same bits."""
+        """The bits more than one of the signals drawn has. A multiplexed
+        message drawn for one multiplexer value has none that are not a fault."""
         return sorted(place for place, names in self._owners.items() if len(names) > 1)
 
     def described(self) -> str:
@@ -442,6 +488,17 @@ class DatabaseView(QWidget):
         self.layout_note = QLabel("bit 7 at the left of each byte")
         self.layout_note.setEnabled(False)
         top.addWidget(self.layout_note, 1)
+        # Only for a multiplexed message: its signals take turns at the same
+        # bits, and drawn all at once they look like a database in error.
+        self.mux_label = QLabel()
+        self.mux = QComboBox()
+        self.mux.setToolTip(MUX_TIP)
+        self.mux.setAccessibleName("Multiplexer value")
+        self.mux.currentIndexChanged.connect(self._show_multiplexed)
+        top.addWidget(self.mux_label)
+        top.addWidget(self.mux)
+        self.mux_label.hide()
+        self.mux.hide()
         self.layout_view = Layout()
         self.layout_view.chosen.connect(self.select_signal)
         scroll = QScrollArea()
@@ -554,7 +611,7 @@ class DatabaseView(QWidget):
         if not self.dbc.databases:
             self.count.setText(NOTHING_LOADED)
         elif shown_now == total:
-            self.count.setText(f"{total} messages")
+            self.count.setText(f"{total} message" + ("" if total == 1 else "s"))
         else:
             self.count.setText(f"{shown_now} of {total} messages match")
         self._message_widths.apply()
@@ -598,6 +655,7 @@ class DatabaseView(QWidget):
             self.source.setText("")
             self.comment.setText("")
             self.layout_view.show_message(None, {})
+            self._fill_multiplexer(None)
             self._size_layout(0)
             self.signals.blockSignals(False)
             self._on_signal_chosen(None)
@@ -614,7 +672,8 @@ class DatabaseView(QWidget):
         self.comment.setText(msg.comment or "")
         self.comment.setVisible(bool(msg.comment))
         colours = self._colours(msg)
-        self.layout_view.show_message(msg, colours)
+        self._fill_multiplexer(msg)
+        self.layout_view.show_message(msg, colours, self._present())
         self._size_layout(msg.length)
         size = fonts.text_height() - 4
         for signal in msg.signals:
@@ -632,11 +691,58 @@ class DatabaseView(QWidget):
             item.setToolTip(SIGNAL, about(signal))
             self.signals.addTopLevelItem(item)
         self.signals.blockSignals(False)
+        self._grey_absent()
         self._signal_widths.apply()
         self._on_signal_chosen(None)
         self._show_now()
         if self.isVisible():
             self._now_timer.start()
+
+    # --- multiplexing -------------------------------------------------------------------
+    def _fill_multiplexer(self, msg: Message | None) -> None:
+        top = multiplexer(msg)
+        values = [] if top is None else multiplexer_values(msg, top)
+        self.mux.blockSignals(True)
+        self.mux.clear()
+        for value in values:
+            name = (top.choices or {}).get(value)
+            self.mux.addItem(f"{name} ({value})" if name is not None else str(value), value)
+        self.mux.blockSignals(False)
+        wanted = bool(values)
+        self.mux_label.setText(f"Multiplexer {top.name}" if wanted else "")
+        self.mux_label.setVisible(wanted)
+        self.mux.setVisible(wanted)
+
+    def multiplexer_value(self) -> int | None:
+        """The value the layout is drawn for; None for a message that has none."""
+        return self.mux.currentData() if self.mux.count() else None
+
+    def set_multiplexer_value(self, value: int) -> None:
+        self.mux.setCurrentIndex(self.mux.findData(value))
+
+    def _present(self) -> set[str] | None:
+        if self._message is None or not self.mux.count():
+            return None
+        return present(self._message, self.mux.currentData())
+
+    def _show_multiplexed(self) -> None:
+        if self._message is None:
+            return
+        chosen = self.signal_chosen()
+        self.layout_view.show_message(self._message, self._colours(self._message), self._present())
+        self.layout_view.select(chosen)
+        self._grey_absent()
+
+    def _grey_absent(self) -> None:
+        """The signals not in a frame with the value chosen, greyed in the list."""
+        there = self._present()
+        faint = self.palette().brush(QPalette.PlaceholderText)
+        normal = self.palette().brush(QPalette.Text)
+        for row in range(self.signals.topLevelItemCount()):
+            item = self.signals.topLevelItem(row)
+            absent = there is not None and item.data(0, ROLE_SIGNAL) not in there
+            for column in range(self.signals.columnCount()):
+                item.setForeground(column, faint if absent else normal)
 
     def _size_layout(self, length: int) -> None:
         """As tall as the message, up to a classic frame's eight bytes: a CAN
@@ -668,6 +774,10 @@ class DatabaseView(QWidget):
     def _on_signal_chosen(self, item: QTreeWidgetItem | None, _before=None) -> None:
         name = "" if item is None else item.data(0, ROLE_SIGNAL)
         signal = self._signal(name)
+        there = self._present()
+        if signal is not None and there is not None and name not in there:
+            # A signal not in the frame drawn: draw one it is in.
+            self.set_multiplexer_value(signal.multiplexer_ids[0])
         self.layout_view.select(name)
         self.signal_about.setText("" if signal is None else about(signal))
         self.signal_about.setVisible(signal is not None)
