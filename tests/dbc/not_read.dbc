@@ -1,0 +1,19 @@
+VERSION ""
+
+
+NS_ :
+	ENVVAR_DATA_
+
+BS_: 500000 : 1,2
+
+BU_: Tester Controller
+
+
+BO_ 256 Status: 1 Controller
+ SG_ State : 0|8@1+ (1,0) [0|255] "" Tester
+
+
+EV_ RawBlock: 0 [0|0] "" 0 3 DUMMY_NODE_VECTOR8003 Vector__XXX;
+
+ENVVAR_DATA_ RawBlock: 16;
+

@@ -1,0 +1,72 @@
+VERSION "1.2"
+
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	BA_DEF_DEF_
+	BA_DEF_REL_
+	BA_REL_
+	BA_DEF_DEF_REL_
+	BU_SG_REL_
+	BU_BO_REL_
+
+BS_:
+
+BU_: Tester Pump Valve
+
+
+BO_ 256 PumpStatus: 8 Pump
+ SG_ Pressure : 0|16@1+ (0.1,0) [0|6553.5] "bar" Tester,Valve
+ SG_ Flow : 16|16@1+ (0.01,0) [0|655.35] "l/min" Tester
+ SG_ Temperature : 32|8@1- (1,-40) [-168|87] "degC" Tester
+
+BO_ 512 ValveCommand: 2 Tester
+ SG_ Opening : 0|8@1+ (0.5,0) [0|100] "%" Valve
+ SG_ Mode : 8|4@1+ (1,0) [0|15] "" Valve
+
+
+
+BA_DEF_  "BusType" STRING ;
+BA_DEF_  "ProtocolVersion" INT 0 255;
+BA_DEF_ BU_  "NodeLayer" ENUM  "Application","Gateway","Diagnostic";
+BA_DEF_ BU_  "ILUsed" ENUM  "No","Yes";
+BA_DEF_ BO_  "GenMsgCycleTime" INT 0 65535;
+BA_DEF_ BO_  "GenMsgSendType" ENUM  "Cyclic","Event","IfActive","NoMsgSendType";
+BA_DEF_ BO_  "GenMsgStartDelayTime" HEX 0 65535;
+BA_DEF_ SG_  "GenSigStartValue" FLOAT -3.4E+038 3.4E+038;
+BA_DEF_ SG_  "GenSigSendType" ENUM  "Cyclic","OnWrite","OnChange";
+BA_DEF_ SG_  "SigUnitText" STRING ;
+BA_DEF_REL_ BU_SG_REL_  "GenSigTimeoutTime" INT 0 65535;
+BA_DEF_REL_ BU_BO_REL_  "GenMsgTimeoutTime" INT 0 65535;
+BA_DEF_DEF_  "BusType" "CAN";
+BA_DEF_DEF_  "ProtocolVersion" 1;
+BA_DEF_DEF_  "NodeLayer" "Application";
+BA_DEF_DEF_  "ILUsed" "No";
+BA_DEF_DEF_  "GenMsgCycleTime" 0;
+BA_DEF_DEF_  "GenMsgSendType" "NoMsgSendType";
+BA_DEF_DEF_  "GenMsgStartDelayTime" 0;
+BA_DEF_DEF_  "GenSigStartValue" 0;
+BA_DEF_DEF_  "GenSigSendType" "Cyclic";
+BA_DEF_DEF_  "SigUnitText" "";
+BA_DEF_DEF_REL_ "GenSigTimeoutTime" 0;
+BA_DEF_DEF_REL_ "GenMsgTimeoutTime" 0;
+BA_ "BusType" "CAN";
+BA_ "ProtocolVersion" 3;
+BA_ "NodeLayer" BU_ Valve 0;
+BA_ "NodeLayer" BU_ Tester 2;
+BA_ "ILUsed" BU_ Pump 1;
+BA_ "GenMsgCycleTime" BO_ 256 100;
+BA_ "GenMsgSendType" BO_ 256 0;
+BA_ "GenMsgSendType" BO_ 512 1;
+BA_ "GenMsgStartDelayTime" BO_ 512 16;
+BA_ "GenSigStartValue" SG_ 256 Temperature 40;
+BA_ "GenSigSendType" SG_ 512 Opening 1;
+BA_ "SigUnitText" SG_ 256 Flow "litres per minute";
+BA_REL_ "GenSigTimeoutTime" BU_SG_REL_ Valve SG_ 256 Pressure 500;
+BA_REL_ "GenMsgTimeoutTime" BU_BO_REL_ Valve 512 250;
+VAL_ 512 Mode 0 "Off" 1 "Manual" 2 "Automatic" 15 "Fault" ;
+

@@ -1,0 +1,61 @@
+VERSION ""
+
+
+NS_ :
+	CM_
+	BA_DEF_
+	BA_
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SIG_GROUP_
+	SIG_VALTYPE_
+
+BS_:
+
+BU_: Tester Controller
+
+
+BO_ 2364540158 EEC1_LongerThanThirtyTwoCharactersName: 8 Controller
+ SG_ EngineSpeed : 24|16@1+ (0.125,0) [0|8031.875] "rpm" Tester
+ SG_ ActualEnginePercentTorqueHighResolution : 4|4@1+ (0.125,0) [0|0.875] "%" Tester
+
+BO_ 2147484416 FdFrame: 64 Controller
+ SG_ First : 0|32@1+ (1,0) [0|0] "" Tester
+ SG_ Last : 480|32@1+ (1,0) [0|0] "" Tester
+ SG_ Sample : 32|32@1- (1,0) [0|0] "" Tester
+
+BO_ 291 Grouped: 4 Tester
+ SG_ A : 0|8@1+ (1,0) [0|0] "" Controller
+ SG_ B : 8|8@1+ (1,0) [0|0] "" Controller
+ SG_ C : 16|16@1+ (1,0) [0|0] "" Controller
+
+BO_ 1792 Heartbeat: 1 Controller
+ SG_ State : 0|8@1+ (1,0) [0|255] "" Tester
+
+
+EV_ EngineRunning: 0 [0|1] "" 0 1 DUMMY_NODE_VECTOR0 Vector__XXX;
+EV_ CalibrationLabel: 1 [0|0] "" 0 2 DUMMY_NODE_VECTOR8000 Controller;
+EV_ RawBlock: 0 [0|0] "" 0 3 DUMMY_NODE_VECTOR8003 Vector__XXX;
+
+CM_ EV_ EngineRunning "Set while the engine runs.";
+CM_ BO_ 2364540158 "A J1939 message: 29-bit, with a name too long for the format's own limit.";
+BA_DEF_ BO_  "VFrameFormat" ENUM  "StandardCAN","ExtendedCAN","reserved","J1939PG","StandardCAN_FD","ExtendedCAN_FD";
+BA_DEF_ BO_  "SystemMessageLongSymbol" STRING ;
+BA_DEF_ SG_  "SystemSignalLongSymbol" STRING ;
+BA_DEF_ SG_  "SPN" INT 0 524287;
+BA_DEF_  "ProtocolType" STRING ;
+BA_DEF_DEF_  "VFrameFormat" "StandardCAN";
+BA_DEF_DEF_  "SystemMessageLongSymbol" "";
+BA_DEF_DEF_  "SystemSignalLongSymbol" "";
+BA_DEF_DEF_  "SPN" 0;
+BA_DEF_DEF_  "ProtocolType" "";
+BA_ "ProtocolType" "J1939";
+BA_ "VFrameFormat" BO_ 2364540158 3;
+BA_ "VFrameFormat" BO_ 2147484416 5;
+BA_ "SPN" SG_ 2364540158 EngineSpeed 190;
+BA_ "SPN" SG_ 2364540158 ActualEnginePercentTorqueHighResolution 4154;
+SIG_GROUP_ 291 Pair 1 : A B;
+SIG_GROUP_ 291 Wide 1 : C;
+SIG_VALTYPE_ 2147484416 Sample : 1;
+

@@ -1,0 +1,53 @@
+VERSION ""
+
+
+NS_ :
+	CM_
+	VAL_
+	VAL_TABLE_
+	SIG_VALTYPE_
+	BO_TX_BU_
+
+BS_:
+
+BU_: Tester Engine Gearbox Dashboard
+
+VAL_TABLE_ OnOff 1 "On" 0 "Off" ;
+VAL_TABLE_ GearTable 7 "Reverse" 6 "Neutral" 1 "First" 2 "Second" 3 "Third" ;
+
+
+BO_ 768 EngineData: 8 Engine
+ SG_ EngineSpeed : 0|16@1+ (0.25,0) [0|16383.75] "rpm" Dashboard,Gearbox,Tester
+ SG_ Throttle : 16|8@1+ (0.4,0) [0|100] "%" Gearbox
+ SG_ OilPressure : 24|32@1- (1,0) [0|0] "kPa" Dashboard
+ SG_ Load : 56|8@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 769 GearboxData: 4 Gearbox
+ SG_ Gear : 0|8@1+ (1,0) [0|7] "" Dashboard,Engine
+ SG_ Lockup : 8|1@1+ (1,0) [0|1] "" Engine
+ SG_ Torque : 23|16@0- (0.5,0) [-16384|16383.5] "Nm" Engine
+
+BO_ 770 Shared: 8 Engine
+ SG_ Ratio : 0|32@1- (1,0) [0|0] "" Dashboard
+ SG_ Precise : 32|32@1- (1,0) [0|0] "" Dashboard
+
+BO_ 771 Doubled: 8 Tester
+ SG_ Big : 0|64@1- (1,0) [0|0] "" Engine
+
+BO_TX_BU_ 770 : Engine,Gearbox;
+
+
+CM_ "A network with comments in every place a comment can go, and value tables.";
+CM_ BU_ Engine "The engine controller.";
+CM_ BU_ Dashboard "Shows what the others send; sends nothing itself.";
+CM_ BO_ 768 "Engine data, every 10 ms.
+On two lines, the second after a line break.";
+CM_ SG_ 768 EngineSpeed "Crankshaft speed. A \"quoted\" word, written as the format escapes it.";
+CM_ SG_ 768 Throttle "Pedal position, not the throttle plate.";
+CM_ SG_ 769 Torque "Motorola byte order, signed.";
+CM_ BO_ 770 "Sent by either of two nodes.";
+SIG_VALTYPE_ 770 Ratio : 1;
+SIG_VALTYPE_ 771 Big : 2;
+VAL_ 769 Gear 7 "Reverse" 6 "Neutral" 1 "First" 2 "Second" 3 "Third" ;
+VAL_ 769 Lockup 1 "On" 0 "Off" ;
+
