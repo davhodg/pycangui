@@ -91,6 +91,7 @@ def test_what_is_written_reads_back_the_same(drive, tmp_path):
     assert to_dbc.write(made, path) == []
     back = cantools.database.load_file(str(path))
     assert {m.frame_id for m in back.messages} == set(by_id(made))
+    assert b"\r\r\n" not in path.read_bytes(), "each line ended once, not CR CR LF"
 
 
 def test_a_heartbeat_names_its_states(drive):
