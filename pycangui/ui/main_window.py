@@ -2366,6 +2366,8 @@ class MainWindow(QMainWindow):
 
     def _remove_dbc(self, remembered: str, resolved: str) -> None:
         """Drop one database, from what is loaded and from what is remembered."""
+        if not self.database_view.may_discard(resolved):
+            return
         before = {msg.name for msg in self.dbc.messages()}
         self.dbc.unload(resolved)
         paths = [p for p in self.ctx.settings.get("dbc.paths", []) if str(p) != remembered]
@@ -2482,6 +2484,8 @@ class MainWindow(QMainWindow):
         )
 
     def _unload_dbcs(self) -> None:
+        if not self.database_view.may_discard():
+            return
         before = {msg.name for msg in self.dbc.messages()}
         for path in list(self.dbc.databases):
             self.dbc.unload(path)

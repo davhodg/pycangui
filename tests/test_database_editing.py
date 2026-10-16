@@ -24,7 +24,9 @@ def window(app, tmp_path, monkeypatch):
     QSettings().clear()
     win = MainWindow()
     yield win
-    win.close()
+    win.database_view._edit = None  # what a test left changed is not asked about
+    if not win._closing:  # closed already by the test, which a second close would undo
+        win.close()
 
 
 @pytest.fixture
@@ -225,3 +227,46 @@ def test_one_database_is_changed_at_a_time(window, view, tmp_path, monkeypatch):
     monkeypatch.setattr(messages, "information", lambda *a, **k: told.append(a))
     view.edit_message()
     assert told, "save or discard the first"
+
+
+# --- changes not saved --------------------------------------------------------------------------
+@pytest.fixture
+def changed(view, monkeypatch):
+    answering(monkeypatch, MessageDialog, lambda d: d.cycle.setValue(25))
+    view.edit_message()
+    assert view.editing().changed
+    return view
+
+
+def test_closing_with_changes_asks_and_cancel_keeps_the_window(window, changed, monkeypatch):
+    asked = []
+    monkeypatch.setattr(messages, "question", lambda *a, **k: asked.append(a) or QMessageBox.Cancel)
+    assert not window.close()
+    assert asked and changed.editing().changed, "nothing lost"
+
+
+def test_discard_lets_the_window_close(window, changed, monkeypatch):
+    monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Discard)
+    assert window.close()
+
+
+def test_save_writes_them_first_and_offers_nothing_more(window, changed, tmp_path, monkeypatch):
+    """Closing is no moment to ask whether to load the new file."""
+    asked = []
+    monkeypatch.setattr(messages, "question", lambda *a, **k: asked.append(a) or QMessageBox.Save)
+    target = tmp_path / "kept.dbc"
+    monkeypatch.setattr(folders, "save_file", lambda *a, **k: str(target))
+    assert changed.may_discard()
+    assert target.is_file() and len(asked) == 1
+
+
+def test_removing_the_database_being_changed_asks_first(window, changed, monkeypatch):
+    monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Cancel)
+    path = changed._path
+    window._remove_dbc(path, path)
+    assert path in window.dbc.databases, "still loaded"
+    window._unload_dbcs()
+    assert path in window.dbc.databases
+    monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Discard)
+    window._remove_dbc(path, path)
+    assert path not in window.dbc.databases

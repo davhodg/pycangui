@@ -82,6 +82,10 @@ and named values. **Right-click** adds and removes messages and signals.
   if you choose. Then it offers the new file in place of the old one: loaded
   instead of it now, and next time. A transmit row that names a message by a
   name it no longer has is said in the Event Log.
+- Changes not saved are asked about before pycangui closes, before another
+  workspace opens, and before the database being changed is removed: **Save**
+  writes them as a new file first, **Discard** lets them go, and **Cancel** leaves
+  everything as it was.
 - One database is changed at a time, and only a DBC: pycangui reads KCD, SYM and
   ARXML, and writes DBC only.
 - Kept as they were, and not changed here yet: attributes, value tables, nodes,

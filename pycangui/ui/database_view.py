@@ -947,17 +947,48 @@ class DatabaseView(QWidget):
             self._edit = None
             self._changed()
 
-    def save_as(self) -> None:
-        """Write the changes to a new file, and offer it in place of the old one."""
+    def may_discard(self, path: str | None = None) -> bool:
+        """Whether changes not saved can go: asked before the window closes,
+        before another workspace opens, and before the database being changed
+        is removed -- ``path``, where only that one matters.
+
+        Save writes them as a new file first; Cancel is Cancel for whatever
+        was going to happen.
+        """
         edit = self._edit
         if edit is None or not edit.changed:
-            return
+            return True
+        if path is not None and not self._is_edited(path):
+            return True
+        count = len(edit.changes)
+        answer = messages.question(
+            self,
+            "Changes not saved",
+            f"{count} change" + ("" if count == 1 else "s") + f" to {edit.path.name} "
+            "have not been saved. Save them as a new file first?",
+            QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Save,
+        )
+        if answer == QMessageBox.Cancel:
+            return False
+        if answer == QMessageBox.Save:
+            return self.save_as(offer=False)
+        self._edit = None
+        self._changed()
+        return True
+
+    def save_as(self, offer: bool = True) -> bool:
+        """Write the changes to a new file, and -- with ``offer`` -- offer it in
+        place of the old one. Whether it was written."""
+        edit = self._edit
+        if edit is None or not edit.changed:
+            return False
         found = edit.problems()
         errors = [p for p in found if p.level == ERROR]
         if errors:
             listed = "\n".join(f"{p.where}: {p.what}" for p in errors[:8])
             messages.warning(self, "Not saved", f"Put these right first:\n\n{listed}")
-            return
+            return False
         if found:
             listed = "\n".join(f"{p.where}: {p.what}" for p in found[:8])
             answer = messages.question(
@@ -968,7 +999,7 @@ class DatabaseView(QWidget):
                 QMessageBox.Cancel,
             )
             if answer != QMessageBox.Save:
-                return
+                return False
         target = folders.save_file(
             self,
             self.ctx,
@@ -979,12 +1010,12 @@ class DatabaseView(QWidget):
             suggested=f"{edit.path.stem}_changed.dbc",
         )
         if not target:
-            return
+            return False
         try:
             differences = edit.save_as(target)
         except (EditError, OSError) as exc:
             messages.warning(self, "Not saved", str(exc))
-            return
+            return False
         if differences:
             listed = "\n".join(f"{f.where}: {f.what}" for f in differences[:8])
             messages.warning(
@@ -995,7 +1026,9 @@ class DatabaseView(QWidget):
         old, renames = str(edit.path), edit.renamed_messages()
         self._edit = None
         self._changed()
-        self.saved_as.emit(old, str(target), renames)
+        if offer:
+            self.saved_as.emit(old, str(target), renames)
+        return True
 
     # --- multiplexing -------------------------------------------------------------------
     def _fill_multiplexer(self, msg: Message | None) -> None:
