@@ -45,6 +45,10 @@ python --version
 if errorlevel 1 goto :nopython
 python -c "import sys; sys.exit(sys.version_info < (3, 12))"
 if errorlevel 1 goto :oldpython
+rem The interpreter just checked, by its full path, so that uv builds .venv
+rem from the same one: left to itself, uv chooses by rules of its own, and
+rem can even fetch a Python of its own.
+for /f "delims=" %%P in ('python -c "import sys; print(sys.executable)"') do set "PYEXE=%%P"
 
 rem uv is a much faster drop-in replacement for pip. Used if it happens to be
 rem installed; never required.
@@ -55,7 +59,7 @@ if defined UV echo        uv found: using it instead of pip.
 echo.
 echo  [2/3] Creating the virtual environment in .venv ...
 if defined UV (
-    uv venv .venv
+    uv venv --python "%PYEXE%" .venv
 ) else (
     python -m venv .venv
     if errorlevel 1 goto :fail
@@ -136,16 +140,16 @@ exit /b 0
 :nopython
 echo.
 echo Python was not found on the PATH.
-echo Install Python 3.12 or newer from https://www.python.org/downloads/
-echo and tick "Add python.exe to PATH" in the installer.
+echo Install Python 3.12 or newer: with the Python Install Manager, "py install 3.14";
+echo or from https://www.python.org/downloads/, ticking "Add python.exe to PATH".
 pause
 exit /b 1
 
 :oldpython
 echo.
 echo pycangui needs Python 3.12 or newer, and the python on the PATH is older.
-echo Install a newer one from https://www.python.org/downloads/
-echo and tick "Add python.exe to PATH" in the installer.
+echo Install a newer one: with the Python Install Manager, "py install 3.14";
+echo or from https://www.python.org/downloads/, ticking "Add python.exe to PATH".
 pause
 exit /b 1
 

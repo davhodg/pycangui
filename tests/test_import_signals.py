@@ -213,7 +213,10 @@ def installing(app, monkeypatch):
     from pycangui.core import mdf
     from pycangui.core.context import Context
 
-    monkeypatch.setattr(mdf, "available", lambda: True)
+    # As though the install worked: the reader loads afterwards. Through
+    # why_not, which available() asks and the install itself checks -- so
+    # that the test does not depend on asammdf really being here.
+    monkeypatch.setattr(mdf, "why_not", lambda: "")
     ctx = Context(log=print)
     posted: list[tuple[str, str]] = []
     ctx.events.posted.connect(lambda text, level: posted.append((level, text)))

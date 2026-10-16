@@ -104,12 +104,17 @@ all = ["asammdf>=8"]
 # pdoc builds the API pages for people writing hooks, nodes and plugins; see
 # build/api_docs.py. In dev so that CI renders them and a broken docstring
 # fails a test rather than a release.
-dev = [
+# The tools the tests and the checks need, and no more: what a test run on a
+# Python the optional MDF reader cannot be installed on yet is given.
+test = [
     "pytest",
     "pytest-xdist",
     "ruff==0.16.*",
     "pdoc>=16",
     "trove-classifiers",
+]
+dev = [
+    "pycangui[test]",
     "pycangui[all]",
 ]
 

@@ -56,6 +56,10 @@ BANNER
     python3 --version || fail "python3 was not found. Install Python 3.12 or newer."
     python3 -c "import sys; sys.exit(sys.version_info < (3, 12))" ||
         fail "pycangui needs Python 3.12 or newer, and this python3 is older."
+    # The interpreter just checked, by its full path, so that uv builds .venv
+    # from the same one: left to itself, uv chooses by rules of its own, and
+    # can even fetch a Python of its own.
+    PYEXE=$(python3 -c "import sys; print(sys.executable)")
 
     echo
     # uv is a much faster drop-in replacement for pip. Used if it happens to
@@ -70,7 +74,7 @@ BANNER
     echo
     echo " [2/3] Creating the virtual environment in .venv ..."
     if [ -n "$UV" ]; then
-        uv venv .venv || fail "Creating .venv failed. The messages above say why."
+        uv venv --python "$PYEXE" .venv || fail "Creating .venv failed. The messages above say why."
     else
         # Debian, Ubuntu and Linux Mint ship the venv module without what it
         # needs to install pip, as a separate package. Asked before creating
