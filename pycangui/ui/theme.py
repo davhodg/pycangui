@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QAction, QActionGroup
-from PySide6.QtWidgets import QApplication, QMenu, QWidget
+from PySide6.QtWidgets import QApplication, QItemEditorFactory, QMenu, QWidget
 
 from pycangui import resources
 
@@ -53,6 +53,8 @@ TICK_BOX_OUTLINE = (
 _fusion = False
 #: The applications whose colour scheme is already being followed.
 _followed: set[int] = set()
+#: The editor factory in use, kept here: Qt holds it, and Python must too.
+_editors: QItemEditorFactory | None = None
 TITLE = "Theme"
 TIP = "Light, dark, or whichever the operating system is set to. Kept for you on this computer."
 
@@ -82,6 +84,7 @@ def apply(choice: str, app: QApplication | None = None) -> None:
     else:
         hints.unsetColorScheme()
     outline_tick_boxes(app)
+    opaque_cell_editors()
     if id(app) not in _followed:
         # Matching the system, the scheme changes when the system's does.
         _followed.add(id(app))
@@ -94,6 +97,32 @@ def outline_tick_boxes(app: QApplication) -> None:
     wanted = TICK_BOX_OUTLINE if (dark and _fusion) else ""
     if app.styleSheet() != wanted:
         app.setStyleSheet(wanted)
+
+
+class _OpaqueEditors(QItemEditorFactory):
+    """Qt's own cell editors, each painting its own background.
+
+    The Windows 11 style paints none behind the box typed into over a cell,
+    so the cell's old value showed through under the new one.
+    """
+
+    def __init__(self, qt_own: QItemEditorFactory) -> None:
+        super().__init__()
+        self._qt_own = qt_own
+
+    def createEditor(self, user_type, parent):
+        editor = self._qt_own.createEditor(user_type, parent)
+        if editor is not None:
+            editor.setAutoFillBackground(True)
+        return editor
+
+
+def opaque_cell_editors() -> None:
+    """Have every cell typed into hide the value it is over, once."""
+    global _editors
+    if _editors is None:
+        _editors = _OpaqueEditors(QItemEditorFactory.defaultFactory())
+        QItemEditorFactory.setDefaultFactory(_editors)
 
 
 def choose(choice: str, settings: QSettings | None = None, app: QApplication | None = None) -> None:
