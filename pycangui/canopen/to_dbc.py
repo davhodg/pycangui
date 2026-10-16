@@ -446,5 +446,7 @@ def _described(signal) -> tuple:
 def write(made: Made, path: str | Path) -> list[str]:
     """Write the database, then read it back: what differs, empty if nothing."""
     text = as_dbc(made)
-    Path(path).write_text(text, encoding="utf-8")
+    # As cantools wrote it: its lines already end CR LF, and written as text
+    # on Windows each gained a second CR.
+    Path(path).write_text(text, encoding="utf-8", newline="")
     return differences(made, Path(path).read_text(encoding="utf-8"))
