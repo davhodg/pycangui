@@ -943,7 +943,60 @@ class MainWindow(QMainWindow):
         view.transmit_wanted.connect(self._transmit_from_database)
         view.trace_wanted.connect(self._trace_from_database)
         view.plot_wanted.connect(self._plot_from_database)
+        view.saved_as.connect(self._database_saved_as)
         return view
+
+    def _database_saved_as(self, old: str, new: str, renames: dict) -> None:
+        """Offer the file just written in place of the one it was made from.
+
+        In its place in the list of databases, so that it is loaded again
+        next time instead; and a transmit row that names a message by a name
+        it no longer has is said, since that row can no longer be sent.
+        """
+        answer = messages.question(
+            self,
+            "Use the new file",
+            f"Saved as {Path(new).name}.\n\nLoad it in place of {Path(old).name}? Frames are "
+            "then decoded by it, and it is the one loaded next time.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        workspace = self.ctx.workspace_dir
+        paths = list(self.ctx.settings.get("dbc.paths", []))
+        chosen = Path(old).resolve()
+        stored = workspace_files.stored(new, workspace)
+        at = next(
+            (
+                i
+                for i, p in enumerate(paths)
+                if workspace_files.resolve(p, workspace).resolve() == chosen
+            ),
+            None,
+        )
+        if at is None:
+            paths.append(stored)
+        else:
+            paths[at] = stored
+        before = {msg.name for msg in self.dbc.messages()}
+        self.dbc.unload(old)
+        self.ctx.settings.set("dbc.paths", paths)
+        if self._load_dbc(new):
+            self._forget_decoded(before - {msg.name for msg in self.dbc.messages()})
+        orphaned = sorted(
+            {
+                spec.get("message", "")
+                for view in self._transmit_panes()
+                for spec in (view._spec(row) for row in range(view.tree.topLevelItemCount()))
+                if spec.get("kind") == "dbc" and spec.get("message", "") in renames
+            }
+        )
+        for name in orphaned:
+            self.events.warning(
+                f"CAN Transmit: a row names {name}, which {Path(new).name} calls "
+                f"{renames[name]}. Add it again from the database to send it."
+            )
 
     def _transmit_from_database(self, name: str) -> None:
         """Database > Add to Transmit: as Add from DBC... there, with the message chosen."""

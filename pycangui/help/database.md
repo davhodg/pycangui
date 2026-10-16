@@ -61,3 +61,29 @@ comes with. A multiplexer under the top one is drawn with all of its signals.
 Under the list is a line about the signal chosen: signed or not, its byte
 order, its comment and its named values. **Plot** plots it in [Signals and
 Plot](signals.md), once it has arrived.
+
+## Changing a database
+
+A DBC file can be changed here, without touching it: **double-click** a message
+to change its name, identifier, length, cycle time, senders or comment, and a
+signal -- in either list, or a bit of it in the layout -- to change where it is,
+what kind of number it is, its scale, offset, range, unit, receivers, comment
+and named values. **Right-click** adds and removes messages and signals.
+
+- The changes are kept apart from the database pycangui decodes and sends with,
+  which goes on as it was until the changes are saved. A message changed is in
+  italics in the list, and a bar above it says how many changes there are.
+- **Undo** takes back the last change; **Discard changes** all of them.
+- **Save as...** writes a new file, never over the one it came from, and reads
+  it back to check it says what was meant. Something wrong that would stop the
+  file being read as meant -- two messages on one identifier, a signal past the
+  end of its message, a name the format does not allow -- is said, and nothing
+  is written until it is put right. Signals that share bits are said, and saved
+  if you choose. Then it offers the new file in place of the old one: loaded
+  instead of it now, and next time. A transmit row that names a message by a
+  name it no longer has is said in the Event Log.
+- One database is changed at a time, and only a DBC: pycangui reads KCD, SYM and
+  ARXML, and writes DBC only.
+- Kept as they were, and not changed here yet: attributes, value tables, nodes,
+  multiplexing and signal groups. A multiplexed signal's place and scaling can
+  be changed; which multiplexer value it comes with cannot.

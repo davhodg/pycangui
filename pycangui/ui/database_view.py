@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -38,9 +40,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.core.dbc_edit import (
+    ERROR,
+    DatabaseEdit,
+    EditError,
+    RemoveMessage,
+    RemoveSignal,
+)
 from pycangui.core.named_values import shown
-from pycangui.ui import fonts
+from pycangui.ui import folders, fonts, messages
 from pycangui.ui.column_widths import ColumnWidths
+from pycangui.ui.database_edit import MessageDialog, SignalDialog, focus_first
 
 if TYPE_CHECKING:
     from cantools.database import Message
@@ -105,6 +115,21 @@ MUX_TIP = (
     "come with it, and those always there. The others are greyed in the list.\n"
     "Choosing one of them chooses a value it comes with."
 )
+EDITING_TIP = (
+    "Changes made here, by double-clicking a message or a signal, or adding\n"
+    "and removing them with a right-click. Nothing is decoded or sent\n"
+    "differently, and the file is not touched, until Save as... writes a new\n"
+    "file and it is loaded in place of this one."
+)
+NOT_DBC = (
+    "{name} is a {kind} file. Only DBC files can be changed here: pycangui reads\n"
+    "the others, and writes DBC only."
+)
+ONE_AT_A_TIME = (
+    "{name} has changes that are not saved. Save them as a new file, or discard\n"
+    "them, before changing another database."
+)
+CHANGED_TIP = "Changed, and not saved yet."
 NOTHING_LOADED = "No database is loaded. Load... to choose one."
 NOTHING_CHOSEN = "Choose a message on the left."
 
@@ -233,6 +258,7 @@ class Layout(QWidget):
     """
 
     chosen = Signal(str)  # the name of the signal a bit that was clicked belongs to
+    edit_wanted = Signal(str)  # the same, double-clicked: to be changed
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -316,6 +342,11 @@ class Layout(QWidget):
             # A bit two signals have gives each in turn.
             after = names.index(self._selected) + 1 if self._selected in names else 0
             self.chosen.emit(names[after % len(names)])
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        place = self._place_at(event.position().toPoint())
+        if place is not None and (names := self.owners(*place)):
+            self.edit_wanted.emit(self._selected if self._selected in names else names[0])
 
     def mouseMoveEvent(self, event) -> None:
         place = self._place_at(event.position().toPoint())
@@ -414,6 +445,9 @@ class DatabaseView(QWidget):
     transmit_wanted = Signal(str)  # a message's name
     trace_wanted = Signal(str)  # a message's name
     plot_wanted = Signal(str)  # a signal's key in Signals and Plot
+    #: A database saved as a new file: the file it came from, the new one,
+    #: and its messages renamed, old name -> new.
+    saved_as = Signal(str, str, dict)
 
     def __init__(
         self, dbc: DbcDecoder, hub: SignalHub, ctx: Context, parent: QWidget | None = None
@@ -423,6 +457,10 @@ class DatabaseView(QWidget):
         self.hub = hub
         self.ctx = ctx
         self._message: Message | None = None
+        #: The file of the message shown, for the edits made to it.
+        self._path = ""
+        #: The database being changed, one at a time, and the file it is of.
+        self._edit: DatabaseEdit | None = None
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("message, identifier or signal...")
@@ -443,6 +481,23 @@ class DatabaseView(QWidget):
         bar.addWidget(QLabel("File"))
         bar.addWidget(self.file)
         bar.addWidget(self.load_btn)
+        # Only while there are changes: what they are, and what can be done.
+        self.edit_bar = QWidget()
+        self.edit_bar.setToolTip(EDITING_TIP)
+        edits = QHBoxLayout(self.edit_bar)
+        edits.setContentsMargins(0, 0, 0, 0)
+        self.edit_label = QLabel()
+        self.undo_btn = QPushButton("Undo")
+        self.undo_btn.clicked.connect(self.undo)
+        self.save_btn = QPushButton("Save as...")
+        self.save_btn.clicked.connect(self.save_as)
+        self.discard_btn = QPushButton("Discard changes")
+        self.discard_btn.clicked.connect(self.discard)
+        edits.addWidget(self.edit_label, 1)
+        edits.addWidget(self.undo_btn)
+        edits.addWidget(self.save_btn)
+        edits.addWidget(self.discard_btn)
+        self.edit_bar.hide()
 
         self.messages = QTreeWidget()
         self.messages.setHeaderLabels(["ID", "Message / signal", "Len", "Cycle"])
@@ -450,6 +505,9 @@ class DatabaseView(QWidget):
         self.messages.setAccessibleName("Messages")
         self.messages.setUniformRowHeights(True)
         self.messages.currentItemChanged.connect(self._on_row_chosen)
+        self.messages.itemDoubleClicked.connect(self._on_message_double_clicked)
+        self.messages.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.messages.customContextMenuRequested.connect(self._messages_menu)
         self._message_widths = ColumnWidths(
             self.messages, ctx.settings, "database.messages", stretch=NAME, last_stretches=False
         )
@@ -501,6 +559,7 @@ class DatabaseView(QWidget):
         self.mux.hide()
         self.layout_view = Layout()
         self.layout_view.chosen.connect(self.select_signal)
+        self.layout_view.edit_wanted.connect(self.edit_signal)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
@@ -522,6 +581,11 @@ class DatabaseView(QWidget):
         self.signals.setAccessibleName("Signals")
         self.signals.setUniformRowHeights(True)
         self.signals.currentItemChanged.connect(self._on_signal_chosen)
+        self.signals.itemDoubleClicked.connect(
+            lambda item, _column: self.edit_signal(item.data(0, ROLE_SIGNAL))
+        )
+        self.signals.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.signals.customContextMenuRequested.connect(self._signals_menu)
         self._signal_widths = ColumnWidths(self.signals, ctx.settings, "database.signals")
         inside.addWidget(self.signals, 1)
         self.signal_about = QLabel()
@@ -546,6 +610,7 @@ class DatabaseView(QWidget):
 
         outer = QVBoxLayout(self)
         outer.addLayout(bar)
+        outer.addWidget(self.edit_bar)
         outer.addWidget(self.splitter, 1)
 
         #: Only while showing: a pane nobody is looking at reads no values.
@@ -577,7 +642,8 @@ class DatabaseView(QWidget):
         total = 0
         again = None
         shadowed = self.dbc.shadowed()
-        for path, db in self.dbc.databases.items():
+        touched = self._edit.touched() if self._edit is not None else set()
+        for path, db in self._databases():
             if only is not None and path != only:
                 continue
             for msg in sorted(db.messages, key=lambda m: (m.frame_id, m.name)):
@@ -596,6 +662,14 @@ class DatabaseView(QWidget):
                     for column in range(self.messages.columnCount()):
                         item.setForeground(column, self.palette().brush(QPalette.PlaceholderText))
                     item.setToolTip(NAME, SHADOWED_TIP.format(other=Path(other).name))
+                if self._is_edited(path) and msg.name in touched:
+                    # Said in words as well as by the look: the tooltip, and
+                    # the count in the bar above.
+                    font = item.font(NAME)
+                    font.setItalic(True)
+                    for column in range(self.messages.columnCount()):
+                        item.setFont(column, font)
+                    item.setToolTip(NAME, CHANGED_TIP)
                 for signal in msg.signals:
                     child = QTreeWidgetItem(["", signal.name, "", ""])
                     child.setData(0, ROLE_MESSAGE, msg)
@@ -625,6 +699,7 @@ class DatabaseView(QWidget):
         msg = None if item is None else item.data(0, ROLE_MESSAGE)
         if msg is not self._message:
             self._show_message(msg, "" if item is None else item.data(0, ROLE_PATH))
+        self._path = "" if item is None else item.data(0, ROLE_PATH)
         if item is not None and (name := item.data(0, ROLE_SIGNAL)):
             self.select_signal(name)
 
@@ -697,6 +772,230 @@ class DatabaseView(QWidget):
         self._show_now()
         if self.isVisible():
             self._now_timer.start()
+
+    # --- editing ----------------------------------------------------------------------------
+    def _databases(self):
+        """Each database loaded, with the copy being changed in place of its own."""
+        for path, db in self.dbc.databases.items():
+            yield path, (self._edit.database if self._is_edited(path) else db)
+
+    def _is_edited(self, path: str) -> bool:
+        return self._edit is not None and str(self._edit.path) == str(path)
+
+    def editing(self) -> DatabaseEdit | None:
+        return self._edit
+
+    def _session(self, path: str) -> DatabaseEdit | None:
+        """The edit of this file: the one there is, a new one, or None -- said why."""
+        if self._is_edited(path):
+            return self._edit
+        name = Path(path).name
+        if Path(path).suffix.lower() != ".dbc":
+            kind = Path(path).suffix.lstrip(".").upper() or "database"
+            messages.information(self, "Not changed", NOT_DBC.format(name=name, kind=kind))
+            return None
+        if self._edit is not None and self._edit.changed:
+            other = self._edit.path.name
+            messages.information(self, "Not changed", ONE_AT_A_TIME.format(name=other))
+            return None
+        self._edit = DatabaseEdit(path)
+        return self._edit
+
+    def _make(self, changes, select: str = "", signal: str = "") -> bool:
+        """Make a dialog's changes, as one; refused, it is said and nothing is."""
+        if not changes:
+            return True
+        try:
+            self._edit.apply_all(changes)
+        except EditError as exc:
+            messages.warning(self, "Not changed", str(exc))
+            return False
+        self._changed(select, signal)
+        return True
+
+    def _changed(self, select: str = "", signal: str = "") -> None:
+        """Show the copy as it now is, with what was being looked at still chosen."""
+        wanted = select or (self._message.name if self._message is not None else "")
+        self._message = None
+        self._fill_messages()
+        if wanted:
+            self.select_message(wanted)
+        if signal:
+            self.select_signal(signal)
+        self._show_edit_bar()
+
+    def _show_edit_bar(self) -> None:
+        edit = self._edit
+        count = len(edit.changes) if edit is not None else 0
+        self.edit_bar.setVisible(bool(count))
+        if count:
+            self.edit_label.setText(
+                f"{count} change" + ("" if count == 1 else "s") + f" to {edit.path.name}, not saved"
+            )
+
+    def _on_message_double_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
+        if name := item.data(0, ROLE_SIGNAL):
+            self.edit_signal(name)
+        else:
+            self.edit_message()
+
+    def edit_message(self) -> None:
+        """The chosen message, in its dialog."""
+        msg = self._message
+        if msg is None or self._session(self._path) is None:
+            return
+        dialog = MessageDialog(self, self._edit.message(msg.name))
+        focus_first(dialog)
+        while dialog.exec() == MessageDialog.Accepted:
+            name = dialog.name.text().strip()
+            if self._make(dialog.changes(), select=name):
+                return
+
+    def add_message(self, path: str = "") -> None:
+        path = path or self._path or next(iter(self.dbc.databases), "")
+        if not path or self._session(path) is None:
+            return
+        dialog = MessageDialog(self)
+        focus_first(dialog)
+        while dialog.exec() == MessageDialog.Accepted:
+            if self._make(dialog.changes(), select=dialog.name.text().strip()):
+                return
+
+    def remove_message(self) -> None:
+        msg = self._message
+        if msg is None or self._session(self._path) is None:
+            return
+        self._make([RemoveMessage(msg.name)])
+
+    def edit_signal(self, name: str) -> None:
+        msg = self._message
+        if msg is None or not name or self._session(self._path) is None:
+            return
+        current = self._edit.message(msg.name)
+        signal = next((s for s in current.signals if s.name == name), None)
+        if signal is None:
+            return
+        dialog = SignalDialog(self, msg.name, signal)
+        focus_first(dialog)
+        while dialog.exec() == SignalDialog.Accepted:
+            if self._make(dialog.changes(), signal=dialog.name.text().strip()):
+                return
+
+    def add_signal(self) -> None:
+        msg = self._message
+        if msg is None or self._session(self._path) is None:
+            return
+        dialog = SignalDialog(self, msg.name)
+        focus_first(dialog)
+        while dialog.exec() == SignalDialog.Accepted:
+            if self._make(dialog.changes(), signal=dialog.name.text().strip()):
+                return
+
+    def remove_signal(self) -> None:
+        msg, name = self._message, self.signal_chosen()
+        if msg is None or not name or self._session(self._path) is None:
+            return
+        self._make([RemoveSignal(msg.name, name)])
+
+    def _messages_menu(self, at) -> None:
+        item = self.messages.itemAt(at)
+        if item is not None:
+            self.messages.setCurrentItem(item)
+        menu = QMenu(self.messages)
+        on_message = item is not None
+        on_signal = on_message and bool(item.data(0, ROLE_SIGNAL))
+        menu.addAction("Add message...", lambda: self.add_message(self._path))
+        menu.addAction("Change message...", self.edit_message).setEnabled(on_message)
+        menu.addAction("Remove message", self.remove_message).setEnabled(on_message)
+        menu.addSeparator()
+        menu.addAction("Add signal...", self.add_signal).setEnabled(on_message)
+        menu.addAction(
+            "Change signal...", lambda: self.edit_signal(item.data(0, ROLE_SIGNAL))
+        ).setEnabled(on_signal)
+        menu.addAction("Remove signal", self.remove_signal).setEnabled(on_signal)
+        menu.exec(self.messages.viewport().mapToGlobal(at))
+
+    def _signals_menu(self, at) -> None:
+        item = self.signals.itemAt(at)
+        if item is not None:
+            self.signals.setCurrentItem(item)
+        menu = QMenu(self.signals)
+        menu.addAction("Add signal...", self.add_signal).setEnabled(self._message is not None)
+        menu.addAction(
+            "Change signal...", lambda: self.edit_signal(self.signal_chosen())
+        ).setEnabled(item is not None)
+        menu.addAction("Remove signal", self.remove_signal).setEnabled(item is not None)
+        menu.exec(self.signals.viewport().mapToGlobal(at))
+
+    def undo(self) -> None:
+        if self._edit is not None and self._edit.undo() is not None:
+            self._changed()
+
+    def discard(self) -> None:
+        edit = self._edit
+        if edit is None or not edit.changed:
+            return
+        count = len(edit.changes)
+        answer = messages.question(
+            self,
+            "Discard changes",
+            f"Discard the {count} change" + ("" if count == 1 else "s") + f" to {edit.path.name}?",
+            QMessageBox.Discard | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if answer == QMessageBox.Discard:
+            self._edit = None
+            self._changed()
+
+    def save_as(self) -> None:
+        """Write the changes to a new file, and offer it in place of the old one."""
+        edit = self._edit
+        if edit is None or not edit.changed:
+            return
+        found = edit.problems()
+        errors = [p for p in found if p.level == ERROR]
+        if errors:
+            listed = "\n".join(f"{p.where}: {p.what}" for p in errors[:8])
+            messages.warning(self, "Not saved", f"Put these right first:\n\n{listed}")
+            return
+        if found:
+            listed = "\n".join(f"{p.where}: {p.what}" for p in found[:8])
+            answer = messages.question(
+                self,
+                "Save as",
+                f"Saved as it is, it has:\n\n{listed}\n\nSave it anyway?",
+                QMessageBox.Save | QMessageBox.Cancel,
+                QMessageBox.Cancel,
+            )
+            if answer != QMessageBox.Save:
+                return
+        target = folders.save_file(
+            self,
+            self.ctx,
+            folders.DBC,
+            f"Save {edit.path.name} as",
+            "CAN database (*.dbc);;All files (*)",
+            edit.path.parent,
+            suggested=f"{edit.path.stem}_changed.dbc",
+        )
+        if not target:
+            return
+        try:
+            differences = edit.save_as(target)
+        except (EditError, OSError) as exc:
+            messages.warning(self, "Not saved", str(exc))
+            return
+        if differences:
+            listed = "\n".join(f"{f.where}: {f.what}" for f in differences[:8])
+            messages.warning(
+                self,
+                "Saved, but it reads back differently",
+                f"{Path(target).name} was written, and reading it back gives:\n\n{listed}",
+            )
+        old, renames = str(edit.path), edit.renamed_messages()
+        self._edit = None
+        self._changed()
+        self.saved_as.emit(old, str(target), renames)
 
     # --- multiplexing -------------------------------------------------------------------
     def _fill_multiplexer(self, msg: Message | None) -> None:

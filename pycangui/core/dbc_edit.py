@@ -197,6 +197,18 @@ class DatabaseEdit:
             raise EditError(f"Not changed: {exc}") from exc
         self.changes.append(change)
 
+    def apply_all(self, changes: Iterable[Change]) -> None:
+        """Make several changes as one -- the fields of one dialog -- or none of them."""
+        made = 0
+        try:
+            for change in changes:
+                self.apply(change)
+                made += 1
+        except EditError:
+            del self.changes[len(self.changes) - made :]
+            self._replay()
+            raise
+
     def undo(self) -> Change | None:
         """Take back the last change; the one taken back, or None if none."""
         if not self.changes:
@@ -216,6 +228,20 @@ class DatabaseEdit:
     def described(self) -> list[str]:
         """The changes, a line each, in the order they were made."""
         return [change.described() for change in self.changes]
+
+    def touched(self) -> set[str]:
+        """The messages changed or added, by the names they have now."""
+        names: set[str] = set()
+        for change in self.changes:
+            name = change.name if isinstance(change, AddMessage) else change.message
+            if isinstance(change, SetMessage) and change.field == "name":
+                names.discard(name)
+                name = change.value
+            if isinstance(change, RemoveMessage):
+                names.discard(name)
+                continue
+            names.add(name)
+        return {name for name in names if any(m.name == name for m in self.database.messages)}
 
     def renamed_messages(self) -> dict[str, str]:
         """Old name -> new name, for each message renamed: what refers to a
