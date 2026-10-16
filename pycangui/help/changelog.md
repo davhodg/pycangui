@@ -29,6 +29,9 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- A *udp_multicast* channel opens, shows what pycangui sent as sent, and works on
+  Windows, so frames can be shared with other python-can programs, on the computer
+  or the local network.
 - A plugin behind the one pycangui ships was also said to differ from it at the same version.
 
 ## [0.3.0] - 2026-10-12

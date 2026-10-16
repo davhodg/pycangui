@@ -38,6 +38,7 @@ from pycangui.core import (
     workspace_files,
     workspaces,
 )
+from pycangui.core.bus import share_udp_on_network
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
@@ -156,6 +157,15 @@ AT_END = 4
 #: In QSettings, not the workspace: whether this person has been told, on
 #: this machine, where a shortcut is made.
 SHORTCUT_TOLD_KEY = "shortcut/told"
+#: In QSettings: whether udp_multicast channels reach the local network.
+UDP_NETWORK_KEY = "udp/local_network"
+UDP_NETWORK_TIP = (
+    "Off, a udp_multicast channel stays on this computer: other programs on it\n"
+    "share its frames, and nothing goes out on a network. On, it reaches the\n"
+    "local network too, and no further: every computer on it that has joined\n"
+    "the group hears it -- and can send into it. For this computer, not a\n"
+    "workspace; a channel already connected follows it when it connects again."
+)
 HISTORY_KEY = "signals.history"
 HISTORY_TIP = (
     "How many samples of each decoded signal are kept, for the plot and for\n"
@@ -567,6 +577,15 @@ class MainWindow(QMainWindow):
             "is not. Turn it off to load them without being asked."
         )
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
+        # In QSettings, with this computer: whether its frames may leave it is
+        # about the machine and the network it is on, not about a workspace.
+        self.udp_network = settings_menu.addAction("Share UDP multicast on the local network")
+        self.udp_network.setCheckable(True)
+        shared = QSettings().value(UDP_NETWORK_KEY, False, type=bool)
+        self.udp_network.setChecked(shared)
+        share_udp_on_network(shared)
+        self.udp_network.setToolTip(UDP_NETWORK_TIP)
+        self.udp_network.toggled.connect(self._set_udp_network)
         self.theme_menu = theme.menu(self)
         settings_menu.insertMenu(verbose, self.theme_menu)
         self.history_menu = self._history_menu()
@@ -1860,6 +1879,28 @@ class MainWindow(QMainWindow):
         self.events.information(f"Exported {count} signal(s), {rows} row(s) to {path}")
 
     @Slot(bool)
+    def _set_udp_network(self, on: bool) -> None:
+        QSettings().setValue(UDP_NETWORK_KEY, on)
+        share_udp_on_network(on)
+        self.events.information(
+            (
+                "UDP multicast channels will reach the local network: every computer on it "
+                "that has joined the group hears them, and can send to them."
+            )
+            if on
+            else "UDP multicast channels will stay on this computer."
+        )
+        if any(
+            (bus := self.channels.get(name)) is not None
+            and bus.is_connected
+            and bus.interface == "udp_multicast"
+            for name in self.channels.names()
+        ):
+            self.events.information(
+                "A UDP multicast channel already connected goes on as it was until it is "
+                "connected again."
+            )
+
     def _set_strict_dbc(self, on: bool) -> None:
         self.ctx.settings.set("dbc.strict", on)
         self.events.information(

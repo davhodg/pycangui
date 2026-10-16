@@ -20,6 +20,7 @@ from __future__ import annotations
 import subprocess
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 
 import can
@@ -66,6 +67,32 @@ class Frame:
         return len(self.data)
 
 
+#: Backends that refuse to be asked for what was sent on them: python-can's
+#: UDP multicast bus raises rather than open. It hands it back all the same --
+#: a multicast group delivers to everyone in it, the sender too -- but marked
+#: as received, so pycangui tells its own frames from the others itself.
+NO_ECHO = frozenset({"udp_multicast"})
+#: How long a frame sent waits to come back before it is no longer looked for.
+ECHO_WAIT_S = 2.0
+#: How far a udp_multicast frame goes: 0 keeps it on this computer, 1 lets it
+#: out onto the local network (and no further, past a router). python-can's
+#: own default is 1; pycangui's is 0, and the local network is a choice made
+#: in Tools > Settings -- anything on that network could otherwise hear the
+#: bus, and send into it.
+LOCAL_ONLY, LOCAL_NETWORK = 0, 1
+_udp_hop_limit = LOCAL_ONLY
+
+
+def share_udp_on_network(on: bool) -> None:
+    """Whether udp_multicast channels opened from now on reach the local network."""
+    global _udp_hop_limit
+    _udp_hop_limit = LOCAL_NETWORK if on else LOCAL_ONLY
+
+
+def udp_hop_limit() -> int:
+    return _udp_hop_limit
+
+
 class _Collector(can.Listener):
     """Runs on the Notifier thread; just stores frames for the GUI to drain."""
 
@@ -74,11 +101,40 @@ class _Collector(can.Listener):
         self._t0 = t0
         self._lock = threading.Lock()
         self._batch: list[Frame] = []
+        #: What was sent on a backend that does not mark its echoes, oldest
+        #: first, each with when: (id, extended, data, sent at).
+        self._sent: deque[tuple[int, bool, bytes, float]] = deque()
         #: Counted as well as listed, so the log can say when a bus starts
         #: and stops producing them without a line per frame.
         self.errors = 0
 
+    def expect(self, msg: can.Message) -> None:
+        """A frame about to be sent, to be known for ours when it comes back."""
+        with self._lock:
+            self._sent.append(
+                (msg.arbitration_id, msg.is_extended_id, bytes(msg.data), time.monotonic())
+            )
+
+    def _ours(self, msg: can.Message) -> bool:
+        """Whether a frame received is one sent here coming back: the oldest
+        still waiting, if it is the same frame. Called with the lock held."""
+        now = time.monotonic()
+        while self._sent and now - self._sent[0][3] > ECHO_WAIT_S:
+            self._sent.popleft()
+        if self._sent and self._sent[0][:3] == (
+            msg.arbitration_id,
+            msg.is_extended_id,
+            bytes(msg.data),
+        ):
+            self._sent.popleft()
+            return True
+        return False
+
     def on_message_received(self, msg: can.Message) -> None:
+        if self._sent and msg.is_rx:
+            with self._lock:
+                if self._ours(msg):
+                    msg.is_rx = False
         frame = self._to_frame(msg)
         with self._lock:
             if frame.error:
@@ -211,11 +267,13 @@ class BusManager(QObject):
         # The channel is coerced because the backends disagree about its type
         # and a text box can only produce a string.
         channel_value = coerce_channel(interface, channel)
-        kwargs: dict = {
-            "interface": interface,
-            "channel": channel_value,
-            "receive_own_messages": True,
-        }
+        kwargs: dict = {"interface": interface, "channel": channel_value}
+        # So the trace shows what pycangui sent -- except on a backend that
+        # cannot, which echoes it here instead (see _echo_sends).
+        if interface not in NO_ECHO:
+            kwargs["receive_own_messages"] = True
+        if interface == "udp_multicast":
+            kwargs["hop_limit"] = _udp_hop_limit
         if interface != "virtual":
             kwargs["bitrate"] = bitrate
             # Only what the backend declares. Handing fd=True to one that does
@@ -250,6 +308,8 @@ class BusManager(QObject):
         if not self._shared_clock:
             self._t0 = time.monotonic()
         self._collector = _Collector(self.channel_name, self._t0)
+        if interface in NO_ECHO:
+            self._echo_sends(self.bus)
         # Before the notifier starts, so a filtered channel never has a
         # window at the beginning where everything comes through.
         self._apply_filters()
@@ -386,6 +446,20 @@ class BusManager(QObject):
     def remove_listener(self, listener: can.Listener) -> None:
         if self.notifier is not None and listener in self.notifier.listeners:
             self.notifier.remove_listener(listener)
+
+    def _echo_sends(self, bus) -> None:
+        """Note each frame sent on ``bus``, so that it is shown as sent when the
+        multicast group hands it back. On the bus object itself, so that a
+        cyclic transmission and a protocol stack sending through it are
+        noted as well as ``send``."""
+        real = bus.send
+        collector = self._collector
+
+        def send(msg: can.Message, timeout: float | None = None) -> None:
+            collector.expect(msg)  # before: it can be back before send returns
+            real(msg, timeout)
+
+        bus.send = send
 
     def send(self, can_id: int, data: bytes, *, extended: bool = False, fd: bool = False) -> None:
         if self.bus is None:

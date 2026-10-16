@@ -26,6 +26,7 @@ from pycangui.core.context import Context
 from pycangui.core.detect import (
     Channel,
     channels_for,
+    has_bitrate,
     takes_a_channel,
 )
 from pycangui.core.filters import describe
@@ -64,6 +65,10 @@ ROLE_EXTRA = 0x0100  # Qt.UserRole: the rest of a detected adapter's configurati
 BITRATE_TIP = (
     "The arbitration bitrate, which every node on the bus has to agree\n"
     "on. Getting it wrong is the usual reason a bus looks idle."
+)
+NO_BITRATE_TIP = (
+    "{interface} has no bitrate: it carries frames between programs, on this\n"
+    "computer and on the local network, and there is no wire to time."
 )
 
 
@@ -380,6 +385,12 @@ class ConnectBar(QToolBar):
             if usable
             else f"{interface} does not use a channel"
         )
+        # Greyed rather than left to be set and ignored: a multicast group
+        # carries frames between programs, and there is no wire to time.
+        wire = has_bitrate(interface)
+        for box in (self.bitrate, self.data_bitrate):
+            box.setEnabled(wire and not self.button.isChecked())
+        self.bitrate.setToolTip(BITRATE_TIP if wire else NO_BITRATE_TIP.format(interface=interface))
 
     def _fill_channels(self, entries, select: str = "") -> None:
         """Put entries in the channel box and select one by its channel.
