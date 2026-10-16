@@ -29,6 +29,8 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- CAN Transmit: a named value's list stays open when double-clicked, and the value chosen no
+  longer shows over the old one in the Windows 11 style.
 - A *udp_multicast* channel opens, shows what pycangui sent as sent, and works on
   Windows, so frames can be shared with other python-can programs, on the computer
   or the local network.

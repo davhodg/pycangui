@@ -149,6 +149,25 @@ def editable_columns(item: QTreeWidgetItem) -> tuple[int, ...]:
     return (COL_NAME, COL_ID, COL_DATA, COL_PERIOD)
 
 
+#: How often to look again for the mouse button to be let go.
+RELEASE_POLL_MS = 20
+
+
+def _open_when_released(box: QComboBox) -> None:
+    """Open the list once no mouse button is held.
+
+    The editor opens on the second press of a double-click. A list opened then
+    is under the pointer with the button still down, and a combo box takes the
+    release that follows for a choice: whatever item was under the pointer was
+    picked, and the list shut, in the moment it was seen to open. Opened from
+    the keyboard, nothing is held and it opens at once.
+    """
+    if QApplication.mouseButtons() != Qt.NoButton:
+        QTimer.singleShot(RELEASE_POLL_MS, box, lambda: _open_when_released(box))
+        return
+    box.showPopup()
+
+
 class _OnlyWhatIsTheRows(QStyledItemDelegate):
     """Opens an editor only on the cells ``editable_columns`` allows.
 
@@ -171,10 +190,14 @@ class _OnlyWhatIsTheRows(QStyledItemDelegate):
         box.setEditable(True)
         box.setInsertPolicy(QComboBox.NoInsert)
         box.addItems([named(number, name) for number, name in choices])
+        # Its own background: the Windows 11 style paints none, and the
+        # cell's old value showed through under the new one.
+        box.setAutoFillBackground(True)
+        box.lineEdit().setAutoFillBackground(True)
         # Picking one is the whole edit, so it is taken at once rather than
         # waiting for Return.
         box.activated.connect(lambda _index: self._picked(box))
-        QTimer.singleShot(0, box.showPopup)
+        QTimer.singleShot(0, box, lambda: _open_when_released(box))
         return box
 
     def _picked(self, box) -> None:

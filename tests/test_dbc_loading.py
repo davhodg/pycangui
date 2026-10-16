@@ -121,6 +121,51 @@ def test_a_signal_with_named_values_is_picked_from_a_list(app, choices_row):
     assert item.text(COL_DATA).startswith("02")
 
 
+def test_the_list_opens_only_once_the_mouse_button_is_let_go(app, choices_row, monkeypatch):
+    """Opened on the second press of a double-click, with the button still
+    down, the list took the release for a choice and shut as it opened."""
+    from PySide6.QtCore import Qt
+
+    from pycangui.ui import tx_view
+
+    window, _row, item = choices_row
+    held = [True]
+    monkeypatch.setattr(
+        tx_view.QApplication,
+        "mouseButtons",
+        staticmethod(lambda: Qt.LeftButton if held[0] else Qt.NoButton),
+    )
+    opened = []
+    monkeypatch.setattr(QComboBox, "showPopup", lambda self: opened.append(self))
+    tree = window.tx.tree
+    tree.edit(tree.indexFromItem(item.child(0), COL_DATA))
+    _wait(app, 0.1)
+    assert opened == [], "not while the button is down"
+    held[0] = False
+    _wait(app, 0.1)
+    assert len(opened) == 1
+
+
+def test_the_box_hides_the_value_it_is_over(app, choices_row):
+    """The Windows 11 style paints no background for it, and the cell's old
+    value showed through under the new one."""
+    window, _row, item = choices_row
+    tree = window.tx.tree
+    tree.edit(tree.indexFromItem(item.child(0), COL_DATA))
+    app.processEvents()
+    box = tree.findChild(QComboBox)
+    assert box.autoFillBackground() and box.lineEdit().autoFillBackground()
+
+
+def _wait(app, seconds):
+    import time
+
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.005)
+
+
 @pytest.mark.parametrize("typed", ["2", "Fault", "Fault (2)", " 2 "])
 def test_however_it_is_put_in_it_is_shown_as_name_and_number(app, choices_row, typed):
     _window, _row, item = choices_row
