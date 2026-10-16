@@ -41,6 +41,10 @@ def checksum(name: str, can_id: int, data: bytes, *, ctx) -> int | None:
     byte or nibble chosen there, so this function decides the arithmetic and
     nothing else.
 
+    For a repeating message it is called from python-can's sending thread,
+    once a frame, not from the window's: keep it to arithmetic. A slow one
+    holds the message back, and the window is not to be touched from here.
+
     Example -- a sum over the first six bytes, seeded with the identifier,
     which is the shape a great many proprietary checksums take:
 

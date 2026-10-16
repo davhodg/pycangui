@@ -21,6 +21,7 @@ import subprocess
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import can
@@ -472,9 +473,20 @@ class BusManager(QObject):
             self.error.emit(f"Send failed: {exc}")
 
     def send_periodic(
-        self, can_id: int, data: bytes, period_s: float, *, extended: bool = False, fd: bool = False
+        self,
+        can_id: int,
+        data: bytes,
+        period_s: float,
+        *,
+        extended: bool = False,
+        fd: bool = False,
+        modifier: Callable[[can.Message], None] | None = None,
     ) -> can.broadcastmanager.CyclicSendTaskABC | None:
         """Start a cyclic transmission; hardware-timed where the adapter supports it.
+
+        ``modifier`` is handed each frame just before it is sent, to change
+        it -- a counter, a checksum. It is called from python-can's sending
+        thread, which then does the timing in place of the adapter.
 
         Returns the task (``task.modify_data(msg)`` / ``task.stop()``), or None
         if not connected. All tasks are stopped automatically on disconnect.
@@ -484,7 +496,7 @@ class BusManager(QObject):
             return None
         msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=extended, is_fd=fd)
         try:
-            return self.bus.send_periodic(msg, period_s)
+            return self.bus.send_periodic(msg, period_s, modifier_callback=modifier)
         except can.CanError as exc:
             self.error.emit(f"Cyclic send failed: {exc}")
             return None

@@ -24,8 +24,11 @@ worst kind of wrong.
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
+import can
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
@@ -400,12 +403,10 @@ class TxView(QWidget):
         #: checksum in the list then comes from the named algorithms.
         self.hooks = hooks
         self._tasks: dict[int, object] = {}  # top-level row -> periodic task
-        #: Rows pycangui times itself, because every frame of them differs.
-        #: See _start_row: an adapter repeating fixed bytes cannot carry a
-        #: counter, and updating a free-running task races it.
-        self._timers: dict[int, QTimer] = {}
         #: How many frames each row has sent, which is what the counter counts.
+        #: Counted from python-can's sending thread as well as from here.
         self._sent: dict[int, int] = {}
+        self._counting = threading.Lock()
         self._loading = False
 
         self.tree = QTreeWidget()
@@ -781,46 +782,62 @@ class TxView(QWidget):
         return any(self.fields(row))
 
     def _payload(self, row: int, data: bytes, can_id: int) -> bytes:
-        """The bytes for this row's next frame, counter and checksum included.
+        """The bytes for this row's next frame, counter and checksum included."""
+        return self._frames(row, data, can_id)()
+
+    def _next_count(self, row: int) -> int:
+        with self._counting:
+            sent = self._sent.get(row, 0)
+            self._sent[row] = sent + 1
+        return sent
+
+    def _frames(self, row: int, data: bytes, can_id: int) -> Callable[[], bytes]:
+        """What makes this row's frames: one frame per call.
 
         Every call advances the counter, because every call is a frame going
         out. A one-shot send of a counted message counts too -- a receiver
         does not know or care which button sent it, and a manual send that
         repeated the last value would be rejected like any other repeat.
+
+        Everything it needs is taken from the row now, so that it can be
+        called from python-can's sending thread, where the list must not be
+        touched. An edit to the row restarts its task with a new one.
         """
         counter, checksum = self.fields(row)
         if counter is None and checksum is None:
-            return data
-        sent = self._sent.get(row, 0)
-        self._sent[row] = sent + 1
-        if (counter and counter.signal) or (checksum and checksum.signal):
-            return self._payload_by_signal(row, can_id, counter, checksum, sent) or data
-        # In two passes, so the hook is handed the same bytes the built-in
-        # algorithms would see: the counter goes in first, and only then is
-        # anybody asked what the checksum over them should be. Handing over
-        # the payload as typed would be the very trap the ordering exists to
-        # avoid, one layer further out.
-        data = tx_fields.apply(data, counter, None, sent=sent)
-        computed = None
+            return lambda: data
+        hook = None
         if checksum is not None and self.hooks is not None:
-            computed = self._ask_hook(row, can_id, data)
-        return tx_fields.apply(data, None, checksum, computed=computed)
+            item = self.item(row)
+            name = item.text(COL_NAME) or item.data(0, ROLE_MESSAGE) or ""
+            hooks = self.hooks
+            # A maker's checksum is nobody's standard: the hook decides the
+            # arithmetic, and the configuration still decides where it goes.
+            hook = lambda frame: hooks.call("transmit", "checksum", name, can_id, frame)  # noqa: E731
+        if (counter and counter.signal) or (checksum and checksum.signal):
+            return self._frames_by_signal(row, data, counter, checksum, hook)
 
-    def _ask_hook(self, row: int, can_id: int, data: bytes) -> int | None:
-        """A maker's checksum is nobody's standard: the hook decides the
-        arithmetic, and the configuration still decides where it goes."""
-        name = self.item(row).text(COL_NAME) or self.item(row).data(0, ROLE_MESSAGE) or ""
-        return self.hooks.call("transmit", "checksum", name, can_id, data)
+        def frame() -> bytes:
+            # In two passes, so the hook is handed the same bytes the built-in
+            # algorithms would see: the counter goes in first, and only then is
+            # anybody asked what the checksum over them should be. Handing over
+            # the payload as typed would be the very trap the ordering exists
+            # to avoid, one layer further out.
+            counted = tx_fields.apply(data, counter, None, sent=self._next_count(row))
+            computed = hook(counted) if hook is not None else None
+            return tx_fields.apply(counted, None, checksum, computed=computed)
 
-    def _payload_by_signal(
+        return frame
+
+    def _frames_by_signal(
         self,
         row: int,
-        can_id: int,
+        data: bytes,
         counter: Counter | None,
         checksum: Checksum | None,
-        sent: int,
-    ) -> bytes | None:
-        """The frame for a row whose fields are named database signals.
+        hook: Callable[[bytes], int | None] | None,
+    ) -> Callable[[], bytes]:
+        """The frames for a row whose fields are named database signals.
 
         Re-encoded rather than patched. A signal is not necessarily
         byte-aligned -- it may be three bits straddling a byte boundary, and
@@ -828,32 +845,40 @@ class TxView(QWidget):
         to poke. The database knows where the bits go; asking it twice is
         cheaper than reimplementing it once.
 
-        Returns None where the message is not in the database any more, and
-        the caller sends the bytes it already had rather than nothing.
+        Where the message is not in the database any more, or will not
+        encode, the bytes already on the row are sent rather than nothing,
+        and that is said once rather than once a frame.
         """
         item = self.item(row)
         message = self.dbc.message_by_name(item.data(0, ROLE_MESSAGE) or "")
         if message is None:
             self.ctx.warn(f"TX row {row + 1}: its message is not in the loaded database")
-            return None
+            return lambda: data
         values = self._child_values(item, names=True)
-        hook = None
-        if checksum is not None and self.hooks is not None:
-            hook = lambda frame: self._ask_hook(row, can_id, frame)  # noqa: E731
-        try:
-            return tx_fields.apply_signals(
-                lambda v: message.encode(v, padding=False, strict=False),
-                values,
-                counter,
-                checksum,
-                sent=sent,
-                counter_bits=_signal_bits(message, counter.signal) if counter else None,
-                hook=hook,
-                checksum_bits=_signal_bits(message, checksum.signal) if checksum else None,
-            )
-        except Exception as exc:  # a renamed signal, or one out of range
-            self.ctx.warn(f"TX {message.name}: {exc}")
-            return None
+        counter_bits = _signal_bits(message, counter.signal) if counter else None
+        checksum_bits = _signal_bits(message, checksum.signal) if checksum else None
+        warned = False
+
+        def frame() -> bytes:
+            nonlocal warned
+            try:
+                return tx_fields.apply_signals(
+                    lambda v: message.encode(v, padding=False, strict=False),
+                    values,
+                    counter,
+                    checksum,
+                    sent=self._next_count(row),
+                    counter_bits=counter_bits,
+                    hook=hook,
+                    checksum_bits=checksum_bits,
+                )
+            except Exception as exc:  # a renamed signal, or one out of range
+                if not warned:
+                    warned = True
+                    self.ctx.warn(f"TX {message.name}: {exc}")
+                return data
+
+        return frame
 
     def _mark_bytes(self, row: int) -> None:
         """Say on the message itself which of its bytes are computed.
@@ -988,7 +1013,7 @@ class TxView(QWidget):
         self._mark_bytes(row)
         # Restart it if it was running: which timer it belongs on has just
         # changed, and so has the payload.
-        if row in self._tasks or row in self._timers:
+        if row in self._tasks:
             self._stop_row(row)
             self._start_row(row)
         self._save()
@@ -1073,59 +1098,37 @@ class TxView(QWidget):
             self.ctx.warn(f"TX {exc}")
             self._set_cyclic(row, False)
             return
+        stamp = None
         if self.computes(row):
-            # Our own timer, one frame at a time. The adapter's cyclic task
-            # repeats fixed bytes, and a counter has to differ on every frame
-            # -- modifying a free-running task instead would race it, so some
-            # frames would carry a repeated count and some would skip one,
-            # which is exactly what the receiver is checking for. The cost is
-            # the GUI's jitter in place of the adapter's timing.
-            self._sent.setdefault(row, 0)
-            timer = QTimer(self, interval=max(1, round(period * 1000)))
-            timer.timeout.connect(lambda r=row: self._tick(r))
-            timer.start()
-            self._timers[row] = timer
-            return
-        task = self.bus.send_periodic(can_id, data, period, extended=ext, fd=fd)
+            # Still python-can's task, which keeps time in a thread of its own,
+            # but one that asks for each frame's bytes just before sending it:
+            # a counter has to differ on every frame, and the adapter's own
+            # cyclic task repeats fixed ones. Timed from the GUI's thread
+            # instead, as it once was, a busy trace held frames back, and 20 ms
+            # became 50.
+            frames = self._frames(row, data, can_id)
+
+            def stamp(msg: can.Message) -> None:
+                payload = frames()
+                msg.data = bytearray(payload)
+                msg.dlc = len(payload)
+
+        task = self.bus.send_periodic(can_id, data, period, extended=ext, fd=fd, modifier=stamp)
         if task is None:
             self._set_cyclic(row, False)
             return
         self._tasks[row] = task
 
-    def _tick(self, row: int) -> None:
-        """One frame of a counted message.
-
-        Stops itself rather than complaining once per period: a row that
-        cannot be built now will not build in ten milliseconds either, and a
-        warning at the period is a log nobody can read.
-        """
-        try:
-            can_id, data, ext, fd, _period = self._message(row)
-        except ValueError as exc:
-            self.ctx.warn(f"TX {exc}")
-            self._stop_row(row)
-            self._set_cyclic(row, False)
-            return
-        self.bus.send(can_id, self._payload(row, data, can_id), extended=ext, fd=fd)
-
     def _stop_row(self, row: int) -> None:
         task = self._tasks.pop(row, None)
         if task is not None:
             task.stop()
-        timer = self._timers.pop(row, None)
-        if timer is not None:
-            timer.stop()
-            timer.deleteLater()
 
     def _rebuild_tasks(self) -> None:
         """Row numbers shift when rows are removed; restart from the checkboxes."""
         for task in self._tasks.values():
             task.stop()
-        for timer in self._timers.values():
-            timer.stop()
-            timer.deleteLater()
         self._tasks = {}
-        self._timers = {}
         for row in range(self.message_count()):
             if self.item(row).checkState(COL_CYCLIC) == Qt.Checked:
                 self._start_row(row)
@@ -1148,22 +1151,18 @@ class TxView(QWidget):
 
     def cyclic_count(self) -> int:
         """How many messages in this list are repeating right now."""
-        return len(self._tasks) + len(self._timers)
+        return len(self._tasks)
 
     @Slot()
     def stop_all(self) -> None:
         """Stop everything repeating in *this* list."""
-        for row in [*self._tasks, *self._timers]:
+        for row in [*self._tasks]:
             self._stop_row(row)
             self._set_cyclic(row, False)
 
     @Slot()
     def _on_disconnected(self) -> None:
         self._tasks.clear()  # the bus stops its own tasks
-        for timer in self._timers.values():  # ours it does not know about
-            timer.stop()
-            timer.deleteLater()
-        self._timers.clear()
         for row in range(self.message_count()):
             self._set_cyclic(row, False)
 

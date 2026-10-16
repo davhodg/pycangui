@@ -29,6 +29,7 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- CAN Transmit: a message with a counter or a checksum keeps its period while the window is busy.
 - CAN Transmit: a named value's list stays open when double-clicked.
 - In the Windows 11 style, a cell being edited no longer shows its old value under the new one.
 - A *udp_multicast* channel opens, shows what pycangui sent as sent, and works on
