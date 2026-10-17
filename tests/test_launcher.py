@@ -8,6 +8,7 @@ user saw was a window that never opened and no message anywhere.
 """
 
 import importlib
+import os
 import sys
 from pathlib import Path
 
@@ -274,6 +275,179 @@ def test_the_shell_launcher_is_executable_in_git():
         check=True,
     ).stdout
     assert staged.startswith("100755"), staged
+
+
+# --- a .venv whose Python has gone ----------------------------------------------------
+# A .venv is made from one Python. Uninstall that one, or replace it with a
+# newer version, and the .venv cannot start: under pythonw that was a window
+# that never opened, and on Linux a dangling link was taken for a first run.
+# Run for real, in a folder of their own, with the Python they may find chosen.
+windows_only = pytest.mark.skipif(sys.platform != "win32", reason="cmd.exe")
+not_windows = pytest.mark.skipif(sys.platform == "win32", reason="symbolic links and sh")
+
+
+def _system32() -> str:
+    return str(Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32")
+
+
+def _run_cmd(folder: Path, answers: str = "", path: str | None = None, **env):
+    """pycangui.cmd in ``folder``, with only System32 on the PATH unless told."""
+    import shutil
+    import subprocess
+
+    shutil.copy(PROJECT / "pycangui.cmd", folder)
+    return subprocess.run(
+        ["cmd", "/c", str(folder / "pycangui.cmd")],
+        cwd=folder,
+        input=answers + "\r\n\r\n",  # and Enter for the pause
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": path or _system32(), **env},
+        timeout=180,
+    )
+
+
+def _venv_of(folder: Path, home: str) -> None:
+    """A .venv made from the Python in ``home``, as far as the launcher can tell.
+
+    Its python.exe is an empty file, so it must never be run.
+    """
+    (folder / ".venv" / "Scripts").mkdir(parents=True)
+    (folder / ".venv" / "Scripts" / "python.exe").write_bytes(b"")
+    (folder / ".venv" / "pyvenv.cfg").write_text(
+        f"home = {home}\ninclude-system-site-packages = false\nversion = 3.14.6\n",
+        encoding="utf-8",
+    )
+
+
+GONE = r"C:\Program Files\No Such Python 3.14"
+
+
+@windows_only
+def test_the_windows_launcher_keeps_a_venv_whose_python_has_gone_if_told_to(tmp_path):
+    _venv_of(tmp_path, GONE)
+    ran = _run_cmd(tmp_path, "N")
+    assert ran.returncode == 1
+    assert GONE in ran.stdout, "the whole path, spaces and all"
+    assert (tmp_path / ".venv" / "pyvenv.cfg").exists()
+
+
+@windows_only
+def test_the_windows_launcher_makes_a_venv_whose_python_has_gone_again(tmp_path):
+    """With no Python on the PATH, setting up again stops at its first step."""
+    _venv_of(tmp_path, GONE)
+    ran = _run_cmd(tmp_path, "Y")
+    assert ran.returncode == 1
+    assert not (tmp_path / ".venv").exists()
+
+
+@windows_only
+def test_a_failed_update_of_a_venv_that_worked_keeps_it(tmp_path):
+    """Its Python is there, so it is not a first run: the libraries failing to
+    install leaves the .venv alone, and the next start tries again.
+
+    A real .venv, without pip, so the install fails: an empty python.exe
+    standing in for one has Windows put up a box saying it cannot run.
+    """
+    import subprocess
+
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--without-pip", str(tmp_path / ".venv")], check=True
+    )
+    ran = _run_cmd(tmp_path)
+    assert ran.returncode == 1
+    assert (tmp_path / ".venv" / "pyvenv.cfg").exists()
+
+
+@windows_only
+def test_a_failed_first_setup_leaves_no_half_made_venv(tmp_path):
+    """Otherwise the next run takes it for a finished one, and keeps the
+    Python it was made with. Here .venv is made, and the install fails: there
+    is nothing to install in this folder, and no index to install from."""
+    ran = _run_cmd(
+        tmp_path,
+        path=f"{Path(sys.executable).parent};{_system32()}",
+        PIP_INDEX_URL="http://127.0.0.1:9/",
+        PIP_RETRIES="0",
+        PIP_TIMEOUT="1",
+    )
+    assert ran.returncode == 1
+    assert not (tmp_path / ".venv").exists(), ran.stdout
+
+
+def _shell_check(folder: Path) -> Path:
+    """The shell launcher, as far as its .venv check, and a word if it got past it."""
+    text = (PROJECT / "pycangui.sh").read_text(encoding="utf-8")
+    cut = text.index("if [ ! -x .venv/bin/python ]; then\n")
+    script = folder / "pycangui.sh"
+    script.write_text(text[:cut] + 'echo "GOT PAST THE CHECK"\n', encoding="utf-8")
+    return script
+
+
+def _run_sh(script: Path, **kwargs):
+    import subprocess
+
+    return subprocess.run(
+        ["sh", str(script)],
+        cwd=script.parent,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        timeout=180,
+        **kwargs,
+    )
+
+
+@not_windows
+def test_the_shell_launcher_takes_a_link_to_a_python_that_has_gone_for_what_it_is(tmp_path):
+    script = _shell_check(tmp_path)
+    (tmp_path / ".venv" / "bin").mkdir(parents=True)
+    (tmp_path / ".venv" / "bin" / "python").symlink_to(tmp_path / "no-such-python3.14")
+    ran = _run_sh(script)
+    assert ran.returncode == 1, "no terminal to ask in, so it says what to do and stops"
+    assert "GOT PAST THE CHECK" not in ran.stdout
+    assert (tmp_path / ".venv").exists(), "and deletes nothing it was not told to"
+
+
+@not_windows
+@pytest.mark.parametrize("made", ("3.1", "this one"))
+def test_the_shell_launcher_notices_a_python_replaced_by_another_version(tmp_path, made):
+    script = _shell_check(tmp_path)
+    (tmp_path / ".venv" / "bin").mkdir(parents=True)
+    python = Path(sys.executable).resolve()
+    (tmp_path / ".venv" / "bin" / "python").symlink_to(python)
+    version = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.0" if made == "this one" else "3.1.0"
+    )
+    (tmp_path / ".venv" / "pyvenv.cfg").write_text(f"version = {version}\n", encoding="utf-8")
+    ran = _run_sh(script)
+    # Only a python named with its version says which version it is.
+    if made == "this one" or not python.name.startswith("python3."):
+        assert "GOT PAST THE CHECK" in ran.stdout, ran.stdout + ran.stderr
+    else:
+        assert ran.returncode == 1 and "GOT PAST THE CHECK" not in ran.stdout
+
+
+@not_windows
+def test_a_failed_first_setup_on_linux_leaves_no_half_made_venv(tmp_path):
+    import shutil
+
+    shutil.copy(PROJECT / "pycangui.sh", tmp_path)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "python3").symlink_to(Path(sys.executable).resolve())
+    ran = _run_sh(
+        tmp_path / "pycangui.sh",
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "PIP_INDEX_URL": "http://127.0.0.1:9/",
+            "PIP_RETRIES": "0",
+            "PIP_TIMEOUT": "1",
+        },
+    )
+    assert ran.returncode == 1
+    assert not (tmp_path / ".venv").exists(), ran.stdout + ran.stderr
 
 
 # --- the check that runs before every start ------------------------------------------------

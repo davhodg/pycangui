@@ -18,8 +18,20 @@ rem cost before Python was reached: the dependency check is a whole Python
 rem start on its own, and none of it is visible from inside the application.
 set PYCANGUI_LAUNCH_AT=%TIME%
 
-if exist ".venv\Scripts\python.exe" goto :check
+if not exist ".venv\Scripts\python.exe" goto :setup
 
+rem A .venv is made from one Python, and its python.exe only passes the
+rem work on to that one, named as home in pyvenv.cfg. Uninstalled -- or
+rem replaced by a newer version, which on Windows lives in a folder of its
+rem own -- and python.exe cannot start, and pythonw says nothing about it:
+rem the window simply never opens. Checked by looking for the file, which
+rem costs nothing, rather than by starting Python.
+set "VENV_HOME="
+if exist ".venv\pyvenv.cfg" for /f "usebackq tokens=1,* delims== " %%A in (".venv\pyvenv.cfg") do if /i "%%A"=="home" set "VENV_HOME=%%B"
+if defined VENV_HOME if not exist "%VENV_HOME%\python.exe" goto :gone
+goto :check
+
+:setup
 echo.
 echo ============================================================
 echo  First run: setting up pycangui
@@ -49,6 +61,9 @@ rem The interpreter just checked, by its full path, so that uv builds .venv
 rem from the same one: left to itself, uv chooses by rules of its own, and
 rem can even fetch a Python of its own.
 for /f "delims=" %%P in ('python -c "import sys; print(sys.executable)"') do set "PYEXE=%%P"
+rem From here on, a failure leaves no half-made .venv behind: the next run
+rem would take it for a finished one, and keep the Python it was made with.
+set FIRSTRUN=1
 
 rem uv is a much faster drop-in replacement for pip. Used if it happens to be
 rem installed; never required.
@@ -61,7 +76,7 @@ echo  [2/3] Creating the virtual environment in .venv ...
 if defined UV (
     uv venv --python "%PYEXE%" .venv
 ) else (
-    python -m venv .venv
+    "%PYEXE%" -m venv .venv
     if errorlevel 1 goto :fail
     ".venv\Scripts\python.exe" -m pip install --upgrade pip
 )
@@ -137,6 +152,39 @@ set PYCANGUI_PYTHON_AT=%TIME%
 start "" ".venv\Scripts\pythonw.exe" -m pycangui %*
 exit /b 0
 
+:gone
+echo.
+echo  pycangui's .venv folder was made with a Python that is not there any more:
+echo.
+echo      %VENV_HOME%
+echo.
+echo  It was probably uninstalled, or replaced by a newer version.
+echo.
+echo  .venv holds only the libraries pycangui runs on, made for that Python,
+echo  so it has to be made again with the Python installed now. Your
+echo  workspaces and settings are not in it, and are kept.
+echo.
+choice /c YN /m " Delete .venv and set it up again"
+if errorlevel 2 goto :keepvenv
+rmdir /s /q ".venv"
+if exist ".venv" goto :cannotdelete
+goto :setup
+
+:keepvenv
+echo.
+echo .venv was left as it is, and pycangui cannot start until it is made
+echo again: delete the .venv folder beside this script, and run it again.
+pause
+exit /b 1
+
+:cannotdelete
+echo.
+echo .venv could not be deleted completely: something may still be using it.
+echo Close pycangui if it is open, delete the .venv folder beside this
+echo script by hand, and run it again.
+pause
+exit /b 1
+
 :nopython
 echo.
 echo Python was not found on the PATH.
@@ -154,9 +202,15 @@ pause
 exit /b 1
 
 :fail
+set "FAILED=%errorlevel%"
 echo.
-echo Setup failed ^(errorlevel %errorlevel%^). The messages above say why;
+echo Setup failed ^(errorlevel %FAILED%^). The messages above say why;
 echo the usual causes are no internet connection, or a proxy that blocks
 echo pypi.org.
+if defined FIRSTRUN (
+    rmdir /s /q ".venv" >nul 2>&1
+    echo.
+    echo The half-made .venv was removed, so the next run sets it up afresh.
+)
 pause
 exit /b 1

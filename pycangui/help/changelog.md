@@ -36,6 +36,8 @@ since the last version, and comes out in the next one.
   Windows, so frames can be shared with other python-can programs, on the computer
   or the local network.
 - A plugin behind the one pycangui ships was also said to differ from it at the same version.
+- The launchers offer to set `.venv` up again when the Python it was made with has gone, and a
+  failed first setup leaves no half-made `.venv`.
 
 ## [0.3.0] - 2026-10-12
 
