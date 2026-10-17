@@ -94,6 +94,9 @@ if defined UV (
     ".venv\Scripts\python.exe" -m pip install -e "."
 )
 if errorlevel 1 goto :fail
+rem So that the first start says it is the first, and why it is slow: every
+rem file compiled once, and read from a disk that has not seen them yet.
+set PYCANGUI_SET_UP=1
 
 rem Nothing is asked here, and no shortcut is made: a question at the end of
 rem several minutes of downloading is one nobody is there to answer. pycangui
@@ -139,6 +142,7 @@ if defined UV (
     ".venv\Scripts\python.exe" -m pip install -e "."
 )
 if errorlevel 1 goto :fail
+set PYCANGUI_SET_UP=1
 
 rem Written only after a successful check or install, so a failed one is asked
 rem again next time rather than remembered as an answer.

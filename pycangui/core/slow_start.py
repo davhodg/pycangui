@@ -68,10 +68,23 @@ def message(
     took: float,
     steps: list[tuple[str, float]] | None = None,
     packages: dict[str, float] | None = None,
+    set_up: bool = False,
 ) -> str | None:
-    """The slow-start line, or None when the start was not slow."""
+    """The slow-start line, or None when the start was not slow.
+
+    ``set_up`` is a start straight after the launcher installed libraries.
+    Slow is expected then -- the launcher's time is the download, and every
+    file is compiled and read from the disk for the first time -- so it is
+    said once why, and the steps are not listed as though they were faults.
+    """
     if not is_slow(took):
         return None
+    if set_up:
+        return (
+            f"Starting took {took:.1f} s, the first start since the launcher installed "
+            "pycangui's libraries. Python compiles each file the first time it is "
+            "used, so the next start is quicker."
+        )
     said = f"Starting took {took:.1f} s."
     if slow := culprits(steps or [], packages or {}):
         said += f" Over a second: {slow}."

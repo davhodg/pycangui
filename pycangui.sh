@@ -151,6 +151,9 @@ BANNER
             "no internet connection, or a proxy that blocks pypi.org." "" \
             "The half-made .venv was removed, so the next run sets it up afresh."
     }
+    # So that the first start says it is the first, and why it is slow: every
+    # file compiled once, and read from a disk that has not seen them yet.
+    export PYCANGUI_SET_UP=1
 
     # Nothing is asked here, and no menu entry is made: a question at the end
     # of several minutes of downloading is one nobody is there to answer.
@@ -188,6 +191,7 @@ elif ! .venv/bin/python build/check_deps.py >/dev/null 2>&1; then
         .venv/bin/python -m pip install -e "." ||
             fail "Installing the new libraries failed. The messages above say why."
     fi
+    export PYCANGUI_SET_UP=1
     cp pyproject.toml .venv/.deps-ok
 else
     cp pyproject.toml .venv/.deps-ok

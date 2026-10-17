@@ -374,10 +374,16 @@ def note_a_slow_start(window) -> None:
     """
     from pycangui.core import slow_start
 
-    if (compiled := slow_start.compiled_note(timing.started_at())) is not None:
+    # After a setup the slow-start line says it all: compiling every file is
+    # what a first start does.
+    compiled = None if timing.just_set_up() else slow_start.compiled_note(timing.started_at())
+    if compiled is not None:
         window.events.information(compiled)
     slow = slow_start.message(
-        timing.total_work(), steps=timing.step_times(), packages=timing.import_times()
+        timing.total_work(),
+        steps=timing.step_times(),
+        packages=timing.import_times(),
+        set_up=timing.just_set_up(),
     )
     if slow is not None:
         window.events.information(slow)

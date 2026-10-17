@@ -40,6 +40,10 @@ LAUNCH_ENV = "PYCANGUI_LAUNCH_AT"
 #: that the script's own work and the interpreter starting are separate
 #: numbers: one is fixed by doing less in the script, the other is not.
 PYTHON_ENV = "PYCANGUI_PYTHON_AT"
+#: Set by the launchers when they have just installed pycangui's libraries --
+#: a first setup, or new ones after a pull -- so the start that follows can
+#: say why it is slow rather than list the slow steps as faults.
+SET_UP_ENV = "PYCANGUI_SET_UP"
 #: Longer than this and the stamp is from an earlier run left in the
 #: environment, not from the launch that is starting now.
 SANE_LAUNCH_S = 600.0
@@ -195,6 +199,11 @@ def launcher_seconds() -> tuple[float | None, float | None]:
         return began, None
     # The second stamp is later, so less time has passed since it.
     return max(began - started_python, 0.0), started_python
+
+
+def just_set_up() -> bool:
+    """Whether the launcher installed libraries on its way to this start."""
+    return os.environ.get(SET_UP_ENV, "").strip() == "1"
 
 
 def mark(label: str) -> None:
