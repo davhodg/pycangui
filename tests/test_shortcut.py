@@ -238,7 +238,12 @@ def test_it_is_not_said_with_a_shortcut_there_already(no_window_yet, tmp_path, m
 def test_neither_launcher_asks_anything_at_the_end_of_setup():
     """Nothing outside the folder is written unasked, and nothing waits for a key."""
     root = Path(__file__).resolve().parent.parent
-    for name in ("pycangui.cmd", "pycangui.sh"):
+    for name, after in (("pycangui.cmd", "\n:check\n"), ("pycangui.sh", "\nelif cmp")):
         text = (root / name).read_text(encoding="utf-8")
         assert "pycangui.core.shortcut" not in text
-        assert "choice " not in text and "read -r answer" not in text
+        # From the end of setup to starting pycangui. The one question a
+        # launcher does ask is about a .venv that can no longer run.
+        start = text.index("Setup finished")
+        end = text[start : text.index(after, start)]
+        assert "pycangui" in end, f"{name}: the end of setup was not found"
+        assert "choice " not in end and "read -r" not in end, name
