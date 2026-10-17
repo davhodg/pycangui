@@ -19,21 +19,38 @@ setlocal
 cd /d "%~dp0"
 
 set PYTHON=.venv\Scripts\python.exe
+rem The Python the installer is built with, and so the one inside it: the
+rem one CI builds releases with, and one every library pycangui ships has a
+rem ready-made download for -- the MDF reader had none for 3.15 when it came
+rem out. Whatever python is first on the PATH is not chosen by anyone.
+set BUILD_PY=3.14
+set CHECK_PY=import sys; v = sys.version_info; sys.exit(f'{v.major}.{v.minor}' != '%BUILD_PY%')
 if /i "%~1"=="setup" goto :setup
 
 echo.
 echo === Environment ===================================================
-if not exist "%PYTHON%" (
-    echo Creating the virtual environment in .venv. First time only, and it
-    echo downloads a couple of hundred megabytes -- Qt is most of it -- so on a
-    echo slow connection this takes several minutes.
-    python -m venv .venv
-    if errorlevel 1 goto :fail
-    "%PYTHON%" -m pip install --upgrade pip
-    if errorlevel 1 goto :fail
-) else (
-    echo Using the existing .venv.
-)
+if exist "%PYTHON%" goto :havevenv
+echo Creating the virtual environment in .venv. First time only, and it
+echo downloads a couple of hundred megabytes -- Qt is most of it -- so on a
+echo slow connection this takes several minutes.
+rem The python on the PATH if it is the one, as it is in CI; otherwise the
+rem py launcher, asked for it by version.
+set "BASE="
+python -c "%CHECK_PY%" >nul 2>&1 && set "BASE=python"
+if not defined BASE py -%BUILD_PY% -c "%CHECK_PY%" >nul 2>&1 && set "BASE=py -%BUILD_PY%"
+if not defined BASE goto :nopython
+%BASE% -m venv .venv
+if errorlevel 1 goto :fail
+"%PYTHON%" -m pip install --upgrade pip
+if errorlevel 1 goto :fail
+goto :checkvenv
+
+:havevenv
+echo Using the existing .venv.
+:checkvenv
+rem An existing one too: made earlier, by hand or by another Python.
+"%PYTHON%" -c "%CHECK_PY%"
+if errorlevel 1 goto :wrongvenv
 echo Installing pycangui, its dependencies and PyInstaller...
 "%PYTHON%" -m pip install -e ".[dev]"
 if errorlevel 1 goto :fail
@@ -124,6 +141,19 @@ echo Installer: dist\pycangui-%VERSION%-setup.exe
 echo.
 echo Application: dist\pycangui\pycangui.exe
 exit /b 0
+
+:nopython
+echo.
+echo The installer is built with Python %BUILD_PY%, and it was not found: not as
+echo the python on the PATH, nor through the py launcher. Install it with the
+echo Python Install Manager, "py install %BUILD_PY%", and run this again.
+exit /b 1
+
+:wrongvenv
+echo.
+echo .venv was made with a Python other than %BUILD_PY%, which the installer is
+echo built with. Delete the .venv folder, and run this again to make it afresh.
+exit /b 1
 
 :fail
 echo.

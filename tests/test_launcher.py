@@ -450,6 +450,62 @@ def test_a_failed_first_setup_on_linux_leaves_no_half_made_venv(tmp_path):
     assert not (tmp_path / ".venv").exists(), ran.stdout + ran.stderr
 
 
+@pytest.mark.parametrize("name", ("pycangui.cmd", "pycangui.sh"))
+def test_each_install_is_followed_by_saying_so_to_the_start_after_it(name):
+    """A first setup and an install after a pull both make the next start
+    slow, and both say so, so that it is not reported as a fault."""
+    from pycangui.core.timing import SET_UP_ENV
+
+    text = (PROJECT / name).read_text(encoding="utf-8")
+    installs = [i for i in range(len(text)) if text.startswith('pip install -e "."', i)]
+    starts = text.index("PYCANGUI_PYTHON_AT=")
+    # Each before the next install, so one setting cannot stand for both.
+    for at, upto in zip(installs, [*installs[1:], starts], strict=True):
+        assert SET_UP_ENV in text[at:upto], f"{name}: the install at {at} is not said"
+
+
+# --- the installer build's Python ------------------------------------------------------
+def _build_environment(folder: Path, path: str | None = None):
+    """build.cmd as far as choosing its Python, and a word if it got past it."""
+    import subprocess
+
+    text = (PROJECT / "build.cmd").read_text(encoding="utf-8")
+    cut = text.index("echo Installing pycangui")
+    tail = text[text.index("\n:nopython\n") :]
+    script = folder / "build.cmd"
+    script.write_bytes(
+        (text[:cut] + "echo GOT PAST THE CHECK\nexit /b 0\n" + tail).replace("\n", "\r\n").encode()
+    )
+    return subprocess.run(
+        ["cmd", "/c", str(script)],
+        cwd=folder,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": path or _system32()},
+        timeout=180,
+    )
+
+
+@windows_only
+def test_the_installer_is_built_with_python_3_14_or_not_at_all(tmp_path):
+    """A .venv made with another Python -- 3.15, first on the PATH, has no
+    MDF reader -- would make an installer nobody chose."""
+    import subprocess
+
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--without-pip", str(tmp_path / ".venv")], check=True
+    )
+    ran = _build_environment(tmp_path)
+    assert ("GOT PAST THE CHECK" in ran.stdout) == (sys.version_info[:2] == (3, 14))
+
+
+@windows_only
+def test_no_python_3_14_stops_the_build_before_anything_is_made(tmp_path):
+    ran = _build_environment(tmp_path)
+    assert ran.returncode == 1 and "GOT PAST THE CHECK" not in ran.stdout
+    assert not (tmp_path / ".venv").exists()
+
+
 # --- the check that runs before every start ------------------------------------------------
 @pytest.mark.parametrize("name", ("pycangui.cmd", "pycangui.sh"))
 def test_the_dependency_check_is_not_repeated_for_an_unchanged_pyproject(name):
