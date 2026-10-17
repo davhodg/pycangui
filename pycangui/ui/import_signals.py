@@ -16,6 +16,7 @@ signals list that only ever grows is one people stop opening.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -198,9 +199,43 @@ def ensure_available(parent: QWidget, ctx, frozen: bool = False) -> bool:
     return _install(parent, ctx)
 
 
+def downloads_only() -> list[str]:
+    """What pip is told so that it builds nothing from source, where it cannot.
+
+    On Windows and macOS there is usually no C compiler, so a library with no
+    ready-made download for this Python -- isal, which the reader needs, had
+    none for 3.15 when it came out -- is a page of build errors after minutes
+    of trying. Told to take downloads only, pip says at once that there are
+    none. Linux usually has a compiler, and builds what it has to.
+    """
+    if sys.platform in ("win32", "darwin"):
+        return ["--only-binary", ":all:"]
+    return []
+
+
+def no_download(said: list[str]) -> str | None:
+    """Why pip found nothing to install, where the reason is a missing download.
+
+    pip, taking downloads only, cannot put together a set of the reader and
+    the libraries it needs, and says the dependencies conflict. Offline it
+    finds no versions at all, which is another matter and keeps pip's words.
+    """
+    text = "\n".join(said)
+    if "ResolutionImpossible" not in text and "conflicting dependencies" not in text:
+        return None
+    python = f"{sys.version_info.major}.{sys.version_info.minor}"
+    return (
+        f"the MDF reader, or a library it needs, has no ready-made download for "
+        f"Python {python} here yet, and building one needs a C compiler. MDF files "
+        "can be read with an older Python, or once the download is published."
+    )
+
+
 def _install(parent: QWidget, ctx, command: list[str] | None = None) -> bool:
     """Fetch asammdf with pip, then make sure it can be imported."""
-    if not pip_install.install(parent, ctx, [mdf.PACKAGE], command):
+    if not pip_install.install(
+        parent, ctx, [mdf.PACKAGE], command, options=downloads_only(), explain=no_download
+    ):
         return False
     if (reason := mdf.why_not()) != "":
         ctx.error(f"{mdf.PACKAGE} was installed but will not load. {reason}")

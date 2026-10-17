@@ -291,6 +291,46 @@ def test_cancel_stops_pip(app, installing):
     assert posted[-1][0] == "warning", "a cancel is said, and is not a failure"
 
 
+@pytest.mark.parametrize(
+    ("platform", "only_downloads"), (("win32", True), ("darwin", True), ("linux", False))
+)
+def test_pip_builds_nothing_where_there_is_usually_no_compiler(
+    monkeypatch, platform, only_downloads
+):
+    """Reported: on Python 3.15 the reader's isal had no download, and pip
+    tried to build it, which needs a C compiler Windows does not come with."""
+    from pycangui.ui import import_signals, pip_install
+
+    monkeypatch.setattr(import_signals.sys, "platform", platform)
+    command = pip_install.pip_command("asammdf", options=import_signals.downloads_only())
+    assert (":all:" in command) == only_downloads
+    assert command[-1] == "asammdf", "the options go before the package"
+
+
+def test_no_download_for_this_python_is_said_in_place_of_pip_s_words(app, installing):
+    from pycangui.ui.import_signals import _install
+
+    ctx, posted = installing
+    pip_said = "ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/"
+    script = f"import sys; print('{pip_said}'); sys.exit(1)"
+    assert not _install(None, ctx, fake_pip(script))
+    level, text = posted[-1]
+    assert level == "error" and pip_said not in text
+
+
+def test_offline_keeps_pip_s_own_words():
+    """No versions at all is no connection, not a missing download."""
+    from pycangui.ui.import_signals import no_download
+
+    offline = [
+        "ERROR: Could not find a version that satisfies the requirement asammdf "
+        "(from versions: none)",
+        "ERROR: No matching distribution found for asammdf",
+    ]
+    assert no_download(offline) is None
+    assert no_download(["ERROR: ResolutionImpossible: for help visit ..."]) is not None
+
+
 def test_a_failed_install_says_what_pip_said(app, installing):
     from pycangui.ui.import_signals import _install
 
