@@ -29,6 +29,8 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- On Python 3.15, the Channel list finds attached adapters again (IXXAT and Vector among them),
+  and a Vector channel connects.
 - CAN Transmit: a message with a counter or a checksum keeps its period while the window is busy.
 - CAN Transmit: a named value's list stays open when double-clicked.
 - In the Windows 11 style, a cell being edited no longer shows its old value under the new one.

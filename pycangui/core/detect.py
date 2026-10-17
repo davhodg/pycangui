@@ -36,6 +36,27 @@ import can.interfaces
 
 DETECT_TIMEOUT_S = 5.0
 
+
+def _executor_a_class_again() -> None:
+    """Make ``concurrent.futures.ThreadPoolExecutor`` the class it names.
+
+    Python 3.15 imports it lazily, and once PySide6 6.12 is loaded, reading it
+    as an attribute hands back the placeholder rather than the class: it
+    cannot be called. python-can's ``detect_available_configs`` does exactly
+    that, so with the window open every adapter's list came back empty -- an
+    IXXAT and a Vector both attached and detected outside pycangui -- and a
+    Vector channel without its serial would not connect. Setting the attribute
+    to the class is what reading it should have done, and whatever was
+    imported first, it stays done.
+    """
+    import concurrent.futures
+    from concurrent.futures.thread import ThreadPoolExecutor
+
+    concurrent.futures.ThreadPoolExecutor = ThreadPoolExecutor
+
+
+_executor_a_class_again()
+
 #: Backends that declare ``channel: int``, as a fallback for when the backend
 #: cannot be imported and so cannot be asked. Reading the signature is the
 #: primary route and keeps working as python-can changes; this is only reached
