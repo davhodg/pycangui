@@ -43,7 +43,7 @@ On Linux, Qt needs a system library to draw the window, and Debian, Ubuntu, Linu
 sudo apt install libxcb-cursor0
 ```
 
-To include everything optional up front -- currently that is only the reader for MDF and MF4 measurement files -- install `all`. Without it, pycangui offers to install the reader the first time a measurement file is opened.
+To include everything optional up front -- currently that is only the reader for MDF and MF4 measurement files -- install `all`. Without it, pycangui offers to install the reader the first time a measurement file is opened. On Python 3.15 the reader cannot be installed yet, since one of the libraries it needs has no download for 3.15; everything else installs and runs there.
 
 ```
 pip install "pycangui[all]"
@@ -51,16 +51,18 @@ pip install "pycangui[all]"
 
 ## What it does
 
-- **Adapters**: every interface python-can supports -- PEAK PCAN, Vector, Kvaser, IXXAT, ETAS, Intrepid neoVI, NI-CAN and NI-XNET, SYS TEC, Neousys, CANalyst-II, CANtact, candleLight and other gs_usb devices, SLCAN (CANable, Lawicel), 8devices USB2CAN, Seeed Studio, Robotell, isCAN and serial adapters; SocketCAN and socketcand on Linux; UDP multicast between computers; and a virtual bus that needs no hardware at all.
+- **Adapters**: every interface python-can supports -- PEAK PCAN, Vector, Kvaser, IXXAT, ETAS, Intrepid neoVI, NI-CAN and NI-XNET, SYS TEC, Neousys, CANalyst-II, CANtact, candleLight and other gs_usb devices, SLCAN (CANable, Lawicel), 8devices USB2CAN, Seeed Studio, Robotell, isCAN and serial adapters; SocketCAN and socketcand on Linux; UDP multicast, to share frames with other python-can programs on the same computer or the local network; and a virtual bus that needs no hardware at all.
 - **Live trace** of every connected channel on one timebase, CAN FD included, with recording to six log formats and replay of a log onto a bus. Filtering is at two levels: an acceptance filter on a channel, which drops frames before they arrive, and a filter on the trace, which hides them and discards nothing.
-- **Transmit** raw frames, DBC messages edited by signal, or a CANopen RPDO.
+- **Transmit** raw frames, DBC messages edited by signal, or a CANopen RPDO, once or repeating, with a rolling counter and a checksum -- XOR, sums, CRC-8, CRC-16 or your own -- worked out for every frame.
 - **Signals and Plot** from DBC decode, CANopen TPDOs or XCP and CCP polling, with export to CSV and import of MDF and MF4 measurement files.
-- **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save, apply and compare.
+- **Database**: every message and signal in the loaded DBC files, with each message's bits drawn out -- a multiplexed one for one value of its multiplexer at a time -- and a message sent to Transmit or the trace, or a signal to the plot, from there.
+- **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save, apply and compare, and the network's PDOs, heartbeats and emergencies saved as a DBC.
 - **Custom panes**: the CANopen objects a job needs, laid out as a form with labels and units. Built from the object dictionary with no code, and polled into Signals and Plot.
 - **UDS** over ISO-TP: sessions, security access, DIDs, DTCs, routines, and firmware transfer in either direction.
 - **J1939**: nodes from address claims, DM1 faults with lamp status and the failure mode in words, multi-packet messages (TP.BAM and TP.CM), requesting and sending PGNs, and SPNs decoded from a J1939 DBC.
 - **XCP and CCP on CAN**: connect, seed and key, and reading and writing A2L measurements and characteristics by polling.
 - **ASCII Log**: reads any CAN identifier as text, for devices that print a console into the data bytes.
+- **CAN off an oscilloscope**: frames that [pyscopegui](https://github.com/davhodg/pyscopegui), also on [PyPI](https://pypi.org/project/pyscopegui/), decodes from a scope's channel arrive by UDP multicast, and are traced, decoded and plotted like frames from an adapter.
 - **Python** hooks with hot reload, replaceable components (your own CAN interface, ISO-TP transport, or XCP or CCP engine), a live console and *Run script*.
 - **Plugins** that add a pane of their own, installed from a zip. Two come with pycangui: CANopen firmware download (CiA 302-3) and CiA 402 motor control.
 - **Simulated nodes**: devices written as Python files, on a virtual bus or standing on a real adapter, and gateways between channels.
