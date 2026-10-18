@@ -310,10 +310,11 @@ def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
         "Apply DCF...",
         "Save as DBC...",
     }
-    # Save as DBC is the one thing here no button does: the button is for the
-    # whole network, under DCF, and this is for the node clicked.
+    # Save as DBC is under DBC, named for the node; Save DCF is under DCF and
+    # is for a file as well, so it is not one of the node's own.
     besides = {"Add node...", "Remove node", "Save as DBC..."}
-    assert offered - besides == {b.text() for b in view._node_buttons}
+    under_the_list = {b.text() for b in view._node_buttons} | {view.save_dcf_action.text()}
+    assert offered - besides == under_the_list
 
 
 def test_the_menu_greys_out_what_needs_a_node_when_none_was_clicked(app, window):
@@ -472,7 +473,7 @@ def test_the_choice_is_kept_in_the_workspace(app, window):
 
 # --- what is done once to a node is in a menu, and what is done often is a button --------------
 def _in(button) -> list[str]:
-    return [action.text() for action in button.menu().actions()]
+    return [action.text() for action in button.menu().actions() if not action.isSeparator()]
 
 
 def test_the_occasional_commands_are_grouped_by_what_they_are_about(app, window):
@@ -480,12 +481,23 @@ def test_the_occasional_commands_are_grouped_by_what_they_are_about(app, window)
     assert _in(view.node_menu_btn) == ["Identify", "Store", "Restore defaults"]
     assert _in(view.access_menu_btn) == ["Login...", "Read access level"]
     assert _in(view.eds_menu_btn) == ["Load EDS...", "Read EDS from node"]
-    assert _in(view.dcf_menu_btn) == [
-        "Save DCF...",
-        "Apply DCF...",
-        "Compare...",
-        "Save network as DBC...",
-    ]
+    assert _in(view.dcf_menu_btn) == ["Save DCF...", "Save file", "Apply DCF...", "Compare..."]
+    assert view.network_dbc_action in view.dbc_menu_btn.menu().actions()
+    assert view.selected_dbc_action in view.dbc_menu_btn.menu().actions()
+
+
+def test_the_dbc_menu_offers_the_selected_node_and_always_the_network(app, window):
+    """The network needs nothing selected; one node's database needs a node,
+    and the entry says which it will save."""
+    view = window.canopen_view
+    assert view.selected_node() is None
+    assert view.dbc_menu_btn.isEnabled() and view.network_dbc_action.isEnabled()
+    assert not view.selected_dbc_action.isEnabled()
+
+    seen_by_hand(window, 7)
+    view.nodes.setCurrentItem(view._node_item(7))
+    assert view.selected_dbc_action.isEnabled()
+    assert "7" in view.selected_dbc_action.text()
 
 
 def test_a_menu_with_nothing_to_offer_cannot_be_opened(app, window):

@@ -196,8 +196,10 @@ in memory, tinted, until it is saved; the row says *edited* meanwhile.
 Double-click an entry to show the file's value again; *Read all* is for a node,
 and is not there for a file.
 
-With a file row selected, **Save** and **Save as...** take the place of the
-node's buttons, which are greyed: there is nothing on the bus to ask. *Remove*
+With a file row selected, the node's commands are greyed, and *Apply DCF...*,
+which writes into a node, is not in the menu: there is nothing on the bus to ask. **DCF > Save drive.dcf** writes the changes into the file -- it is in the
+menu only for a file, and greyed until something in it has changed; **DCF > Save DCF...** writes its values
+to a new DCF, and the list goes on with that one. *Remove*
 above the list closes the file, asking first if it has changes not saved. Save writes a DCF through the file's own text, so its comments -- often
 where the units and descriptions are -- survive. An EDS is saved under a new
 name, as a DCF, so it keeps the defaults it came with. Closing a file, the pane
@@ -289,11 +291,12 @@ node -- so a device can be commissioned, captured and cloned. What is *different
 
 ### Save as DBC
 
-**DCF > Save network as DBC...** writes a CAN database of every node and file in
+**DBC > Save network as DBC...** writes a CAN database of every node and file in
 the list, which any tool that reads a DBC can decode the network with -- pycangui
 too, through [File > Load DBC...](signals.md), on a machine with no EDS for the
-devices. One node alone is **Save as DBC...** on its right-click, and one file on
-the file's.
+devices. The first entry in the same menu saves the selected one alone, and says
+which: **Save node 5 as DBC...**, or a DCF's name when a DCF is selected. It is
+also **Save as DBC...** on the node's or the file's right-click.
 
 - Each enabled PDO is a message, from its node for a TPDO and to it for an RPDO,
   with a signal for each mapped object in the order mapped. A dummy entry is a

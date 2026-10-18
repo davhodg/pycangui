@@ -17,11 +17,13 @@ since the last version, and comes out in the next one.
 - *File > Run script...* and *File > Recent scripts*, the last five run in the workspace.
 - A **Database** pane: the messages and signals of the loaded databases, each message's bit
   layout, and live values.
-- CANopen **Save network as DBC...**: a CAN database of the network's PDOs, heartbeats and
-  emergencies; one node's or one file's from its right-click.
+- CANopen **DBC** menu: a CAN database of the network's PDOs, heartbeats and emergencies, or
+  of the selected node or DCF alone (also on its right-click).
 
 ### Changed
 
+- CANopen: a file's *Save* is in the DCF menu, named for the file, and *Save DCF...* on a
+  file saves it as a new DCF, in place of the two buttons under the list.
 - CANopen: a node's RPDOs, emergency COB-ID and heartbeat time are read from it with its
   TPDOs, and again at boot-up; *Settings...* can turn the reading off.
 - The launchers no longer ask about a Start menu entry: the first start says in the Event

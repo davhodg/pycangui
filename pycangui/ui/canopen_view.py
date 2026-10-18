@@ -152,8 +152,22 @@ ACCESS_MENU_TIP = (
 )
 EDS_MENU_TIP = "The file that says what the selected node's objects are."
 DCF_MENU_TIP = (
-    "The selected node's parameter values, to a file and from one, and what\n"
-    "is different between two of them; and the network as a CAN database."
+    "The selected node's parameter values, to a file and from one; the\n"
+    "selected file's changes, saved; and what is different between two of them."
+)
+SAVE_DCF_TIP = (
+    "A new .dcf file: from the selected node, every parameter read from it;\n"
+    "from the selected file, its values, and the list goes on with the new one."
+)
+SAVE_FILE_TIP = (
+    "Write the changed values into the selected file, as a DCF, through its\n"
+    "own text so its comments are kept. An EDS is saved under a new name."
+)
+DBC_MENU_TIP = "A CAN database (DBC) of the selected node or DCF, or of the whole network."
+SELECTED_DBC_TIP = (
+    "Write a CAN database (DBC) of the selected node, or of the selected DCF,\n"
+    "made as the network's is, for this one alone. An EDS only suggests how a\n"
+    "device is set up, so one is not offered."
 )
 NETWORK_DBC_TIP = (
     "Write a CAN database (DBC) of the network as its nodes are set up:\n"
@@ -362,23 +376,33 @@ class CanopenView(QWidget):
         )
         read_eds = self.eds_menu_btn.add("Read EDS from node", READ_EDS_TIP, self._read_stored_eds)
         self.dcf_menu_btn = _MenuButton("DCF", DCF_MENU_TIP)
-        save_dcf = self.dcf_menu_btn.add(
-            "Save DCF...",
-            "Read every parameter from the node and write a .dcf file",
-            self._save_dcf,
+        # A new DCF of whichever is selected: what a node's parameters are, or
+        # what a file in the list holds -- the file's Save as, in one entry.
+        self.save_dcf_action = self.dcf_menu_btn.add(
+            "Save DCF...", SAVE_DCF_TIP, self._save_dcf_of_selected
         )
-        apply_dcf = self.dcf_menu_btn.add(
+        # The selected file's changes, into the file itself.
+        self.save_file_action = self.dcf_menu_btn.add(
+            "Save file", SAVE_FILE_TIP, lambda: self.save_file(self.selected_file())
+        )
+        self.apply_dcf_action = apply_dcf = self.dcf_menu_btn.add(
             "Apply DCF...",
             "Write the parameter values from a .dcf file into the node",
             self._apply_dcf,
         )
+        self.dcf_menu_btn.menu().addSeparator()
         # For a node and for a file alike, so not one of the node's own.
         self.compare_action = self.dcf_menu_btn.add(
             "Compare...", COMPARE_TIP, lambda: self.compare()
         )
-        # The whole list, so not the selected node's either. One node alone
-        # is on its right-click.
-        self.network_dbc_action = self.dcf_menu_btn.add(
+        # A database is made from what was read from a node or a DCF, not
+        # asked of the node, so the selected one is offered whether or not it
+        # answers -- and the network always, since it needs nothing selected.
+        self.dbc_menu_btn = _MenuButton("DBC", DBC_MENU_TIP)
+        self.selected_dbc_action = self.dbc_menu_btn.add(
+            "Save node as DBC...", SELECTED_DBC_TIP, self.save_selected_dbc
+        )
+        self.network_dbc_action = self.dbc_menu_btn.add(
             "Save network as DBC...", NETWORK_DBC_TIP, self.save_network_dbc
         )
         self._menu_buttons = [
@@ -386,6 +410,7 @@ class CanopenView(QWidget):
             self.access_menu_btn,
             self.eds_menu_btn,
             self.dcf_menu_btn,
+            self.dbc_menu_btn,
         ]
         self.read_pdos_btn = QPushButton("Read PDO config")
         self.read_pdos_btn.setToolTip(
@@ -412,24 +437,8 @@ class CanopenView(QWidget):
             self.read_pdos_btn,
             store,
             restore,
-            save_dcf,
             apply_dcf,
         ]
-        # In place of the node's buttons when the row is a file: what can be
-        # done to a file is save it or put it away.
-        self.save_file_btn = QPushButton("Save")
-        self.save_file_btn.setToolTip(
-            "Write the changed values into the file, as a DCF, through its own\n"
-            "text so its comments are kept. An EDS is saved under a new name."
-        )
-        self.save_file_btn.clicked.connect(lambda: self.save_file(self.selected_file()))
-        self.save_file_as_btn = QPushButton("Save as...")
-        self.save_file_as_btn.setToolTip("Write the values to a new DCF, and go on with that one.")
-        self.save_file_as_btn.clicked.connect(lambda: self.save_file_as(self.selected_file()))
-        self._file_buttons = [self.save_file_btn, self.save_file_as_btn]
-        for b in self._file_buttons:
-            node_bar.addWidget(b)
-            b.hide()
         node_bar.addStretch()
         # Above the list: the network, and what changes who is on it. NMT and
         # SYNC are not about whichever row happens to be highlighted -- they
@@ -779,7 +788,7 @@ class CanopenView(QWidget):
             item.setText(1, source.label)
             item.setText(2, "edited" if source.unsaved else "offline")
         if source is self.selected_file():
-            self.save_file_btn.setEnabled(source.unsaved)
+            self._offer_file_actions()
             self.pdo_config.offer_save()
 
     def _remember_files(self) -> None:
@@ -965,8 +974,29 @@ class CanopenView(QWidget):
         return menu
 
     def save_network_dbc(self) -> None:
-        """DCF > Save network as DBC...: every node and every file in the list."""
+        """DBC > Save network as DBC...: every node and every file in the list."""
         canopen_dbc.save(self, self.manager.nodes(), list(self._files.values()), True)
+
+    def save_selected_dbc(self) -> None:
+        """DBC > Save node as DBC...: the selected node, or the selected DCF."""
+        if (source := self.selected_file()) is not None:
+            if canopen_dbc.is_configuration(source):
+                canopen_dbc.save(self, [], [source], False)
+        elif (node_id := self.selected_node()) is not None:
+            canopen_dbc.save(self, [node_id], [], False)
+
+    def _offer_selected_dbc(self) -> None:
+        """Name what *Save ... as DBC* will save, and offer it only when there is one."""
+        source = self.selected_file()
+        node_id = self.selected_node()
+        if source is not None:
+            text, usable = f"Save {source.label} as DBC...", canopen_dbc.is_configuration(source)
+        elif node_id is not None:
+            text, usable = f"Save node {node_id} as DBC...", True
+        else:
+            text, usable = "Save node as DBC...", False
+        self.selected_dbc_action.setText(text)
+        self.selected_dbc_action.setEnabled(usable)
 
     def _add_node(self) -> None:
         if self.manager.network is None:  # said before a node id is asked for, not after
@@ -1653,6 +1683,9 @@ class CanopenView(QWidget):
         on_a_node = self._can_act_on(self.selected_node())
         for button in self._node_buttons:
             button.setEnabled(on_a_node)
+        if hasattr(self, "selected_dbc_action"):
+            self._offer_selected_dbc()
+            self._offer_file_actions()
         for button in getattr(self, "_menu_buttons", []):
             button.follow()
         if hasattr(self, "remove_btn"):
@@ -1663,13 +1696,31 @@ class CanopenView(QWidget):
                 self.remove_btn.setToolTip(REMOVE_NODE_TIP)
                 # A lost node most of all, so not _can_act_on.
                 self.remove_btn.setEnabled(self.selected_node() is not None)
-        source = self.selected_file() if hasattr(self, "_file_buttons") else None
-        for button in getattr(self, "_file_buttons", []):
-            button.setVisible(source is not None)
         if hasattr(self, "read_bar"):
             self._show_reading(not self.read_bar.isHidden())
-        if source is not None:
-            self.save_file_btn.setEnabled(source.unsaved)
+
+    def _offer_file_actions(self) -> None:
+        """DCF > Save DCF for a node or a file; DCF > Save, named for the file.
+
+        What belongs to the other kind of row is not there at all, where it
+        would only be one more line to read past: Save is a file's, so not
+        there for a node, and Apply writes into a node, so not there for a
+        file. What belongs to this row and cannot be done now is greyed: Save,
+        until something in the file has changed."""
+        source = self.selected_file()
+        self.save_file_action.setText("Save file" if source is None else f"Save {source.label}")
+        self.save_file_action.setVisible(source is not None)
+        self.save_file_action.setEnabled(source is not None and source.unsaved)
+        self.apply_dcf_action.setVisible(source is None)
+        self.save_dcf_action.setEnabled(
+            source is not None or self._can_act_on(self.selected_node())
+        )
+
+    def _save_dcf_of_selected(self) -> None:
+        if (source := self.selected_file()) is not None:
+            self.save_file_as(source)
+        else:
+            self._save_dcf()
 
     def _show_nmt_target(self) -> None:
         node_id = self.selected_node()
