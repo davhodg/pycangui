@@ -36,7 +36,8 @@ since the last version, and comes out in the next one.
 - On Python 3.15, the Channel list finds attached adapters again (IXXAT and Vector among them),
   and a Vector channel connects.
 - CAN Transmit: a message with a counter or a checksum keeps its period while the window is busy.
-- CAN Transmit: a named value's list stays open when double-clicked.
+- CAN Transmit: double-clicking a named value offers its names as a menu, which no longer
+  shuts as it opens on Windows; *Type a value...* or F2 is for a number.
 - In the Windows 11 style, a cell being edited no longer shows its old value under the new one.
 - A *udp_multicast* channel opens, shows what pycangui sent as sent, and works on
   Windows, so frames can be shared with other python-can programs, on the computer

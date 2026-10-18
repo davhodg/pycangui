@@ -29,7 +29,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import can
-from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QModelIndex, QPersistentModelIndex, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -154,21 +154,20 @@ def editable_columns(item: QTreeWidgetItem) -> tuple[int, ...]:
 
 #: How often to look again for the mouse button to be let go.
 RELEASE_POLL_MS = 20
+#: The last entry in a named value's menu, for a number the table has no name for.
+TYPE_A_VALUE = "Type a value..."
 
 
-def _open_when_released(box: QComboBox) -> None:
-    """Open the list once no mouse button is held.
+def _when_released(context: QWidget, then) -> None:
+    """Call ``then`` once no mouse button is held.
 
-    The editor opens on the second press of a double-click. A list opened then
-    is under the pointer with the button still down, and a combo box takes the
-    release that follows for a choice: whatever item was under the pointer was
-    picked, and the list shut, in the moment it was seen to open. Opened from
-    the keyboard, nothing is held and it opens at once.
+    The names are offered on the second press of a double-click, and a menu
+    opened while that button is still down takes the release for a choice.
     """
     if QApplication.mouseButtons() != Qt.NoButton:
-        QTimer.singleShot(RELEASE_POLL_MS, box, lambda: _open_when_released(box))
+        QTimer.singleShot(RELEASE_POLL_MS, context, lambda: _when_released(context, then))
         return
-    box.showPopup()
+    then()
 
 
 class _OnlyWhatIsTheRows(QStyledItemDelegate):
@@ -198,10 +197,54 @@ class _OnlyWhatIsTheRows(QStyledItemDelegate):
         box.setAutoFillBackground(True)
         box.lineEdit().setAutoFillBackground(True)
         # Picking one is the whole edit, so it is taken at once rather than
-        # waiting for Return.
+        # waiting for Return. The list is not opened for you: this box is
+        # for typing (F2, or Type a value...); a double-click offers a menu.
         box.activated.connect(lambda _index: self._picked(box))
-        QTimer.singleShot(0, box, lambda: _open_when_released(box))
         return box
+
+    def editorEvent(self, event, model, option, index):
+        """A double-click on a named value offers its names as a menu.
+
+        It was the editor's own list, opened for you, and on Windows it shut
+        as it opened: Qt moved the focus back to the transmit list the moment
+        the list appeared, and the editor closed on losing it, keeping the
+        value it had. Seen with the mouse itself, in the Windows 11 style and
+        in Fusion. A menu has no editor to close, and is the plainer thing to
+        choose from anyway.
+        """
+        if (
+            event.type() == QEvent.MouseButtonDblClick
+            and index.column() == COL_DATA
+            and index.data(ROLE_CHOICES)
+        ):
+            cell = QPersistentModelIndex(index)
+            _when_released(self.parent(), lambda: self.choose_from_menu(cell))
+            return True
+        return super().editorEvent(event, model, option, index)
+
+    def choose_from_menu(self, cell: QPersistentModelIndex) -> None:
+        """The cell's names as a menu below it, the one it has ticked."""
+        if not cell.isValid():
+            return
+        tree = self.parent()
+        index = QModelIndex(cell)
+        menu = QMenu(tree)
+        current = index.data()
+        for number, name in index.data(ROLE_CHOICES):
+            action = menu.addAction(named(number, name))
+            action.setCheckable(True)
+            action.setChecked(action.text() == current)
+        menu.addSeparator()
+        typing = menu.addAction(TYPE_A_VALUE)
+        chosen = menu.exec(tree.viewport().mapToGlobal(tree.visualRect(index).bottomLeft()))
+        if chosen is None or not cell.isValid():
+            return
+        index = QModelIndex(cell)
+        if chosen is typing:
+            tree.setCurrentIndex(index)
+            tree.edit(index)
+            return
+        tree.model().setData(index, chosen.text())
 
     def _picked(self, box) -> None:
         self.commitData.emit(box)

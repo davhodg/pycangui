@@ -22,8 +22,9 @@ signals; the encoded bytes update as you type, and a message that is already
 cycling is updated live.
 
 A signal the database gives **named values** (a `VAL_` table) is picked from a
-list: double-click its value and choose, or type a number or a name into the
-same box. However it goes in, it is shown as name and number together --
+menu: double-click its value and choose. *Type a value...* at the end of the
+menu, or F2, opens a box to type a number or a name into instead, with the
+names still under its arrow. However it goes in, it is shown as name and number together --
 *Run (1)* -- and the number is what is sent. A number the table does not name
 is sent as that number; a name it does not have is refused, and says so in the
 Event Log, rather than being sent as zero.
