@@ -28,6 +28,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
 from pycangui.core.bus import Frame
+from pycangui.ui.trace_model import FAULT_COLOUR
 
 #: The last five are the timing statistics, hidden until somebody asks for
 #: them: they answer a different question from Rate and Period (see TIPS),
@@ -242,6 +243,10 @@ class LatestModel(QAbstractTableModel):
                     # -- where zero of the others only means "not yet known",
                     # so this one says the number rather than going blank.
                     return "" if row.gaps < 2 else _period_text(row.jitter) or "0.0 ms"
+        elif role == Qt.BackgroundRole and col == 5 and f.fault:
+            return FAULT_COLOUR
+        elif role == Qt.ToolTipRole and col == 5 and f.fault:
+            return f.fault
         elif role == Qt.ForegroundRole and col == 5 and row.prev_data != f.data and row.count > 1:
             return CHANGED_COLOUR
         elif role == ROLE_GROUP:
@@ -342,6 +347,9 @@ class LatestModel(QAbstractTableModel):
         self._index.clear()
         self.endResetModel()
 
+    def frame(self, row: int) -> Frame:
+        return self._rows[row].frame
+
 
 def _measure(row: _Row, now: float) -> None:
     """Set the row's rate and cycle time from the arrivals it has kept."""
@@ -377,6 +385,8 @@ def _period_text(seconds: float) -> str:
 
 
 def _searchable(f: Frame) -> str:
-    """What the filter box matches against: id, name, channel and data."""
+    """What the filter box matches against: id, name, channel and data, and
+    what a check found wrong with it."""
     ident = f"{f.can_id:08X}" if f.extended else f"{f.can_id:03X}"
-    return f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}".lower()
+    text = f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}"
+    return f"{text} {f.fault}".lower() if f.fault else text.lower()

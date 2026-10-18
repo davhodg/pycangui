@@ -11,6 +11,7 @@ large trace cheap -- nothing is copied into widgets.
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtGui import QColor
 
 from pycangui.core.bus import Frame
 
@@ -22,6 +23,11 @@ ROLE_GROUP = Qt.UserRole + 1
 ROLE_CHANNEL = Qt.UserRole + 2
 ROLE_SEARCH = Qt.UserRole + 3  # everything about a row, lowercased, for the filter box
 MAX_ROWS = 500_000
+DATA_COLUMN = 6
+#: Behind the data of a frame whose counter or checksum is wrong: red, and
+#: translucent, so it reads on a light background and a dark one alike. The
+#: words are in its tooltip, and the filter box finds them.
+FAULT_COLOUR = QColor(220, 50, 50, 90)
 
 
 class TraceModel(QAbstractTableModel):
@@ -49,6 +55,11 @@ class TraceModel(QAbstractTableModel):
             return f.channel
         if role == ROLE_SEARCH:
             return _searchable(f)
+        if f.fault and index.column() == DATA_COLUMN:
+            if role == Qt.BackgroundRole:
+                return FAULT_COLOUR
+            if role == Qt.ToolTipRole:
+                return f.fault
         if role != Qt.DisplayRole:
             return None
         match index.column():
@@ -87,8 +98,12 @@ class TraceModel(QAbstractTableModel):
         self._rows.clear()
         self.endResetModel()
 
+    def frame(self, row: int) -> Frame:
+        return self._rows[row]
+
 
 def _searchable(f: Frame) -> str:
     """What the filter box matches against: id, name, channel and data."""
     ident = f"{f.can_id:08X}" if f.extended else f"{f.can_id:03X}"
-    return f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}".lower()
+    text = f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}"
+    return f"{text} {f.fault}".lower() if f.fault else text.lower()

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, QTimer, Slot
+from PySide6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction, QFont, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -55,6 +55,12 @@ from pycangui.ui.trace_model import COLUMNS as TRACE_COLUMNS
 from pycangui.ui.trace_model import TraceModel
 
 MODES = ("Chronological", "Latest per ID")
+CHECK_TIP = (
+    "Check every frame of this message that arrives: its counter and its\n"
+    "checksum, set up as for CAN Transmit. A frame that fails is marked here,\n"
+    "the faults are counted in Signals and Plot, and the Event Log says when\n"
+    "they start and stop."
+)
 DISPLAY_TIP = (
     "Only what this trace shows. A recording, the decoding, the other panes\n"
     "and anything being sent carry on at full rate whatever is chosen here:\n"
@@ -168,6 +174,10 @@ def _table(model, font: QFont, id_column: int, data_column: int, settings, key: 
 
 
 class TraceView(QWidget):
+    #: Check counter / checksum..., for the frame chosen: the window has the
+    #: checks, the database and the dialog.
+    check_requested = Signal(object)
+
     def __init__(self, hooks: Hooks, ctx: Context, key: str = "trace") -> None:
         super().__init__()
         self.hooks = hooks
@@ -326,7 +336,25 @@ class TraceView(QWidget):
             columns = QAction("Columns", table)
             columns.setMenu(self._column_menus[mode])
             table.addAction(columns)
+            check = QAction("Check counter / checksum...", table)
+            check.setToolTip(CHECK_TIP)
+            check.triggered.connect(self._ask_to_check)
+            table.addAction(check)
             table.setContextMenuPolicy(Qt.ActionsContextMenu)
+
+    def chosen_frame(self) -> Frame | None:
+        """The frame on the row chosen in whichever view is showing."""
+        view = self.stack.currentWidget()
+        index = view.currentIndex()
+        if not index.isValid():
+            return None
+        proxy = view.model()
+        source = proxy.mapToSource(index)
+        return proxy.sourceModel().frame(source.row())
+
+    def _ask_to_check(self) -> None:
+        if (frame := self.chosen_frame()) is not None and not frame.error:
+            self.check_requested.emit(frame)
 
     # --- filtering -----------------------------------------------------------------
     def hidden_groups(self) -> set[str]:

@@ -62,6 +62,8 @@ class Frame:
     #: fault on the wire. Its id carries error flags, not an identifier.
     error: bool = False
     group: str = "Other"  # filter group, from the CAN id (see core.classify)
+    #: What a check of its counter or checksum found wrong; see core.rx_checks.
+    fault: str = ""
 
     @property
     def dlc(self) -> int:
