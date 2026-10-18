@@ -28,6 +28,7 @@ from typing import Any
 
 from canopen.objectdictionary import datatypes
 
+from pycangui.canopen import pdo_name
 from pycangui.canopen.display import Display
 
 #: The DBC node that sends the RPDOs and the network's own messages: the
@@ -238,7 +239,7 @@ def build(devices: Iterable[Device], network: bool = True) -> Made:
         if not signals:
             return None
         # canopen calls them TxPDO1_node5; the node is in the name already.
-        name = f"{device.name}_{re.sub(r'_node\d+$', '', pdo.name)}"
+        name = f"{device.name}_{re.sub(r'_node\d+$', '', pdo_name(pdo))}"
         if at > MOST_BITS:
             notes.append(f"{name}: left out, its mapping is {at} bits, more than a frame holds")
             return None
@@ -250,7 +251,7 @@ def build(devices: Iterable[Device], network: bool = True) -> Made:
             signals=signals,
             senders=[sender],
             cycle_time=cycle,
-            comment=f"{re.sub(r'_node\d+$', '', pdo.name)} of node {device.node_id}"
+            comment=f"{re.sub(r'_node\d+$', '', pdo_name(pdo))} of node {device.node_id}"
             + (f", {how}" if how else ""),
             is_extended_frame=pdo.cob_id > 0x7FF,
             strict=False,

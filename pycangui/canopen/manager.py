@@ -39,6 +39,7 @@ from pycangui.canopen import (
     eds_text,
     faults,
     load_od,
+    pdo_name,
     sdo_log,
 )
 from pycangui.canopen.dcf import values_from, write_dcf
@@ -128,31 +129,6 @@ STORE_FORMAT = 0x1022
 NO_SUCH_OBJECT = 0x0602_0000
 #: What ``stored_eds_failed`` says when somebody stopped the read themselves.
 STOPPED = "stopped"
-
-
-#: Where each direction's communication parameters start in the object
-#: dictionary: TPDO1 at 0x1800, RPDO1 at 0x1400.
-TPDO_COM, RPDO_COM = 0x1800, 0x1400
-
-
-def pdo_name(pdo_map) -> str:
-    """A PDO's name in canopen's own form -- TxPDO5_node1 -- from what it is.
-
-    canopen's ``name`` works it out backwards from the COB-ID, as though the
-    COB-ID were still the default one: bit 0x80 for the direction, the bits
-    above for the number, the low seven for the node. A PDO moved anywhere
-    else is misnamed -- node 1's TPDO5 on 0x123 was "RxPDO0_node35" in
-    Signals and Plot -- so the name comes from where its communication
-    parameters are in the object dictionary, and the node it belongs to.
-    """
-    try:
-        index = pdo_map.com_record.od.index
-        node_id = pdo_map.pdo_node.node.id
-    except AttributeError:  # not one of canopen's maps: its own name is all there is
-        return pdo_map.name
-    sent = index >= TPDO_COM
-    number = index - (TPDO_COM if sent else RPDO_COM) + 1
-    return f"{'Tx' if sent else 'Rx'}PDO{number}_node{node_id}"
 
 
 def time_stamp(local: bool, now: float | None = None) -> float:
