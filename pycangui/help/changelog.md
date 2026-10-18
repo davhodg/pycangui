@@ -9,8 +9,12 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-18
+
 ### Added
 
+- Python 3.15: pycangui runs and is tested on it; the optional MDF reader cannot be installed
+  there yet.
 - *Tools > Settings > Add shortcut to desktop* on Windows; both shortcuts for a pip
   installation too.
 - *File > Workspace > New...* starts an empty workspace.
@@ -19,6 +23,8 @@ since the last version, and comes out in the next one.
   layout, and live values.
 - CANopen **DBC** menu: a CAN database of the network's PDOs, heartbeats and emergencies, or
   of the selected node or DCF alone (also on its right-click).
+- The *udp_multicast* Channel list offers the group [pyscopegui](https://github.com/davhodg/pyscopegui)
+  sends the CAN it decodes from a scope to.
 
 ### Changed
 
@@ -32,7 +38,7 @@ since the last version, and comes out in the next one.
 ### Fixed
 
 - CANopen: a PDO moved off its default COB-ID keeps its own name -- node 1's TPDO5 on 0x123
-  was named as node 35's RPDO in Signals and Plot.
+  was named as node 35's RPDO in Signals and Plot and in a saved DBC.
 - On Python 3.15, the Channel list finds attached adapters again (IXXAT and Vector among them),
   and a Vector channel connects.
 - CAN Transmit: a message with a counter or a checksum keeps its period while the window is busy.
@@ -236,7 +242,8 @@ The first release, on PyPI (`pip install pycangui`) and as a Windows installer.
 - **Simulated nodes** on a virtual bus or a real adapter, and gateways between channels.
 - **Workspaces**, one per product, exported and imported as one zip.
 
-[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/davhodg/pycangui/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/davhodg/pycangui/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/davhodg/pycangui/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/davhodg/pycangui/compare/v0.1.0...v0.1.1
