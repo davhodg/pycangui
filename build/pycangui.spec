@@ -56,6 +56,12 @@ HIDDEN = [
     # canmatrix, which asammdf reads databases through, loads its format
     # modules by name from a registry -- the python-can backend pattern again.
     *collect_submodules("canmatrix.formats"),
+    # chardet, which asammdf guesses text encodings with, is compiled with
+    # mypyc from 7.7: each module has a companion, _format__mypyc beside
+    # _format, imported only from the compiled code, where PyInstaller cannot
+    # see it. 7.7.0 left them out and the built application's MDF reader
+    # would not load.
+    *collect_submodules("chardet"),
     # pywin32 is a distribution, not a module: name the modules it provides
     # python-can's usb2can backend finds adapters through win32com.
     "pythoncom",
