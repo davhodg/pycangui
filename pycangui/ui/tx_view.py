@@ -177,6 +177,14 @@ class _OnlyWhatIsTheRows(QStyledItemDelegate):
     cell and not the rest.
     """
 
+    #: A named value's menu has closed, chosen from or not.
+    closed_menu = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        #: A named value's menu is open over its row.
+        self.choosing = False
+
     def createEditor(self, parent, option, index):
         tree = self.parent()
         item = tree.itemFromIndex(index)
@@ -236,7 +244,12 @@ class _OnlyWhatIsTheRows(QStyledItemDelegate):
             action.setChecked(action.text() == current)
         menu.addSeparator()
         typing = menu.addAction(TYPE_A_VALUE)
-        chosen = menu.exec(tree.viewport().mapToGlobal(tree.visualRect(index).bottomLeft()))
+        self.choosing = True
+        try:
+            chosen = menu.exec(tree.viewport().mapToGlobal(tree.visualRect(index).bottomLeft()))
+        finally:
+            self.choosing = False
+            QTimer.singleShot(0, tree, self.closed_menu.emit)
         if chosen is None or not cell.isValid():
             return
         index = QModelIndex(cell)
@@ -466,7 +479,11 @@ class TxView(QWidget):
         self.tree.installEventFilter(self)
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.itemDoubleClicked.connect(self._on_double_clicked)
-        self.tree.setItemDelegate(_OnlyWhatIsTheRows(self.tree))
+        self._delegate = _OnlyWhatIsTheRows(self.tree)
+        self._delegate.closed_menu.connect(self._refresh_if_waiting)
+        self.tree.setItemDelegate(self._delegate)
+        #: A rebuild that came while a named value's menu was open, done when it closes.
+        self._refresh_waiting = False
         self.tree.setToolTip(
             "Double-click a message to send it once.\n"
             "Tick Cyclic to send it over and over at its period.\n"
@@ -1255,16 +1272,39 @@ class TxView(QWidget):
 
     @Slot()
     def refresh_sources(self) -> None:
-        """Rebuild database / RPDO rows after a DBC or node configuration changes."""
+        """Rebuild database / RPDO rows after a DBC or node configuration changes.
+
+        What was repeating repeats again once the rows are rebuilt. A node's
+        RPDOs are read again at every boot-up, so an NMT reset of a node --
+        or a bootloader that announces itself -- rebuilt the list, and every
+        cyclic message in it stopped with nothing said, the ones that had
+        nothing to do with the node too.
+
+        Not while a named value's menu is open: the row under it would be
+        replaced, and what was chosen dropped. It is done when the menu closes.
+        """
         specs = [self._spec(r) for r in range(self.message_count())]
         if not any(spec["kind"] in ("dbc", "rpdo") for spec in specs):
             return
+        if self._delegate.choosing:
+            self._refresh_waiting = True
+            return
+        running = [r for r in range(self.message_count()) if r in self._tasks]
         self.stop_all()
         self._loading = True
         self.tree.clear()
         self._loading = False
         for spec in specs:
             self.add_message(spec)
+        for row in running:
+            if row < self.message_count():
+                self._set_cyclic(row, True)
+                self._start_row(row)
+
+    def _refresh_if_waiting(self) -> None:
+        if self._refresh_waiting:
+            self._refresh_waiting = False
+            self.refresh_sources()
 
 
 def _signal_bits(message, name: str) -> int | None:

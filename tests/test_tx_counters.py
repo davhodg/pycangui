@@ -486,3 +486,30 @@ def test_a_field_in_a_database_signal_is_found_through_the_database():
         bits={"Alive": 4, "Crc": 8},
     )
     assert counter == bytes([0x0F, 0, 0]) and checksum == bytes([0, 0, 0xFF])
+
+
+# --- a database or a node's RPDOs read again ----------------------------------------------
+def test_what_was_cyclic_is_cyclic_again_after_the_rows_are_rebuilt(app, dbc_view, dbc_listening):
+    """Reported: an NMT reset made the node send its boot-up, its RPDOs were
+    read again, the list was rebuilt -- and the cyclic message, which had
+    nothing to do with the node, stopped with nothing said."""
+    row = a_dbc_row(dbc_view)
+    dbc_view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
+    dbc_view.refresh_sources()
+    assert dbc_view.item(row).checkState(COL_CYCLIC) == Qt.Checked
+    assert row in dbc_view._tasks
+    while dbc_listening.recv(timeout=0) is not None:
+        pass
+    assert len(while_busy(dbc_listening, 0.3)) >= 5, "and frames are going out"
+
+
+def test_the_rows_are_not_rebuilt_under_an_open_menu(app, dbc_view):
+    """It would replace the row the menu is choosing for, and drop the choice."""
+    row = a_dbc_row(dbc_view)
+    before = dbc_view.item(row)
+    dbc_view._delegate.choosing = True
+    dbc_view.refresh_sources()
+    assert dbc_view.item(row) is before, "not while the menu is open"
+    dbc_view._delegate.choosing = False
+    dbc_view._delegate.closed_menu.emit()
+    assert dbc_view.item(row) is not before, "but once it has closed"

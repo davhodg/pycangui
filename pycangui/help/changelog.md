@@ -9,6 +9,12 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Fixed
+
+- CAN Transmit: cyclic messages keep sending when a node's RPDOs are read again, as at its
+  boot-up after an NMT reset; they stopped, with nothing said. A value chosen from a named
+  value's menu at that moment is no longer lost.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added
