@@ -22,7 +22,7 @@ from pycangui.core import tx_fields as tx
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
-from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, COL_FIELDS, COL_NAME, TxView
+from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, COL_FIELDS, COL_NAME, COL_UNIT, TxView
 
 CHANNEL = "vtxcount"
 
@@ -489,13 +489,41 @@ def test_a_field_in_a_database_signal_is_found_through_the_database():
 
 
 # --- a database or a node's RPDOs read again ----------------------------------------------
+def changed_in_the_database(view, unit="changed"):
+    """A signal of PumpCommand given another unit, as a database read again might."""
+    view.dbc.message_by_name("PumpCommand").signals[0].unit = unit
+
+
+def test_reading_the_same_again_leaves_the_rows_and_the_selection_alone(app, dbc_view):
+    """Reported: a row selected to be removed kept losing its selection. Each
+    boot-up read the node's RPDOs again and the list was cleared and filled
+    again, though nothing in it had changed."""
+    row = a_dbc_row(dbc_view)
+    dbc_view.item(row).setSelected(True)
+    before = dbc_view.item(row)
+    dbc_view.refresh_sources()
+    assert dbc_view.item(row) is before and before.isSelected()
+
+
+def test_a_rebuild_keeps_what_was_selected(app, dbc_view):
+    row = a_dbc_row(dbc_view)
+    dbc_view.item(row).setSelected(True)
+    changed_in_the_database(dbc_view)
+    dbc_view.refresh_sources()
+    assert dbc_view.item(row).isSelected()
+    assert dbc_view.item(row).child(0).text(COL_UNIT) == "changed", "and it was rebuilt"
+
+
 def test_what_was_cyclic_is_cyclic_again_after_the_rows_are_rebuilt(app, dbc_view, dbc_listening):
     """Reported: an NMT reset made the node send its boot-up, its RPDOs were
     read again, the list was rebuilt -- and the cyclic message, which had
     nothing to do with the node, stopped with nothing said."""
     row = a_dbc_row(dbc_view)
     dbc_view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
+    changed_in_the_database(dbc_view)
+    before = dbc_view.item(row)
     dbc_view.refresh_sources()
+    assert dbc_view.item(row) is not before, "rebuilt"
     assert dbc_view.item(row).checkState(COL_CYCLIC) == Qt.Checked
     assert row in dbc_view._tasks
     while dbc_listening.recv(timeout=0) is not None:
@@ -506,6 +534,7 @@ def test_what_was_cyclic_is_cyclic_again_after_the_rows_are_rebuilt(app, dbc_vie
 def test_the_rows_are_not_rebuilt_under_an_open_menu(app, dbc_view):
     """It would replace the row the menu is choosing for, and drop the choice."""
     row = a_dbc_row(dbc_view)
+    changed_in_the_database(dbc_view)
     before = dbc_view.item(row)
     dbc_view._delegate.choosing = True
     dbc_view.refresh_sources()

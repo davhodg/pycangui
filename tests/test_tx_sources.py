@@ -105,6 +105,28 @@ def test_rpdo_row_drives_the_demo_node(stack):
     assert view._tasks == {}
 
 
+def test_the_node_s_rpdos_read_again_leave_a_cyclic_row_alone(stack):
+    """Reported: an NMT reset made the node send its boot-up, its RPDOs were
+    read again, and the list was rebuilt -- the cyclic RPDO stopped, and the
+    row selected to be removed lost its selection."""
+    app, _bus, view, canopen, _demo, _ctx = stack
+    canopen.load_eds(5, str(resources.path("demo.eds")))
+    wait_until(app, lambda: canopen.read_from_node(5) == (True, True) and canopen.rpdos(5))
+    number = canopen.rpdos(5)[0][0]
+    row = view.add_message({"kind": "rpdo", "node": 5, "pdo": number, "period": 100})
+    item = view.item(row)
+    item.setSelected(True)
+    view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
+    read = []
+    canopen.rpdos_read.connect(read.append)
+    canopen.read_pdo_config(5)  # as at a boot-up
+    wait_until(app, lambda: read and canopen.read_from_node(5) == (True, True))
+    view.refresh_sources()  # what the window does when the RPDOs have been read
+    assert view.item(row) is item and item.isSelected(), "the same row, still selected"
+    assert row in view._tasks and item.checkState(COL_CYCLIC) == Qt.Checked
+    view.stop_all()
+
+
 # --- which database a row came from ---------------------------------------------------------
 def test_a_dbc_row_remembers_the_file_its_message_came_from(stack):
     _app, _bus, view, _canopen, _demo, ctx = stack

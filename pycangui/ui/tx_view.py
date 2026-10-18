@@ -1289,7 +1289,24 @@ class TxView(QWidget):
         if self._delegate.choosing:
             self._refresh_waiting = True
             return
+        # Only when a row would come out different: a boot-up reads the same
+        # RPDOs again, and clearing the list for nothing took away whatever
+        # was selected -- the row being chosen for Remove, for one.
+        if all(self._shape(r) == self._source_shape(r) for r in range(self.message_count())):
+            # The same rows, so only their bytes and identifiers again: an
+            # RPDO can have moved to another COB-ID with the same mapping.
+            for row in range(self.message_count()):
+                if self.item(row).data(0, ROLE_KIND) in ("dbc", "rpdo"):
+                    was = self.item(row).text(COL_ID)
+                    self._encode_row(row)
+                    if row in self._tasks and self.item(row).text(COL_ID) != was:
+                        self._stop_row(row)
+                        self._start_row(row)
+            return
         running = [r for r in range(self.message_count()) if r in self._tasks]
+        selected = sorted(
+            {r for i in self.tree.selectedItems() if (r := self._row_of(i)) is not None}
+        )
         self.stop_all()
         self._loading = True
         self.tree.clear()
@@ -1300,6 +1317,51 @@ class TxView(QWidget):
             if row < self.message_count():
                 self._set_cyclic(row, True)
                 self._start_row(row)
+        for row in selected:
+            if row < self.message_count():
+                self.item(row).setSelected(True)
+
+    def _shape(self, row: int) -> tuple:
+        """What a database or RPDO row is showing: its id and name, and each
+        signal with its unit and named values. Nothing for a raw row."""
+        item = self.item(row)
+        if item.data(0, ROLE_KIND) not in ("dbc", "rpdo"):
+            return ()
+        children = []
+        for i in range(item.childCount()):
+            child = item.child(i)
+            choices = child.data(COL_DATA, ROLE_CHOICES) or []
+            children.append(
+                (child.text(COL_NAME), child.text(COL_UNIT), tuple(tuple(c) for c in choices))
+            )
+        return (item.text(COL_NAME), item.text(COL_ID), item.text(COL_UNIT), tuple(children))
+
+    def _source_shape(self, row: int) -> tuple:
+        """What the same row would show if it were built again now."""
+        item = self.item(row)
+        kind = item.data(0, ROLE_KIND)
+        if kind == "dbc":
+            name = item.data(0, ROLE_MESSAGE) or ""
+            msg = self.dbc.message_by_name(name)
+            if msg is None:
+                return (name, item.text(COL_ID), "not loaded", ())
+            signals = tuple(
+                (signal.name, signal.unit or "", tuple(_choices(signal))) for signal in msg.signals
+            )
+            return (name, id_text(msg.frame_id, msg.is_extended_frame), "", signals)
+        if kind == "rpdo":
+            node_id, number = item.data(0, ROLE_NODE), item.data(0, ROLE_PDO)
+            entry = next((r for r in self.canopen.rpdos(node_id) if r[0] == number), None)
+            label = f"node {node_id} {entry[1] if entry else f'RPDO{number}'}"
+            if entry is None:
+                return (label, item.text(COL_ID), "node not configured", ())
+            tables = self.canopen.rpdo_choices(node_id, number)
+            variables = tuple(
+                (variable, "", tuple(sorted(tables.get(variable, {}).items())))
+                for variable in entry[2]
+            )
+            return (label, item.text(COL_ID), "", variables)
+        return ()
 
     def _refresh_if_waiting(self) -> None:
         if self._refresh_waiting:
