@@ -130,6 +130,31 @@ NO_SUCH_OBJECT = 0x0602_0000
 STOPPED = "stopped"
 
 
+#: Where each direction's communication parameters start in the object
+#: dictionary: TPDO1 at 0x1800, RPDO1 at 0x1400.
+TPDO_COM, RPDO_COM = 0x1800, 0x1400
+
+
+def pdo_name(pdo_map) -> str:
+    """A PDO's name in canopen's own form -- TxPDO5_node1 -- from what it is.
+
+    canopen's ``name`` works it out backwards from the COB-ID, as though the
+    COB-ID were still the default one: bit 0x80 for the direction, the bits
+    above for the number, the low seven for the node. A PDO moved anywhere
+    else is misnamed -- node 1's TPDO5 on 0x123 was "RxPDO0_node35" in
+    Signals and Plot -- so the name comes from where its communication
+    parameters are in the object dictionary, and the node it belongs to.
+    """
+    try:
+        index = pdo_map.com_record.od.index
+        node_id = pdo_map.pdo_node.node.id
+    except AttributeError:  # not one of canopen's maps: its own name is all there is
+        return pdo_map.name
+    sent = index >= TPDO_COM
+    number = index - (TPDO_COM if sent else RPDO_COM) + 1
+    return f"{'Tx' if sent else 'Rx'}PDO{number}_node{node_id}"
+
+
 def time_stamp(local: bool, now: float | None = None) -> float:
     """The moment to put in a TIME frame, as the library takes it.
 
@@ -427,7 +452,7 @@ class CanopenManager(QObject):
             except Exception:
                 self._pdo_object_unreadable(node_id, pdo_map, var, received)
         if values:
-            self.pdo_update.emit(node_id, pdo_map.name, values)
+            self.pdo_update.emit(node_id, pdo_name(pdo_map), values)
 
     def _pdo_value(self, node_id: int, pdo_map, var):
         """One mapped object's value, at the length the mapping gives it.
@@ -448,7 +473,7 @@ class CanopenManager(QObject):
         return value
 
     def _pdo_where(self, node_id: int, pdo_map) -> str:
-        return f"Node {node_id} {pdo_map.name} (0x{pdo_map.cob_id:03X})"
+        return f"Node {node_id} {pdo_name(pdo_map)} (0x{pdo_map.cob_id:03X})"
 
     def _pdo_too_short(self, node_id: int, pdo_map, received: int) -> None:
         """Say once that a PDO arrives shorter than its mapping.
@@ -459,7 +484,7 @@ class CanopenManager(QObject):
         -- a fault in the node. With only the EDS's, the EDS may be wrong
         about how this node is set up.
         """
-        key = (node_id, pdo_map.name)
+        key = (node_id, pdo_name(pdo_map))
         if key in self._pdo_size_said:
             return
         self._pdo_size_said.add(key)
@@ -487,7 +512,7 @@ class CanopenManager(QObject):
         For what is not an integer -- a REAL32 mapped as 16 bits, say -- where
         there is no taking only the bits that were sent.
         """
-        key = (node_id, f"{pdo_map.name}:{var.name}")
+        key = (node_id, f"{pdo_name(pdo_map)}:{var.name}")
         if key in self._pdo_size_said:
             return
         self._pdo_size_said.add(key)
@@ -1331,7 +1356,7 @@ class CanopenManager(QObject):
                     od = var.od
                     if var.length != len(od):
                         out.append(
-                            f"{pdo_map.name} (0x{pdo_map.cob_id:03X}): {od.index:04X}:"
+                            f"{pdo_name(pdo_map)} (0x{pdo_map.cob_id:03X}): {od.index:04X}:"
                             f"{od.subindex:02X} {var.name} is mapped as {var.length} bits; "
                             f"the EDS types it {type_name(od)}, {len(od)} bits"
                         )
@@ -1400,7 +1425,7 @@ class CanopenManager(QObject):
             if not getattr(pdo_map, "_pycangui_decoded", False):
                 pdo_map.add_callback(lambda m, n=node_id: self._on_pdo(n, m))
                 pdo_map._pycangui_decoded = True
-            names.append(pdo_map.name)
+            names.append(pdo_name(pdo_map))
         return names
 
     def _choices_of(self, node_id: int, pdo_map) -> dict[str, dict[int, str]]:
@@ -1416,7 +1441,7 @@ class CanopenManager(QObject):
         node = self.node(node_id)
         pdo_map = None
         if node is not None:
-            pdo_map = next((m for m in node.tpdo.values() if m.name == name), None)
+            pdo_map = next((m for m in node.tpdo.values() if pdo_name(m) == name), None)
         return {} if pdo_map is None else self._choices_of(node_id, pdo_map)
 
     def rpdo_choices(self, node_id: int, number: int) -> dict[str, dict[int, str]]:
@@ -1440,7 +1465,7 @@ class CanopenManager(QObject):
         node = self.node(node_id)
         if node is None:
             return None
-        return next((m.cob_id for m in node.tpdo.values() if m.name == name), None)
+        return next((m.cob_id for m in node.tpdo.values() if pdo_name(m) == name), None)
 
     # --- PDO configuration (both directions) -----------------------------------
     def pdo_configs(self, node_id: int) -> list[PdoConfig]:
@@ -1458,7 +1483,7 @@ class CanopenManager(QObject):
                         node_id=node_id,
                         direction=direction,
                         number=number,
-                        name=pdo_map.name,
+                        name=pdo_name(pdo_map),
                         cob_id=pdo_map.cob_id,
                         enabled=bool(pdo_map.enabled),
                         transmission_type=pdo_map.trans_type,
@@ -2057,7 +2082,7 @@ class CanopenManager(QObject):
         if node is None:
             return []
         return [
-            (number, pdo_map.name, [v.name for v in pdo_map])
+            (number, pdo_name(pdo_map), [v.name for v in pdo_map])
             for number, pdo_map in node.rpdo.map.items()
             if pdo_map.cob_id is not None and len(pdo_map.map)
         ]

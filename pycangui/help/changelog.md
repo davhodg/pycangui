@@ -31,6 +31,8 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- CANopen: a PDO moved off its default COB-ID keeps its own name -- node 1's TPDO5 on 0x123
+  was named as node 35's RPDO in Signals and Plot.
 - On Python 3.15, the Channel list finds attached adapters again (IXXAT and Vector among them),
   and a Vector channel connects.
 - CAN Transmit: a message with a counter or a checksum keeps its period while the window is busy.
