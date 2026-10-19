@@ -88,6 +88,15 @@ and named values. **Right-click** adds and removes messages and signals.
   everything as it was.
 - One database is changed at a time, and only a DBC: pycangui reads KCD, SYM and
   ARXML, and writes DBC only.
-- Kept as they were, and not changed here yet: attributes, value tables, nodes,
-  multiplexing and signal groups. A multiplexed signal's place and scaling can
-  be changed; which multiplexer value it comes with cannot.
+- **Multiplexing** is in a signal's dialog. Tick **Multiplexer** for a signal
+  whose value chooses which of the others are in a frame -- a page, a mode, a
+  group -- and for each of the others choose under **Sent**: *In every frame*,
+  or *When* a multiplexer *is* one of the values given, `0` or `0, 2-4`. A
+  multiplexer can itself be sent under another. A value too big for its
+  multiplexer's bits is said when saving.
+- **Value tables** are named values kept once, by name, for any signal to use.
+  Right-click and choose **Value tables...** to add, rename (double-click the
+  name) and remove them, and to change their values. **From value table**, in a
+  signal's dialog, copies one into its named values.
+- Kept as they were, and not changed here yet: attributes, nodes and signal
+  groups.

@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- Database pane: change a DBC's messages, signals, multiplexing and value tables, saved as a
+  new file that is read back to check it.
 - CAN Trace: *Check counter / checksum...* checks a device's messages as they arrive, with
   CAN Transmit's settings: a Counter / checksum column, green or red, and faults counted in
   Signals and Plot.

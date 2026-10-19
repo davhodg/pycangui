@@ -13,12 +13,17 @@ from pycangui.core.dbc_edit import (
     WARNING,
     AddMessage,
     AddSignal,
+    AddValueTable,
     DatabaseEdit,
     EditError,
     RemoveMessage,
     RemoveSignal,
+    RemoveValueTable,
     SetMessage,
     SetSignal,
+    SetValueTable,
+    parse_values,
+    values_text,
 )
 
 FILES = Path(__file__).parent / "dbc"
@@ -183,3 +188,104 @@ def test_a_large_frame_is_allowed_only_its_proper_lengths():
     assert edit.problems() == []
     edit.apply(SetMessage("FdFrame", "length", 60))
     assert {p.where for p in edit.problems() if p.level == ERROR} >= {"FdFrame"}
+
+
+# --- multiplexing --------------------------------------------------------------------------------
+@pytest.fixture
+def muxed():
+    return DatabaseEdit(FILES / "multiplexed.dbc")
+
+
+def test_a_signal_put_under_a_multiplexer_is_sent_only_for_its_values(muxed, tmp_path):
+    muxed.apply(SetSignal("Simple", "Counter", "multiplexed_by", ("Page", (0, 2))))
+    target = tmp_path / "saved.dbc"
+    assert muxed.save_as(target) == []
+    simple = read(target).get_message_by_name("Simple")
+    assert simple.get_signal_by_name("Counter").multiplexer_ids == [0, 2]
+    assert "Counter" in simple.decode(bytes([2, 0, 0, 0, 0, 0, 0, 9]))
+    assert "Counter" not in simple.decode(bytes([1, 0, 0, 0, 0, 0, 0, 9]))
+
+
+def test_a_new_multiplexer_can_choose_under_another(muxed, tmp_path):
+    muxed.apply(SetSignal("Simple", "Voltage", "is_multiplexer", True))
+    muxed.apply(SetSignal("Simple", "Current", "multiplexed_by", ("Voltage", (1,))))
+    target = tmp_path / "saved.dbc"
+    muxed.save_as(target)
+    simple = read(target).get_message_by_name("Simple")
+    voltage, current = simple.get_signal_by_name("Voltage"), simple.get_signal_by_name("Current")
+    assert voltage.is_multiplexer and voltage.multiplexer_signal == "Page"
+    assert current.multiplexer_signal == "Voltage" and current.multiplexer_ids == [1]
+
+
+def test_a_signal_taken_out_of_multiplexing_is_in_every_frame(muxed, tmp_path):
+    muxed.apply(SetSignal("Simple", "Speed", "multiplexed_by", (None, ())))
+    speed = muxed.message("Simple").get_signal_by_name("Speed")
+    assert speed.multiplexer_signal is None and not speed.multiplexer_ids
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        SetSignal("Simple", "Page", "multiplexed_by", ("Page", (0,))),  # under itself
+        SetSignal("Simple", "Counter", "multiplexed_by", ("Voltage", (0,))),  # not a multiplexer
+        SetSignal("Simple", "Counter", "multiplexed_by", ("Page", ())),  # for no value
+        SetSignal("Simple", "Counter", "multiplexed_by", ("Gone", (0,))),
+        SetSignal("Simple", "Page", "is_multiplexer", False),  # still choosing
+        SetSignal("Extended", "Group", "multiplexed_by", ("Channel", (0,))),  # under its own
+    ],
+)
+def test_multiplexing_that_cannot_be_is_refused(muxed, change):
+    with pytest.raises(EditError):
+        muxed.apply(change)
+    assert muxed.changes == []
+
+
+def test_a_value_its_multiplexer_cannot_hold_is_a_warning(muxed):
+    muxed.apply(SetSignal("Simple", "Speed", "multiplexed_by", ("Page", (1, 300))))
+    assert [p.level for p in muxed.problems()] == [WARNING]
+
+
+def test_multiplexer_values_are_written_as_they_are_typed():
+    assert values_text([4, 0, 2, 3]) == "0, 2-4"
+    assert parse_values("0, 2-4") == [0, 2, 3, 4]
+    assert parse_values(values_text([1, 5, 6, 7, 9])) == [1, 5, 6, 7, 9]
+    for bad in ("x", "4-2", "-1"):
+        with pytest.raises(ValueError):
+            parse_values(bad)
+
+
+# --- value tables --------------------------------------------------------------------------------
+def test_value_tables_are_added_renamed_changed_and_removed(edit, tmp_path):
+    edit.apply(AddValueTable("Modes", {0: "Idle", 1: "Run"}))
+    edit.apply(SetValueTable("OnOff", "values", {1: "Yes", 0: "No"}))
+    edit.apply(SetValueTable("GearTable", "name", "Gears"))
+    edit.apply(RemoveValueTable("Modes"))
+    edit.apply(AddValueTable("Faults", {3: "Open"}))
+    target = tmp_path / "saved.dbc"
+    assert edit.save_as(target) == []
+    tables = {k: dict(v) for k, v in read(target).dbc.value_tables.items()}
+    assert tables == {
+        "OnOff": {1: "Yes", 0: "No"},
+        "Gears": {7: "Reverse", 6: "Neutral", 1: "First", 2: "Second", 3: "Third"},
+        "Faults": {3: "Open"},
+    }
+    assert list(edit.value_tables())[:2] == ["OnOff", "Gears"], "a rename keeps its place"
+    assert edit.touched() == set(), "no message was changed"
+
+
+def test_a_value_table_change_is_undone_and_refused_like_the_rest(edit):
+    with pytest.raises(EditError):
+        edit.apply(AddValueTable("OnOff", {}))
+    with pytest.raises(EditError):
+        edit.apply(SetValueTable("OnOff", "name", "GearTable"))
+    with pytest.raises(EditError):
+        edit.apply(RemoveValueTable("Gone"))
+    edit.apply(RemoveValueTable("OnOff"))
+    assert "OnOff" not in edit.value_tables()
+    edit.undo()
+    assert edit.value_tables()["OnOff"] == {1: "On", 0: "Off"}
+
+
+def test_a_value_table_name_the_format_does_not_allow_stops_a_save(edit):
+    edit.apply(AddValueTable("two words", {0: "Zero"}))
+    assert [p.level for p in edit.problems()] == [ERROR]

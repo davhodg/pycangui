@@ -24,7 +24,6 @@ from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -50,7 +49,13 @@ from pycangui.core.dbc_edit import (
 from pycangui.core.named_values import shown
 from pycangui.ui import folders, fonts, messages
 from pycangui.ui.column_widths import ColumnWidths
-from pycangui.ui.database_edit import MessageDialog, SignalDialog, focus_first
+from pycangui.ui.database_edit import (
+    MessageDialog,
+    SignalDialog,
+    ValueTablesDialog,
+    focus_first,
+    framed,
+)
 
 if TYPE_CHECKING:
     from cantools.database import Message
@@ -418,17 +423,21 @@ class Layout(QWidget):
             bit = end - 1
 
 
-def _framed(name: str) -> tuple[QGroupBox, QVBoxLayout, QHBoxLayout]:
-    """A border with its name inside at the left: the frame, what goes under
-    the name's row, and the row the name is on."""
-    frame = QGroupBox()
-    frame.setAccessibleName(name)
-    inside = QVBoxLayout(frame)
-    inside.setContentsMargins(6, 4, 6, 6)
-    top = QHBoxLayout()
-    top.addWidget(QLabel(name))
-    inside.addLayout(top)
-    return frame, inside, top
+def _multiplexers(message, signal: str) -> list[str]:
+    """The signals of a message that ``signal`` could be sent by: each
+    multiplexer but itself and those it chooses, however far down."""
+    by_name = {s.name: s for s in message.signals}
+
+    def under(s) -> bool:
+        while s is not None and s.multiplexer_signal:
+            if s.multiplexer_signal == signal:
+                return True
+            s = by_name.get(s.multiplexer_signal)
+        return False
+
+    return [
+        s.name for s in message.signals if s.is_multiplexer and s.name != signal and not under(s)
+    ]
 
 
 def _swatch(colour: QColor, size: int) -> QPixmap:
@@ -519,7 +528,7 @@ class DatabaseView(QWidget):
         left_layout.addWidget(self.count)
 
         # --- the chosen message ---
-        frame, inside, top = _framed("Message")
+        frame, inside, top = framed("Message")
         self.title = QLabel(NOTHING_CHOSEN)
         self.title.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.source = QLabel()
@@ -542,7 +551,7 @@ class DatabaseView(QWidget):
         inside.addLayout(buttons)
         message_frame = frame
 
-        frame, inside, top = _framed("Layout")
+        frame, inside, top = framed("Layout")
         self.layout_note = QLabel("bit 7 at the left of each byte")
         self.layout_note.setEnabled(False)
         top.addWidget(self.layout_note, 1)
@@ -568,7 +577,7 @@ class DatabaseView(QWidget):
         inside.addWidget(scroll)
         layout_frame = frame
 
-        frame, inside, top = _framed("Signals")
+        frame, inside, top = framed("Signals")
         top.addStretch()
         self.plot_btn = QPushButton("Plot")
         self.plot_btn.setToolTip(PLOT_TIP)
@@ -875,7 +884,13 @@ class DatabaseView(QWidget):
         signal = next((s for s in current.signals if s.name == name), None)
         if signal is None:
             return
-        dialog = SignalDialog(self, msg.name, signal)
+        dialog = SignalDialog(
+            self,
+            msg.name,
+            signal,
+            multiplexers=_multiplexers(current, signal.name),
+            tables=self._edit.value_tables(),
+        )
         focus_first(dialog)
         while dialog.exec() == SignalDialog.Accepted:
             if self._make(dialog.changes(), signal=dialog.name.text().strip()):
@@ -885,10 +900,25 @@ class DatabaseView(QWidget):
         msg = self._message
         if msg is None or self._session(self._path) is None:
             return
-        dialog = SignalDialog(self, msg.name)
+        dialog = SignalDialog(
+            self,
+            msg.name,
+            multiplexers=_multiplexers(self._edit.message(msg.name), ""),
+            tables=self._edit.value_tables(),
+        )
         focus_first(dialog)
         while dialog.exec() == SignalDialog.Accepted:
             if self._make(dialog.changes(), signal=dialog.name.text().strip()):
+                return
+
+    def edit_value_tables(self, path: str = "") -> None:
+        """The database's value tables, in their dialog."""
+        path = path or self._path or next(iter(self.dbc.databases), "")
+        if not path or self._session(path) is None:
+            return
+        dialog = ValueTablesDialog(self, self._edit.value_tables())
+        while dialog.exec() == ValueTablesDialog.Accepted:
+            if self._make(dialog.changes()):
                 return
 
     def remove_signal(self) -> None:
@@ -913,6 +943,8 @@ class DatabaseView(QWidget):
             "Change signal...", lambda: self.edit_signal(item.data(0, ROLE_SIGNAL))
         ).setEnabled(on_signal)
         menu.addAction("Remove signal", self.remove_signal).setEnabled(on_signal)
+        menu.addSeparator()
+        menu.addAction("Value tables...", lambda: self.edit_value_tables(self._path))
         menu.exec(self.messages.viewport().mapToGlobal(at))
 
     def _signals_menu(self, at) -> None:

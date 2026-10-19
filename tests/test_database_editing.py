@@ -10,8 +10,9 @@ import pytest
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QDialog, QMessageBox
 
+from pycangui.core.dbc_edit import AddValueTable, RemoveValueTable, SetValueTable
 from pycangui.ui import database_view, folders, messages
-from pycangui.ui.database_edit import MessageDialog, SignalDialog
+from pycangui.ui.database_edit import MessageDialog, SignalDialog, ValueTablesDialog
 
 FILES = Path(__file__).parent / "dbc"
 
@@ -270,3 +271,106 @@ def test_removing_the_database_being_changed_asks_first(window, changed, monkeyp
     monkeypatch.setattr(messages, "question", lambda *a, **k: QMessageBox.Discard)
     window._remove_dbc(path, path)
     assert path not in window.dbc.databases
+
+
+# --- multiplexing and value tables ---------------------------------------------------------------
+def muxed_message(name="Simple"):
+    db = cantools.database.load_file(
+        str(FILES / "multiplexed.dbc"), strict=False, sort_signals=None
+    )
+    return db.get_message_by_name(name)
+
+
+def test_a_multiplexed_signal_opened_and_closed_with_ok_changes_nothing(app):
+    msg = muxed_message("Extended")
+    for signal in msg.signals:
+        others = [s.name for s in msg.signals if s.is_multiplexer and s.name != signal.name]
+        dialog = SignalDialog(None, msg.name, signal, multiplexers=others)
+        dialog._accept()
+        assert dialog.result() == QDialog.Accepted and dialog.changes() == [], signal.name
+
+
+def test_a_signal_is_put_under_a_multiplexer_from_its_dialog(app):
+    msg = muxed_message()
+    counter = msg.get_signal_by_name("Counter")
+    dialog = SignalDialog(None, msg.name, counter, multiplexers=["Page"])
+    assert not dialog.sent_values.isEnabled(), "no values to give while sent in every frame"
+    dialog.sent.setCurrentIndex(dialog.sent.findData("Page"))
+    dialog.sent_values.setText("0, 2-3")
+    dialog._accept()
+    assert [(c.field, c.value) for c in dialog.changes()] == [
+        ("multiplexed_by", ("Page", (0, 2, 3)))
+    ]
+
+
+def test_a_multiplexer_with_no_values_keeps_the_dialog_open(app):
+    msg = muxed_message()
+    dialog = SignalDialog(None, msg.name, msg.get_signal_by_name("Counter"), multiplexers=["Page"])
+    dialog.sent.setCurrentIndex(dialog.sent.findData("Page"))
+    dialog.sent_values.setText("")
+    dialog._accept()
+    assert dialog.result() != QDialog.Accepted and dialog.problem.isVisibleTo(dialog)
+
+
+def test_named_values_come_from_a_value_table(app):
+    msg = muxed_message()
+    tables = {"OnOff": {1: "On", 0: "Off"}}
+    dialog = SignalDialog(None, msg.name, msg.get_signal_by_name("Counter"), tables=tables)
+    assert dialog.from_table.isVisibleTo(dialog)
+    dialog.use_table("OnOff")
+    dialog._accept()
+    assert [(c.field, c.value) for c in dialog.changes()] == [("choices", {1: "On", 0: "Off"})]
+    assert not SignalDialog(None, msg.name).from_table.isVisibleTo(dialog), "none to offer"
+
+
+def test_a_signal_is_offered_only_multiplexers_it_could_be_sent_by(window, tmp_path):
+    path = tmp_path / "muxed.dbc"
+    shutil.copy(FILES / "multiplexed.dbc", path)
+    assert window._load_dbc(str(path))
+    extended = muxed_message("Extended")
+    assert database_view._multiplexers(extended, "Raw") == ["Group", "Channel"]
+    assert database_view._multiplexers(extended, "Group") == [], "not under what it chooses"
+
+
+def test_the_value_tables_dialog_says_only_what_changed(app):
+    tables = {"OnOff": {1: "On", 0: "Off"}, "GearTable": {7: "Reverse"}}
+    dialog = ValueTablesDialog(None, tables)
+    dialog._accept()
+    assert dialog.result() == QDialog.Accepted and dialog.changes() == []
+
+    dialog = ValueTablesDialog(None, tables)
+    dialog.list.item(1).setText("Gears")
+    dialog.list.setCurrentRow(0)
+    dialog.values.item(0, 1).setText("Yes")
+    dialog.add_table()
+    dialog.add_value(5, "Five")
+    dialog._accept()
+    assert dialog.changes() == [
+        SetValueTable("OnOff", "values", {1: "Yes", 0: "Off"}),
+        AddValueTable("Table1", {5: "Five"}),
+        SetValueTable("GearTable", "name", "Gears"),
+    ]
+
+    dialog = ValueTablesDialog(None, tables)
+    dialog.list.setCurrentRow(0)
+    dialog.remove_table()
+    dialog._accept()
+    assert dialog.changes() == [RemoveValueTable("OnOff")]
+
+
+def test_a_value_table_name_not_allowed_keeps_the_dialog_open(app):
+    dialog = ValueTablesDialog(None, {"OnOff": {1: "On"}})
+    dialog.list.item(0).setText("On Off")
+    dialog._accept()
+    assert dialog.result() != QDialog.Accepted and dialog.problem.isVisibleTo(dialog)
+
+
+def test_value_tables_are_changed_from_the_pane(view, monkeypatch):
+    def fill(dialog):
+        dialog.list.setCurrentRow(0)
+        dialog.remove_table()
+
+    answering(monkeypatch, ValueTablesDialog, fill)
+    view.edit_value_tables()
+    assert "OnOff" not in view._edit.value_tables()
+    assert view.edit_bar.isVisibleTo(view)

@@ -16,14 +16,20 @@ The file is read in its own order: cantools sorts a message's signals by
 start bit unless told not to, and a file saved after a one-character fix
 would otherwise come back with every message rearranged.
 
-What is not edited here yet: multiplexing, attributes, nodes and value
-tables. All of them are kept as they were, by cantools, when the rest is
-saved (see ``dbc_roundtrip``).
+Multiplexing is two fields of a signal: whether it chooses which of the
+others are sent, and which multiplexer and values it is sent for. Value
+tables -- named values kept once, by name, for any signal to use -- are
+changes of their own.
+
+What is not edited here yet: attributes, nodes and signal groups. All of
+them are kept as they were, by cantools, when the rest is saved (see
+``dbc_roundtrip``).
 """
 
 from __future__ import annotations
 
 import re
+from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,6 +62,10 @@ SIGNAL_FIELDS = (
     "comment",
     "choices",
     "receivers",
+    # Whether it chooses which of the others are sent.
+    "is_multiplexer",
+    # (multiplexer, values) it is sent for; (None, ()) for every frame.
+    "multiplexed_by",
 )
 #: The lengths a CAN FD frame can have; a classic one is 0 to 8.
 FD_LENGTHS = (0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64)
@@ -83,6 +93,10 @@ class SetSignal:
     value: Any
 
     def described(self) -> str:
+        if self.field == "multiplexed_by":
+            mux, values = self.value
+            sent = f"sent when {mux} is {values_text(values)}" if mux else "sent in every frame"
+            return f"{self.message}.{self.signal}: {sent}"
         return f"{self.message}.{self.signal}: {self.field} set to {_shown(self.value)}"
 
 
@@ -125,7 +139,72 @@ class RemoveSignal:
         return f"{self.message}.{self.signal}: removed"
 
 
-Change = SetMessage | SetSignal | AddMessage | RemoveMessage | AddSignal | RemoveSignal
+@dataclass(frozen=True)
+class SetValueTable:
+    """A value table's ``name`` or its ``values``, {number: name}."""
+
+    table: str
+    field: str
+    value: Any
+
+    def described(self) -> str:
+        return f"Value table {self.table}: {self.field} set to {_shown(self.value)}"
+
+
+@dataclass(frozen=True)
+class AddValueTable:
+    name: str
+    values: dict = field(default_factory=dict)
+
+    def described(self) -> str:
+        return f"Value table {self.name}: added"
+
+
+@dataclass(frozen=True)
+class RemoveValueTable:
+    table: str
+
+    def described(self) -> str:
+        return f"Value table {self.table}: removed"
+
+
+Change = (
+    SetMessage
+    | SetSignal
+    | AddMessage
+    | RemoveMessage
+    | AddSignal
+    | RemoveSignal
+    | SetValueTable
+    | AddValueTable
+    | RemoveValueTable
+)
+VALUE_TABLE_CHANGES = (SetValueTable, AddValueTable, RemoveValueTable)
+
+
+def values_text(values: Iterable[int]) -> str:
+    """Multiplexer values as they are typed: ``0, 2-4``."""
+    ordered, runs = sorted(set(values)), []
+    for value in ordered:
+        if runs and value == runs[-1][1] + 1:
+            runs[-1][1] = value
+        else:
+            runs.append([value, value])
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in runs)
+
+
+def parse_values(text: str) -> list[int]:
+    """``0, 2-4`` as [0, 2, 3, 4]; ValueError for anything that is not."""
+    out: set[int] = set()
+    for part in (p.strip() for p in text.split(",")):
+        if not part:
+            continue
+        low, dash, high = part.partition("-")
+        first, last = int(low, 0), int(high, 0) if dash else int(low, 0)
+        if first < 0 or last < first:
+            raise ValueError(part)
+        out.update(range(first, last + 1))
+    return sorted(out)
 
 
 def _shown(value: Any) -> str:
@@ -233,6 +312,8 @@ class DatabaseEdit:
         """The messages changed or added, by the names they have now."""
         names: set[str] = set()
         for change in self.changes:
+            if isinstance(change, VALUE_TABLE_CHANGES):
+                continue  # the database's, not a message's
             name = change.name if isinstance(change, AddMessage) else change.message
             if isinstance(change, SetMessage) and change.field == "name":
                 names.discard(name)
@@ -251,6 +332,10 @@ class DatabaseEdit:
     # --- looking ----------------------------------------------------------------------
     def message(self, name: str):
         return _message(self.database, name)
+
+    def value_tables(self) -> dict[str, dict[int, str]]:
+        """Each value table, in the file's order: {name: {number: name}}."""
+        return {name: dict(values) for name, values in _value_tables(self.database).items()}
 
     def problems(self) -> list[Problem]:
         return problems(self.database)
@@ -329,6 +414,8 @@ def _apply(database, change: Change) -> None:
         database.messages.remove(_message(database, change.message))
     elif isinstance(change, AddSignal):
         _add_signal(_message(database, change.message), change)
+    elif isinstance(change, VALUE_TABLE_CHANGES):
+        _change_value_table(database, change)
     elif isinstance(change, RemoveSignal):
         message = _message(database, change.message)
         signal = _signal(message, change.signal)
@@ -373,9 +460,68 @@ def _set_signal(message, signal, name: str, value: Any) -> None:
     if name == "receivers":
         signal.receivers[:] = list(value)
         return
+    if name == "is_multiplexer":
+        if not value and any(s.multiplexer_signal == signal.name for s in message.signals):
+            raise EditError(f"{signal.name} chooses which of the others are sent: still needed.")
+        signal.is_multiplexer = bool(value)
+        return
+    if name == "multiplexed_by":
+        _multiplex(message, signal, *value)
+        return
     if name == "choices":
         value = dict(value) or None
     setattr(signal, name, value)
+
+
+def _multiplex(message, signal, mux: str | None, values) -> None:
+    """Sent only when ``mux`` has one of ``values``; with no ``mux``, always."""
+    if not mux:
+        signal.multiplexer_signal, signal.multiplexer_ids = None, None
+        return
+    chooser = _signal(message, mux)
+    if not chooser.is_multiplexer:
+        raise EditError(f"{mux} does not choose which signals are sent.")
+    above = chooser
+    while above is not None:  # not under itself, however far up
+        if above is signal:
+            raise EditError(f"{signal.name} cannot be sent by {mux}, which it chooses itself.")
+        above = next((s for s in message.signals if s.name == above.multiplexer_signal), None)
+    wanted = sorted({int(v) for v in values})
+    if not wanted or wanted[0] < 0:
+        raise EditError(f"Which values of {mux} is {signal.name} sent for?")
+    signal.multiplexer_signal, signal.multiplexer_ids = mux, wanted
+
+
+def _value_tables(database):
+    """The database's value tables, made if a file had none to start with."""
+    if database.dbc is None:
+        from cantools.database.can.formats.dbc_specifics import DbcSpecifics
+
+        database.dbc = DbcSpecifics()
+    return database.dbc.value_tables
+
+
+def _change_value_table(database, change) -> None:
+    tables = _value_tables(database)
+    if isinstance(change, AddValueTable):
+        if change.name in tables:
+            raise EditError(f"There is a value table called {change.name} already.")
+        tables[change.name] = OrderedDict(dict(change.values).items())
+        return
+    if change.table not in tables:
+        raise EditError(f"There is no value table called {change.table}.")
+    if isinstance(change, RemoveValueTable):
+        del tables[change.table]
+    elif change.field == "values":
+        tables[change.table] = OrderedDict(dict(change.value).items())
+    elif change.field == "name":
+        if change.value != change.table and change.value in tables:
+            raise EditError(f"There is a value table called {change.value} already.")
+        renamed = [(change.value if k == change.table else k, v) for k, v in tables.items()]
+        tables.clear()  # in place, keeping its place in the file
+        tables.update(renamed)
+    else:
+        raise EditError(f"A value table has no {change.field} to set.")
 
 
 def _add_message(database, change: AddMessage) -> None:
@@ -478,6 +624,20 @@ def problems(database) -> list[Problem]:
             if low is not None and high is not None and low > high:
                 found.append(Problem(WARNING, at, "its minimum is above its maximum"))
         by_name = {s.name: s for s in message.signals}
+        for signal in message.signals:
+            chooser = by_name.get(signal.multiplexer_signal or "")
+            if chooser is None or chooser.length < 1:
+                continue
+            past = [v for v in signal.multiplexer_ids or [] if v >= 1 << min(chooser.length, 64)]
+            if past:
+                found.append(
+                    Problem(
+                        WARNING,
+                        f"{message.name}.{signal.name}",
+                        f"sent when {chooser.name} is {values_text(past)}, "
+                        f"which its {chooser.length} bits cannot hold",
+                    )
+                )
         for i, a in enumerate(message.signals):
             for b in message.signals[i + 1 :]:
                 if _together(a, b, by_name) and bits(a) & bits(b):
@@ -487,4 +647,8 @@ def problems(database) -> list[Problem]:
     for name, count in names.items():
         if count > 1:
             found.append(Problem(ERROR, name, "two messages of this name"))
+    tables = getattr(database.dbc, "value_tables", None) or {}
+    for name in tables:
+        if not NAME.match(name):
+            found.append(Problem(ERROR, f"Value table {name}", "not a name the format allows"))
     return found
