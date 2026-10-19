@@ -12,7 +12,8 @@ since the last version, and comes out in the next one.
 ### Added
 
 - CAN Trace: *Check counter / checksum...* checks a device's messages as they arrive, with
-  CAN Transmit's settings: failing frames marked, faults counted in Signals and Plot.
+  CAN Transmit's settings: a Counter / checksum column, green or red, and faults counted in
+  Signals and Plot.
 
 ## [0.4.1] - 2026-10-18
 

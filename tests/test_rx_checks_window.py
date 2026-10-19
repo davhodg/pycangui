@@ -14,9 +14,9 @@ from PySide6.QtWidgets import QDialog
 from pycangui.core import tx_fields as tx
 from pycangui.core.bus import Frame
 from pycangui.core.rx_checks import SETTING, Check
+from pycangui.ui import latest_model, trace_model
 from pycangui.ui import main_window as main_window_module
 from pycangui.ui.main_window import MainWindow
-from pycangui.ui.trace_model import DATA_COLUMN
 
 COUNTER = tx.Counter(at=tx.Placement(0, tx.LOW))
 CHECKSUM = tx.Checksum(at=tx.Placement(7), algorithm="sum8")
@@ -70,17 +70,42 @@ def test_a_failing_frame_is_marked_counted_and_said_once(app, window):
     assert "good" in window.posted, "and when it is right again"
 
 
-def test_a_marked_frame_shows_in_the_trace(app, window):
+def test_the_trace_shows_each_frame_right_or_wrong(app, window):
+    """The check's column, in CAN Transmit's words, green or red; nothing on a
+    frame nobody checks."""
     window.rx_checks.set(Check(0x100, checksum=CHECKSUM))
     bad = bytearray(made(0))
     bad[7] ^= 0xFF
-    trace = window.trace
-    window.channels.frames.emit([frame(bad)])
+    other = Frame(0.0, "CAN1", 0x200, False, False, True, bytes(8))
+    window.channels.frames.emit([frame(made(0)), frame(bad, 0.1), other])
     app.processEvents()
-    model = trace.model
-    index = model.index(model.rowCount() - 1, DATA_COLUMN)
-    assert model.data(index, Qt.BackgroundRole) is not None
-    assert model.data(index, Qt.ToolTipRole)
+    model = window.trace.model
+    good, wrong, unchecked = (model.index(r, trace_model.CHECK_COLUMN) for r in range(3))
+    assert model.data(good, Qt.DisplayRole) == tx.describe(None, CHECKSUM)
+    assert model.data(good, Qt.BackgroundRole) == trace_model.GOOD_COLOUR
+    assert model.data(wrong, Qt.BackgroundRole) == trace_model.FAULT_COLOUR
+    assert model.data(wrong, Qt.ToolTipRole) == model.frame(1).fault
+    assert not model.data(unchecked, Qt.DisplayRole)
+    assert model.data(unchecked, Qt.BackgroundRole) is None
+
+
+def test_latest_per_id_shows_the_newest_and_counts_the_failures(app, window):
+    window.rx_checks.set(Check(0x100, checksum=CHECKSUM))
+    bad = bytearray(made(0))
+    bad[7] ^= 0xFF
+    latest = window.trace.latest
+    column = latest_model.CHECK_COLUMN
+    window.channels.frames.emit([frame(bad), frame(bad, 0.1)])
+    app.processEvents()
+    index = latest.index(0, column)
+    assert latest.data(index, Qt.BackgroundRole) == trace_model.FAULT_COLOUR
+    assert latest.data(index, Qt.UserRole) == 2
+
+    window.channels.frames.emit([frame(made(0), 0.2)])
+    app.processEvents()
+    assert latest.data(index, Qt.BackgroundRole) == trace_model.GOOD_COLOUR
+    assert latest.data(index, Qt.UserRole) == 2, "the failures so far stay counted"
+    assert tx.describe(None, CHECKSUM) in latest.data(index, Qt.DisplayRole)
 
 
 def test_the_trace_asks_for_a_check_on_the_frame_chosen(app, window):

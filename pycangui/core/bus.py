@@ -62,7 +62,10 @@ class Frame:
     #: fault on the wire. Its id carries error flags, not an identifier.
     error: bool = False
     group: str = "Other"  # filter group, from the CAN id (see core.classify)
-    #: What a check of its counter or checksum found wrong; see core.rx_checks.
+    #: What its counter and checksum were checked for, as CAN Transmit says it,
+    #: or "" for a frame nobody checks; see core.rx_checks.
+    checked: str = ""
+    #: What that check found wrong, or "" when it was right.
     fault: str = ""
 
     @property

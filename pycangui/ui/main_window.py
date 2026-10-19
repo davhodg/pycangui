@@ -336,6 +336,18 @@ class MainWindow(QMainWindow):
             self.j1939.classify,
             self.xcp.classify,
         ]
+        # Counters and checksums of received messages, checked first: a frame
+        # found wrong is marked before any trace is given it, so connected
+        # before the first trace is made -- slots run in the order connected.
+        self.rx_checks = rx_checks.Checker(
+            message_by_name=self.dbc.message_by_name,
+            hook=lambda name, can_id, data: self.hooks.call(
+                "transmit", "checksum", name, can_id, data
+            ),
+        )
+        for problem in self.rx_checks.load(self.ctx.settings.get(rx_checks.SETTING, [])):
+            self.events.warning(problem)
+        self.channels.frames.connect(self._check_frames)
         self.panes = Panes(self, self.ctx)
         self.panes.pane_shown.connect(self._on_pane_shown)
         self._register_panes()
@@ -374,17 +386,6 @@ class MainWindow(QMainWindow):
         self._status_timer.start()
 
         # --- wiring ----------------------------------------------------------
-        # Counters and checksums of received messages, checked first: a frame
-        # found wrong is marked before any trace is given it.
-        self.rx_checks = rx_checks.Checker(
-            message_by_name=self.dbc.message_by_name,
-            hook=lambda name, can_id, data: self.hooks.call(
-                "transmit", "checksum", name, can_id, data
-            ),
-        )
-        for problem in self.rx_checks.load(self.ctx.settings.get(rx_checks.SETTING, [])):
-            self.events.warning(problem)
-        self.channels.frames.connect(self._check_frames)
         self.channels.frames.connect(self._decode_frames)
         # A channel gets back the filter this workspace last put on it, and
         # a new one gets whatever was saved under its name before.
@@ -2508,7 +2509,7 @@ class MainWindow(QMainWindow):
             outcome = self.rx_checks.check(f)
             if outcome is None:
                 continue
-            f.fault = outcome.fault
+            f.checked, f.fault = outcome.said, outcome.fault
             check = outcome.check
             tally = self.rx_checks.tallies[check.key]
             values = {}

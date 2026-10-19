@@ -32,10 +32,13 @@ the same algorithms, or the `transmit.checksum` [hook](hooks.md) for a maker's
 own. Unticking both in the dialog stops the check. The checks are kept with
 the workspace.
 
-- **A frame that fails** has its data tinted red, and pointing at it says what
-  was wrong: *count 7 after 5: 1 missing*, *count 5 repeated*, or *checksum 3A,
-  expected 5C*. Typing `checksum` or `count` into the filter box shows only the
-  frames that failed.
+- **Each frame**: the **Counter / checksum** column says what it was checked
+  for, in CAN Transmit's words (*count b0.lo, sum8 b7*), green when it was
+  right and red when not. Pointing at a red one says what was wrong: *count 7
+  after 5: 1 missing*, *count 5 repeated*, or *checksum 3A, expected 5C*.
+  Typing `checksum` or `count` into the filter box shows only the frames that
+  failed. In *Latest per ID* the colour is the newest frame's, and the text starts
+  with how many have failed since **Clear**.
 - **How often**: each checked message has *Counter faults* and *Checksum
   faults* in [Signals and Plot](signals.md), under *Check* and the message's
   name, to watch or plot against anything else.

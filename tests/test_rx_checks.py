@@ -162,3 +162,14 @@ def test_a_message_not_in_a_loaded_database_says_so():
     checker = Checker()
     checker.set(Check(0x123, counter=tx.Counter(signal="Alive"), message="Gone"))
     assert checker.check(frame(b"\x00" * 8, can_id=0x123)).fault
+
+
+def test_a_check_is_said_as_the_transmit_list_says_it(pump):
+    """A field in a signal by the signal's position, as CAN Transmit shows it."""
+    checker = Checker(message_by_name=lambda name: pump if name == "PumpCommand" else None)
+    counter = tx.Counter(signal="PumpEnable")
+    checker.set(Check(pump.frame_id, counter=counter, message="PumpCommand"))
+    outcome = checker.check(frame(bytes(pump.length), can_id=pump.frame_id))
+    places = {s.name: (s.start, s.length) for s in pump.signals}
+    assert outcome.said == tx.describe(counter, None, places)
+    assert "PumpEnable" not in outcome.said

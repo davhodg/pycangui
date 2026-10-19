@@ -86,6 +86,8 @@ class Outcome:
     counter: str = ""
     #: Why the checksum is wrong, or "".
     checksum: str = ""
+    #: What was checked, as the transmit list says it: ``count b0.lo, sum8 b7``.
+    said: str = ""
     #: This frame started a run of faults, or ended one (the run's length).
     started: bool = False
     ended: int = 0
@@ -111,6 +113,8 @@ class Checker:
     #: The last count seen, per channel and message: a frame lost on one bus
     #: is not a count skipped on another.
     _last: dict[tuple[str, int, bool], int] = field(default_factory=dict)
+    #: Each check as the transmit list says it, worked out on its first frame.
+    _said: dict[tuple[int, bool], str] = field(default_factory=dict)
 
     # --- which messages ---------------------------------------------------------
     def set(self, check: Check) -> None:
@@ -128,6 +132,7 @@ class Checker:
         self._forget(key)
 
     def _forget(self, key: tuple[int, bool]) -> None:
+        self._said.pop(key, None)
         for last in [k for k in self._last if k[1:] == key]:
             del self._last[last]
 
@@ -139,6 +144,7 @@ class Checker:
         self.checks.clear()
         self.tallies.clear()
         self._last.clear()
+        self._said.clear()
         problems = []
         for entry in raw or []:
             try:
@@ -158,7 +164,7 @@ class Checker:
         check = self.checks.get((frame.can_id, frame.extended))
         if check is None:
             return None
-        outcome = Outcome(check)
+        outcome = Outcome(check, said=self.said(check))
         named = [f for f in (check.counter, check.checksum) if f is not None and f.signal]
         message = values = raw = None
         if named:
@@ -197,6 +203,15 @@ class Checker:
             outcome.checksum = outcome.checksum or str(exc)
         self._tally(check, outcome)
         return outcome
+
+    def said(self, check: Check) -> str:
+        """The check in the transmit list's words, a signal by its position."""
+        if (said := self._said.get(check.key)) is None:
+            message = self.message_by_name(check.message) if check.message else None
+            signals = getattr(message, "signals", None) or []
+            places = {s.name: (s.start, s.length) for s in signals}
+            said = self._said[check.key] = tx.describe(check.counter, check.checksum, places)
+        return said
 
     def _placed_checksum(self, check: Check, frame: Frame) -> str:
         """The checksum at a byte position: worked out with its own bits at zero."""
