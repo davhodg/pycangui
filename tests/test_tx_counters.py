@@ -22,7 +22,7 @@ from pycangui.core import tx_fields as tx
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
-from pycangui.ui.tx_view import COL_CYCLIC, COL_FIELDS, COL_NAME, TxView
+from pycangui.ui.tx_view import COL_CYCLIC, COL_DATA, COL_FIELDS, COL_NAME, COL_UNIT, TxView
 
 CHANNEL = "vtxcount"
 
@@ -94,31 +94,54 @@ def test_a_message_with_neither_is_sent_exactly_as_typed(app, view, listening):
     assert bytes(got[0].data) == b"\x01\x02\x03"
 
 
-# --- which timer, which is the thing that must not regress ------------------------
-def test_a_plain_message_uses_the_adapter_cyclic_task(app, view):
-    """Unchanged behaviour, and worth keeping: some adapters time these in
-    hardware, which is steadier than anything a GUI can do."""
-    row = a_row(view)
+# --- keeping time, which is the thing that must not regress ----------------------
+def while_busy(bus, seconds=0.5):
+    """The frames that arrive while the GUI thread is held up -- by a trace
+    with a lot to draw, say -- and handles nothing."""
+    time.sleep(seconds)
+    got = []
+    while (msg := bus.recv(timeout=0)) is not None:
+        got.append(msg)
+    return got
+
+
+def test_a_counted_message_keeps_its_period_while_the_window_is_busy(app, view, listening):
+    """Reported: 20 ms with a counter and a checksum could not be kept up.
+    Each frame was made on the GUI's thread, and a busy trace held it back."""
+    row = a_row(view, counter=COUNTER, checksum=CHECKSUM)
     view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
-    assert row in view._tasks and row not in view._timers
+    got = while_busy(listening)
+    assert len(got) >= 15, f"only {len(got)} frames in half a second at 20 ms"
+    counts = [m.data[0] & 0x0F for m in got]
+    assert counts == [(counts[0] + i) % 16 for i in range(len(counts))], counts
+    assert all(m.data[7] == sum(m.data[:7]) & 0xFF for m in got)
 
 
-def test_a_counted_message_is_timed_by_pycangui_instead(app, view):
-    """It has to be: the adapter's task repeats fixed bytes, and modifying a
-    free-running one races it -- some frames would repeat a count and some
-    would skip one, which is what the receiver is checking for."""
-    row = a_row(view, counter=COUNTER)
-    view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
-    assert row in view._timers and row not in view._tasks
-
-
-def test_a_checksum_alone_is_enough_to_take_it_off_the_adapter(app, view):
+def test_a_checksum_alone_keeps_its_period_too(app, view, listening):
     """The bytes are fixed, so the adapter could manage -- but the hook may
-    return a different value each time, and one rule is easier to trust than
-    a rule with an exception in it."""
+    return a different value each time, so it is worked out on every frame."""
+    hooks = FakeHooks(0x5A)
+    view.hooks = hooks
     row = a_row(view, checksum=CHECKSUM)
     view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
-    assert row in view._timers
+    got = while_busy(listening)
+    assert len(got) >= 15
+    assert all(m.data[7] == 0x5A for m in got)
+    assert len(hooks.seen) >= len(got)
+
+
+def test_an_edit_to_a_running_counted_message_goes_out(app, view, listening):
+    """Its frames are made from the row as it was when it started, so an
+    edit has to start it again, and the count carries on."""
+    row = a_row(view, counter=COUNTER)
+    view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
+    before = while_busy(listening, 0.2)
+    view.item(row).setText(COL_DATA, "00 77 00 00 00 00 00 00")
+    after = while_busy(listening, 0.2)
+    assert before and after
+    assert after[-1].data[1] == 0x77
+    counts = [m.data[0] & 0x0F for m in before + after]
+    assert len(set(counts[:16])) == len(counts[:16]), f"a count repeated: {counts}"
 
 
 def test_both_kinds_count_as_cyclic_and_both_stop(app, view):
@@ -304,10 +327,13 @@ def test_the_signal_checksum_covers_the_signal_counter(app, dbc_view, dbc_listen
     assert [v["PumpSpeedDemand"] for v in seen] == [0, 1, 0, 1]
 
 
-def test_a_named_row_is_still_timed_by_pycangui(app, dbc_view):
-    row = a_dbc_row(dbc_view, counter=DBC_COUNTER)
+def test_a_named_row_keeps_its_period_while_the_window_is_busy(app, dbc_view, dbc_listening):
+    row = a_dbc_row(dbc_view, counter=DBC_COUNTER, checksum=DBC_CHECKSUM)
     dbc_view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
-    assert row in dbc_view._timers and row not in dbc_view._tasks
+    got = while_busy(dbc_listening)
+    assert len(got) >= 15
+    seen = [decode(dbc_view, m)["PumpEnable"] for m in got]
+    assert seen == [(seen[0] + i) % 2 for i in range(len(seen))], seen
 
 
 def test_a_row_says_where_its_fields_are_and_names_them_on_hover(app, dbc_view):
@@ -460,3 +486,59 @@ def test_a_field_in_a_database_signal_is_found_through_the_database():
         bits={"Alive": 4, "Crc": 8},
     )
     assert counter == bytes([0x0F, 0, 0]) and checksum == bytes([0, 0, 0xFF])
+
+
+# --- a database or a node's RPDOs read again ----------------------------------------------
+def changed_in_the_database(view, unit="changed"):
+    """A signal of PumpCommand given another unit, as a database read again might."""
+    view.dbc.message_by_name("PumpCommand").signals[0].unit = unit
+
+
+def test_reading_the_same_again_leaves_the_rows_and_the_selection_alone(app, dbc_view):
+    """Reported: a row selected to be removed kept losing its selection. Each
+    boot-up read the node's RPDOs again and the list was cleared and filled
+    again, though nothing in it had changed."""
+    row = a_dbc_row(dbc_view)
+    dbc_view.item(row).setSelected(True)
+    before = dbc_view.item(row)
+    dbc_view.refresh_sources()
+    assert dbc_view.item(row) is before and before.isSelected()
+
+
+def test_a_rebuild_keeps_what_was_selected(app, dbc_view):
+    row = a_dbc_row(dbc_view)
+    dbc_view.item(row).setSelected(True)
+    changed_in_the_database(dbc_view)
+    dbc_view.refresh_sources()
+    assert dbc_view.item(row).isSelected()
+    assert dbc_view.item(row).child(0).text(COL_UNIT) == "changed", "and it was rebuilt"
+
+
+def test_what_was_cyclic_is_cyclic_again_after_the_rows_are_rebuilt(app, dbc_view, dbc_listening):
+    """Reported: an NMT reset made the node send its boot-up, its RPDOs were
+    read again, the list was rebuilt -- and the cyclic message, which had
+    nothing to do with the node, stopped with nothing said."""
+    row = a_dbc_row(dbc_view)
+    dbc_view.item(row).setCheckState(COL_CYCLIC, Qt.Checked)
+    changed_in_the_database(dbc_view)
+    before = dbc_view.item(row)
+    dbc_view.refresh_sources()
+    assert dbc_view.item(row) is not before, "rebuilt"
+    assert dbc_view.item(row).checkState(COL_CYCLIC) == Qt.Checked
+    assert row in dbc_view._tasks
+    while dbc_listening.recv(timeout=0) is not None:
+        pass
+    assert len(while_busy(dbc_listening, 0.3)) >= 5, "and frames are going out"
+
+
+def test_the_rows_are_not_rebuilt_under_an_open_menu(app, dbc_view):
+    """It would replace the row the menu is choosing for, and drop the choice."""
+    row = a_dbc_row(dbc_view)
+    changed_in_the_database(dbc_view)
+    before = dbc_view.item(row)
+    dbc_view._delegate.choosing = True
+    dbc_view.refresh_sources()
+    assert dbc_view.item(row) is before, "not while the menu is open"
+    dbc_view._delegate.choosing = False
+    dbc_view._delegate.closed_menu.emit()
+    assert dbc_view.item(row) is not before, "but once it has closed"

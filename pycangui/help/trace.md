@@ -22,6 +22,35 @@ the data (`185`, `txpdo`, `drive bus`, `de ad`; several words must all match),
 and the **Filter** menu hides whole protocol groups or channels. The row count
 next to the buttons reads *shown of captured*.
 
+## Checking a device's counter and checksum
+
+Right-click a frame and choose **Check counter / checksum...** to check every
+frame of that message as it arrives, with the same settings and arithmetic as
+[CAN Transmit](transmit.md)'s counters and checksums:
+a counter in a byte, a nibble or a database signal, and a checksum by one of
+the same algorithms, or the `transmit.checksum` [hook](hooks.md) for a maker's
+own. Unticking both in the dialog stops the check. The checks are kept with
+the workspace.
+
+- **Each frame**: the **Counter / checksum** column says what it was checked
+  for, in CAN Transmit's words (*count b0.lo, sum8 b7*), green when it was
+  right and red when not. Pointing at a red one says what was wrong: *count 7
+  after 5: 1 missing*, *count 5 repeated*, or *checksum 3A, expected 5C*.
+  Typing `checksum` or `count` into the filter box shows only the frames that
+  failed. In *Latest per ID* the colour is the newest frame's, and the text starts
+  with how many have failed since **Clear**.
+- **How often**: each checked message has *Counter faults* and *Checksum
+  faults* in [Signals and Plot](signals.md), under *Check* and the message's
+  name, to watch or plot against anything else.
+- **When**: the [Event Log](event-log.md) says when a message starts failing,
+  and again when its frames are right, rather than a line a frame.
+
+The first frame seen starts the count, so joining a bus part way through is
+not a fault, and each channel counts for itself. A skipped count can be a
+frame lost on the way rather than a fault in the device: the check cannot tell
+the two apart, and says only what arrived. Frames pycangui sends itself are
+not checked here; those are made right as they are sent.
+
 ## What names a frame
 
 The **Kind** column says what a frame is, and nothing is named on the strength

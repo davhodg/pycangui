@@ -177,3 +177,35 @@ def test_it_is_under_tools_settings(app, tmp_path, monkeypatch):
     assert window.settings_menu.menuAction() in tools.actions()
     assert window.theme_menu.menuAction() in window.settings_menu.actions()
     window.close()
+
+
+# --- cells typed into ---------------------------------------------------------------------
+@pytest.mark.parametrize("view", ["tree", "table"])
+def test_a_cell_typed_into_hides_the_value_it_is_over(app, view):
+    """Reported: in the Windows 11 style the old value showed through under
+    the new one, since the box typed into painted no background of its own."""
+    from PySide6.QtWidgets import (
+        QLineEdit,
+        QTableWidget,
+        QTableWidgetItem,
+        QTreeWidget,
+        QTreeWidgetItem,
+    )
+
+    theme.apply(theme.SYSTEM, App())
+    if view == "tree":
+        widget = QTreeWidget()
+        item = QTreeWidgetItem(["old value"])
+        item.setFlags(item.flags() | Qt.ItemIsEditable)
+        widget.addTopLevelItem(item)
+        widget.show()
+        widget.editItem(item, 0)
+    else:
+        widget = QTableWidget(1, 1)
+        item = QTableWidgetItem("old value")
+        widget.setItem(0, 0, item)
+        widget.show()
+        widget.editItem(item)
+    editor = widget.findChild(QLineEdit)
+    assert editor is not None and editor.autoFillBackground()
+    widget.close()

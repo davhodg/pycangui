@@ -11,17 +11,39 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CAN Trace: *Check counter / checksum...* checks a device's messages as they arrive, with
+  CAN Transmit's settings: a Counter / checksum column, green or red, and faults counted in
+  Signals and Plot.
+
+## [0.4.1] - 2026-10-18
+
+### Fixed
+
+- CAN Transmit: a node's RPDOs read again, as at its boot-up after an NMT reset, no longer
+  rebuild the list unless something in it changed: cyclic messages stopped with nothing said,
+  a selected row lost its selection, and a value chosen from a menu was lost.
+
+## [0.4.0] - 2026-10-18
+
+### Added
+
+- Python 3.15: pycangui runs and is tested on it; the optional MDF reader cannot be installed
+  there yet.
 - *Tools > Settings > Add shortcut to desktop* on Windows; both shortcuts for a pip
   installation too.
 - *File > Workspace > New...* starts an empty workspace.
 - *File > Run script...* and *File > Recent scripts*, the last five run in the workspace.
 - A **Database** pane: the messages and signals of the loaded databases, each message's bit
   layout, and live values.
-- CANopen **Save network as DBC...**: a CAN database of the network's PDOs, heartbeats and
-  emergencies; one node's or one file's from its right-click.
+- CANopen **DBC** menu: a CAN database of the network's PDOs, heartbeats and emergencies, or
+  of the selected node or DCF alone (also on its right-click).
+- The *udp_multicast* Channel list offers the group [pyscopegui](https://github.com/davhodg/pyscopegui)
+  sends the CAN it decodes from a scope to.
 
 ### Changed
 
+- CANopen: a file's *Save* is in the DCF menu, named for the file, and *Save DCF...* on a
+  file saves it as a new DCF, in place of the two buttons under the list.
 - CANopen: a node's RPDOs, emergency COB-ID and heartbeat time are read from it with its
   TPDOs, and again at boot-up; *Settings...* can turn the reading off.
 - The launchers no longer ask about a Start menu entry: the first start says in the Event
@@ -29,7 +51,24 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- CANopen: a PDO moved off its default COB-ID keeps its own name -- node 1's TPDO5 on 0x123
+  was named as node 35's RPDO in Signals and Plot and in a saved DBC.
+- On Python 3.15, the Channel list finds attached adapters again (IXXAT and Vector among them),
+  and a Vector channel connects.
+- CAN Transmit: a message with a counter or a checksum keeps its period while the window is busy.
+- CAN Transmit: double-clicking a named value offers its names as a menu, which no longer
+  shuts as it opens on Windows; *Type a value...* or F2 is for a number.
+- In the Windows 11 style, a cell being edited no longer shows its old value under the new one.
+- A *udp_multicast* channel opens, shows what pycangui sent as sent, and works on
+  Windows, so frames can be shared with other python-can programs, on the computer
+  or the local network.
 - A plugin behind the one pycangui ships was also said to differ from it at the same version.
+- The first start after the launcher installs libraries says why it is slow, rather than
+  listing the download as a slow step.
+- Installing the MDF reader on Windows and macOS says at once when it has no ready-made
+  download for the Python in use, rather than failing to build it.
+- The launchers offer to set `.venv` up again when the Python it was made with has gone, and a
+  failed first setup leaves no half-made `.venv`.
 
 ## [0.3.0] - 2026-10-12
 
@@ -217,7 +256,9 @@ The first release, on PyPI (`pip install pycangui`) and as a Windows installer.
 - **Simulated nodes** on a virtual bus or a real adapter, and gateways between channels.
 - **Workspaces**, one per product, exported and imported as one zip.
 
-[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/davhodg/pycangui/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/davhodg/pycangui/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/davhodg/pycangui/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/davhodg/pycangui/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/davhodg/pycangui/compare/v0.1.0...v0.1.1

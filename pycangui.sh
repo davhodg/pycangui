@@ -30,6 +30,49 @@ fail() {
 
 cd "$(dirname "$0")" || exit 1
 
+# Why a .venv can no longer run, or nothing when it can. A .venv is made from
+# one Python, and its python is a link to that one. Uninstalled, and the link
+# leads nowhere; replaced by a newer version under the same name, and the
+# link reaches a Python the libraries in .venv were not installed for.
+# Checked from the files, which costs nothing, rather than by starting Python.
+venv_gone() {
+    if [ ! -e .venv/bin/python ]; then
+        echo "The Python it was made with is not there any more."
+        return
+    fi
+    made=$(sed -nE 's/^version(_info)? *= *([0-9]+\.[0-9]+).*/\2/p' .venv/pyvenv.cfg 2>/dev/null)
+    now=$(readlink -f .venv/bin/python 2>/dev/null | sed -nE 's/.*python([0-9]+\.[0-9]+)$/\1/p')
+    if [ -n "$made" ] && [ -n "$now" ] && [ "$made" != "$now" ]; then
+        echo "It was made with Python $made, and the Python it reaches now is $now."
+    fi
+}
+
+# A link to a Python that has gone counts as a .venv: it is one that needs
+# making again, and not a first run.
+if [ -L .venv/bin/python ] || [ -e .venv/bin/python ]; then
+    gone=$(venv_gone)
+    if [ -n "$gone" ]; then
+        echo
+        echo "pycangui's .venv folder cannot run any more. $gone"
+        echo
+        echo ".venv holds only the libraries pycangui runs on, made for that Python,"
+        echo "so it has to be made again with the Python installed now. Your"
+        echo "workspaces and settings are not in it, and are kept."
+        echo
+        if [ ! -t 0 ]; then
+            fail "pycangui's .venv folder was made with a Python that is not there any more." \
+                "Delete the .venv folder beside pycangui.sh, and run it again."
+        fi
+        printf 'Delete .venv and set it up again? [Y/n] '
+        read -r answer
+        case $answer in
+            [Nn]*) fail ".venv was left as it is, and pycangui cannot start until it is" \
+                "made again: delete the .venv folder beside pycangui.sh, and run it again." ;;
+        esac
+        rm -rf .venv || fail ".venv could not be deleted. Delete it by hand, and run this again."
+    fi
+fi
+
 if [ ! -x .venv/bin/python ]; then
     cat <<'BANNER'
 
@@ -56,6 +99,10 @@ BANNER
     python3 --version || fail "python3 was not found. Install Python 3.12 or newer."
     python3 -c "import sys; sys.exit(sys.version_info < (3, 12))" ||
         fail "pycangui needs Python 3.12 or newer, and this python3 is older."
+    # The interpreter just checked, by its full path, so that uv builds .venv
+    # from the same one: left to itself, uv chooses by rules of its own, and
+    # can even fetch a Python of its own.
+    PYEXE=$(python3 -c "import sys; print(sys.executable)")
 
     echo
     # uv is a much faster drop-in replacement for pip. Used if it happens to
@@ -70,7 +117,7 @@ BANNER
     echo
     echo " [2/3] Creating the virtual environment in .venv ..."
     if [ -n "$UV" ]; then
-        uv venv .venv || fail "Creating .venv failed. The messages above say why."
+        uv venv --python "$PYEXE" .venv || fail "Creating .venv failed. The messages above say why."
     else
         # Debian, Ubuntu and Linux Mint ship the venv module without what it
         # needs to install pip, as a separate package. Asked before creating
@@ -96,8 +143,17 @@ BANNER
         uv pip install --python .venv/bin/python -e "."
       else
         .venv/bin/python -m pip install -e "."
-      fi } || fail "Setup failed. The messages above say why; the usual causes are" \
-        "no internet connection, or a proxy that blocks pypi.org."
+      fi } || {
+        # No half-made .venv left behind: the next run would take it for a
+        # finished one, and keep the Python it was made with.
+        rm -rf .venv
+        fail "Setup failed. The messages above say why; the usual causes are" \
+            "no internet connection, or a proxy that blocks pypi.org." "" \
+            "The half-made .venv was removed, so the next run sets it up afresh."
+    }
+    # So that the first start says it is the first, and why it is slow: every
+    # file compiled once, and read from a disk that has not seen them yet.
+    export PYCANGUI_SET_UP=1
 
     # Nothing is asked here, and no menu entry is made: a question at the end
     # of several minutes of downloading is one nobody is there to answer.
@@ -135,6 +191,7 @@ elif ! .venv/bin/python build/check_deps.py >/dev/null 2>&1; then
         .venv/bin/python -m pip install -e "." ||
             fail "Installing the new libraries failed. The messages above say why."
     fi
+    export PYCANGUI_SET_UP=1
     cp pyproject.toml .venv/.deps-ok
 else
     cp pyproject.toml .venv/.deps-ok

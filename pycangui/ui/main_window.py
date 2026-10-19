@@ -32,12 +32,15 @@ from pycangui.canopen.manager import CanopenManager
 from pycangui.core import (
     cli,
     file_types,
+    rx_checks,
     script_run,
     shortcut,
     timing,
+    tx_fields,
     workspace_files,
     workspaces,
 )
+from pycangui.core.bus import share_udp_on_network
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
@@ -90,6 +93,7 @@ from pycangui.ui.scope_view import ScopeView
 from pycangui.ui.scripts_menu import ScriptsMenu
 from pycangui.ui.simnode_dialog import SimulatedNodeDialog
 from pycangui.ui.trace_view import TraceView
+from pycangui.ui.tx_fields_dialog import TxFieldsDialog
 from pycangui.ui.tx_view import TxView
 from pycangui.ui.uds_view import UdsView
 from pycangui.ui.workspace_menu import SWITCH_WHILE_CONNECTED, WorkspaceMenu
@@ -156,6 +160,15 @@ AT_END = 4
 #: In QSettings, not the workspace: whether this person has been told, on
 #: this machine, where a shortcut is made.
 SHORTCUT_TOLD_KEY = "shortcut/told"
+#: In QSettings: whether udp_multicast channels reach the local network.
+UDP_NETWORK_KEY = "udp/local_network"
+UDP_NETWORK_TIP = (
+    "Off, a udp_multicast channel stays on this computer: other programs on it\n"
+    "share its frames, and nothing goes out on a network. On, it reaches the\n"
+    "local network too, and no further: every computer on it that has joined\n"
+    "the group hears it -- and can send into it. For this computer, not a\n"
+    "workspace; a channel already connected follows it when it connects again."
+)
 HISTORY_KEY = "signals.history"
 HISTORY_TIP = (
     "How many samples of each decoded signal are kept, for the plot and for\n"
@@ -323,6 +336,18 @@ class MainWindow(QMainWindow):
             self.j1939.classify,
             self.xcp.classify,
         ]
+        # Counters and checksums of received messages, checked first: a frame
+        # found wrong is marked before any trace is given it, so connected
+        # before the first trace is made -- slots run in the order connected.
+        self.rx_checks = rx_checks.Checker(
+            message_by_name=self.dbc.message_by_name,
+            hook=lambda name, can_id, data: self.hooks.call(
+                "transmit", "checksum", name, can_id, data
+            ),
+        )
+        for problem in self.rx_checks.load(self.ctx.settings.get(rx_checks.SETTING, [])):
+            self.events.warning(problem)
+        self.channels.frames.connect(self._check_frames)
         self.panes = Panes(self, self.ctx)
         self.panes.pane_shown.connect(self._on_pane_shown)
         self._register_panes()
@@ -567,6 +592,15 @@ class MainWindow(QMainWindow):
             "is not. Turn it off to load them without being asked."
         )
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
+        # In QSettings, with this computer: whether its frames may leave it is
+        # about the machine and the network it is on, not about a workspace.
+        self.udp_network = settings_menu.addAction("Share UDP multicast on the local network")
+        self.udp_network.setCheckable(True)
+        shared = QSettings().value(UDP_NETWORK_KEY, False, type=bool)
+        self.udp_network.setChecked(shared)
+        share_udp_on_network(shared)
+        self.udp_network.setToolTip(UDP_NETWORK_TIP)
+        self.udp_network.toggled.connect(self._set_udp_network)
         self.theme_menu = theme.menu(self)
         settings_menu.insertMenu(verbose, self.theme_menu)
         self.history_menu = self._history_menu()
@@ -1018,6 +1052,7 @@ class MainWindow(QMainWindow):
         view = TraceView(self.hooks, self.ctx, key=name)
         view.classifiers.extend(self._labellers)
         self.channels.frames.connect(view.on_frames)
+        view.check_requested.connect(self.edit_rx_check)
         return view
 
     def add_trace_labeller(self, labeller) -> None:
@@ -1913,6 +1948,28 @@ class MainWindow(QMainWindow):
         self.events.information(f"Exported {count} signal(s), {rows} row(s) to {path}")
 
     @Slot(bool)
+    def _set_udp_network(self, on: bool) -> None:
+        QSettings().setValue(UDP_NETWORK_KEY, on)
+        share_udp_on_network(on)
+        self.events.information(
+            (
+                "UDP multicast channels will reach the local network: every computer on it "
+                "that has joined the group hears them, and can send to them."
+            )
+            if on
+            else "UDP multicast channels will stay on this computer."
+        )
+        if any(
+            (bus := self.channels.get(name)) is not None
+            and bus.is_connected
+            and bus.interface == "udp_multicast"
+            for name in self.channels.names()
+        ):
+            self.events.information(
+                "A UDP multicast channel already connected goes on as it was until it is "
+                "connected again."
+            )
+
     def _set_strict_dbc(self, on: bool) -> None:
         self.ctx.settings.set("dbc.strict", on)
         self.events.information(
@@ -2495,6 +2552,80 @@ class MainWindow(QMainWindow):
         self.events.information("DBC databases unloaded")
 
     @Slot(list)
+    def _check_frames(self, frames: list) -> None:
+        """The counter and checksum of each frame of a message being checked.
+
+        A frame found wrong carries what was wrong to the traces. The faults
+        so far go to Signals and Plot, to be watched or plotted; the Event Log
+        hears when a message starts failing and when it is right again, not
+        a line a frame.
+        """
+        if not self.rx_checks.checks:
+            return
+        for f in frames:
+            outcome = self.rx_checks.check(f)
+            if outcome is None:
+                continue
+            f.checked, f.fault = outcome.said, outcome.fault
+            check = outcome.check
+            tally = self.rx_checks.tallies[check.key]
+            values = {}
+            if check.counter is not None:
+                values["Counter faults"] = tally.counter_faults
+            if check.checksum is not None:
+                values["Checksum faults"] = tally.checksum_faults
+            self.signals.push_many(f"Check {check.label}", f.timestamp, values)
+            if outcome.started:
+                self.events.warning(
+                    f"{check.label} on {f.channel}: {outcome.fault}. "
+                    "Said again once its frames are right."
+                )
+            elif outcome.ended:
+                self.events.good(
+                    f"{check.label} on {f.channel} is right again, after {outcome.ended} "
+                    "frame(s) with faults."
+                )
+
+    def edit_rx_check(self, frame) -> None:
+        """Trace > Check counter / checksum...: set, change or take away the
+        check on a message a device sends, with the dialog CAN Transmit uses."""
+        key = (frame.can_id, frame.extended)
+        current = self.rx_checks.checks.get(key)
+        message = self.dbc.message_for(frame)
+        extra = {}
+        if message is not None:
+            # Offered by name, and previewed through the database, as for a
+            # database row in CAN Transmit.
+            decoded = self.dbc.decode(frame)
+            extra = {
+                "signals": [s.name for s in message.signals],
+                "encode": lambda v: message.encode(v, padding=False, strict=False),
+                "values": decoded[1] if decoded else {},
+                "bits": {s.name: s.length for s in message.signals},
+            }
+        check = rx_checks.Check(
+            frame.can_id, frame.extended, message=message.name if message is not None else ""
+        )
+        dialog = TxFieldsDialog(
+            self,
+            frame.data,
+            current.counter if current else None,
+            current.checksum if current else None,
+            label=check.label,
+            receiving=True,
+            **extra,
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return
+        check.counter, check.checksum = dialog.counter(), dialog.checksum()
+        self.rx_checks.set(check)
+        self.ctx.settings.set(rx_checks.SETTING, self.rx_checks.to_list())
+        if key in self.rx_checks.checks:
+            fields = tx_fields.describe(check.counter, check.checksum)
+            self.events.information(f"Checking {check.label} as it arrives: {fields}")
+        elif current is not None:
+            self.events.information(f"No longer checking {check.label}")
+
     def _decode_frames(self, frames: list) -> None:
         if not self.dbc.loaded:
             return

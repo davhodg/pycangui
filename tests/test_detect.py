@@ -411,3 +411,57 @@ def test_the_backends_that_take_no_fd_keyword_are_left_out():
     assert {"pcan", "kvaser", "slcan"}.isdisjoint(FD_BACKENDS)
     assert {"socketcan", "ixxat", "vector"} <= FD_BACKENDS
     assert DATA_BITRATE_BACKENDS == frozenset({"ixxat", "vector"})
+
+
+# --- detection with the window open ----------------------------------------------------
+FAKE_BACKEND = """
+import can
+
+
+class FakeBus(can.BusABC):
+    def __init__(self, channel=0, **kwargs):
+        super().__init__(channel=channel, **kwargs)
+
+    def send(self, msg, timeout=None):
+        pass
+
+    def _recv_internal(self, timeout):
+        return None, False
+
+    @staticmethod
+    def _detect_available_configs():
+        return [{"interface": "fake", "channel": 0, "unique_hardware_id": "HW1"}]
+"""
+
+AFTER_QT = """
+import sys
+sys.path.insert(0, sys.argv[1])
+import PySide6.QtWidgets  # first, as in the application
+import can.interfaces
+can.interfaces.BACKENDS["fake"] = ("fakebus", "FakeBus")
+from pycangui.core.detect import channels_for
+print([channel.config.get("unique_hardware_id") for channel in channels_for("fake")])
+"""
+
+
+def test_an_adapter_is_detected_with_qt_loaded_first(tmp_path):
+    """Reported on Python 3.15: an IXXAT and a Vector both attached, both
+    found by python-can on its own, and neither in the list. With PySide6
+    loaded, concurrent.futures.ThreadPoolExecutor -- imported lazily in 3.15
+    -- read as a placeholder that cannot be called, and python-can's
+    detection runs in one. Run in a Python of its own, so that Qt really
+    comes first."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    (tmp_path / "fakebus.py").write_text(FAKE_BACKEND, encoding="utf-8")
+    ran = subprocess.run(
+        [sys.executable, "-c", AFTER_QT, str(tmp_path)],
+        cwd=Path(__file__).resolve().parent.parent,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.strip() == "['HW1']", ran.stdout + ran.stderr

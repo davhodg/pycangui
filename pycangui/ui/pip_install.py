@@ -16,6 +16,7 @@ progress box it had put up looked like a crash.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable, Sequence
 
 from PySide6.QtCore import QEventLoop, QProcess, Qt, QTimer
 from PySide6.QtWidgets import QProgressDialog, QWidget
@@ -26,12 +27,12 @@ TIMEOUT_S = 900
 SHOWN = 90
 
 
-def pip_command(*packages: str) -> list[str]:
+def pip_command(*packages: str, options: Sequence[str] = ()) -> list[str]:
     """pip, in this interpreter, saying a line at a time what it is doing.
 
     ``--progress-bar off`` leaves one line per step -- collecting, downloading
     and its size, installing -- rather than a bar redrawn in place, which is
-    what can be shown in a dialog.
+    what can be shown in a dialog. ``options`` go before the packages.
     """
     return [
         sys.executable,
@@ -41,22 +42,30 @@ def pip_command(*packages: str) -> list[str]:
         "--progress-bar",
         "off",
         "--disable-pip-version-check",
+        *options,
         *packages,
     ]
 
 
 def install(
-    parent: QWidget | None, ctx, packages: list[str], command: list[str] | None = None
+    parent: QWidget | None,
+    ctx,
+    packages: list[str],
+    command: list[str] | None = None,
+    *,
+    options: Sequence[str] = (),
+    explain: Callable[[list[str]], str | None] | None = None,
 ) -> bool:
     """Install ``packages`` with pip, showing what it is doing. True if pip succeeded.
 
     Waits for pip as a dialog would, with the window still turning. A cancel,
     a failure and a timeout are said in the Event Log -- a failure with pip's
-    own last lines, which are what says why. ``command`` replaces pip itself,
-    for tests.
+    own last lines, which are what says why, unless ``explain`` can say it
+    better from everything pip said. ``options`` are handed to pip;
+    ``command`` replaces pip itself, for tests.
     """
     names = ", ".join(packages)
-    program, *arguments = command or pip_command(*packages)
+    program, *arguments = command or pip_command(*packages, options=options)
     process = QProcess(parent)
     process.setProgram(program)
     process.setArguments(arguments)
@@ -104,6 +113,9 @@ def install(
         ctx.error(f"Installing {names} took over {TIMEOUT_S // 60} minutes and was stopped")
         return False
     if process.exitStatus() != QProcess.NormalExit or process.exitCode() != 0:
+        if explain is not None and (why := explain(said)):
+            ctx.error(f"Installing {names} failed: {why}")
+            return False
         tail = said[-3:] or ["pip stopped without saying why"]
         ctx.error(f"Installing {names} failed:\n" + "\n".join(tail))
         return False

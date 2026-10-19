@@ -70,6 +70,11 @@ dependencies = [
     # Intel HEX, Motorola S-record and raw binary, for UDS transfers. MIT, by
     # the author of cantools, which is already here.
     "bincopy>=20.0",
+    # python-can's udp_multicast bus packs frames with it, and python-can asks
+    # for it everywhere but Windows -- where the bus then will not start.
+    # Apache-2.0, 76 KB, nothing of its own. The bus is how pycangui shares
+    # frames with other python-can programs on the same machine.
+    "msgpack>=1.0; sys_platform == 'win32'",
 ]
 
 [project.urls]
@@ -99,12 +104,17 @@ all = ["asammdf>=8"]
 # pdoc builds the API pages for people writing hooks, nodes and plugins; see
 # build/api_docs.py. In dev so that CI renders them and a broken docstring
 # fails a test rather than a release.
-dev = [
+# The tools the tests and the checks need, and no more: what a test run on a
+# Python the optional MDF reader cannot be installed on yet is given.
+test = [
     "pytest",
     "pytest-xdist",
     "ruff==0.16.*",
     "pdoc>=16",
     "trove-classifiers",
+]
+dev = [
+    "pycangui[test]",
     "pycangui[all]",
 ]
 

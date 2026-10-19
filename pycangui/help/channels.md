@@ -48,6 +48,77 @@ can be watched from both sides with comparable timestamps. The channel picked
 in the toolbar is the one the protocol panes ([CANopen](canopen.md),
 [UDS](uds.md), [J1939](j1939.md), [XCP](xcp.md)) work with; switching channel looks to them like a disconnect and a reconnect.
 
+## Sharing frames with other programs
+
+Any program built on python-can -- a script of your own, a simulator, a test
+rig, another tool -- can share frames with pycangui, with no adapter and nothing
+written for pycangui, through python-can's **udp_multicast** interface. It sends
+each frame to a multicast group, a network address that every program which has
+joined it hears: on the same computer, and on the others on the same local
+network.
+
+**It stays on this computer unless you choose otherwise.** pycangui sends with
+a hop limit of 0, which keeps every frame on the computer: programs on it share
+them, and none goes out on a network. The other program has to do the same, or
+its own frames still go out -- `hop_limit=0` in the examples below.
+
+**Tools > Settings > Share UDP multicast on the local network** lets the frames
+reach the other computers on the same network segment, and no further: python-can
+sends them with a hop limit of 1, so no router passes them on. Every computer on
+that segment that has joined the group then hears them -- and can send to it, and
+so into pycangui. Use it on a network you trust. It is a setting for the computer,
+not the workspace, and a channel already connected follows it when connected
+again. Across computers it also needs:
+
+- a firewall that lets UDP port 43113 in, for Python, on each receiving computer;
+- a network that carries multicast: a switch usually does, Wi-Fi often badly,
+  and some company networks not at all;
+- on a computer with more than one network adapter, the system chooses which
+  one the group is joined on, and python-can offers no way to choose another.
+
+Frames are sent as UDP, which does not resend what is lost, so on a busy or poor
+network some may not arrive, and none says so. For watching and simulating
+that is usually fine; it is no way to control equipment.
+
+- **Every program must use the same group address and the same port.** A
+  program on a different group, or the same group on another port, hears
+  nothing and is heard by nobody, without any error.
+- In pycangui, add a channel, choose the interface **udp_multicast**, and pick
+  the group from the **Port** list. It offers python-can's two defaults:
+  `ff15:7079:7468:6f6e:6465:6d6f:6d63:6173`, the IPv6 group a python-can
+  program joins when it names none, and `239.74.163.2`, python-can's IPv4 one.
+  It also offers `239.74.163.10 (pyscopegui)`, the group pyscopegui sends the
+  CAN it decodes from a scope or logic analyser to: a group of its own, so that
+  those frames are a channel of their own and not mixed with anything else.
+  The box is editable: type any other group a program uses. The UDP port is
+  python-can's default, 43113. *Bitrate* is greyed: there is no wire to time.
+- In the other program, open a bus on the same group:
+
+  ```python
+  import can
+
+  # hop_limit=0 keeps it on this computer, as pycangui does unless told otherwise
+  bus = can.Bus(interface="udp_multicast", hop_limit=0)  # python-can's default group
+  # or, to match pycangui's other choice:
+  # bus = can.Bus(interface="udp_multicast", channel="239.74.163.2", hop_limit=0)
+  bus.send(can.Message(arbitration_id=0x123, data=[1, 2, 3], is_extended_id=False))
+  ```
+
+- Either side can be started first, and there can be more than two: each
+  program joins the group and hears every frame the others send. Neither owns
+  the bus. Two separate sets of programs can share frames without hearing each
+  other by using different groups.
+- The other program should leave the port at python-can's default: pycangui
+  does not offer another.
+- What pycangui sends is heard by the others, and shown in its own trace as
+  sent; what they send is shown as received, and is decoded, recorded and
+  answered like frames from an adapter. CAN FD frames are carried too.
+- python-can needs the `msgpack` package for this interface, which pycangui
+  installs with itself on Windows; elsewhere python-can installs it.
+- It is a channel like the others, so a [simulated node](virtual.md) can be
+  run on it, and a protocol pane can work with a device another program
+  simulates.
+
 ## Bitrates and CAN FD
 
 Bitrates run from 50 kbit/s to 1 Mbit/s.

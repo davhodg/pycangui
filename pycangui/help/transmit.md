@@ -22,8 +22,9 @@ signals; the encoded bytes update as you type, and a message that is already
 cycling is updated live.
 
 A signal the database gives **named values** (a `VAL_` table) is picked from a
-list: double-click its value and choose, or type a number or a name into the
-same box. However it goes in, it is shown as name and number together --
+menu: double-click its value and choose. *Type a value...* at the end of the
+menu, or F2, opens a box to type a number or a name into instead, with the
+names still under its arrow. However it goes in, it is shown as name and number together --
 *Run (1)* -- and the number is what is sent. A number the table does not name
 is sent as that number; a name it does not have is refused, and says so in the
 Event Log, rather than being sent as zero.
@@ -131,10 +132,13 @@ perfectly healthy -- so seeing them written out is the only check available
 without a device to reject them.
 
 **One thing changes when you use either.** A message with a counter or a
-checksum is sent by pycangui's own timer rather than handed to the adapter as
-a repeating message, because every frame has to differ and an adapter repeats
-fixed bytes. Expect slightly less even timing than a hardware-timed cyclic
-message would give you. Messages without either are unaffected.
+checksum is timed by python-can's sending thread rather than handed to the
+adapter as a repeating message, because every frame has to differ and an
+adapter repeats fixed bytes. The thread is not the window's, so a busy trace
+does not hold frames back, but expect slightly less even timing than a
+hardware-timed cyclic message would give you. Messages without either are
+unaffected. Editing a repeating message starts it again from the row as it
+now is, and its counter carries on.
 
 A one-shot *Send* of a counted message advances the counter too: a receiver
 has no idea which button sent a frame, and one that repeated the last count

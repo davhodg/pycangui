@@ -121,6 +121,93 @@ def test_a_signal_with_named_values_is_picked_from_a_list(app, choices_row):
     assert item.text(COL_DATA).startswith("02")
 
 
+def _double_click_with_a_menu(app, window, cell_item, monkeypatch, pick):
+    """Double-click the cell; the menu that opens chooses ``pick`` (a text, or None)."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QMenu
+
+    from pycangui.ui import tx_view
+
+    held = [True]
+    monkeypatch.setattr(
+        tx_view.QApplication,
+        "mouseButtons",
+        staticmethod(lambda: Qt.LeftButton if held[0] else Qt.NoButton),
+    )
+    offered = []
+
+    class Menu(QMenu):
+        """Chooses ``pick`` rather than waiting for a click: Qt's own exec
+        cannot be replaced on the class from Python."""
+
+        def exec(self, *_args):
+            offered.append(
+                [(a.text(), a.isChecked()) for a in self.actions() if not a.isSeparator()]
+            )
+            return next((a for a in self.actions() if a.text() == pick), None)
+
+    monkeypatch.setattr(tx_view, "QMenu", Menu)
+    tree = window.tx.tree
+    rect = tree.visualItemRect(cell_item)
+    at = rect.center()
+    at.setX(tree.header().sectionPosition(COL_DATA) + 10)
+    QTest.mouseDClick(tree.viewport(), Qt.LeftButton, pos=at)
+    _wait(app, 0.1)
+    before = list(offered)
+    held[0] = False
+    _wait(app, 0.1)
+    return before, offered
+
+
+def test_a_double_click_offers_the_names_as_a_menu(app, choices_row, monkeypatch):
+    """Reported on Windows 10 and 11: the editor's own list shut as it opened,
+    keeping the value it had. A menu has no editor to close."""
+    window, _row, item = choices_row
+    window.tx.tree.expandItem(item)
+    mode = item.child(0)
+    before, offered = _double_click_with_a_menu(app, window, mode, monkeypatch, named(2, "Fault"))
+    assert before == [], "not while the button is down: it would take the release"
+    assert offered[0][:3] == [
+        (named(0, "Idle"), False),
+        (named(1, "Run"), True),
+        (named(2, "Fault"), False),
+    ], "the names, the one the cell has ticked"
+    assert mode.text(COL_DATA) == named(2, "Fault")
+    assert item.text(COL_DATA).startswith("02"), "and the number is what is sent"
+    assert window.tx.tree.findChild(QComboBox) is None, "and no box left open"
+
+
+def test_type_a_value_opens_the_box_to_type_into(app, choices_row, monkeypatch):
+    from pycangui.ui.tx_view import TYPE_A_VALUE
+
+    window, _row, item = choices_row
+    window.tx.tree.expandItem(item)
+    _double_click_with_a_menu(app, window, item.child(0), monkeypatch, TYPE_A_VALUE)
+    box = window.tx.tree.findChild(QComboBox)
+    assert box is not None and box.isEditable()
+
+
+def test_the_box_hides_the_value_it_is_over(app, choices_row):
+    """The Windows 11 style paints no background for it, and the cell's old
+    value showed through under the new one."""
+    window, _row, item = choices_row
+    tree = window.tx.tree
+    tree.edit(tree.indexFromItem(item.child(0), COL_DATA))
+    app.processEvents()
+    box = tree.findChild(QComboBox)
+    assert box.autoFillBackground() and box.lineEdit().autoFillBackground()
+
+
+def _wait(app, seconds):
+    import time
+
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.005)
+
+
 @pytest.mark.parametrize("typed", ["2", "Fault", "Fault (2)", " 2 "])
 def test_however_it_is_put_in_it_is_shown_as_name_and_number(app, choices_row, typed):
     _window, _row, item = choices_row

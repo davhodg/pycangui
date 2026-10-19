@@ -98,7 +98,34 @@ def test_a_value_changed_in_the_tree_changes_the_file_in_memory(app, view, eds):
     assert source.edited == {(0x2001, 0): 400}
     assert source.unsaved and eds.read_text(encoding="utf-8") == EDS, "not on disk yet"
     assert view._od_item(0x2001, 0).background(COL_VALUE).color() == EDITED_COLOUR
-    assert view.save_file_btn.isVisible() or view.save_file_btn.isEnabled()
+    assert view.save_file_action.isEnabled(), "DCF > Save is offered once there is a change"
+
+
+def test_dcf_save_is_the_selected_file_s_and_only_with_changes(app, view, eds):
+    """In the DCF menu, named for the file, rather than two buttons that came and
+    went under the list."""
+    source = view.open_file(eds)
+    view.nodes.setCurrentItem(view._file_item(source))
+    assert source.label in view.save_file_action.text()
+    assert view.save_dcf_action.isEnabled(), "a new DCF of the file: its Save as"
+    assert not view.apply_dcf_action.isVisible(), "a DCF is applied to a node, not a file"
+    assert view.save_file_action.isVisible(), "there for a file"
+    assert not view.save_file_action.isEnabled(), "and greyed with nothing changed yet"
+
+    view.nodes.clearSelection()
+    view.nodes.setCurrentItem(None)
+    assert not view.save_file_action.isVisible(), "not there at all without a file"
+    assert view.apply_dcf_action.isVisible()
+    assert not view.save_dcf_action.isEnabled()
+
+
+def test_save_dcf_on_a_file_is_its_save_as(app, view, eds, monkeypatch):
+    source = view.open_file(eds)
+    view.nodes.setCurrentItem(view._file_item(source))
+    asked = []
+    monkeypatch.setattr(view, "save_file_as", lambda chosen: asked.append(chosen))
+    view.save_dcf_action.trigger()
+    assert asked == [source]
 
 
 def test_a_value_the_file_will_not_take_is_refused_and_put_back(app, view, eds):

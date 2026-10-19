@@ -21,16 +21,18 @@ A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, X
 
 ## What it does
 
-- **Adapters**: every interface python-can supports -- PEAK PCAN, Vector, Kvaser, IXXAT, ETAS, Intrepid neoVI, NI-CAN and NI-XNET, SYS TEC, Neousys, CANalyst-II, CANtact, candleLight and other gs_usb devices, SLCAN (CANable, Lawicel), 8devices USB2CAN, Seeed Studio, Robotell, isCAN and serial adapters; SocketCAN and socketcand on Linux; UDP multicast between computers; and a virtual bus that needs no hardware at all.
+- **Adapters**: every interface python-can supports -- PEAK PCAN, Vector, Kvaser, IXXAT, ETAS, Intrepid neoVI, NI-CAN and NI-XNET, SYS TEC, Neousys, CANalyst-II, CANtact, candleLight and other gs_usb devices, SLCAN (CANable, Lawicel), 8devices USB2CAN, Seeed Studio, Robotell, isCAN and serial adapters; SocketCAN and socketcand on Linux; UDP multicast, to share frames with other python-can programs on the same computer or the local network; and a virtual bus that needs no hardware at all.
 - **Live trace** of every connected channel on one timebase, CAN FD included, with recording to six log formats and replay of a log onto a bus. Filtering is at two levels: an acceptance filter on a channel, which drops frames before they arrive, and a filter on the trace, which hides them and discards nothing.
-- **Transmit** raw frames, DBC messages edited by signal, or a CANopen RPDO.
+- **Transmit** raw frames, DBC messages edited by signal, or a CANopen RPDO, once or repeating, with a rolling counter and a checksum -- XOR, sums, CRC-8, CRC-16 or your own -- worked out for every frame.
 - **Signals and Plot** from DBC decode, CANopen TPDOs or XCP and CCP polling, with export to CSV and import of MDF and MF4 measurement files.
-- **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save, apply and compare.
+- **Database**: every message and signal in the loaded DBC files, with each message's bits drawn out -- a multiplexed one for one value of its multiplexer at a time -- and a message sent to Transmit or the trace, or a signal to the plot, from there.
+- **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save, apply and compare, and the network's PDOs, heartbeats and emergencies saved as a DBC.
 - **Custom panes**: the CANopen objects a job needs, laid out as a form with labels and units. Built from the object dictionary with no code, and polled into Signals and Plot.
 - **UDS** over ISO-TP: sessions, security access, DIDs, DTCs, routines, and firmware transfer in either direction.
 - **J1939**: nodes from address claims, DM1 faults with lamp status and the failure mode in words, multi-packet messages (TP.BAM and TP.CM), requesting and sending PGNs, and SPNs decoded from a J1939 DBC.
 - **XCP and CCP on CAN**: connect, seed and key, and reading and writing A2L measurements and characteristics by polling.
 - **ASCII Log**: reads any CAN identifier as text, for devices that print a console into the data bytes.
+- **CAN off an oscilloscope**: frames that [pyscopegui](https://github.com/davhodg/pyscopegui), also on [PyPI](https://pypi.org/project/pyscopegui/), decodes from a scope's channel arrive by UDP multicast, and are traced, decoded and plotted like frames from an adapter.
 - **Python** hooks with hot reload, replaceable components (your own CAN interface, ISO-TP transport, or XCP or CCP engine), a live console and *Run script*.
 - **Plugins** that add a pane of their own, installed from a zip. Two come with pycangui: CANopen firmware download (CiA 302-3) and CiA 402 motor control.
 - **Simulated nodes**: devices written as Python files, on a virtual bus or standing on a real adapter, and gateways between channels.
@@ -74,6 +76,8 @@ There are three options:
 
    The first run sets itself up: it creates a *virtual environment* -- a folder called `.venv` holding its own copy of Python and only the libraries pycangui needs, so nothing else on the machine is touched -- and downloads a couple of hundred megabytes into it. That takes a few minutes once; every later start is immediate, and deleting `.venv` undoes the whole thing. If `uv` is installed it is used instead of pip, which makes rebuilding that folder a matter of seconds.
 
+   **If the Python `.venv` was made with is uninstalled** -- or replaced by a newer version -- the launcher says so, and offers to delete `.venv` and set it up again with the Python installed now. Workspaces and settings are not in `.venv`, and are kept.
+
    **On Linux**, run it from a terminal, so its messages can be read:
 
    ```
@@ -104,7 +108,7 @@ Without it pycangui stops as it starts, with a message about the *xcb* platform 
 
 ## Supported systems
 
-**Windows and Linux**, on **Python 3.12 or newer**. Both are tested on every push: the newest Python on both, and the oldest supported one on Linux.
+**Windows and Linux**, on **Python 3.12 or newer**. Both are tested on every push: Windows on Python 3.14 and 3.15, and Linux on every version from 3.12 to 3.15.
 
 **macOS** passes the same tests on Apple silicon and Intel Macs, run for each release, but has not yet been tested on real CAN hardware.
 
@@ -129,9 +133,10 @@ pycangui is Apache-2.0 and is a pure-Python application on top of these packages
 | [udsoncan](https://github.com/pylessard/python-udsoncan) | UDS client | MIT |
 | [can-isotp](https://github.com/pylessard/python-can-isotp) | ISO-TP transport for UDS | MIT |
 | [bincopy](https://github.com/eerimoq/bincopy) | Intel HEX / S-record / binary firmware files | MIT |
+| [msgpack](https://msgpack.org) | Packing frames for UDP multicast, on Windows | Apache-2.0 |
 | [asammdf](https://github.com/danielhrisca/asammdf) | Reading MDF / MF4 measurement files | LGPL-3.0 |
 
-asammdf, the MDF and MF4 reader, is currently the only **optional** entry: the Windows installer includes it, and a `pip` installation fetches it the first time a measurement file is opened. `pip install pycangui[all]` includes it up front.
+asammdf, the MDF and MF4 reader, is currently the only **optional** entry: the Windows installer includes it, and a `pip` installation fetches it the first time a measurement file is opened. `pip install pycangui[all]` includes it up front. On Python 3.15 it cannot be installed yet, since one of the libraries it needs has no download for 3.15; everything else installs and runs there.
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **PySide6-Essentials**, the package that holds them. Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the vendor's driver and python-can loads it at run time.
 

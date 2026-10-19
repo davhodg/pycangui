@@ -11,17 +11,32 @@ large trace cheap -- nothing is copied into widgets.
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
+from PySide6.QtGui import QColor
 
 from pycangui.core.bus import Frame
 
 # "Channel" replaces the old CAN / CANx column: with several buses connected
 # the channel is what you need to see, and 11 vs 29-bit is already obvious from
 # the width of the id. FD is marked on the length instead.
-COLUMNS = ("Time", "Channel", "Dir", "ID", "Kind", "DLC", "Data")
+COLUMNS = ("Time", "Channel", "Dir", "ID", "Kind", "DLC", "Data", "Counter / checksum")
 ROLE_GROUP = Qt.UserRole + 1
 ROLE_CHANNEL = Qt.UserRole + 2
 ROLE_SEARCH = Qt.UserRole + 3  # everything about a row, lowercased, for the filter box
 MAX_ROWS = 500_000
+CHECK_COLUMN = 7
+#: Behind what a checked frame was checked for: green when its counter and
+#: checksum were right, red when not. Translucent, so they read on a light
+#: background and a dark one alike. What was wrong is in the tooltip, and the
+#: filter box finds it.
+GOOD_COLOUR = QColor(60, 180, 90, 90)
+FAULT_COLOUR = QColor(220, 50, 50, 90)
+RIGHT = "Counter and checksum as expected"
+
+
+def check_colour(f: Frame) -> QColor | None:
+    if not f.checked:
+        return None
+    return FAULT_COLOUR if f.fault else GOOD_COLOUR
 
 
 class TraceModel(QAbstractTableModel):
@@ -49,6 +64,11 @@ class TraceModel(QAbstractTableModel):
             return f.channel
         if role == ROLE_SEARCH:
             return _searchable(f)
+        if f.checked and index.column() == CHECK_COLUMN:
+            if role == Qt.BackgroundRole:
+                return check_colour(f)
+            if role == Qt.ToolTipRole:
+                return f.fault or RIGHT
         if role != Qt.DisplayRole:
             return None
         match index.column():
@@ -66,6 +86,8 @@ class TraceModel(QAbstractTableModel):
                 return f"{f.dlc} FD" if f.fd else str(f.dlc)
             case 6:
                 return f.data.hex(" ").upper()
+            case 7:
+                return f.checked
         return None
 
     # --- mutation ---------------------------------------------------------------
@@ -87,8 +109,12 @@ class TraceModel(QAbstractTableModel):
         self._rows.clear()
         self.endResetModel()
 
+    def frame(self, row: int) -> Frame:
+        return self._rows[row]
+
 
 def _searchable(f: Frame) -> str:
     """What the filter box matches against: id, name, channel and data."""
     ident = f"{f.can_id:08X}" if f.extended else f"{f.can_id:03X}"
-    return f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}".lower()
+    text = f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}"
+    return f"{text} {f.fault}".lower() if f.fault else text.lower()

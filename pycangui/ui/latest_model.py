@@ -28,6 +28,7 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
 from pycangui.core.bus import Frame
+from pycangui.ui.trace_model import RIGHT, check_colour
 
 #: The last five are the timing statistics, hidden until somebody asks for
 #: them: they answer a different question from Rate and Period (see TIPS),
@@ -49,8 +50,10 @@ COLUMNS = (
     "Period avg",
     "Period max",
     "Jitter",
+    "Counter / checksum",
 )
-STATISTICS = COLUMNS[10:]
+STATISTICS = COLUMNS[10:15]
+CHECK_COLUMN = COLUMNS.index("Counter / checksum")
 
 #: Which columns are repainted when, and that is the whole of why they are
 #: numbered here.
@@ -66,8 +69,8 @@ STATISTICS = COLUMNS[10:]
 #: Spans rather than one boundary, because the two kinds are interleaved:
 #: Last and First are stamps off the frames themselves and sit between Rate
 #: and the statistics.
-RECEIVED_SPANS = ((0, 6), (9, 10))  # ID..Count, Last, First
-MEASURED_SPANS = ((7, 8), (11, len(COLUMNS) - 1))  # Rate, Period; Period min..Jitter
+RECEIVED_SPANS = ((0, 6), (9, 10), (CHECK_COLUMN, CHECK_COLUMN))  # ..Count, Last, First
+MEASURED_SPANS = ((7, 8), (11, 14))  # Rate, Period; Period min..Jitter
 #: Rate and Period on their own, for the one arrival that is allowed to
 #: redraw them: a row measured for the first time, or one that had stopped
 #: and has just started again. Either should say so at once rather than
@@ -91,6 +94,10 @@ TIPS = {
     "Jitter": (
         "Longest gap minus shortest, over that whole span. A message\non a timer"
         " that has drifted, stalled or been blocked shows it here"
+    ),
+    "Counter / checksum": (
+        "What a checked message is checked for, green while its newest frame\nis"
+        " right and red when not, with the frames that failed since Clear"
     ),
 }
 ROLE_GROUP = Qt.UserRole + 1
@@ -140,6 +147,8 @@ class _Row:
     gap_min: float = 0.0
     gap_max: float = 0.0
     gap_sum: float = 0.0
+    #: Frames whose counter or checksum was wrong, since Clear like Count.
+    faults: int = 0
 
     def saw(self, frame: Frame, now: float) -> None:
         if self.times and frame.timestamp < self.times[-1]:
@@ -153,6 +162,8 @@ class _Row:
             self.note(frame.timestamp - self.times[-1])
         if self.first < 0:
             self.first = frame.timestamp
+        if frame.fault:
+            self.faults += 1
         self.times.append(frame.timestamp)
         self.last_seen = now
 
@@ -242,6 +253,12 @@ class LatestModel(QAbstractTableModel):
                     # -- where zero of the others only means "not yet known",
                     # so this one says the number rather than going blank.
                     return "" if row.gaps < 2 else _period_text(row.jitter) or "0.0 ms"
+                case 15:
+                    return _checked_text(row)
+        elif role == Qt.BackgroundRole and col == CHECK_COLUMN:
+            return check_colour(f)
+        elif role == Qt.ToolTipRole and col == CHECK_COLUMN and f.checked:
+            return f.fault or RIGHT
         elif role == Qt.ForegroundRole and col == 5 and row.prev_data != f.data and row.count > 1:
             return CHANGED_COLOUR
         elif role == ROLE_GROUP:
@@ -274,6 +291,8 @@ class LatestModel(QAbstractTableModel):
                     return row.gap_max
                 case 14:
                     return row.jitter
+                case 15:
+                    return row.faults
                 case _:
                     return self.data(index, Qt.DisplayRole)
         return None
@@ -342,6 +361,9 @@ class LatestModel(QAbstractTableModel):
         self._index.clear()
         self.endResetModel()
 
+    def frame(self, row: int) -> Frame:
+        return self._rows[row].frame
+
 
 def _measure(row: _Row, now: float) -> None:
     """Set the row's rate and cycle time from the arrivals it has kept."""
@@ -362,6 +384,15 @@ def _measure(row: _Row, now: float) -> None:
     row.rate_hz, row.period_s = 1.0 / period, period
 
 
+def _checked_text(row: _Row) -> str:
+    """How many of the message's frames failed, and what it is checked for:
+    the number first, where a narrow column does not cut it off."""
+    said = row.frame.checked
+    if not said or not row.faults:
+        return said
+    return f"{row.faults} failed: {said}"
+
+
 def _rate_text(hz: float) -> str:
     """Two decimals below 1 Hz, where one of them would round to nothing."""
     if hz <= 0:
@@ -377,6 +408,8 @@ def _period_text(seconds: float) -> str:
 
 
 def _searchable(f: Frame) -> str:
-    """What the filter box matches against: id, name, channel and data."""
+    """What the filter box matches against: id, name, channel and data, and
+    what a check found wrong with it."""
     ident = f"{f.can_id:08X}" if f.extended else f"{f.can_id:03X}"
-    return f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}".lower()
+    text = f"{ident} {f.kind} {f.channel} {f.data.hex(' ')} {'rx' if f.rx else 'tx'}"
+    return f"{text} {f.fault}".lower() if f.fault else text.lower()

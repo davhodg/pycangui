@@ -36,6 +36,27 @@ import can.interfaces
 
 DETECT_TIMEOUT_S = 5.0
 
+
+def _executor_a_class_again() -> None:
+    """Make ``concurrent.futures.ThreadPoolExecutor`` the class it names.
+
+    Python 3.15 imports it lazily, and once PySide6 6.12 is loaded, reading it
+    as an attribute hands back the placeholder rather than the class: it
+    cannot be called. python-can's ``detect_available_configs`` does exactly
+    that, so with the window open every adapter's list came back empty -- an
+    IXXAT and a Vector both attached and detected outside pycangui -- and a
+    Vector channel without its serial would not connect. Setting the attribute
+    to the class is what reading it should have done, and whatever was
+    imported first, it stays done.
+    """
+    import concurrent.futures
+    from concurrent.futures.thread import ThreadPoolExecutor
+
+    concurrent.futures.ThreadPoolExecutor = ThreadPoolExecutor
+
+
+_executor_a_class_again()
+
 #: Backends that declare ``channel: int``, as a fallback for when the backend
 #: cannot be imported and so cannot be asked. Reading the signature is the
 #: primary route and keeps working as python-can changes; this is only reached
@@ -56,7 +77,10 @@ SUGGESTIONS = {
     "systec": ("0", "1"),
     "pcan": ("PCAN_USBBUS1", "PCAN_USBBUS2", "PCAN_USBBUS3", "PCAN_USBBUS4"),
     "vector": ("0", "1", "2", "3"),
-    "udp_multicast": ("225.0.0.1",),
+    # python-can's own IPv4 group. Its signature offers the IPv6 one, which is
+    # what a program that names no group joins: both, so that pycangui and a
+    # program left at python-can's defaults meet without anyone choosing.
+    "udp_multicast": ("239.74.163.2",),
 }
 
 #: The channel the demo device runs on. Selecting it is what starts the
@@ -73,6 +97,22 @@ VIRTUAL_CHANNELS = (
     ("vcan1", "empty"),
     ("vcan2", "empty"),
 )
+
+#: Groups of the udp_multicast backend that programs agree on, by name: the
+#: one pyscopegui sends the CAN it decodes from a scope or logic analyser to.
+#: Its own, so that those frames are a channel of their own here rather than
+#: mixed with whatever else is left at python-can's default group. A second
+#: decoded bus would be the next address up.
+NAMED_GROUPS = (("239.74.163.10", "pyscopegui"),)
+
+#: Backends that do not run at a bitrate: there is no wire for one.
+NO_BITRATE = frozenset({"udp_multicast"})
+
+
+def has_bitrate(interface: str) -> bool:
+    """Whether a bitrate means anything for this backend."""
+    return interface not in NO_BITRATE
+
 
 #: Backends that are a serial port underneath, so the ports themselves are
 #: the useful suggestion. pyserial is a declared dependency (python-can does
@@ -331,7 +371,13 @@ def channel_suggestions(interface: str) -> list[Channel]:
     # bus it beats the backend's "channel-0".
     if (declared := channel_default(interface)) and declared not in names:
         names = (*names, declared) if names else (declared,)
-    return [Channel(config={"channel": name}, label=name) for name in names]
+    suggested = [Channel(config={"channel": name}, label=name) for name in names]
+    if interface == "udp_multicast":
+        suggested += [
+            Channel(config={"channel": group}, label=f"{group}  ({who})")
+            for group, who in NAMED_GROUPS
+        ]
+    return suggested
 
 
 def channels_for(interface: str, timeout: float = DETECT_TIMEOUT_S) -> list[Channel]:

@@ -293,10 +293,15 @@ def test_a_live_node_is_described_by_the_mapping_read_from_it(
         wait_until(lambda: seen)
         manager.load_eds(5, str(resources.path("demo.eds")))
         wait_until(lambda: loaded)
+        # Loading the EDS starts a read of both directions by itself. Let it
+        # finish first: on a slow machine its signal came while the read
+        # asked for below was still rebuilding the RPDO maps, and the
+        # database was made without them.
+        wait_until(lambda: manager.read_from_node(5) == (True, True), timeout=15.0)
         read = []
         manager.rpdos_read.connect(read.append)
         manager.read_pdo_config(5)  # Read PDO config: both directions, from the node
-        wait_until(lambda: read)
+        wait_until(lambda: read, timeout=15.0)
 
         view = SimpleNamespace(manager=manager, _node_item=lambda node_id: None)
         notes: list[str] = []
@@ -310,3 +315,26 @@ def test_a_live_node_is_described_by_the_mapping_read_from_it(
     assert device.name == "Node5", "named by its number where the list has no name"
     assert by_id(made)[0x185].senders == ["Node5"]
     assert {0x185, 0x205, 0x705} <= set(by_id(made)), "TPDO, RPDO and the heartbeat heard"
+
+
+def test_the_dbc_menu_saves_the_selected_dcf_and_offers_no_eds(window, tmp_path, monkeypatch):
+    """DBC > Save ... as DBC is the selected row alone: a DCF, named in the
+    entry, or a node; never an EDS, which says how a device ships, not how
+    a node is set up."""
+    from pycangui.ui import folders
+
+    view = window.canopen_view
+    eds = view.open_file(resources.path("demo.eds"))
+    dcf = view.open_file(demo_dcf(tmp_path))
+
+    view.nodes.setCurrentItem(view._file_item(eds))
+    assert not view.selected_dbc_action.isEnabled()
+
+    view.nodes.setCurrentItem(view._file_item(dcf))
+    assert view.selected_dbc_action.isEnabled()
+    target = tmp_path / "one.dbc"
+    monkeypatch.setattr(folders, "save_file", lambda *a, **k: str(target))
+    view.selected_dbc_action.trigger()
+    back = cantools.database.load_file(str(target))
+    assert back.get_message_by_frame_id(0x185).senders == ["drive"]
+    assert 0x000 not in {m.frame_id for m in back.messages}, "one node, so no NMT"

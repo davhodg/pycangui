@@ -92,6 +92,30 @@ def test_the_libraries_step_names_the_packages_over_a_second():
     assert "can " not in libraries, "under a second"
 
 
+def test_the_first_start_after_a_setup_lists_no_step_as_a_fault():
+    """Reported: after .venv was made again, the launcher's 72.6 s -- the
+    download, and the question before it -- was listed as a slow step, beside
+    imports slow only because every file was being compiled for the first time."""
+    said = slow_start.message(12.9, STEPS, PACKAGES, set_up=True)
+    assert said is not None and "12.9" in said
+    for label, seconds in STEPS:
+        assert f"{seconds:.1f}" not in said, label
+    assert said != slow_start.message(12.9, STEPS, PACKAGES)
+
+
+def test_a_quick_first_start_after_a_setup_says_nothing():
+    assert slow_start.message(3.0, STEPS, PACKAGES, set_up=True) is None
+
+
+def test_the_launchers_say_when_they_have_installed(monkeypatch):
+    from pycangui.core import timing
+
+    monkeypatch.delenv(timing.SET_UP_ENV, raising=False)
+    assert not timing.just_set_up()
+    monkeypatch.setenv(timing.SET_UP_ENV, "1")
+    assert timing.just_set_up()
+
+
 def test_a_module_with_no_compiled_copy_is_passed_over(tmp_path):
     began = time.time() - 5
     modules = {"builtin": _module(None), **_compiled(tmp_path, 6, began + 1)}

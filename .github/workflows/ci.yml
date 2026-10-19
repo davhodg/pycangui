@@ -32,7 +32,14 @@ jobs:
       matrix:
         include:
           - { os: windows-latest, python: "3.14" }
+          # The newest Python, without the optional MDF reader: asammdf needs
+          # isal, which has no wheels for 3.15 yet and will not build without
+          # tools the runners lack. Back to the dev extra, and the MDF tests
+          # with it, once isal publishes them -- checked before each release.
+          - { os: windows-latest, python: "3.15", extras: test }
+          - { os: ubuntu-latest, python: "3.15", extras: test }
           - { os: ubuntu-latest, python: "3.14" }
+          - { os: ubuntu-latest, python: "3.13" }  # what current Debian, Ubuntu and Fedora ship
           - { os: ubuntu-latest, python: "3.12" }  # the floor: requires-python
     steps:
       - uses: actions/checkout@v7
@@ -43,7 +50,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[${{ matrix.extras || 'dev' }}]"
 
       - name: Lint
         run: |

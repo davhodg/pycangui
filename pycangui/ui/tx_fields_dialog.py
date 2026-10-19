@@ -45,6 +45,14 @@ TIMING_NOTE = (
     "more jitter in the period than the adapter would give you."
 )
 
+#: The same dialog, for a message a device sends rather than one pycangui does.
+RECEIVING_WHY = (
+    "Each frame of this message that arrives is checked: a counter that "
+    "repeats or skips, or a checksum that is not what the algorithm gives, is "
+    "marked in the trace, counted in Signals and Plot, and said in the Event Log."
+)
+RECEIVING_PREVIEW = "What the next few frames should be"
+
 PARTS = [("Whole byte", tx.WHOLE), ("Low nibble", tx.LOW), ("High nibble", tx.HIGH)]
 PREVIEW_FRAMES = 4
 
@@ -111,6 +119,7 @@ class TxFieldsDialog(QDialog):
         encode=None,
         values: dict | None = None,
         bits: dict[str, int] | None = None,
+        receiving: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"{TITLE} -- {label}" if label else TITLE)
@@ -130,7 +139,7 @@ class TxFieldsDialog(QDialog):
         self._values = values or {}
         self._bits = bits or {}
 
-        why = QLabel(WHY)
+        why = QLabel(RECEIVING_WHY if receiving else WHY)
         why.setWordWrap(True)
 
         # --- the counter ---
@@ -209,12 +218,13 @@ class TxFieldsDialog(QDialog):
         self.preview.setReadOnly(True)
         self.preview.setFont(fonts.mono())
         self.preview.setFixedHeight(90)
-        preview_box = QGroupBox("The next few frames")
+        preview_box = QGroupBox(RECEIVING_PREVIEW if receiving else "The next few frames")
         inside = QVBoxLayout(preview_box)
         inside.addWidget(self.preview)
 
         timing = QLabel(TIMING_NOTE)
         timing.setWordWrap(True)
+        timing.setVisible(not receiving)  # about sending, which is not what this is
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self._ok)
