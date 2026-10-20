@@ -146,6 +146,16 @@ NMT_COMMANDS_UI = (
 
 
 NODE_MENU_TIP = "The selected node: who it is, and what it keeps when the power goes."
+#: The NMT states a node answers SDO in (CiA 301); Store and Restore defaults
+#: are SDO writes, and in any other state are asked about first.
+SDO_STATES = ("PRE-OPERATIONAL", "OPERATIONAL")
+#: The abort a node gives when it will not do it in the state it is in.
+REFUSED_IN_STATE = "0x08000022"
+REFUSED_WHY = (
+    "The node refused in the state it is in. CiA 301 leaves which state to the "
+    "device: many store only in PRE-OPERATIONAL, and a drive may also need its "
+    "power stage off. Its NMT state is {state}."
+)
 ACCESS_MENU_TIP = (
     "Logging in to the selected node, and asking which access level is held.\n"
     "Double-clicking the node's Access column asks too."
@@ -675,6 +685,7 @@ class CanopenView(QWidget):
         manager.node_seen.connect(self.on_node_seen)
         manager.access_level.connect(self.on_access_level)
         manager.node_lost.connect(self.on_node_lost)
+        manager.parameters_done.connect(self._on_parameters_done)
         manager.node_back.connect(self.on_node_back)
         manager.identified.connect(self.on_identified)
         manager.eds_loaded.connect(self.on_eds_loaded)
@@ -1448,13 +1459,46 @@ class CanopenView(QWidget):
 
     def _store(self) -> None:
         node_id = self.selected_node()
-        if node_id is not None:
+        if node_id is not None and self._state_allows(node_id, "Store"):
             self.manager.store_parameters(node_id)
 
     def _restore(self) -> None:
         node_id = self.selected_node()
-        if node_id is not None:
+        if node_id is not None and self._state_allows(node_id, "Restore defaults"):
             self.manager.restore_parameters(node_id)
+
+    def _state_allows(self, node_id: int, which: str) -> bool:
+        """Asked first when the node's heartbeat says it is in neither state a
+        node answers SDO in. Nothing is sent to change its state: whether
+        pycangui is the NMT master is not pycangui's to assume.
+
+        A node with no heartbeat is not asked about -- its state is not
+        known -- and one whose heartbeat stopped cannot be chosen for this.
+        """
+        state = self.manager.nmt_states.get(node_id)
+        if state is None or state in SDO_STATES:
+            return True
+        answer = messages.question(
+            self,
+            which,
+            f"Node {node_id} is {state}. A node answers SDO only in PRE-OPERATIONAL or "
+            f"OPERATIONAL, so {which} is likely to time out.\n\n{which} anyway?",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        return answer == QMessageBox.Yes
+
+    @Slot(int, str, str, bool)
+    def _on_parameters_done(self, node_id: int, which: str, said: str, ok: bool) -> None:
+        """What came of Store or Restore defaults, where it cannot be missed."""
+        if ok:
+            messages.information(self, which, f"Node {node_id}: {said}.")
+            return
+        text = f"Node {node_id}: {which} failed.\n\n{said}"
+        if REFUSED_IN_STATE in said:
+            state = self.manager.nmt_states.get(node_id)
+            text += "\n\n" + REFUSED_WHY.format(state=state or "not known: no heartbeat")
+        messages.warning(self, which, text)
 
     def _save_dcf(self) -> None:
         node_id = self.selected_node()

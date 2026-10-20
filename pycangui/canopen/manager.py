@@ -185,6 +185,9 @@ class CanopenManager(QObject):
     pdo_update = Signal(int, str, dict)  # node_id, pdo name, {variable name: value}
     emcy = Signal(object)  # Emcy
     node_lost = Signal(int)  # node_id: its heartbeat stopped arriving
+    #: Store or Restore defaults finished: node_id, which, what came of it, and
+    #: whether it worked -- for a message box, as well as the Event Log line.
+    parameters_done = Signal(int, str, str, bool)
     node_back = Signal(int)  # node_id: heartbeats resumed
     rpdos_read = Signal(int)  # node_id: its RPDO configuration is now known
     lss_result = Signal(str)  # readable outcome of an LSS operation
@@ -233,6 +236,8 @@ class CanopenManager(QObject):
         #: node_id -> when its last heartbeat arrived, and the interval between
         #: the last two. A node is called lost after MISSED_HEARTBEATS of them.
         self.last_heartbeat: dict[int, float] = {}
+        #: node_id -> the NMT state its last heartbeat gave, as NMT_STATES names it.
+        self.nmt_states: dict[int, str] = {}
         #: The same arrivals on the *bus* clock, for measuring the period.
         #: Separate because the two questions want different clocks -- see
         #: _on_heartbeat.
@@ -399,6 +404,7 @@ class CanopenManager(QObject):
         self._heartbeat_stamp[node_id] = arrived
         self.last_heartbeat[node_id] = now
         state = NMT_STATES.get(data[0] & 0x7F, f"0x{data[0]:02X}")
+        self.nmt_states[node_id] = state
         self.forget_labels()  # a node nobody knew of accounts for ids now
         self.node_seen.emit(node_id, state)
 
@@ -565,6 +571,7 @@ class CanopenManager(QObject):
         """
         for known in (
             self.last_heartbeat,
+            self.nmt_states,
             self._heartbeat_stamp,
             self._heartbeat_gaps,
             self.heartbeat_interval,
@@ -594,6 +601,7 @@ class CanopenManager(QObject):
 
     def forget_nodes(self) -> None:
         self.last_heartbeat.clear()
+        self.nmt_states.clear()
         self._heartbeat_stamp.clear()
         self._heartbeat_gaps.clear()
         self.heartbeat_interval.clear()
@@ -1561,7 +1569,7 @@ class CanopenManager(QObject):
             node.store(subindex)
             return "parameters stored to non-volatile memory"
 
-        self._worker.submit(job, lambda t, e: self._report(node_id, t, e))
+        self._worker.submit(job, lambda t, e: self._parameters_done(node_id, "Store", t, e))
 
     def restore_parameters(self, node_id: int, subindex: int = 1) -> None:
         node = self.node(node_id)
@@ -1572,7 +1580,13 @@ class CanopenManager(QObject):
             node.restore(subindex)
             return "default parameters restored (reset the node to apply)"
 
-        self._worker.submit(job, lambda t, e: self._report(node_id, t, e))
+        self._worker.submit(
+            job, lambda t, e: self._parameters_done(node_id, "Restore defaults", t, e)
+        )
+
+    def _parameters_done(self, node_id: int, which: str, text: str | None, error: str | None):
+        self._report(node_id, text, error)
+        self.parameters_done.emit(node_id, which, text if error is None else error, error is None)
 
     def _report(self, node_id: int, text: str | None, error: str | None) -> None:
         self.message.emit(
