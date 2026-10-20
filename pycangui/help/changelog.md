@@ -15,6 +15,11 @@ since the last version, and comes out in the next one.
   CAN Transmit's settings: a Counter / checksum column, green or red, and faults counted in
   Signals and Plot.
 
+### Changed
+
+- CANopen: *Store* and *Restore defaults* show their result in a box, and ask first when the
+  node's heartbeat says it is in neither Pre-operational nor Operational.
+
 ## [0.4.1] - 2026-10-18
 
 ### Fixed

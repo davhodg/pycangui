@@ -674,3 +674,82 @@ def test_a_node_is_who_it_said_it_was_and_failing_that_who_its_eds_says(stack):
     assert manager.identity(5).vendor_id == 7, "its own word comes first"
 
     assert manager.identity(99) is None, "nobody has said anything about this one"
+
+
+# --- Store and Restore defaults: the state asked about, the result in a box -------------------
+def test_store_says_how_it_went_and_the_nmt_state_is_kept(stack):
+    manager, _demo, _tmp = stack
+    done = []
+    manager.parameters_done.connect(lambda *args: done.append(args))
+    wait_until(lambda: 5 in manager.nmt_states)  # from the demo node's heartbeat
+    manager.store_parameters(5)  # the demo node has no 0x1010
+    wait_until(lambda: done)
+    node_id, which, said, ok = done[-1]
+    assert (node_id, which, ok) == (5, "Store", False) and said
+    manager.remove_node(5)
+    assert 5 not in manager.nmt_states
+
+
+@pytest.fixture
+def chosen(window, monkeypatch):
+    """Node 9 chosen in the pane, with Store and Restore defaults recorded
+    rather than sent, and every question answered as ``chosen.answer`` says."""
+    from PySide6.QtWidgets import QMessageBox
+
+    from pycangui.ui import canopen_view
+
+    view = window.canopen_view
+    view.on_node_seen(9, "PRE-OPERATIONAL")
+    view.nodes.setCurrentItem(view._node_item(9))
+    sent, asked = [], []
+    monkeypatch.setattr(view.manager, "store_parameters", lambda n: sent.append(("store", n)))
+    monkeypatch.setattr(view.manager, "restore_parameters", lambda n: sent.append(("restore", n)))
+
+    def question(*args, **kwargs):
+        asked.append(args[1])
+        return chosen_answer[0]
+
+    chosen_answer = [QMessageBox.Cancel]
+    monkeypatch.setattr(canopen_view.messages, "question", question)
+    view.sent, view.asked, view.answer = sent, asked, chosen_answer
+    return view
+
+
+@pytest.mark.parametrize("state", ["STOPPED", "INITIALISING"])
+def test_a_node_in_neither_sdo_state_is_asked_about_first(chosen, state):
+    from PySide6.QtWidgets import QMessageBox
+
+    chosen.manager.nmt_states[9] = state
+    chosen._store()
+    assert chosen.asked and not chosen.sent, "Cancel sends nothing"
+    chosen.answer[0] = QMessageBox.Yes
+    chosen._restore()
+    assert chosen.sent == [("restore", 9)], "and nothing is sent to change its state"
+
+
+@pytest.mark.parametrize("state", ["PRE-OPERATIONAL", "OPERATIONAL", None])
+def test_a_node_answering_sdo_or_with_no_heartbeat_is_not_asked_about(chosen, state):
+    chosen.manager.nmt_states.pop(9, None)
+    if state:
+        chosen.manager.nmt_states[9] = state
+    chosen._store()
+    assert chosen.sent == [("store", 9)] and not chosen.asked
+
+
+def test_what_came_of_it_is_in_a_box(window, monkeypatch):
+    """Information when it worked, a warning when not, and for a node that
+    refused in its present state, a warning that says so."""
+    from pycangui.ui import canopen_view
+
+    view = window.canopen_view
+    boxes = []
+    for kind in ("warning", "information"):
+        monkeypatch.setattr(
+            canopen_view.messages, kind, lambda *a, k=kind, **_kw: boxes.append((k, a[2]))
+        )
+    view._on_parameters_done(5, "Store", "parameters stored", True)
+    view._on_parameters_done(5, "Store", "SDO timeout", False)
+    refused = "Code 0x08000022, Data can not be transferred or stored to the application"
+    view._on_parameters_done(5, "Store", refused, False)
+    assert [kind for kind, _text in boxes] == ["information", "warning", "warning"]
+    assert len(boxes[2][1]) > len(boxes[1][1]) + len(refused) - len("SDO timeout")

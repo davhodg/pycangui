@@ -98,7 +98,14 @@ Plot](signals.md) decode the TPDOs a remapped node actually sends, and [CAN
 Transmit](transmit.md) offers the RPDOs it receives. **Read PDO config** reads
 it again -- the same as *Read from node* in the PDO tab -- for a mapping
 something else has changed since, or for every read where *Settings...* has
-reading it turned off. **Store** and **Restore defaults** are 0x1010 and 0x1011, and **Save
+reading it turned off. **Store** and **Restore defaults** are 0x1010 and 0x1011, and what
+came of them is shown in a box as well as the Event Log. A node answers SDO only in
+Pre-operational or Operational, so one whose heartbeat says any other state -- Stopped,
+say -- is asked about first; pycangui does not change its state, since it may not be the
+NMT master. Which state a node will store in is the device's choice, not the standard's:
+many store only in Pre-operational, and a drive may also want its power stage off. A
+node that refuses in its present state answers abort 0800 0022h, and the box says so.
+**Save
 DCF...** and **Apply DCF...** read every parameter out to a file and write one
 back in. Both show how far they have got and can be stopped: a stopped *Save
 DCF* writes no file, since half a configuration is not one, and a stopped
