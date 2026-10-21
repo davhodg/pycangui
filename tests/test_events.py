@@ -417,3 +417,57 @@ def test_an_sdo_line_from_the_library_says_whose_transfer_it_was(app):
     assert any("Node 41, 1018:01" in text for text in errors), "the second is said too"
     assert any("Node 41:" in text and "1018" not in text for text in errors)
     assert errors[-1].endswith("not during a transfer"), "and nothing claimed when unknown"
+
+
+# --- a time on each line, when chosen ---------------------------------------------------------
+def last_line(window) -> str:
+    return window.log.toPlainText().splitlines()[-1]
+
+
+def test_lines_carry_no_time_unless_chosen(app, window):
+    import re
+
+    window.events.post("plain", WARNING)
+    app.processEvents()
+    assert last_line(window) == "Warning: plain"
+    assert not window.log_times.isChecked()
+    assert not re.match(r"\d\d:\d\d:\d\d ", window.log.toPlainText()), "on no line at all"
+
+
+def test_a_chosen_time_is_the_time_of_day_before_the_level_and_kept_when_copied(
+    app, window, monkeypatch
+):
+    from datetime import datetime
+
+    from pycangui.ui import main_window
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 21, 14, 3, 27, 900000)
+
+    monkeypatch.setattr(main_window, "datetime", Clock)
+    window.log_times.setChecked(True)
+    window.events.post("the node did not answer", WARNING)
+    app.processEvents()
+    assert last_line(window) == "14:03:27 Warning: the node did not answer", "to the second"
+
+    window.log.selectAll()
+    window.log.copy()
+    copied = app.clipboard().text()
+    assert "14:03:27 Warning: the node did not answer" in copied
+
+
+def test_the_choice_is_kept_for_the_next_window(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = MainWindow()
+    first.log_times.setChecked(True)
+    first.close()
+    second = MainWindow()
+    try:
+        assert second.log_times.isChecked()
+        assert second.log_times in second.settings_menu.actions(), "under Tools > Settings"
+    finally:
+        second.close()
+        QSettings().clear()

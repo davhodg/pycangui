@@ -18,6 +18,8 @@ since the last version, and comes out in the next one.
   way each goes) and in Signals and Plot, for a bus where another master sends them.
 - CANopen: *Settings... > Node ids*, the node ids whose heartbeats make a node, so another
   protocol can share the identifiers CANopen reserves for heartbeats.
+- *Tools > Settings > Time on Event Log lines*: the time of day in front of each line, to the
+  second, kept when it is copied.
 - A `.dbc` file double-clicked in the file manager is loaded, as *File > Load DBC...* does: the
   installer's file-type tick box and *Tools > Settings* add pycangui to *Open with* for it,
   without taking it over.

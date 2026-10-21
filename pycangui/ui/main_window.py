@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, QUrl, Signal, Slot
@@ -46,7 +47,7 @@ from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.detect import DEMO_CHANNEL, summarise
-from pycangui.core.events import PROBLEMS, EventLog, with_level
+from pycangui.core.events import PROBLEMS, EventLog, with_level, with_time
 from pycangui.core.excepthook import ExceptionLogger
 from pycangui.core.export import write_csv
 from pycangui.core.hooks import Hooks
@@ -169,6 +170,14 @@ UDP_NETWORK_TIP = (
     "the group hears it -- and can send into it. For this computer, not a\n"
     "workspace; a channel already connected follows it when it connects again."
 )
+#: In QSettings, like the theme: how somebody likes to read the log, not
+#: something about a workspace.
+LOG_TIMES_KEY = "event_log/times"
+LOG_TIMES_TIP = (
+    "The time of day each Event Log line was written, to the second, in front\n"
+    "of it: 14:03:27 Warning: ... From the next line on; kept when lines are\n"
+    "copied."
+)
 HISTORY_KEY = "signals.history"
 HISTORY_TIP = (
     "How many samples of each decoded signal are kept, for the plot and for\n"
@@ -246,6 +255,7 @@ class MainWindow(QMainWindow):
         #: the only thing that writes to the pane. Warnings and errors open it
         #: if it has been closed; notes do not.
         self.events = EventLog()
+        self._log_times = QSettings().value(LOG_TIMES_KEY, False, type=bool)
         self._surfacing = False
         self.events.posted.connect(self._on_event)
 
@@ -583,6 +593,11 @@ class MainWindow(QMainWindow):
         verbose.setCheckable(True)
         verbose.setToolTip("Relay the CAN libraries' info messages to the event log too")
         verbose.toggled.connect(self._set_verbose_logging)
+        self.log_times = settings_menu.addAction("Time on Event Log lines")
+        self.log_times.setCheckable(True)
+        self.log_times.setChecked(self._log_times)
+        self.log_times.setToolTip(LOG_TIMES_TIP)
+        self.log_times.toggled.connect(self._set_log_times)
         self.strict_dbc = settings_menu.addAction("Strict DBC checks")
         self.strict_dbc.setCheckable(True)
         self.strict_dbc.setChecked(bool(self.ctx.settings.get("dbc.strict", True)))
@@ -1684,7 +1699,10 @@ class MainWindow(QMainWindow):
             shape.setForeground(colour)
         if event_colours.bold_for(level):
             shape.setFontWeight(QFont.Bold)
-        cursor.insertText(with_level(message, level), shape)
+        line = with_level(message, level)
+        if self._log_times:
+            line = with_time(line, datetime.now())
+        cursor.insertText(line, shape)
         # Painted again as a whole. Written through a cursor, a line could be
         # drawn before its colour was laid out, and stayed in the plain text
         # colour until scrolling redrew it -- an error that did not look like one.
@@ -1924,6 +1942,16 @@ class MainWindow(QMainWindow):
                 "A UDP multicast channel already connected goes on as it was until it is "
                 "connected again."
             )
+
+    @Slot(bool)
+    def _set_log_times(self, on: bool) -> None:
+        QSettings().setValue(LOG_TIMES_KEY, on)
+        self._log_times = on
+        self.events.information(
+            "Event Log lines are written with the time of day."
+            if on
+            else "Event Log lines are written without the time."
+        )
 
     def _set_strict_dbc(self, on: bool) -> None:
         self.ctx.settings.set("dbc.strict", on)
