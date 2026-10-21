@@ -217,10 +217,11 @@ list.
 `pycangui drive.dcf` opens one from the command line. To open one with a
 double-click, pycangui has to be in *Open with* for `.dcf` and `.eds` files: the
 installer has a tick box for it beside the desktop shortcut, and *Tools > Settings >
-Open .dcf and .eds files with pycangui* does the same at any time, for a source
+Open .dcf, .eds and .dbc files with pycangui* does the same at any time, for a source
 folder or a pip installation as well (Windows and Linux). Either puts pycangui
 in *Open with* and leaves the default alone, so another CANopen tool that has
-these files keeps them until you choose. With pycangui already open, the file
+these files keeps them until you choose. The same goes for `.dbc` files, which
+are [loaded](signals.md) rather than opened here. With pycangui already open, the file
 goes to that one, which comes to the front: not a second pycangui fighting the
 first for the adapter.
 

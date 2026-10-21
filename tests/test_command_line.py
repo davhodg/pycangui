@@ -150,6 +150,43 @@ def test_a_dcf_on_the_command_line_opens_in_the_canopen_pane(window, home):
     assert window.panes.on_screen(window._canopen_pane)
 
 
+def test_a_dbc_on_the_command_line_is_loaded_and_kept(window, home, monkeypatch):
+    """Double-clicked in Explorer: loaded as File > Load DBC loads one, so it
+    comes back next time and File > Remove DBC can take it off again."""
+    import shutil
+
+    from PySide6.QtWidgets import QMessageBox
+
+    from pycangui import resources
+    from pycangui.ui import messages
+
+    dbc = home / "demo.dbc"
+    shutil.copyfile(resources.path("demo.dbc"), dbc)
+    asked = []
+    monkeypatch.setattr(messages, "question", lambda *a, **_k: asked.append(a[1]) or QMessageBox.No)
+    window.panes.docks["database"].hide()
+    assert not window.panes.on_screen("database")
+    window.open_files([dbc])
+    assert str(dbc) in window.dbc.databases, "loaded"
+    assert window.ctx.settings.get("dbc.paths") == [str(dbc)], "kept where it is, and remembered"
+    assert len(asked) == 1, "offered a copy in the workspace, as Load DBC does"
+    assert window.panes.on_screen("database")
+
+    window.open_files([dbc])  # double-clicked again
+    assert window.ctx.settings.get("dbc.paths") == [str(dbc)], "not remembered twice"
+    assert len(asked) == 1, "and not asked about again"
+
+
+def test_the_other_database_formats_are_taken_but_only_dbc_is_offered():
+    from pycangui.core import file_types
+
+    for extension in (".dbc", ".kcd", ".sym", ".arxml"):
+        assert extension in cli.OPENS, "pycangui reads them all, so takes them all"
+    registered = {extension for extension, _id, _what in file_types.TYPES}
+    assert ".dbc" in registered
+    assert not registered & {".kcd", ".sym", ".arxml"}, "more likely another tool's own"
+
+
 def test_run_waits_for_the_startup_hook_then_closes_with_the_code(app, window, home):
     job = script(home, "import sys; sys.exit(0 if window is not None and canopen else 5)")
     loaded = {}

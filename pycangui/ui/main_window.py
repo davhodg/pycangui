@@ -634,12 +634,13 @@ class MainWindow(QMainWindow):
         self.file_types_action = None
         if file_types.command() is not None:
             self.file_types_action = settings_menu.addAction(
-                "Open .dcf and .eds files with pycangui", self._register_file_types
+                "Open .dcf, .eds and .dbc files with pycangui", self._register_file_types
             )
             self.file_types_action.setToolTip(
-                "Offer this pycangui in Open with for CANopen DCF and EDS files, so\n"
-                "double-clicking one opens it in the CANopen pane. For you only, and\n"
-                "not made the default: another tool that has them keeps them."
+                "Offer this pycangui in Open with for CANopen DCF and EDS files and\n"
+                "CAN databases, so double-clicking one opens it in the CANopen pane\n"
+                "or loads it. For you only, and not made the default: another tool\n"
+                "that has them keeps them."
             )
 
         #: A menu of its own rather than a corner of Tools: a plugin adds
@@ -717,17 +718,24 @@ class MainWindow(QMainWindow):
     def open_files(self, files: list[Path]) -> None:
         """Files from the command line, or double-clicked while this was open.
 
-        A DCF or EDS goes to the CANopen pane as a row of its own, and the
-        window comes forward: somebody double-clicked it to look at it.
+        A DCF or EDS goes to the CANopen pane as a row of its own; a database
+        is loaded as File > Load DBC loads one, and the Database pane shown.
+        The window comes forward: somebody double-clicked it to look at it.
         """
-        opened = False
+        opened = loaded = False
         for path in files:
-            if path.suffix.lower() in cli.OPENS:
+            if path.suffix.lower() in cli.CANOPEN_FILES:
                 opened = self.canopen_view.open_file(path) is not None or opened
+            elif path.suffix.lower() in cli.DATABASES:
+                loaded = self.load_dbc_file(str(path)) or loaded
             else:
-                self.events.warning(f"{path.name}: pycangui opens a DCF or an EDS, not this")
+                self.events.warning(
+                    f"{path.name}: pycangui opens a DCF, an EDS or a CAN database, not this"
+                )
         if opened:
             self.panes.show(self._canopen_pane)
+        if loaded:
+            self.panes.show("database")
         self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
         self.raise_()
         self.activateWindow()
@@ -1969,13 +1977,13 @@ class MainWindow(QMainWindow):
         )
 
     def _register_file_types(self) -> None:
-        """Tools > Settings > Open .dcf and .eds files with pycangui."""
+        """Tools > Settings > Open .dcf, .eds and .dbc files with pycangui."""
         try:
             where = file_types.register()
         except OSError as exc:
-            self.events.error(f"Could not register .dcf and .eds files: {exc}")
+            self.events.error(f"Could not register .dcf, .eds and .dbc files: {exc}")
             return
-        self.events.good(f"pycangui added to Open with for .dcf and .eds files, in {where}")
+        self.events.good(f"pycangui added to Open with for .dcf, .eds and .dbc files, in {where}")
 
     def _ask_again(self) -> None:
         """Put back every question somebody has told pycangui to stop asking.
@@ -2397,14 +2405,22 @@ class MainWindow(QMainWindow):
             "CAN databases (*.dbc *.kcd *.sym *.arxml)",
             self.ctx.user_dir,
         )
-        if not path:
-            return
+        if path:
+            self.load_dbc_file(path)
+
+    def load_dbc_file(self, path: str) -> bool:
+        """Load a database somebody chose, and remember it with the workspace.
+
+        File > Load DBC, and a database double-clicked or given on the command
+        line: each is kept for next time and listed under File > Remove DBC,
+        and one from outside the workspace is offered a copy in it. Returns
+        whether it loaded.
+        """
         workspace = self.ctx.workspace_dir
         paths = list(self.ctx.settings.get("dbc.paths", []))
         chosen = Path(path).resolve()
         if any(workspace_files.resolve(p, workspace).resolve() == chosen for p in paths):
-            self._load_dbc(path, offer_relaxing=True)  # remembered already
-            return
+            return self._load_dbc(path, offer_relaxing=True)  # remembered already
         value = keep_file.offer_and_load(
             self,
             self.ctx,
@@ -2412,8 +2428,10 @@ class MainWindow(QMainWindow):
             workspace_files.DBC,
             lambda used: self._load_dbc(used, offer_relaxing=True),
         )
-        if value is not None:
-            self.ctx.settings.set("dbc.paths", [*paths, value])
+        if value is None:
+            return False
+        self.ctx.settings.set("dbc.paths", [*paths, value])
+        return True
 
     def _load_dbc(self, path: str, offer_relaxing: bool = False) -> bool:
         """Load a database, strictly unless told otherwise.

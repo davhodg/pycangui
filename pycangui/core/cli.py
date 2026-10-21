@@ -30,11 +30,18 @@ USAGE = """pycangui [--workspace NAME] [--run SCRIPT] [--skip-start-warning] [FI
                      real equipment, for a run nobody is there to answer.
                      Every other question is still asked unless its box
                      was ticked before
-  FILE               a DCF or EDS to open in the CANopen pane. Used alone,
-                     it goes to the pycangui already open, if there is one."""
+  FILE               a DCF or EDS to open in the CANopen pane, or a CAN
+                     database (.dbc, .kcd, .sym, .arxml) to load. Used
+                     alone, it goes to the pycangui already open, if there
+                     is one."""
 
-#: What a file on the command line can be: a double-clicked DCF or EDS.
-OPENS = (".dcf", ".eds")
+#: What a file on the command line can be: a double-clicked DCF or EDS, which
+#: goes to the CANopen pane, or a database, which is loaded.
+CANOPEN_FILES = (".dcf", ".eds")
+#: Every format File > Load DBC reads. Only .dbc is offered in Open with
+#: (core/file_types.py), but one chosen there by hand is taken all the same.
+DATABASES = (".dbc", ".kcd", ".sym", ".arxml")
+OPENS = CANOPEN_FILES + DATABASES
 
 #: With underscores as well: both get typed, and neither is worth refusing.
 SKIP_NOTICE = frozenset({"--skip-start-warning", "--skip_start_warning"})

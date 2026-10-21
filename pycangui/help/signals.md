@@ -3,7 +3,13 @@
 # Databases, signals and the plot
 
 **File > Load DBC...** decodes matching frames, from a DBC, KCD, SYM or ARXML
-database. *File > Remove DBC* lists the ones this workspace knows of, each with
+database. A database double-clicked in the file manager, or given on the command
+line, is loaded the same way and the [Database](database.md) pane shown: *Tools >
+Settings > Open .dcf, .eds and .dbc files with pycangui*, or the installer's tick
+box, puts pycangui in *Open with* for `.dbc` files, and leaves the default alone so
+another CAN tool keeps them until you choose. KCD, SYM and ARXML files are not
+offered there, being more likely another tool's own, but one opened with pycangui
+by hand is loaded all the same. *File > Remove DBC* lists the ones this workspace knows of, each with
 how many messages it holds, and takes one off the list; *Remove all* at the
 bottom clears the lot. A database that has moved since it was loaded is on
 that list marked *(missing)*, which is how it is dropped without disturbing

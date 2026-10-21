@@ -16,6 +16,9 @@ since the last version, and comes out in the next one.
   Signals and Plot.
 - CANopen: a node's RPDOs are decoded as well as its TPDOs, in *Live PDOs* (which says which
   way each goes) and in Signals and Plot, for a bus where another master sends them.
+- A `.dbc` file double-clicked in the file manager is loaded, as *File > Load DBC...* does: the
+  installer's file-type tick box and *Tools > Settings* add pycangui to *Open with* for it,
+  without taking it over.
 
 ### Changed
 
