@@ -11,7 +11,12 @@ Caught by wrapping ``upload`` and ``download`` on each node's own SDO client,
 which every read and write goes through, expedited or segmented. On the
 client rather than the library's class, so nothing else in the process using
 ``canopen`` is logged with it. A transfer opened as a file -- a firmware
-download's block transfer -- is not seen here; it has its own progress.
+download's block transfer -- is not logged here; it has its own progress.
+
+The same wrappers refuse a transfer to a node whose heartbeat last said it is
+STOPPED, opened as a file included. CiA 301 serves SDO only in Pre-operational
+and Operational, so a request to a stopped node could only wait for the
+timeout; refused at once, it says why.
 """
 
 from __future__ import annotations
@@ -19,6 +24,8 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+
+import canopen
 
 from pycangui.canopen import abort_reason
 
@@ -64,10 +71,19 @@ def shown(data: bytes) -> str:
     return f"{text} ({len(data)} bytes)"
 
 
+class NodeStopped(canopen.SdoCommunicationError):
+    """An SDO transfer not made, because the node's heartbeat says it is STOPPED."""
+
+    def __init__(self, node_id: int) -> None:
+        super().__init__(
+            f"node {node_id} is STOPPED, and a node answers SDO only in PRE-OPERATIONAL "
+            "or OPERATIONAL, so nothing was sent"
+        )
+        self.node_id = node_id
+
+
 def reason(exc: Exception) -> str:
     """An abort as its code and meaning; anything else, a timeout say, as it is."""
-    import canopen
-
     if isinstance(exc, canopen.SdoAbortedError):
         meaning = abort_reason(exc.code)
         return f"abort 0x{exc.code:08X}" + (f", {meaning}" if meaning else "")
@@ -80,15 +96,18 @@ def watch(
     report: Callable[[SdoRecord], None],
     now: Callable[[], float],
     name_of: Callable[[int, int], str],
+    stopped: Callable[[], bool] = lambda: False,
 ) -> None:
     """Report every upload and download this SDO client makes. Once per client.
 
     ``report`` is called on whichever thread made the transfer, and has to be
-    safe to call from any -- a Qt signal's emit is.
+    safe to call from any -- a Qt signal's emit is. While ``stopped()`` is
+    true, every transfer raises NodeStopped instead of being made: the
+    upload and download refused are in the log as failures, saying why.
     """
     if getattr(sdo, "_pycangui_logged", False):
         return
-    upload, download = sdo.upload, sdo.download
+    upload, download, opened = sdo.upload, sdo.download, sdo.open
 
     def logged(write: bool, index: int, sub: int, call, data: bytes | None = None):
         at, started = now(), time.perf_counter()
@@ -98,6 +117,8 @@ def watch(
             return SdoRecord(at, node_id, write, index, sub, name_of(index, sub), said, error, took)
 
         try:
+            if stopped():
+                raise NodeStopped(node_id)
             answer = call()
         except Exception as exc:
             report(record(None, reason(exc)))
@@ -113,6 +134,12 @@ def watch(
             True, index, subindex, lambda: download(index, subindex, data, *args, **kwargs), data
         )
 
+    def refused_unless_able(*args, **kwargs):
+        if stopped():
+            raise NodeStopped(node_id)
+        return opened(*args, **kwargs)
+
     sdo.upload = logged_upload
     sdo.download = logged_download
+    sdo.open = refused_unless_able
     sdo._pycangui_logged = True

@@ -50,9 +50,21 @@ and SYNC are services the whole bus hears, and **Add / Open** and **Remove**
 put a row in the list or take one out rather than doing anything to a
 node. Everything below it acts on the
 node highlighted in it, and is switched off while no node is highlighted, or
-while the highlighted one is lost: a button that looks pressable and then says
-"no node selected" is a worse way to find that out than one that is plainly
-not.
+while the highlighted one is lost or stopped, with the reason added to its
+tooltip: a button that looks pressable and then says "no node selected" is a
+worse way to find that out than one that is plainly not.
+
+**Nothing goes over SDO to a stopped node.** CiA 301 serves SDO only in
+Pre-operational and Operational, so a request to a node whose heartbeat says
+Stopped could only wait for the timeout. It is refused at once instead, from
+wherever it comes -- the object dictionary, Read all, the PDO tab, the faults,
+a DCF, a comparison, the console, a script or a plugin through `node.sdo` --
+and the CANopen log and the Event Log say why. A boot-up is the node entering
+Pre-operational, and is shown as that; SDO goes straight out after one. What
+pycangui reads unasked -- identifying a node first heard, reading its PDO
+configuration again -- waits while the node is stopped and is done when it
+leaves Stopped. NMT, LSS and the heartbeat are not SDO, and are unaffected:
+**Load EDS...** stays offered too, since it asks the node nothing.
 
 Under the list, what is pressed often is a button and what is done once to a
 node is in one of four menus, each named for what it is about: **Node**
@@ -99,10 +111,9 @@ Transmit](transmit.md) offers the RPDOs it receives. **Read PDO config** reads
 it again -- the same as *Read from node* in the PDO tab -- for a mapping
 something else has changed since, or for every read where *Settings...* has
 reading it turned off. **Store** and **Restore defaults** are 0x1010 and 0x1011, and what
-came of them is shown in a box as well as the Event Log. A node answers SDO only in
-Pre-operational or Operational, so one whose heartbeat says any other state -- Stopped,
-say -- is asked about first; pycangui does not change its state, since it may not be the
-NMT master. Which state a node will store in is the device's choice, not the standard's:
+came of them is shown in a box as well as the Event Log. Neither is offered for a
+stopped node, and pycangui does not change its state, since it may not be the NMT
+master. Which state a node will store in is the device's choice, not the standard's:
 many store only in Pre-operational, and a drive may also want its power stage off. A
 node that refuses in its present state answers abort 0800 0022h, and the box says so.
 **Save

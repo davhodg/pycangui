@@ -676,7 +676,7 @@ def test_a_node_is_who_it_said_it_was_and_failing_that_who_its_eds_says(stack):
     assert manager.identity(99) is None, "nobody has said anything about this one"
 
 
-# --- Store and Restore defaults: the state asked about, the result in a box -------------------
+# --- Store and Restore defaults: the result in a box -----------------------------------------
 def test_store_says_how_it_went_and_the_nmt_state_is_kept(stack):
     manager, _demo, _tmp = stack
     done = []
@@ -693,47 +693,44 @@ def test_store_says_how_it_went_and_the_nmt_state_is_kept(stack):
 @pytest.fixture
 def chosen(window, monkeypatch):
     """Node 9 chosen in the pane, with Store and Restore defaults recorded
-    rather than sent, and every question answered as ``chosen.answer`` says."""
-    from PySide6.QtWidgets import QMessageBox
-
-    from pycangui.ui import canopen_view
-
+    rather than sent."""
     view = window.canopen_view
     view.on_node_seen(9, "PRE-OPERATIONAL")
     view.nodes.setCurrentItem(view._node_item(9))
-    sent, asked = [], []
+    sent = []
     monkeypatch.setattr(view.manager, "store_parameters", lambda n: sent.append(("store", n)))
     monkeypatch.setattr(view.manager, "restore_parameters", lambda n: sent.append(("restore", n)))
-
-    def question(*args, **kwargs):
-        asked.append(args[1])
-        return chosen_answer[0]
-
-    chosen_answer = [QMessageBox.Cancel]
-    monkeypatch.setattr(canopen_view.messages, "question", question)
-    view.sent, view.asked, view.answer = sent, asked, chosen_answer
+    view.sent = sent
     return view
 
 
-@pytest.mark.parametrize("state", ["STOPPED", "INITIALISING"])
-def test_a_node_in_neither_sdo_state_is_asked_about_first(chosen, state):
-    from PySide6.QtWidgets import QMessageBox
+def test_a_stopped_node_is_offered_no_sdo_and_says_why(chosen):
+    """Store and Restore were asked about first; a stopped node now has
+    nothing over SDO offered at all, as a lost one has not, and the
+    tooltip says why rather than leaving a grey button to puzzle over."""
+    store = next(a for a in chosen.node_menu_btn.menu().actions() if a.text() == "Store")
+    usual = store.toolTip()
+    chosen.on_node_seen(9, "STOPPED")
+    assert not store.isEnabled() and not chosen.read_pdos_btn.isEnabled()
+    assert "STOPPED" in store.toolTip() and store.toolTip().startswith(usual)
+    assert chosen._load_eds_action.isEnabled(), "loading an EDS asks the node nothing"
+    on_right_click = {a.text(): a.isEnabled() for a in chosen.node_menu(9).actions()}
+    assert on_right_click["Store"] is False and on_right_click["Read PDO config"] is False
+    assert on_right_click["Load EDS..."] is True, "the same there as under the list"
 
-    chosen.manager.nmt_states[9] = state
+    chosen.on_node_seen(9, "OPERATIONAL")
+    assert store.isEnabled() and store.toolTip() == usual, "back when it leaves Stopped"
+    store.trigger()
+    assert chosen.sent == [("store", 9)], "and not asked about first"
+
+
+@pytest.mark.parametrize("state", ["INITIALISING", "PRE-OPERATIONAL", "OPERATIONAL"])
+def test_boot_up_is_pre_operational_and_sdo_goes_straight_out(chosen, state):
+    chosen.on_node_seen(9, state)
     chosen._store()
-    assert chosen.asked and not chosen.sent, "Cancel sends nothing"
-    chosen.answer[0] = QMessageBox.Yes
-    chosen._restore()
-    assert chosen.sent == [("restore", 9)], "and nothing is sent to change its state"
-
-
-@pytest.mark.parametrize("state", ["PRE-OPERATIONAL", "OPERATIONAL", None])
-def test_a_node_answering_sdo_or_with_no_heartbeat_is_not_asked_about(chosen, state):
-    chosen.manager.nmt_states.pop(9, None)
-    if state:
-        chosen.manager.nmt_states[9] = state
-    chosen._store()
-    assert chosen.sent == [("store", 9)] and not chosen.asked
+    assert chosen.sent == [("store", 9)]
+    shown = chosen._node_item(9).text(2)
+    assert shown == ("PRE-OPERATIONAL" if state == "INITIALISING" else state)
 
 
 def test_what_came_of_it_is_in_a_box(window, monkeypatch):

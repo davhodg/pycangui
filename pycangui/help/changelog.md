@@ -22,8 +22,11 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
-- CANopen: *Store* and *Restore defaults* show their result in a box, and ask first when the
-  node's heartbeat says it is in neither Pre-operational nor Operational.
+- CANopen: *Store* and *Restore defaults* show their result in a box.
+- CANopen: nothing goes over SDO to a node whose heartbeat says Stopped: it is refused at once,
+  saying why, rather than left to time out, and the node's SDO commands are greyed with the
+  reason in their tooltip. Identifying it and reading its PDOs wait until it leaves Stopped. A
+  boot-up counts as Pre-operational.
 
 ## [0.4.1] - 2026-10-18
 

@@ -64,6 +64,13 @@ MIN_HEARTBEAT_TIMEOUT_S = 1.0
 
 #: The state shown for a node put in the list by hand, until it is heard from.
 ADDED_BY_HAND = "added by hand"
+#: What a heartbeat of 0 is called: the boot-up a node sends as it enters
+#: Pre-operational, and the state it is then in. CiA 301 serves SDO in
+#: Pre-operational and Operational, so of the states a heartbeat says, only
+#: Stopped is one in which nothing can be asked of a node.
+BOOT_UP = NMT_STATES[0]
+PRE_OPERATIONAL = NMT_STATES[127]
+NODE_STOPPED = NMT_STATES[4]
 #: What CANopen works through is the channel selected in the toolbar. "Node 5:
 #: not connected" read as the node being the thing that was not connected.
 NOT_CONNECTED = "the selected CAN channel is not connected; connect it first"
@@ -301,8 +308,12 @@ class CanopenManager(QObject):
         #: the same mapping again by itself does not report them again.
         self._size_mismatches_said: dict[int, list[str]] = {}
         self._frame_errors_said: set[tuple[int, str]] = set()
+        #: Work pycangui does unasked that is SDO -- identifying a node first
+        #: heard, reading its PDO configuration again -- put off while the
+        #: node is stopped, and done when it leaves Stopped: node -> which.
+        self._held: dict[int, set[str]] = {}
         # Queued: a boot-up is heard on the bus's thread.
-        self.node_seen.connect(self._on_boot_up)
+        self.node_seen.connect(self._on_state)
         bus.connected.connect(self._on_bus_connected)
         bus.disconnected.connect(self._on_bus_disconnected)
 
@@ -404,7 +415,7 @@ class CanopenManager(QObject):
         self._heartbeat_stamp[node_id] = arrived
         self.last_heartbeat[node_id] = now
         state = NMT_STATES.get(data[0] & 0x7F, f"0x{data[0]:02X}")
-        self.nmt_states[node_id] = state
+        self.nmt_states[node_id] = settled(state)
         self.forget_labels()  # a node nobody knew of accounts for ids now
         self.node_seen.emit(node_id, state)
 
@@ -587,6 +598,7 @@ class CanopenManager(QObject):
         self.lost_nodes.discard(node_id)
         self._mapping_read.discard(node_id)
         self._rpdo_read.discard(node_id)
+        self._held.pop(node_id, None)
         node = self.node(node_id)
         if node is not None:
             # The library leaves a read PDO's subscription behind, and its
@@ -614,6 +626,7 @@ class CanopenManager(QObject):
         self.heartbeat_times.clear()
         self._mapping_read.clear()
         self._rpdo_read.clear()
+        self._held.clear()
 
     # --- a node added by hand ----------------------------------------------------
     def add_node(self, node_id: int) -> bool:
@@ -784,6 +797,8 @@ class CanopenManager(QObject):
         """
         try:
             return int.from_bytes(node.sdo.upload(index, sub), "little"), True
+        except sdo_log.NodeStopped:
+            raise  # not an answer about the object: the node was not asked
         except Exception:
             return None, False
 
@@ -993,6 +1008,7 @@ class CanopenManager(QObject):
                 self.sdo_logged.emit,
                 self._bus.now,
                 lambda index, sub, n=node: _object_name(n, index, sub),
+                lambda n=node_id: self.is_stopped(n),
             )
 
     # --- SDO channel --------------------------------------------------------------
@@ -1057,6 +1073,17 @@ class CanopenManager(QObject):
         sdo.RESPONSE_TIMEOUT = self.sdo_timeout_s
         sdo.MAX_RETRIES = self.sdo_retries + 1  # the library counts tries, not retries
 
+    def is_stopped(self, node_id: int) -> bool:
+        """Whether the node's last heartbeat said STOPPED, when no SDO is served."""
+        return self.nmt_states.get(node_id) == NODE_STOPPED
+
+    def identify_unasked(self, node_id: int) -> None:
+        """Identify a node first heard -- now, or once it is no longer stopped."""
+        if self.is_stopped(node_id):
+            self._held.setdefault(node_id, set()).add("identify")
+        else:
+            self.identify(node_id)
+
     def identify(self, node_id: int) -> None:
         """Read 0x1000 and 0x1018 with raw SDO uploads (no EDS needed)."""
         if self.network is None:
@@ -1111,12 +1138,11 @@ class CanopenManager(QObject):
                 node_id, path, node.object_dictionary.device_information.product_name or ""
             )
             self.load_pdos_from_eds(node_id)
-            if self.read_pdos_when_found:
-                self.read_pdo_config(node_id)
-            else:
+            if not self.read_pdos_when_found or self.is_stopped(node_id):
                 # Decoded by the EDS's mapping, which is all there is to go
-                # by until the node is asked.
+                # by until the node is asked -- or, while stopped, can be.
                 self._decode_pdos(node_id, node)
+            self.refresh_pdo_config(node_id)
 
         self._worker.submit(job, done)
 
@@ -1210,12 +1236,16 @@ class CanopenManager(QObject):
                 self.read_progress.emit(node_id, i, len(wanted))
                 try:
                     value, error = self._read_one(node_id, node, index, sub), None
+                except sdo_log.NodeStopped:
+                    raise  # every one after it would be refused the same way
                 except Exception as exc:  # this one, not the rest
                     value, error = None, _reason(exc)
                 self.sdo_result.emit(node_id, index, sub, value, error)
             return len(wanted)
 
         def done(count: int | None, error: str | None) -> None:
+            if error:
+                self.message.emit(f"Node {node_id}: Read all failed ({error})", WARNING)
             self.read_finished.emit(node_id, count or 0, len(wanted), self._stop_batch)
 
         self._worker.submit(job, done)
@@ -1368,20 +1398,33 @@ class CanopenManager(QObject):
         )
 
     def refresh_pdo_config(self, node_id: int) -> None:
-        """Read the PDO configuration again, where reading it unasked is on."""
-        if self.read_pdos_when_found:
+        """Read the PDO configuration again, where reading it unasked is on --
+        now, or once the node is no longer stopped."""
+        if not self.read_pdos_when_found:
+            return
+        if self.is_stopped(node_id):
+            self._held.setdefault(node_id, set()).add("pdos")
+        else:
             self.read_pdo_config(node_id)
 
-    def _on_boot_up(self, node_id: int, state: str) -> None:
-        """A node that has started again may be set up differently: read it again.
+    def _on_state(self, node_id: int, state: str) -> None:
+        """What a heartbeat means for the work pycangui does unasked.
 
-        Only one with an EDS, whose first read comes when that is loaded --
-        the first boot-up of a node nobody knows yet is what finds it one.
+        A node that has booted again may be set up differently, so its PDO
+        configuration is read again -- only one with an EDS, whose first
+        read comes when that is loaded: the first boot-up of a node nobody
+        knows yet is what finds it one. A node that has left Stopped is
+        given whatever was put off while it was there.
         """
-        if state != NMT_STATES[0]:
+        if state == NODE_STOPPED:
             return
+        held = self._held.pop(node_id, set())
         node = self.node(node_id)
-        if node is not None and len(node.object_dictionary):
+        if state == BOOT_UP and node is not None and len(node.object_dictionary):
+            held.add("pdos")
+        if "identify" in held:
+            self.identify(node_id)
+        if "pdos" in held:
             self.refresh_pdo_config(node_id)
 
     def read_from_node(self, node_id: int) -> tuple[bool, bool]:
@@ -1920,6 +1963,8 @@ class CanopenManager(QObject):
                     values[(var.index, var.subindex)] = value
                     var.value = value
                     read += 1
+                except sdo_log.NodeStopped:
+                    raise
                 except Exception as exc:  # not implemented by this node: leave it out
                     var.value = None
                     var.value_raw = None
@@ -2006,6 +2051,8 @@ class CanopenManager(QObject):
             for i, (index, sub) in enumerate(wanted):
                 try:
                     values[(index, sub)] = self._variable(node, index, sub).raw
+                except sdo_log.NodeStopped:
+                    raise  # not absent: not asked
                 except Exception:  # not implemented here: absent, not different
                     pass
                 if i % 10 == 0:
@@ -2039,6 +2086,8 @@ class CanopenManager(QObject):
                 try:
                     self._variable(node, var.index, var.subindex).raw = var.value
                     written += 1
+                except sdo_log.NodeStopped:
+                    raise
                 except Exception as exc:
                     failures.append((var.index, var.subindex, _reason(exc)))
                 if i % 5 == 0:
@@ -2153,6 +2202,12 @@ class CanopenManager(QObject):
             except Exception:  # value out of range for the mapped type
                 var.raw = int(values[var.name])
         return pdo_map.cob_id, bytes(pdo_map.data)
+
+
+def settled(state: str) -> str:
+    """The state a heartbeat says the node is in: a boot-up is its entry into
+    Pre-operational, and SDO is served there as soon as it is sent."""
+    return PRE_OPERATIONAL if state == BOOT_UP else state
 
 
 def _reason(exc: Exception) -> str:

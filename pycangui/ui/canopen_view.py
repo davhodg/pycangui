@@ -53,10 +53,12 @@ from pycangui.canopen.display import (
 )
 from pycangui.canopen.display import text as value_text
 from pycangui.canopen.manager import (
+    NODE_STOPPED,
     NOT_CONNECTED,
     STOPPED,
     CanopenManager,
     od_entries,
+    settled,
     totals_text,
     type_name,
 )
@@ -146,9 +148,13 @@ NMT_COMMANDS_UI = (
 
 
 NODE_MENU_TIP = "The selected node: who it is, and what it keeps when the power goes."
-#: The NMT states a node answers SDO in (CiA 301); Store and Restore defaults
-#: are SDO writes, and in any other state are asked about first.
-SDO_STATES = ("PRE-OPERATIONAL", "OPERATIONAL")
+#: Why what is asked of a node over SDO is greyed, added to its tooltip.
+WHY_LOST = "Node {node_id}'s heartbeat is lost: nothing can be asked of it until it is back."
+WHY_STOPPED = (
+    "Node {node_id} is STOPPED, and a node answers SDO only in PRE-OPERATIONAL or\n"
+    "OPERATIONAL. NMT Start or Pre-operational, here or from the NMT master,\n"
+    "brings it back."
+)
 #: The abort a node gives when it will not do it in the state it is in.
 REFUSED_IN_STATE = "0x08000022"
 REFUSED_WHY = (
@@ -318,6 +324,10 @@ class CanopenView(QWidget):
         #: because they were there a moment ago and which one went is the
         #: news, but nothing can be asked of them until they are back.
         self._lost: set[int] = set()
+        #: Nodes whose heartbeat says STOPPED: listed, and answering NMT, but
+        #: not SDO. And those of them already said to refuse a read.
+        self._stopped: set[int] = set()
+        self._stopped_said: set[int] = set()
         #: The Emergencies tree, which is grouped: a row per node, and the
         #: arrivals under it. The flat list beside it is arrival order, which
         #: is what says which to drop when there are too many.
@@ -448,6 +458,13 @@ class CanopenView(QWidget):
             store,
             restore,
             apply_dcf,
+        ]
+        #: Loading an EDS asks the node nothing, so a stopped node can be given one.
+        self._load_eds_action = load_eds
+        #: Each one's own tooltip, to which why it is greyed is added.
+        self._usual_tips = [
+            (control, control.toolTip())
+            for control in [*self._node_buttons, *self._menu_buttons, self.save_dcf_action]
         ]
         node_bar.addStretch()
         # Above the list: the network, and what changes who is on it. NMT and
@@ -978,7 +995,10 @@ class CanopenView(QWidget):
         ):
             menu.addSeparator()
             for text, slot in group:
-                menu.addAction(text, slot).setEnabled(on_a_node)
+                usable = (
+                    self._can_give_eds(node_id) if slot == self._load_eds_clicked else on_a_node
+                )
+                menu.addAction(text, slot).setEnabled(usable)
         # Not asked of the node, so there whether or not it answers.
         menu.addAction(
             "Save as DBC...", lambda: canopen_dbc.save(self, [node_id], [], False)
@@ -1037,6 +1057,7 @@ class CanopenView(QWidget):
             return
         self.manager.remove_node(node_id)
         self._lost.discard(node_id)
+        self._stopped.discard(node_id)
         self._identities.pop(node_id, None)
         self.nodes.takeTopLevelItem(self.nodes.indexOfTopLevelItem(item))
         if self._od_node == node_id and self._od_file is None:
@@ -1156,6 +1177,16 @@ class CanopenView(QWidget):
 
     @Slot(int, str)
     def on_node_seen(self, node_id: int, state: str) -> None:
+        # A boot-up is the node entering Pre-operational, and is shown as that.
+        state = settled(state)
+        was_stopped = node_id in self._stopped
+        if state == NODE_STOPPED:
+            self._stopped.add(node_id)
+        else:
+            self._stopped.discard(node_id)
+            self._stopped_said.discard(node_id)
+        if was_stopped != (node_id in self._stopped):
+            self._offer_node_buttons()
         item = self._node_item(node_id)
         if item is None:
             item = QTreeWidgetItem([str(node_id), f"Node {node_id}", state, ""])
@@ -1165,9 +1196,10 @@ class CanopenView(QWidget):
                 self.nodes.setCurrentItem(item)
             # The one thing pycangui sends a node unasked, so it is the one
             # thing worth being able to stop. Off, the row keeps its number
-            # and waits for Identify or Load EDS.
+            # and waits for Identify or Load EDS. A stopped node is asked
+            # once it is out of Stopped.
             if canopen_settings.load(self.ctx).identify:
-                self.manager.identify(node_id)
+                self.manager.identify_unasked(node_id)
         else:
             item.setText(2, state)  # a fresh heartbeat replaces any "lost" text
 
@@ -1460,34 +1492,13 @@ class CanopenView(QWidget):
 
     def _store(self) -> None:
         node_id = self.selected_node()
-        if node_id is not None and self._state_allows(node_id, "Store"):
+        if node_id is not None:
             self.manager.store_parameters(node_id)
 
     def _restore(self) -> None:
         node_id = self.selected_node()
-        if node_id is not None and self._state_allows(node_id, "Restore defaults"):
+        if node_id is not None:
             self.manager.restore_parameters(node_id)
-
-    def _state_allows(self, node_id: int, which: str) -> bool:
-        """Asked first when the node's heartbeat says it is in neither state a
-        node answers SDO in. Nothing is sent to change its state: whether
-        pycangui is the NMT master is not pycangui's to assume.
-
-        A node with no heartbeat is not asked about -- its state is not
-        known -- and one whose heartbeat stopped cannot be chosen for this.
-        """
-        state = self.manager.nmt_states.get(node_id)
-        if state is None or state in SDO_STATES:
-            return True
-        answer = messages.question(
-            self,
-            which,
-            f"Node {node_id} is {state}. A node answers SDO only in PRE-OPERATIONAL or "
-            f"OPERATIONAL, so {which} is likely to time out.\n\n{which} anyway?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
-        )
-        return answer == QMessageBox.Yes
 
     @Slot(int, str, str, bool)
     def _on_parameters_done(self, node_id: int, which: str, said: str, ok: bool) -> None:
@@ -1602,6 +1613,8 @@ class CanopenView(QWidget):
         self._identities.clear()
         self._asked.clear()
         self._lost.clear()
+        self._stopped.clear()
+        self._stopped_said.clear()
         if self.selected_file() is None:  # a file's PDOs are not the bus's to take
             self.pdo_config.set_node(None)
         self.sync_btn.setChecked(False)
@@ -1715,24 +1728,46 @@ class CanopenView(QWidget):
 
     # --- object dictionary -------------------------------------------------------
     def _can_act_on(self, node_id: int | None) -> bool:
-        """Whether there is a node there to be asked anything.
+        """Whether there is a node there to be asked anything over SDO."""
+        return node_id is not None and self._why_not(node_id) is None
+
+    def _can_give_eds(self, node_id: int | None) -> bool:
+        """Load EDS asks the node nothing, so a stopped node can be given one;
+        a lost one cannot, since it may not be what it was when it is back."""
+        return node_id is not None and node_id not in self._lost
+
+    def _why_not(self, node_id: int) -> str | None:
+        """Why nothing can be asked of this node over SDO, or None if it can be.
 
         A lost node is one whose heartbeat has stopped: it is still in the
         list, and every request to it would sit there until the SDO timeout
-        gave up.
+        gave up. A stopped one answers NMT and not SDO, and what is asked of
+        it is refused at once (sdo_log), so is not offered either.
         """
-        return node_id is not None and node_id not in self._lost
+        if node_id in self._lost:
+            return WHY_LOST.format(node_id=node_id)
+        if node_id in self._stopped:
+            return WHY_STOPPED.format(node_id=node_id)
+        return None
 
     def _offer_node_buttons(self) -> None:
         """Only with a node to act on. See _node_buttons. A file has its own."""
-        on_a_node = self._can_act_on(self.selected_node())
+        node_id = self.selected_node()
+        on_a_node = self._can_act_on(node_id)
         for button in self._node_buttons:
             button.setEnabled(on_a_node)
+        self._load_eds_action.setEnabled(self._can_give_eds(node_id))
         if hasattr(self, "selected_dbc_action"):
             self._offer_selected_dbc()
             self._offer_file_actions()
         for button in getattr(self, "_menu_buttons", []):
             button.follow()
+        why = (
+            None if node_id is None or self.selected_file() is not None else self._why_not(node_id)
+        )
+        for control, usual in getattr(self, "_usual_tips", []):
+            greyed = why is not None and not control.isEnabled()
+            control.setToolTip(f"{usual}\n\n{why}" if greyed else usual)
         if hasattr(self, "remove_btn"):
             if self.selected_file() is not None:
                 self.remove_btn.setToolTip(CLOSE_FILE_TIP)
@@ -2124,6 +2159,15 @@ class CanopenView(QWidget):
     def on_sdo_result(self, node_id: int, index: int, sub: int, value, error) -> None:
         if error and node_id == getattr(self, "_reading_node", None):
             self._read_failures.append((index, sub, error))  # said when Read all is over
+        elif error and self.manager.is_stopped(node_id):
+            # Refused at once rather than timed out, so a custom pane polling
+            # a stopped node would say it many times a second. Once is enough.
+            if node_id not in self._stopped_said:
+                self._stopped_said.add(node_id)
+                self.ctx.warn(
+                    f"Node {node_id}: SDO {index:04X}:{sub:02X} failed: {error}. "
+                    "Said once while it is stopped."
+                )
         elif error:
             self.ctx.warn(f"Node {node_id}: SDO {index:04X}:{sub:02X} failed: {error}")
         if node_id != self.selected_node():
