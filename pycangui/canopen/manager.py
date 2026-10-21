@@ -39,6 +39,7 @@ from pycangui.canopen import (
     eds_text,
     faults,
     load_od,
+    node_ids,
     pdo_name,
     sdo_log,
 )
@@ -71,6 +72,17 @@ ADDED_BY_HAND = "added by hand"
 BOOT_UP = NMT_STATES[0]
 PRE_OPERATIONAL = NMT_STATES[127]
 NODE_STOPPED = NMT_STATES[4]
+#: The states a heartbeat or a node-guarding reply can carry, below its
+#: toggle bit: boot-up, Stopped, Operational and Pre-operational.
+HEARTBEAT_STATES = frozenset({0, 4, 5, 127})
+
+
+def is_heartbeat(data: bytes) -> bool:
+    """Whether a frame on 0x701-0x77F is a heartbeat: one byte, one of the
+    states. Anything else there is somebody else's use of the identifier."""
+    return len(data) == 1 and data[0] & 0x7F in HEARTBEAT_STATES
+
+
 #: What CANopen works through is the channel selected in the toolbar. "Node 5:
 #: not connected" read as the node being the thing that was not connected.
 NOT_CONNECTED = "the selected CAN channel is not connected; connect it first"
@@ -308,6 +320,12 @@ class CanopenManager(QObject):
         #: the same mapping again by itself does not report them again.
         self._size_mismatches_said: dict[int, list[str]] = {}
         self._frame_errors_said: set[tuple[int, str]] = set()
+        #: The node ids whose heartbeats are listened for, and the nodes added
+        #: by hand, which are listened to whatever the ids say.
+        self.node_ids: frozenset[int] = node_ids.ALL
+        self._by_hand: set[int] = set()
+        #: The identifiers already said to carry something that is not a heartbeat.
+        self._not_heartbeats_said: set[int] = set()
         #: Work pycangui does unasked that is SDO -- identifying a node first
         #: heard, reading its PDO configuration again -- put off while the
         #: node is stopped, and done when it leaves Stopped: node -> which.
@@ -323,6 +341,7 @@ class CanopenManager(QObject):
         self.network = network = canopen.Network(bus=self._bus.bus)
         self._said_short_nmt = False
         self._frame_errors_said.clear()
+        self._not_heartbeats_said.clear()
 
         def notify_unless_short_nmt(can_id: int, data: bytearray, timestamp: float) -> None:
             # An NMT command is two bytes. A device that sends 0x000 with
@@ -380,9 +399,12 @@ class CanopenManager(QObject):
 
     # --- callbacks on the Notifier thread: emit only -------------------------
     def _on_heartbeat(self, can_id: int, data: bytearray, timestamp: float) -> None:
-        if not data:
-            return
         node_id = can_id - 0x700
+        if not self.listens_to(node_id):
+            return  # left to whatever else uses the identifier
+        if not is_heartbeat(data):
+            self._not_a_heartbeat(can_id, data)
+            return
         now = time.monotonic()
         # Two clocks, deliberately. The *period* is measured from when the
         # frames arrived -- what the driver stamped them with -- and the
@@ -418,6 +440,28 @@ class CanopenManager(QObject):
         self.nmt_states[node_id] = settled(state)
         self.forget_labels()  # a node nobody knew of accounts for ids now
         self.node_seen.emit(node_id, state)
+
+    def _not_a_heartbeat(self, can_id: int, data: bytes) -> None:
+        """Say once for each identifier that what is on it is not a node."""
+        if can_id in self._not_heartbeats_said:
+            return
+        self._not_heartbeats_said.add(can_id)
+        shown = bytes(data).hex(" ").upper() or "no data"
+        self.message.emit(
+            f"0x{can_id:03X} carries frames that are not CANopen heartbeats ({len(data)} "
+            f"bytes: {shown}; a heartbeat is one byte), so they are not taken for node "
+            f"{can_id - 0x700}. Said once for this identifier.",
+            INFORMATION,
+        )
+
+    def listens_to(self, node_id: int) -> bool:
+        """Whether this node's heartbeats are heard: in the node ids, or added by hand."""
+        return node_id in self.node_ids or node_id in self._by_hand
+
+    def set_node_ids(self, ids) -> None:
+        """Listen for heartbeats from these node ids only, from now on."""
+        self.node_ids = frozenset(ids)
+        self.forget_labels()
 
     def _frame_failed(self, can_id: int, data: bytes, exc: Exception) -> None:
         key = (can_id, f"{type(exc).__name__}: {exc}")
@@ -599,6 +643,7 @@ class CanopenManager(QObject):
         self._mapping_read.discard(node_id)
         self._rpdo_read.discard(node_id)
         self._held.pop(node_id, None)
+        self._by_hand.discard(node_id)
         node = self.node(node_id)
         if node is not None:
             # The library leaves a read PDO's subscription behind, and its
@@ -627,6 +672,7 @@ class CanopenManager(QObject):
         self._mapping_read.clear()
         self._rpdo_read.clear()
         self._held.clear()
+        self._by_hand.clear()
 
     # --- a node added by hand ----------------------------------------------------
     def add_node(self, node_id: int) -> bool:
@@ -643,6 +689,8 @@ class CanopenManager(QObject):
         if not 1 <= node_id <= 127:
             self.message.emit(f"{node_id} is not a node id (1 to 127)", WARNING)
             return False
+        # Heard whatever the node ids in Settings say: somebody asked for it.
+        self._by_hand.add(node_id)
         self._ensure_node(node_id)
         self.forget_labels()
         self.node_seen.emit(node_id, ADDED_BY_HAND)

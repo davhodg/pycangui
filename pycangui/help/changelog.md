@@ -16,6 +16,8 @@ since the last version, and comes out in the next one.
   Signals and Plot.
 - CANopen: a node's RPDOs are decoded as well as its TPDOs, in *Live PDOs* (which says which
   way each goes) and in Signals and Plot, for a bus where another master sends them.
+- CANopen: *Settings... > Node ids*, the node ids whose heartbeats make a node, so another
+  protocol can share the identifiers CANopen reserves for heartbeats.
 - A `.dbc` file double-clicked in the file manager is loaded, as *File > Load DBC...* does: the
   installer's file-type tick box and *Tools > Settings* add pycangui to *Open with* for it,
   without taking it over.
@@ -30,6 +32,8 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- CANopen: a frame on 0x701-0x77F that is not a heartbeat -- one byte, carrying a state -- is
+  no longer taken for a node, listed, identified and sent SDO.
 - Event Log: the SDO lines the CANopen library writes say which node and object they are
   about, *Node 5, 1018:01: Transfer aborted...*. Two nodes timing out showed as one error,
   the second taken for a repeat of the first.

@@ -5,7 +5,11 @@
 ## Nodes
 
 Nodes appear in the list as they are heard on the bus, with their name, NMT
-state and the EDS matched to them. The EDS is found from the node's identity,
+state and the EDS matched to them. Heard means a heartbeat, or a node-guarding
+reply: one byte on 0x701-0x77F carrying boot-up, Stopped, Operational or
+Pre-operational. Anything else on those identifiers is somebody else's use of
+them, said once in the Event Log for each identifier, and is not taken for a
+node, identified or named in the trace. The EDS is found from the node's identity,
 by [`hooks/canopen.py::eds_for_node`](hooks.md), or by **Load EDS...**, which
 chooses one by hand for the selected node. The **name** is whatever
 [`hooks/canopen.py::node_name`](hooks.md) answers, or the EDS's ProductName,
@@ -145,6 +149,12 @@ workspace. *OK* writes what it changed to the Event Log, and only that:
   goes out that you did not ask for, which is what watching somebody else's
   live machine wants -- at the cost that a new node stays `Node <id>` with no
   EDS until *Identify* or *Load EDS* is pressed.
+- **Node ids** are those whose heartbeats make a node: `1-127`, every one, to
+  begin with, or fewer as `1-20` or `1-10, 32`. Narrowed, heartbeat
+  identifiers outside them are left alone -- not listed, not identified, not
+  named in the trace -- so another protocol can use them on the same bus, and
+  a node already listed outside them is taken off the list. A node added by
+  hand is heard whatever this says.
 - **Read the PDO configuration from each node** is on to begin with: the
   reading described above, when its EDS is loaded, at each boot-up and after a
   write that changes a mapping. Off, nothing is read without asking, and the

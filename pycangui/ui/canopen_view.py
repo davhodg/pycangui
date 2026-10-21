@@ -1142,6 +1142,11 @@ class CanopenView(QWidget):
         canopen_settings.save(self.ctx, chosen)
         canopen_settings.apply(self.manager, chosen)
         self.ctx.log("CANopen settings: " + "; ".join(said))
+        # Heard before the node ids left them out: their heartbeats are now
+        # ignored, and they would only be reported lost.
+        for node_id in self.manager.nodes():
+            if not self.manager.listens_to(node_id):
+                self.remove_node(node_id)
         if self.time_btn.isChecked() and canopen_settings.changed(
             before, chosen, canopen_settings.TIME_FIELDS
         ):
