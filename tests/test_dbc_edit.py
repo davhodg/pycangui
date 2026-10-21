@@ -11,16 +11,27 @@ from pycangui.core import dbc_roundtrip
 from pycangui.core.dbc_edit import (
     ERROR,
     WARNING,
+    AddAttributeDefinition,
     AddMessage,
+    AddNode,
     AddSignal,
+    AddSignalGroup,
     AddValueTable,
+    AttributeSpec,
     DatabaseEdit,
     EditError,
+    RemoveAttributeDefinition,
     RemoveMessage,
+    RemoveNode,
     RemoveSignal,
+    RemoveSignalGroup,
     RemoveValueTable,
+    SetAttribute,
+    SetAttributeDefinition,
     SetMessage,
+    SetNode,
     SetSignal,
+    SetSignalGroup,
     SetValueTable,
     parse_values,
     values_text,
@@ -289,3 +300,166 @@ def test_a_value_table_change_is_undone_and_refused_like_the_rest(edit):
 def test_a_value_table_name_the_format_does_not_allow_stops_a_save(edit):
     edit.apply(AddValueTable("two words", {0: "Zero"}))
     assert [p.level for p in edit.problems()] == [ERROR]
+
+
+# --- nodes ---------------------------------------------------------------------------------------
+@pytest.fixture
+def attributed():
+    return DatabaseEdit(FILES / "attributes.dbc")
+
+
+def test_a_renamed_node_is_renamed_wherever_it_is_named(attributed, tmp_path):
+    attributed.apply(SetNode("Valve", "name", "ValveUnit"))
+    target = tmp_path / "saved.dbc"
+    assert attributed.save_as(target) == []
+    saved = read(target)
+    assert [n.name for n in saved.nodes] == ["Tester", "Pump", "ValveUnit"]
+    assert (
+        "ValveUnit"
+        in saved.get_message_by_name("PumpStatus").get_signal_by_name("Pressure").receivers
+    )
+    text = target.read_text()
+    assert "BU_SG_REL_ ValveUnit SG_ 256 Pressure" in text, "in its relation attributes too"
+    assert "BU_BO_REL_ ValveUnit 512" in text
+
+
+def test_nodes_are_added_with_a_comment_and_removed_when_unused(attributed, tmp_path):
+    attributed.apply(AddNode("Logger", 'keeps "everything"'))
+    with pytest.raises(EditError):
+        attributed.apply(RemoveNode("Pump"))  # it sends PumpStatus
+    with pytest.raises(EditError):
+        attributed.apply(AddNode("Pump"))
+    target = tmp_path / "saved.dbc"
+    attributed.save_as(target)
+    comments = {n.name: n.comment for n in read(target).nodes}
+    assert comments["Logger"] == 'keeps "everything"'
+    attributed.apply(RemoveNode("Logger"))
+    assert "Logger" not in [n.name for n in attributed.nodes()]
+
+
+def test_a_sender_or_receiver_that_is_not_a_node_is_a_warning(attributed):
+    attributed.apply(SetMessage("PumpStatus", "senders", ["Somebody"]))
+    assert [p.level for p in attributed.problems()] == [WARNING]
+
+
+# --- signal groups -------------------------------------------------------------------------------
+def test_signal_groups_are_added_changed_and_removed(attributed, tmp_path):
+    attributed.apply(AddSignalGroup("PumpStatus", "Readings", 1, ("Pressure", "Flow")))
+    attributed.apply(SetSignalGroup("PumpStatus", "Readings", "repetitions", 2))
+    attributed.apply(SetSignalGroup("PumpStatus", "Readings", "signals", ("Flow",)))
+    attributed.apply(SetSignalGroup("PumpStatus", "Readings", "name", "Measured"))
+    attributed.apply(AddSignalGroup("PumpStatus", "Spare"))
+    attributed.apply(RemoveSignalGroup("PumpStatus", "Spare"))
+    target = tmp_path / "saved.dbc"
+    attributed.save_as(target)
+    (group,) = read(target).get_message_by_name("PumpStatus").signal_groups
+    assert (group.name, group.repetitions, group.signal_names) == ("Measured", 2, ["Flow"])
+
+
+def test_a_signal_group_naming_what_is_not_there_is_refused(attributed):
+    for change in (
+        AddSignalGroup("PumpStatus", "Readings", 1, ("Gone",)),
+        SetSignalGroup("PumpStatus", "Nothing", "repetitions", 2),
+        SetSignalGroup("PumpStatus", "Nothing", "name", "x"),
+    ):
+        with pytest.raises(EditError):
+            attributed.apply(change)
+    assert attributed.changes == []
+
+
+# --- attributes ----------------------------------------------------------------------------------
+def test_attributes_are_set_and_taken_back_to_their_default(attributed, tmp_path):
+    attributed.apply(SetAttribute(("node", "Valve"), "NodeLayer", "Gateway"))
+    attributed.apply(SetAttribute(("message", "ValveCommand"), "GenMsgSendType", "Cyclic"))
+    attributed.apply(SetAttribute(("signal", "PumpStatus", "Flow"), "SigUnitText", None))
+    attributed.apply(SetAttribute((), "ProtocolVersion", 9))
+    target = tmp_path / "saved.dbc"
+    assert attributed.save_as(target) == [], "the send type read back is the one set"
+    saved = read(target)
+    valve = next(n for n in saved.nodes if n.name == "Valve")
+    assert valve.dbc.attributes["NodeLayer"].value == 1
+    assert saved.get_message_by_name("ValveCommand").send_type == "Cyclic"
+    flow = saved.get_message_by_name("PumpStatus").get_signal_by_name("Flow")
+    assert "SigUnitText" not in flow.dbc.attributes
+    assert saved.dbc.attributes["ProtocolVersion"].value == 9
+
+
+def test_the_attributes_the_format_keeps_are_set_as_what_they_are(attributed, tmp_path):
+    """A cycle time and an initial value, as those; the frame format and the
+    bit rate not at all."""
+    attributed.apply(SetAttribute(("message", "ValveCommand"), "GenMsgCycleTime", 40))
+    attributed.apply(SetAttribute(("signal", "PumpStatus", "Flow"), "GenSigStartValue", 12))
+    target = tmp_path / "saved.dbc"
+    attributed.save_as(target)
+    saved = read(target)
+    assert saved.get_message_by_name("ValveCommand").cycle_time == 40
+    assert saved.get_message_by_name("PumpStatus").get_signal_by_name("Flow").raw_initial == 12
+    rows = {r.name for r in attributed.attributes(("message", "ValveCommand"))}
+    assert "GenMsgCycleTime" not in rows, "the message dialog's cycle time"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        SetAttribute(("message", "PumpStatus"), "NodeLayer", "Gateway"),  # a node's
+        SetAttribute(("node", "Valve"), "NodeLayer", "Sideways"),  # not a choice
+        SetAttribute(("message", "PumpStatus"), "GenMsgStartDelayTime", "soon"),
+        SetAttribute(("message", "PumpStatus"), "Nothing", 1),
+        SetAttribute(("node", "Nobody"), "NodeLayer", "Gateway"),
+    ],
+)
+def test_an_attribute_it_cannot_have_is_refused(attributed, change):
+    with pytest.raises(EditError):
+        attributed.apply(change)
+    assert attributed.changes == []
+
+
+def test_a_value_outside_its_range_is_a_warning(attributed):
+    attributed.apply(SetAttribute((), "ProtocolVersion", 300))
+    assert [p.level for p in attributed.problems()] == [WARNING]
+
+
+def test_the_rows_a_dialog_shows_say_values_by_name(attributed):
+    rows = {r.name: r for r in attributed.attributes(("node", "Tester"))}
+    assert rows["NodeLayer"].value == "Diagnostic" and rows["ILUsed"].value is None
+    assert rows["ILUsed"].default == "No" and rows["ILUsed"].choices == ("No", "Yes")
+    blank = attributed.attributes(("signal",))
+    assert blank and all(r.value is None for r in blank), "for a signal not made yet"
+
+
+# --- attribute definitions -----------------------------------------------------------------------
+def test_definitions_are_added_renamed_changed_and_removed(attributed, tmp_path):
+    attributed.apply(
+        AddAttributeDefinition(AttributeSpec("Owner", "message", "STRING", default="nobody"))
+    )
+    attributed.apply(SetAttribute(("message", "PumpStatus"), "Owner", "rig team"))
+    attributed.apply(
+        SetAttributeDefinition(
+            "Owner", AttributeSpec("Responsible", "message", "STRING", default="none")
+        )
+    )
+    attributed.apply(RemoveAttributeDefinition("SigUnitText"))
+    target = tmp_path / "saved.dbc"
+    attributed.save_as(target)
+    saved = read(target)
+    definitions = saved.dbc.attribute_definitions
+    assert "Owner" not in definitions and definitions["Responsible"].default_value == "none"
+    assert "SigUnitText" not in definitions
+    status = saved.get_message_by_name("PumpStatus")
+    assert status.dbc.attributes["Responsible"].value == "rig team", "the value went with it"
+    flow = status.get_signal_by_name("Flow")
+    assert "SigUnitText" not in flow.dbc.attributes, "and the removed one's values with it"
+
+
+def test_a_definition_in_use_keeps_its_kind_and_type(attributed):
+    used = AttributeSpec("NodeLayer", "message", "ENUM", choices=("Application", "Gateway"))
+    with pytest.raises(EditError):
+        attributed.apply(SetAttributeDefinition("NodeLayer", used))
+    assert attributed.uses("NodeLayer") == 2
+
+
+def test_the_definitions_the_format_keeps_are_not_removed(attributed):
+    with pytest.raises(EditError):
+        attributed.apply(RemoveAttributeDefinition("GenMsgCycleTime"))
+    with pytest.raises(EditError):
+        attributed.apply(AddAttributeDefinition(AttributeSpec("Choice", "node", "ENUM")))

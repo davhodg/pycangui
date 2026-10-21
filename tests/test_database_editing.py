@@ -10,9 +10,32 @@ import pytest
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from pycangui.core.dbc_edit import AddValueTable, RemoveValueTable, SetValueTable
-from pycangui.ui import database_view, folders, messages
-from pycangui.ui.database_edit import MessageDialog, SignalDialog, ValueTablesDialog
+from pycangui.core.dbc_edit import (
+    AddAttributeDefinition,
+    AddNode,
+    AddSignalGroup,
+    AddValueTable,
+    AttributeSpec,
+    DatabaseEdit,
+    RemoveAttributeDefinition,
+    RemoveNode,
+    RemoveValueTable,
+    SetAttribute,
+    SetAttributeDefinition,
+    SetNode,
+    SetSignalGroup,
+    SetValueTable,
+)
+from pycangui.ui import database_edit, database_view, folders, messages
+from pycangui.ui.database_edit import (
+    AttributesDialog,
+    DefinitionsDialog,
+    MessageDialog,
+    NodesDialog,
+    SignalDialog,
+    SignalGroupsDialog,
+    ValueTablesDialog,
+)
 
 FILES = Path(__file__).parent / "dbc"
 
@@ -374,3 +397,173 @@ def test_value_tables_are_changed_from_the_pane(view, monkeypatch):
     view.edit_value_tables()
     assert "OnOff" not in view._edit.value_tables()
     assert view.edit_bar.isVisibleTo(view)
+
+
+# --- nodes, attributes, signal groups ------------------------------------------------------------
+@pytest.fixture
+def attributed():
+    return DatabaseEdit(FILES / "attributes.dbc")
+
+
+def test_dialogs_with_attributes_opened_and_closed_with_ok_change_nothing(app, attributed):
+    msg = attributed.message("PumpStatus")
+    nodes = [n.name for n in attributed.nodes()]
+    dialogs = [
+        MessageDialog(None, msg, nodes, attributed.attributes(("message", msg.name))),
+        SignalDialog(
+            None,
+            msg.name,
+            msg.signals[2],
+            nodes=nodes,
+            attributes=attributed.attributes(("signal", msg.name, msg.signals[2].name)),
+        ),
+        NodesDialog(
+            None,
+            [(n, "") for n in nodes],
+            {n: attributed.attributes(("node", n)) for n in nodes},
+        ),
+        SignalGroupsDialog(None, msg.name, [s.name for s in msg.signals], []),
+        AttributesDialog(None, attributed.attributes(())),
+        DefinitionsDialog(
+            None,
+            attributed.definitions(),
+            {d.name: attributed.uses(d.name) for d in attributed.definitions()},
+        ),
+    ]
+    for dialog in dialogs:
+        dialog._accept()
+        assert dialog.result() == QDialog.Accepted, type(dialog).__name__
+        assert dialog.changes() == [], type(dialog).__name__
+
+
+def test_an_attribute_is_changed_in_the_message_dialog(app, attributed):
+    msg = attributed.message("ValveCommand")
+    dialog = MessageDialog(None, msg, attributes=attributed.attributes(("message", msg.name)))
+    rows = [dialog.attributes.item(r, 0).text() for r in range(dialog.attributes.rowCount())]
+    send = dialog.attributes.cellWidget(rows.index("GenMsgSendType"), 1)
+    send.setCurrentIndex(send.findData("Cyclic"))
+    dialog.attributes.item(rows.index("GenMsgStartDelayTime"), 1).setText("")
+    dialog._accept()
+    assert dialog.changes() == [
+        SetAttribute(("message", "ValveCommand"), "GenMsgSendType", "Cyclic"),
+        SetAttribute(("message", "ValveCommand"), "GenMsgStartDelayTime", None),
+    ]
+
+
+def test_an_attribute_that_is_not_a_number_keeps_the_dialog_open(app, attributed):
+    dialog = AttributesDialog(None, attributed.attributes(()))
+    rows = [dialog.table.item(r, 0).text() for r in range(dialog.table.rowCount())]
+    dialog.table.item(rows.index("ProtocolVersion"), 1).setText("three")
+    dialog._accept()
+    assert dialog.result() != QDialog.Accepted and dialog.problem.isVisibleTo(dialog)
+
+
+def test_senders_are_chosen_from_the_nodes(app):
+    dialog = MessageDialog(None, nodes=["Engine", "Gearbox"])
+    chooser = next(
+        b for b in dialog.findChildren(database_edit.QPushButton) if b.text() == "Choose"
+    )
+    chooser.menu().aboutToShow.emit()
+    gearbox = next(a for a in chooser.menu().actions() if a.text() == "Gearbox")
+    gearbox.trigger()
+    assert dialog.senders.text() == "Gearbox"
+    gearbox.trigger()
+    assert dialog.senders.text() == ""
+
+
+def test_the_nodes_dialog_says_only_what_changed(app):
+    dialog = NodesDialog(None, [("Engine", "Runs"), ("Dash", "")])
+    dialog.list.item(1).setText("Dashboard")
+    dialog.list.setCurrentRow(0)
+    dialog.pages.widget(0).comment.setPlainText("Runs fast")
+    dialog.add_entry()
+    dialog.pages.currentWidget().comment.setPlainText("New")
+    dialog._accept()
+    assert dialog.changes() == [
+        SetNode("Engine", "comment", "Runs fast"),
+        AddNode("Node1", "New"),
+        SetNode("Dash", "name", "Dashboard"),
+    ]
+    dialog = NodesDialog(None, [("Engine", ""), ("Dash", "")])
+    dialog.list.setCurrentRow(1)
+    dialog.remove_entry()
+    dialog._accept()
+    assert dialog.changes() == [RemoveNode("Dash")]
+
+
+def test_the_signal_groups_dialog_says_only_what_changed(app):
+    dialog = SignalGroupsDialog(None, "Status", ["A", "B", "C"], [("Pair", 1, ["A", "B"])])
+    page = dialog.pages.widget(0)
+    page.ticks.item(2).setCheckState(database_edit.Qt.Checked)
+    page.repetitions.setValue(2)
+    dialog.add_entry()
+    dialog.pages.currentWidget().ticks.item(0).setCheckState(database_edit.Qt.Checked)
+    dialog._accept()
+    assert dialog.changes() == [
+        SetSignalGroup("Status", "Pair", "repetitions", 2),
+        SetSignalGroup("Status", "Pair", "signals", ("A", "B", "C")),
+        AddSignalGroup("Status", "Group1", 1, ("A",)),
+    ]
+
+
+def test_the_definitions_dialog_adds_changes_and_removes(app, attributed):
+    specs = attributed.definitions()
+    uses = {d.name: attributed.uses(d.name) for d in specs}
+    dialog = DefinitionsDialog(None, specs, uses)
+    names = [dialog.table.item(r, 0).text() for r in range(dialog.table.rowCount())]
+    assert not dialog.table.cellWidget(names.index("NodeLayer"), 2).isEnabled(), "in use"
+    dialog.table.item(names.index("ProtocolVersion"), 6).setText("2")
+    dialog.table.setCurrentCell(names.index("SigUnitText"), 0)
+    dialog.remove_definition()
+    dialog.add_definition()
+    added = dialog.table.rowCount() - 1
+    dialog.table.cellWidget(added, 2).setCurrentText("STRING")
+    dialog._accept()
+    changes = dialog.changes()
+    assert changes[0] == RemoveAttributeDefinition("SigUnitText")
+    assert isinstance(changes[1], SetAttributeDefinition) and changes[1].spec.default == 2
+    assert changes[2] == AddAttributeDefinition(
+        AttributeSpec("Attribute1", "message", "STRING", None, None, (), None)
+    )
+
+
+def test_a_choice_attribute_with_no_choices_keeps_the_dialog_open(app):
+    dialog = DefinitionsDialog(None, [], {})
+    dialog.add_definition()
+    dialog.table.cellWidget(0, 2).setCurrentText("ENUM")
+    dialog._accept()
+    assert dialog.result() != QDialog.Accepted and dialog.problem.isVisibleTo(dialog)
+
+
+def test_nodes_attributes_and_groups_are_changed_from_the_pane(window, tmp_path, monkeypatch):
+    path = tmp_path / "attributes.dbc"
+    shutil.copy(FILES / "attributes.dbc", path)
+    assert window._load_dbc(str(path))
+    view = window.database_view
+    assert view.select_message("PumpStatus")
+    answering(monkeypatch, NodesDialog, lambda d: d.add_entry())
+    view.edit_nodes()
+    answering(
+        monkeypatch,
+        SignalGroupsDialog,
+        lambda d: (
+            d.add_entry(),
+            d.pages.currentWidget().ticks.item(0).setCheckState(database_edit.Qt.Checked),
+        ),
+    )
+    view.edit_signal_groups()
+    answering(monkeypatch, DefinitionsDialog, lambda d: d.add_definition())
+    view.edit_definitions()
+
+    def protocol(d):
+        rows = [d.table.item(r, 0).text() for r in range(d.table.rowCount())]
+        d.table.item(rows.index("ProtocolVersion"), 1).setText("4")
+
+    answering(monkeypatch, AttributesDialog, protocol)
+    view.edit_database_attributes()
+    edit = view._edit
+    assert "Node1" in [n.name for n in edit.nodes()]
+    assert [g.name for g in edit.message("PumpStatus").signal_groups] == ["Group1"]
+    assert "Attribute1" in [d.name for d in edit.definitions()]
+    assert {r.name: r.value for r in edit.attributes(())}["ProtocolVersion"] == 4
+    assert len(edit.changes) == 4 and view.edit_bar.isVisibleTo(view)

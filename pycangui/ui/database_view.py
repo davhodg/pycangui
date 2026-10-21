@@ -24,6 +24,7 @@ from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -50,8 +51,12 @@ from pycangui.core.named_values import shown
 from pycangui.ui import folders, fonts, messages
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.database_edit import (
+    AttributesDialog,
+    DefinitionsDialog,
     MessageDialog,
+    NodesDialog,
     SignalDialog,
+    SignalGroupsDialog,
     ValueTablesDialog,
     focus_first,
     framed,
@@ -853,7 +858,12 @@ class DatabaseView(QWidget):
         msg = self._message
         if msg is None or self._session(self._path) is None:
             return
-        dialog = MessageDialog(self, self._edit.message(msg.name))
+        dialog = MessageDialog(
+            self,
+            self._edit.message(msg.name),
+            nodes=self._node_names(),
+            attributes=self._edit.attributes(("message", msg.name)),
+        )
         focus_first(dialog)
         while dialog.exec() == MessageDialog.Accepted:
             name = dialog.name.text().strip()
@@ -864,7 +874,9 @@ class DatabaseView(QWidget):
         path = path or self._path or next(iter(self.dbc.databases), "")
         if not path or self._session(path) is None:
             return
-        dialog = MessageDialog(self)
+        dialog = MessageDialog(
+            self, nodes=self._node_names(), attributes=self._edit.attributes(("message",))
+        )
         focus_first(dialog)
         while dialog.exec() == MessageDialog.Accepted:
             if self._make(dialog.changes(), select=dialog.name.text().strip()):
@@ -890,6 +902,8 @@ class DatabaseView(QWidget):
             signal,
             multiplexers=_multiplexers(current, signal.name),
             tables=self._edit.value_tables(),
+            nodes=self._node_names(),
+            attributes=self._edit.attributes(("signal", msg.name, signal.name)),
         )
         focus_first(dialog)
         while dialog.exec() == SignalDialog.Accepted:
@@ -905,21 +919,70 @@ class DatabaseView(QWidget):
             msg.name,
             multiplexers=_multiplexers(self._edit.message(msg.name), ""),
             tables=self._edit.value_tables(),
+            nodes=self._node_names(),
+            attributes=self._edit.attributes(("signal",)),
         )
         focus_first(dialog)
         while dialog.exec() == SignalDialog.Accepted:
             if self._make(dialog.changes(), signal=dialog.name.text().strip()):
                 return
 
+    def _node_names(self) -> list[str]:
+        return [node.name for node in self._edit.nodes()]
+
+    def _database_session(self, path: str = "") -> DatabaseEdit | None:
+        """The edit of the database being looked at, for what is the whole
+        database's: its value tables, nodes and attributes."""
+        path = path or self._path or next(iter(self.dbc.databases), "")
+        return self._session(path) if path else None
+
+    def _run(self, dialog, **chosen) -> None:
+        """A dialog, again after a change it asked for is refused, until it is
+        made or cancelled."""
+        while dialog.exec() == QDialog.Accepted:
+            if self._make(dialog.changes(), **chosen):
+                return
+
     def edit_value_tables(self, path: str = "") -> None:
         """The database's value tables, in their dialog."""
-        path = path or self._path or next(iter(self.dbc.databases), "")
-        if not path or self._session(path) is None:
+        if (edit := self._database_session(path)) is not None:
+            self._run(ValueTablesDialog(self, edit.value_tables()))
+
+    def edit_nodes(self, path: str = "") -> None:
+        """The database's nodes: names, comments and attributes."""
+        if (edit := self._database_session(path)) is None:
             return
-        dialog = ValueTablesDialog(self, self._edit.value_tables())
-        while dialog.exec() == ValueTablesDialog.Accepted:
-            if self._make(dialog.changes()):
-                return
+        nodes = edit.nodes()
+        dialog = NodesDialog(
+            self,
+            [(node.name, node.comment or "") for node in nodes],
+            {node.name: edit.attributes(("node", node.name)) for node in nodes},
+            edit.attributes(("node",)),
+        )
+        self._run(dialog)
+
+    def edit_definitions(self, path: str = "") -> None:
+        """What attributes there are."""
+        if (edit := self._database_session(path)) is None:
+            return
+        specs = edit.definitions()
+        self._run(DefinitionsDialog(self, specs, {s.name: edit.uses(s.name) for s in specs}))
+
+    def edit_database_attributes(self, path: str = "") -> None:
+        if (edit := self._database_session(path)) is not None:
+            self._run(AttributesDialog(self, edit.attributes(())))
+
+    def edit_signal_groups(self) -> None:
+        """The chosen message's signal groups."""
+        msg = self._message
+        if msg is None or self._session(self._path) is None:
+            return
+        current = self._edit.message(msg.name)
+        groups = [
+            (g.name, g.repetitions, list(g.signal_names)) for g in current.signal_groups or []
+        ]
+        dialog = SignalGroupsDialog(self, msg.name, [s.name for s in current.signals], groups)
+        self._run(dialog, select=msg.name)
 
     def remove_signal(self) -> None:
         msg, name = self._message, self.signal_chosen()
@@ -943,8 +1006,13 @@ class DatabaseView(QWidget):
             "Change signal...", lambda: self.edit_signal(item.data(0, ROLE_SIGNAL))
         ).setEnabled(on_signal)
         menu.addAction("Remove signal", self.remove_signal).setEnabled(on_signal)
+        menu.addAction("Signal groups...", self.edit_signal_groups).setEnabled(on_message)
         menu.addSeparator()
+        # The whole database's, not the message's.
+        menu.addAction("Nodes...", lambda: self.edit_nodes(self._path))
         menu.addAction("Value tables...", lambda: self.edit_value_tables(self._path))
+        menu.addAction("Attribute definitions...", lambda: self.edit_definitions(self._path))
+        menu.addAction("Database attributes...", lambda: self.edit_database_attributes(self._path))
         menu.exec(self.messages.viewport().mapToGlobal(at))
 
     def _signals_menu(self, at) -> None:

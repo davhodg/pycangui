@@ -98,5 +98,21 @@ and named values. **Right-click** adds and removes messages and signals.
   Right-click and choose **Value tables...** to add, rename (double-click the
   name) and remove them, and to change their values. **From value table**, in a
   signal's dialog, copies one into its named values.
-- Kept as they were, and not changed here yet: attributes, nodes and signal
-  groups.
+- **Nodes**, on the right-click: add, rename and remove the database's nodes,
+  and give each a comment and its attributes. A node renamed is renamed where it
+  sends and receives; one still sending or receiving is not removed. Beside
+  **Senders** and **Receivers**, **Choose** ticks nodes in or out of the list.
+- **Signal groups**, on a message's right-click: groups of its signals, each
+  with how often it is repeated.
+- **Attributes** are in the message's and the signal's dialogs, and the
+  database's own in **Database attributes...**: left empty, or on *Default*, one
+  has the default shown beside it. Which attributes there are -- what each is
+  of, its type, its range or its choices, its default -- is in **Attribute
+  definitions...**; what one is of and its type cannot change while it is set
+  anywhere. Two attributes are fields under another name: *GenMsgCycleTime* is
+  the message's cycle time and *GenSigStartValue* a signal's initial value. Two
+  are not set here, because the format writes them itself: *VFrameFormat*, from
+  whether a message is 29-bit and CAN FD, and *Baudrate*.
+- A rename follows through the relation attributes too (*BA_REL_*, such as a
+  receiver's timeout for one signal), which are kept as they were and not
+  changed here, as are environment variables.

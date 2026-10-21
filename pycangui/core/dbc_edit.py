@@ -18,12 +18,23 @@ would otherwise come back with every message rearranged.
 
 Multiplexing is two fields of a signal: whether it chooses which of the
 others are sent, and which multiplexer and values it is sent for. Value
-tables -- named values kept once, by name, for any signal to use -- are
+tables, nodes, signal groups, attributes and the attributes' definitions are
 changes of their own.
 
-What is not edited here yet: attributes, nodes and signal groups. All of
-them are kept as they were, by cantools, when the rest is saved (see
-``dbc_roundtrip``).
+A rename or a removal follows through what names the thing: a node renamed
+is renamed where it sends and receives, and in the relation attributes that
+name it; a signal or an identifier changed, in those relation attributes
+too. A node still sending or receiving is not removed, nor is a multiplexer
+still choosing.
+
+Four attributes are not set as attributes, because the format keeps them in
+step with something else: GenMsgCycleTime is a message's cycle time and
+GenSigStartValue a signal's initial value, so setting either sets that; and
+VFrameFormat follows a message's identifier and FD, and Baudrate the bus,
+so neither is set here at all.
+
+What is not edited: environment variables and the relation attributes
+themselves (``BA_REL_``), which are kept as they were.
 """
 
 from __future__ import annotations
@@ -168,6 +179,190 @@ class RemoveValueTable:
         return f"Value table {self.table}: removed"
 
 
+#: Where an attribute is set: () the database, ("node", name), ("message",
+#: name), ("signal", message, name).
+Target = tuple
+#: What each kind of target is called in an attribute's definition.
+KINDS = {"database": None, "node": "BU_", "message": "BO_", "signal": "SG_"}
+TYPES = ("INT", "HEX", "FLOAT", "STRING", "ENUM")
+#: Set as something else, by the format, and not as attributes; see the top.
+FOLLOWS = {
+    "VFrameFormat": "follows whether the message is 29-bit and CAN FD",
+    "Baudrate": "follows the bus's bit rate",
+}
+#: Definitions the format adds and keeps itself, so not removed or renamed here.
+KEPT_BY_THE_FORMAT = (
+    "GenMsgCycleTime",
+    "GenSigStartValue",
+    "VFrameFormat",
+    "Baudrate",
+    "CANFD_BRS",
+)
+#: The receiver the format writes for a signal nobody receives.
+NO_NODE = "Vector__XXX"
+
+
+def kind_of(target: Target) -> str:
+    return target[0] if target else "database"
+
+
+def where(target: Target) -> str:
+    """A target as the changes say it."""
+    kind = kind_of(target)
+    if kind == "database":
+        return "Database"
+    if kind == "node":
+        return f"Node {target[1]}"
+    return ".".join(target[1:])
+
+
+@dataclass(frozen=True)
+class AttributeRow:
+    """One attribute as a dialog shows it: its definition, and its value on
+    one target -- None for its default, an enumeration's by name."""
+
+    name: str
+    type_name: str
+    choices: tuple[str, ...]
+    minimum: float | None
+    maximum: float | None
+    default: Any
+    value: Any
+    #: Why it is not set here, or "".
+    fixed: str = ""
+
+
+VALUE_TABLE_CHANGES = (SetValueTable, AddValueTable, RemoveValueTable)
+
+
+@dataclass(frozen=True)
+class AddNode:
+    name: str
+    comment: str | None = None
+
+    def described(self) -> str:
+        return f"Node {self.name}: added"
+
+
+@dataclass(frozen=True)
+class RemoveNode:
+    node: str
+
+    def described(self) -> str:
+        return f"Node {self.node}: removed"
+
+
+@dataclass(frozen=True)
+class SetNode:
+    """A node's ``name`` or ``comment``."""
+
+    node: str
+    field: str
+    value: Any
+
+    def described(self) -> str:
+        return f"Node {self.node}: {self.field} set to {_shown(self.value)}"
+
+
+NODE_CHANGES = (AddNode, RemoveNode, SetNode)
+
+
+@dataclass(frozen=True)
+class AddSignalGroup:
+    message: str
+    name: str
+    repetitions: int = 1
+    signals: tuple[str, ...] = ()
+
+    def described(self) -> str:
+        return f"{self.message}: signal group {self.name} added"
+
+
+@dataclass(frozen=True)
+class RemoveSignalGroup:
+    message: str
+    group: str
+
+    def described(self) -> str:
+        return f"{self.message}: signal group {self.group} removed"
+
+
+@dataclass(frozen=True)
+class SetSignalGroup:
+    """A signal group's ``name``, ``repetitions`` or ``signals``."""
+
+    message: str
+    group: str
+    field: str
+    value: Any
+
+    def described(self) -> str:
+        return (
+            f"{self.message}: signal group {self.group}: {self.field} set to {_shown(self.value)}"
+        )
+
+
+GROUP_CHANGES = (AddSignalGroup, RemoveSignalGroup, SetSignalGroup)
+
+
+@dataclass(frozen=True)
+class SetAttribute:
+    """An attribute's value on ``target``; a value of None takes it back to its
+    default. See ``Target``."""
+
+    target: tuple
+    name: str
+    value: Any
+
+    def described(self) -> str:
+        to = "its default" if self.value is None else _shown(self.value)
+        return f"{where(self.target)}: attribute {self.name} set to {to}"
+
+
+@dataclass(frozen=True)
+class AttributeSpec:
+    """An attribute's definition: what it applies to -- ``database``, ``node``,
+    ``message`` or ``signal`` -- its type, its range or its choices, and its
+    default."""
+
+    name: str
+    kind: str
+    type_name: str
+    minimum: float | None = None
+    maximum: float | None = None
+    choices: tuple[str, ...] = ()
+    default: Any = None
+
+
+@dataclass(frozen=True)
+class AddAttributeDefinition:
+    spec: AttributeSpec
+
+    def described(self) -> str:
+        return f"Attribute {self.spec.name}: defined"
+
+
+@dataclass(frozen=True)
+class SetAttributeDefinition:
+    """``definition`` as ``spec`` says, renamed if its name differs."""
+
+    definition: str
+    spec: AttributeSpec
+
+    def described(self) -> str:
+        return f"Attribute {self.definition}: definition changed"
+
+
+@dataclass(frozen=True)
+class RemoveAttributeDefinition:
+    definition: str
+
+    def described(self) -> str:
+        return f"Attribute {self.definition}: removed, with any values it had"
+
+
+DEFINITION_CHANGES = (AddAttributeDefinition, SetAttributeDefinition, RemoveAttributeDefinition)
+
 Change = (
     SetMessage
     | SetSignal
@@ -178,8 +373,17 @@ Change = (
     | SetValueTable
     | AddValueTable
     | RemoveValueTable
+    | AddNode
+    | RemoveNode
+    | SetNode
+    | AddSignalGroup
+    | RemoveSignalGroup
+    | SetSignalGroup
+    | SetAttribute
+    | AddAttributeDefinition
+    | SetAttributeDefinition
+    | RemoveAttributeDefinition
 )
-VALUE_TABLE_CHANGES = (SetValueTable, AddValueTable, RemoveValueTable)
 
 
 def values_text(values: Iterable[int]) -> str:
@@ -312,9 +516,9 @@ class DatabaseEdit:
         """The messages changed or added, by the names they have now."""
         names: set[str] = set()
         for change in self.changes:
-            if isinstance(change, VALUE_TABLE_CHANGES):
+            name = _message_of(change)
+            if name is None:
                 continue  # the database's, not a message's
-            name = change.name if isinstance(change, AddMessage) else change.message
             if isinstance(change, SetMessage) and change.field == "name":
                 names.discard(name)
                 name = change.value
@@ -336,6 +540,69 @@ class DatabaseEdit:
     def value_tables(self) -> dict[str, dict[int, str]]:
         """Each value table, in the file's order: {name: {number: name}}."""
         return {name: dict(values) for name, values in _value_tables(self.database).items()}
+
+    def nodes(self) -> list:
+        return list(self.database.nodes)
+
+    def attributes(self, target: Target) -> list[AttributeRow]:
+        """The attributes a target can have, from their definitions, with its
+        values. A message's GenMsgCycleTime is left out: it is the message's
+        cycle time, which its dialog has already.
+
+        A target of its kind alone -- ``("message",)`` -- is one not made yet,
+        with every attribute at its default."""
+        kind = kind_of(target)
+        named = kind == "database" or len(target) == (3 if kind == "signal" else 2)
+        thing = _target(self.database, target) if named else None
+        held = _held(self.database, target, thing) if named else {}
+        rows = []
+        for definition in _definitions(self.database).values():
+            if definition.kind != KINDS[kind]:
+                continue
+            if kind == "message" and definition.name == "GenMsgCycleTime":
+                continue
+            if kind == "signal" and definition.name == "GenSigStartValue":
+                value = thing.raw_initial if thing is not None else None
+            else:
+                attribute = held.get(definition.name)
+                value = None if attribute is None else attribute.value
+            if definition.type_name == "ENUM" and isinstance(value, int):
+                choices = definition.choices or []
+                value = choices[value] if 0 <= value < len(choices) else str(value)
+            rows.append(
+                AttributeRow(
+                    name=definition.name,
+                    type_name=definition.type_name or "STRING",
+                    choices=tuple(definition.choices or ()),
+                    minimum=definition.minimum,
+                    maximum=definition.maximum,
+                    default=definition.default_value,
+                    value=value,
+                    fixed=FOLLOWS.get(definition.name, ""),
+                )
+            )
+        return rows
+
+    def definitions(self) -> list[AttributeSpec]:
+        """Every attribute's definition, as its dialog shows it."""
+        kind_names = {v: k for k, v in KINDS.items()}
+        return [
+            AttributeSpec(
+                name=d.name,
+                kind=kind_names.get(d.kind, "database"),
+                type_name=d.type_name or "STRING",
+                minimum=d.minimum,
+                maximum=d.maximum,
+                choices=tuple(d.choices or ()),
+                default=d.default_value,
+            )
+            for d in _definitions(self.database).values()
+            if d.kind in kind_names  # not an environment variable's
+        ]
+
+    def uses(self, definition: str) -> int:
+        """How many things an attribute is set on."""
+        return sum(definition in held for held in _all_held(self.database))
 
     def problems(self) -> list[Problem]:
         return problems(self.database)
@@ -377,6 +644,16 @@ class DatabaseEdit:
         ]
 
 
+def _message_of(change: Change) -> str | None:
+    """The message a change is of, by the name it had then; None for one of
+    the database's own -- a node, a value table, an attribute's definition."""
+    if isinstance(change, AddMessage):
+        return change.name
+    if isinstance(change, SetAttribute):
+        return change.target[1] if kind_of(change.target) in ("message", "signal") else None
+    return getattr(change, "message", None)
+
+
 def _renames(changes: Iterable[Change], kind) -> dict[str, str]:
     out: dict[str, str] = {}
     for change in changes:
@@ -403,15 +680,31 @@ def _signal(message, name: str):
 
 def _apply(database, change: Change) -> None:
     if isinstance(change, SetMessage):
-        _set_message(database, _message(database, change.message), change.field, change.value)
+        message = _message(database, change.message)
+        before = _dbc_id(message)
+        _set_message(database, message, change.field, change.value)
+        if _dbc_id(message) != before:
+            _rekey_message_relations(database, before, _dbc_id(message))
     elif isinstance(change, SetSignal):
         message = _message(database, change.message)
         _set_signal(message, _signal(message, change.signal), change.field, change.value)
+        if change.field == "name" and change.value != change.signal:
+            _rename_signal_relations(database, message, change.signal, change.value)
         message.refresh(strict=False)
     elif isinstance(change, AddMessage):
         _add_message(database, change)
     elif isinstance(change, RemoveMessage):
-        database.messages.remove(_message(database, change.message))
+        message = _message(database, change.message)
+        database.messages.remove(message)
+        _drop_message_relations(database, _dbc_id(message))
+    elif isinstance(change, NODE_CHANGES):
+        _change_node(database, change)
+    elif isinstance(change, GROUP_CHANGES):
+        _change_group(_message(database, change.message), change)
+    elif isinstance(change, SetAttribute):
+        _set_attribute(database, change)
+    elif isinstance(change, DEFINITION_CHANGES):
+        _change_definition(database, change)
     elif isinstance(change, AddSignal):
         _add_signal(_message(database, change.message), change)
     elif isinstance(change, VALUE_TABLE_CHANGES):
@@ -426,6 +719,7 @@ def _apply(database, change: Change) -> None:
         message.signals.remove(signal)
         for group in message.signal_groups or []:
             group.signal_names = [n for n in group.signal_names if n != signal.name]
+        _drop_signal_relations(database, message, signal.name)
         message.refresh(strict=False)
     else:  # pragma: no cover - every kind is above
         raise EditError(f"Not a change: {change!r}")
@@ -522,6 +816,364 @@ def _change_value_table(database, change) -> None:
         tables.update(renamed)
     else:
         raise EditError(f"A value table has no {change.field} to set.")
+
+
+# --- nodes ---------------------------------------------------------------------------------------
+def _node(database, name: str):
+    for node in database.nodes:
+        if node.name == name:
+            return node
+    raise EditError(f"There is no node called {name}.")
+
+
+def _node_uses(database, name: str) -> str:
+    """What a node sends and receives, said briefly; "" for nothing."""
+    sends = [m.name for m in database.messages if name in (m.senders or [])]
+    receives = [
+        f"{m.name}.{s.name}" for m in database.messages for s in m.signals if name in s.receivers
+    ]
+    said = []
+    if sends:
+        said.append("sends " + _few(sends))
+    if receives:
+        said.append("receives " + _few(receives))
+    return " and ".join(said)
+
+
+def _few(names: list[str]) -> str:
+    return ", ".join(names[:3]) + (f" and {len(names) - 3} more" if len(names) > 3 else "")
+
+
+def _change_node(database, change) -> None:
+    from cantools.database.can import Node
+
+    if isinstance(change, AddNode):
+        if any(n.name == change.name for n in database.nodes):
+            raise EditError(f"There is a node called {change.name} already.")
+        database.nodes.append(
+            Node(
+                name=change.name,
+                comment=change.comment or None,
+                dbc_specifics=_new_specifics(database),
+            )
+        )
+        return
+    node = _node(database, change.node)
+    if isinstance(change, RemoveNode):
+        if uses := _node_uses(database, node.name):
+            raise EditError(f"{node.name} {uses}: not removed. Take it off those first.")
+        database.nodes.remove(node)
+        _drop_node_relations(database, node.name)
+    elif change.field == "comment":
+        # Where the comment is read from. cantools' own setter puts it where
+        # nothing reads it, and the file was written without it.
+        node._comments = {None: change.value} if change.value else None
+    elif change.field == "name":
+        old, new = node.name, change.value
+        if new == old:
+            return
+        if any(n.name == new for n in database.nodes):
+            raise EditError(f"There is a node called {new} already.")
+        node.name = new
+        for message in database.messages:
+            message.senders[:] = [new if n == old else n for n in message.senders]
+            for signal in message.signals:
+                signal.receivers[:] = [new if n == old else n for n in signal.receivers]
+        _rename_node_relations(database, old, new)
+    else:
+        raise EditError(f"A node has no {change.field} to set.")
+
+
+# --- signal groups --------------------------------------------------------------------------------
+def _change_group(message, change) -> None:
+    from cantools.database.can.signal_group import SignalGroup
+
+    if message.signal_groups is None:
+        message.signal_groups = []
+    groups = message.signal_groups
+    names = {s.name for s in message.signals}
+
+    def known(signals) -> list[str]:
+        missing = [n for n in signals if n not in names]
+        if missing:
+            raise EditError(f"{message.name} has no signal called {missing[0]}.")
+        return list(signals)
+
+    if isinstance(change, AddSignalGroup):
+        if any(g.name == change.name for g in groups):
+            raise EditError(f"{message.name} has a signal group called {change.name} already.")
+        groups.append(SignalGroup(change.name, int(change.repetitions), known(change.signals)))
+        return
+    group = next((g for g in groups if g.name == change.group), None)
+    if group is None:
+        raise EditError(f"{message.name} has no signal group called {change.group}.")
+    if isinstance(change, RemoveSignalGroup):
+        groups.remove(group)
+    elif change.field == "name":
+        if change.value != group.name and any(g.name == change.value for g in groups):
+            raise EditError(f"{message.name} has a signal group called {change.value} already.")
+        group.name = change.value
+    elif change.field == "repetitions":
+        if int(change.value) < 1:
+            raise EditError("A signal group is repeated at least once.")
+        group.repetitions = int(change.value)
+    elif change.field == "signals":
+        group.signal_names = known(change.value)
+    else:
+        raise EditError(f"A signal group has no {change.field} to set.")
+
+
+# --- attributes -----------------------------------------------------------------------------------
+def _specifics(database):
+    """The database's own DBC part, made for a file that had none."""
+    if database.dbc is None:
+        from cantools.database.can.formats.dbc_specifics import DbcSpecifics
+
+        database.dbc = DbcSpecifics()
+    return database.dbc
+
+
+def _new_specifics(database):
+    """A DBC part for a node, message or signal, sharing the database's definitions."""
+    from cantools.database.can.formats.dbc_specifics import DbcSpecifics
+
+    return DbcSpecifics(attribute_definitions=_definitions(database))
+
+
+def _definitions(database):
+    return _specifics(database).attribute_definitions
+
+
+def _target(database, target: Target):
+    """What an attribute is set on: the database, or its node, message or signal."""
+    kind = kind_of(target)
+    if kind == "database":
+        return database
+    if kind == "node":
+        return _node(database, target[1])
+    if kind == "message":
+        return _message(database, target[1])
+    if kind == "signal":
+        message = _message(database, target[1])
+        return _signal(message, target[2])
+    raise EditError(f"Not something with attributes: {target!r}")
+
+
+def _held(database, target: Target, thing) -> dict:
+    """The attributes set on a target, as they stand; empty for one with none."""
+    if kind_of(target) == "database":
+        return _specifics(database).attributes
+    return thing.dbc.attributes if thing.dbc is not None else {}
+
+
+def _all_held(database) -> list[dict]:
+    """Every set of attributes in the database."""
+    held = [_specifics(database).attributes]
+    held += [n.dbc.attributes for n in database.nodes if n.dbc is not None]
+    for message in database.messages:
+        if message.dbc is not None:
+            held.append(message.dbc.attributes)
+        held += [s.dbc.attributes for s in message.signals if s.dbc is not None]
+    return held
+
+
+def attribute_value(definition, value: Any) -> Any:
+    """A value as its definition stores it -- an enumeration's choice by its
+    index -- or EditError for one it cannot have."""
+    kind = definition.type_name
+    try:
+        if kind in ("INT", "HEX"):
+            if isinstance(value, float) and not value.is_integer():
+                raise ValueError(value)
+            return int(value)
+        if kind == "FLOAT":
+            return float(value)
+        if kind == "ENUM":
+            choices = list(definition.choices or [])
+            if isinstance(value, str) and value in choices:
+                return choices.index(value)
+            if isinstance(value, int) and 0 <= value < len(choices):
+                return value
+            raise ValueError(value)
+    except (TypeError, ValueError):
+        allowed = ", ".join(definition.choices or []) if kind == "ENUM" else kind.lower()
+        raise EditError(f"{definition.name} cannot be {value!r}: it is {allowed}.") from None
+    return str(value)
+
+
+def _set_attribute(database, change: SetAttribute) -> None:
+    from cantools.database.can.attribute import Attribute
+
+    definition = _definitions(database).get(change.name)
+    if definition is None:
+        raise EditError(f"There is no attribute called {change.name}.")
+    kind = kind_of(change.target)
+    if definition.kind != KINDS.get(kind, "?"):
+        raise EditError(f"{change.name} is not an attribute of the {kind}.")
+    if change.name in FOLLOWS:
+        raise EditError(f"{change.name} {FOLLOWS[change.name]}, so it is not set here.")
+    thing = _target(database, change.target)
+    value = None if change.value is None else attribute_value(definition, change.value)
+    if kind == "message" and change.name == "GenMsgCycleTime":
+        thing.cycle_time = value or None  # written as the attribute, by the format
+        return
+    if kind == "signal" and change.name == "GenSigStartValue":
+        thing.raw_initial = value
+        return
+    if kind != "database" and thing.dbc is None:
+        thing.dbc = _new_specifics(database)
+    held = _held(database, change.target, thing)
+    if value is None:
+        held.pop(change.name, None)
+    else:
+        held[change.name] = Attribute(value=value, definition=definition)
+    if kind == "message" and change.name == "GenMsgSendType":
+        # Read from the attribute when the file is, and kept by cantools apart
+        # from it after, with no setter: so that the copy says what the file will.
+        choices = definition.choices or []
+        chosen = definition.default_value if value is None else choices[value]
+        thing._send_type = chosen
+
+
+def _definition_from(spec: AttributeSpec):
+    """A cantools definition of a spec, checked."""
+    from cantools.database.can.attribute_definition import AttributeDefinition
+
+    if spec.kind not in KINDS:
+        raise EditError(
+            f"An attribute is of the database, a node, a message or a signal: not {spec.kind}."
+        )
+    if spec.type_name not in TYPES:
+        raise EditError(f"An attribute's type is one of {', '.join(TYPES)}: not {spec.type_name}.")
+    if not spec.name:
+        raise EditError("An attribute needs a name.")
+    numeric = spec.type_name in ("INT", "HEX", "FLOAT")
+    whole = spec.type_name != "FLOAT"
+    low = spec.minimum if spec.minimum is not None else 0
+    high = spec.maximum if spec.maximum is not None else 0
+    if numeric:
+        low, high = (int(low), int(high)) if whole else (float(low), float(high))
+    definition = AttributeDefinition(
+        name=spec.name,
+        kind=KINDS[spec.kind],
+        type_name=spec.type_name,
+        minimum=low if numeric else None,
+        maximum=high if numeric else None,
+        choices=list(spec.choices) if spec.type_name == "ENUM" else None,
+    )
+    if spec.type_name == "ENUM" and not spec.choices:
+        raise EditError(f"{spec.name} is a choice of names, and has none.")
+    if spec.default is not None:
+        stored = attribute_value(definition, spec.default)
+        definition.default_value = (
+            definition.choices[stored] if spec.type_name == "ENUM" else stored
+        )
+    return definition
+
+
+def _change_definition(database, change) -> None:
+    definitions = _definitions(database)
+    if isinstance(change, AddAttributeDefinition):
+        if change.spec.name in definitions:
+            raise EditError(f"There is an attribute called {change.spec.name} already.")
+        definitions[change.spec.name] = _definition_from(change.spec)
+        return
+    name = change.definition
+    definition = definitions.get(name)
+    if definition is None:
+        raise EditError(f"There is no attribute called {name}.")
+    if isinstance(change, RemoveAttributeDefinition):
+        if name in KEPT_BY_THE_FORMAT:
+            raise EditError(f"{name} is kept by the format itself, so it is not removed here.")
+        del definitions[name]
+        for held in _all_held(database):
+            held.pop(name, None)
+        return
+    new = _definition_from(change.spec)
+    if new.name != name:
+        if name in KEPT_BY_THE_FORMAT:
+            raise EditError(f"{name} is kept by the format itself, so it is not renamed here.")
+        if new.name in definitions:
+            raise EditError(f"There is an attribute called {new.name} already.")
+    uses = sum(name in held for held in _all_held(database))
+    if uses and (new.kind != definition.kind or new.type_name != definition.type_name):
+        raise EditError(
+            f"{name} is set on {uses} thing(s): what it is of, and its type, cannot change "
+            "while it is. Take it back to its default on those first."
+        )
+    # In place, so that every value set keeps pointing at it.
+    definition._name = new.name
+    definition._kind = new.kind
+    definition._type_name = new.type_name
+    definition._minimum = new.minimum
+    definition._maximum = new.maximum
+    definition._choices = new.choices
+    definition._default_value = new.default_value
+    if new.name != name:
+        _rekey(definitions, name, new.name)
+        for held in _all_held(database):
+            _rekey(held, name, new.name)
+
+
+# --- what names a node, a signal and a message, in the relation attributes ------------------------
+def _dbc_id(message) -> int:
+    """A message's identifier as the format writes it, the 29-bit flag in the top bit."""
+    return message.frame_id | (0x80000000 if message.is_extended_frame else 0)
+
+
+def _relations(database):
+    return getattr(database.dbc, "relation_attributes", None)
+
+
+def _rekey(mapping: dict, old, new) -> None:
+    """One key renamed, in place and in its place."""
+    if old not in mapping:
+        return
+    items = [(new if k == old else k, v) for k, v in mapping.items()]
+    mapping.clear()
+    mapping.update(items)
+
+
+def _rename_node_relations(database, old: str, new: str) -> None:
+    if (relations := _relations(database)) is None:
+        return
+    for by_signal in relations.node_signal_relations.values():
+        for by_node in by_signal.values():
+            _rekey(by_node, old, new)
+    for by_node in relations.node_message_relations.values():
+        _rekey(by_node, old, new)
+
+
+def _drop_node_relations(database, name: str) -> None:
+    if (relations := _relations(database)) is None:
+        return
+    for by_signal in relations.node_signal_relations.values():
+        for by_node in by_signal.values():
+            by_node.pop(name, None)
+    for by_node in relations.node_message_relations.values():
+        by_node.pop(name, None)
+
+
+def _rename_signal_relations(database, message, old: str, new: str) -> None:
+    if (relations := _relations(database)) is not None:
+        _rekey(relations.node_signal_relations.get(_dbc_id(message), {}), old, new)
+
+
+def _drop_signal_relations(database, message, name: str) -> None:
+    if (relations := _relations(database)) is not None:
+        relations.node_signal_relations.get(_dbc_id(message), {}).pop(name, None)
+
+
+def _rekey_message_relations(database, old: int, new: int) -> None:
+    if (relations := _relations(database)) is not None:
+        _rekey(relations.node_signal_relations, old, new)
+        _rekey(relations.node_message_relations, old, new)
+
+
+def _drop_message_relations(database, dbc_id: int) -> None:
+    if (relations := _relations(database)) is not None:
+        relations.node_signal_relations.pop(dbc_id, None)
+        relations.node_message_relations.pop(dbc_id, None)
 
 
 def _add_message(database, change: AddMessage) -> None:
@@ -651,4 +1303,89 @@ def problems(database) -> list[Problem]:
     for name in tables:
         if not NAME.match(name):
             found.append(Problem(ERROR, f"Value table {name}", "not a name the format allows"))
+    found += _node_problems(database)
+    found += _group_problems(database)
+    found += _attribute_problems(database)
+    return found
+
+
+def _node_problems(database) -> list[Problem]:
+    found: list[Problem] = []
+    names = [n.name for n in database.nodes]
+    for name in dict.fromkeys(names):
+        if not NAME.match(name):
+            found.append(Problem(ERROR, f"Node {name}", "not a name the format allows"))
+        if names.count(name) > 1:
+            found.append(Problem(ERROR, f"Node {name}", "two nodes of this name"))
+    known = set(names) | {NO_NODE}
+    for message in database.messages:
+        for sender in message.senders or []:
+            if sender not in known:
+                found.append(
+                    Problem(WARNING, message.name, f"sent by {sender}, which is not a node")
+                )
+        for signal in message.signals:
+            for receiver in signal.receivers:
+                if receiver not in known:
+                    found.append(
+                        Problem(
+                            WARNING,
+                            f"{message.name}.{signal.name}",
+                            f"received by {receiver}, which is not a node",
+                        )
+                    )
+    return found
+
+
+def _group_problems(database) -> list[Problem]:
+    found: list[Problem] = []
+    for message in database.messages:
+        seen: set[str] = set()
+        for group in message.signal_groups or []:
+            at = f"{message.name}: signal group {group.name}"
+            if not NAME.match(group.name):
+                found.append(Problem(ERROR, at, "not a name the format allows"))
+            if group.name in seen:
+                found.append(Problem(ERROR, at, "two groups of this name"))
+            seen.add(group.name)
+    return found
+
+
+def _attribute_problems(database) -> list[Problem]:
+    found: list[Problem] = []
+    definitions = getattr(database.dbc, "attribute_definitions", None) or {}
+    for definition in definitions.values():
+        if not NAME.match(definition.name):
+            found.append(
+                Problem(ERROR, f"Attribute {definition.name}", "not a name the format allows")
+            )
+    places = [("Database", getattr(database.dbc, "attributes", None) or {})]
+    places += [(f"Node {n.name}", n.dbc.attributes) for n in database.nodes if n.dbc is not None]
+    for message in database.messages:
+        if message.dbc is not None:
+            places.append((message.name, message.dbc.attributes))
+        places += [
+            (f"{message.name}.{s.name}", s.dbc.attributes)
+            for s in message.signals
+            if s.dbc is not None
+        ]
+    for at, held in places:
+        for name, attribute in held.items():
+            definition = attribute.definition
+            try:
+                attribute_value(definition, attribute.value)
+            except EditError:
+                found.append(Problem(ERROR, at, f"attribute {name} is {attribute.value!r}"))
+                continue
+            low, high = definition.minimum, definition.maximum
+            numeric = definition.type_name in ("INT", "HEX", "FLOAT")
+            if numeric and low is not None and high is not None and low < high:
+                if not low <= attribute.value <= high:
+                    found.append(
+                        Problem(
+                            WARNING,
+                            at,
+                            f"attribute {name} is {attribute.value}, outside {low} to {high}",
+                        )
+                    )
     return found
