@@ -17,12 +17,20 @@ The same wrappers refuse a transfer to a node whose heartbeat last said it is
 STOPPED, opened as a file included. CiA 301 serves SDO only in Pre-operational
 and Operational, so a request to a stopped node could only wait for the
 timeout; refused at once, it says why.
+
+And they note which transfer this thread is making, for as long as it is
+being made: the library logs an abort as a code alone -- "Transfer aborted by
+client with code 0x05040000" -- with nothing to say whose, and two nodes
+timing out made two identical lines, of which the Event Log showed one.
+``under_way`` is what the log bridge names the line from.
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import canopen
@@ -31,6 +39,34 @@ from pycangui.canopen import abort_reason
 
 #: The most data bytes written out in one line; a DOMAIN can be kilobytes.
 SHOWN_BYTES = 16
+
+#: The transfer this thread is making: (node, index, sub), with no index or
+#: sub for one opened as a file, which is known only by its node when it aborts.
+_this_thread = threading.local()
+
+
+def under_way() -> tuple[int, int | None, int | None] | None:
+    """The SDO transfer the calling thread is in the middle of, if any."""
+    return getattr(_this_thread, "transfer", None)
+
+
+def where(transfer: tuple[int, int | None, int | None]) -> str:
+    """A transfer as a line names it: ``Node 5, 1018:01``, or ``Node 5``."""
+    node_id, index, sub = transfer
+    if index is None:
+        return f"Node {node_id}"
+    return f"Node {node_id}, {index:04X}:{sub or 0:02X}"
+
+
+@contextmanager
+def _making(transfer: tuple[int, int | None, int | None]):
+    """Note a transfer as this thread's own while it is made."""
+    before = under_way()
+    _this_thread.transfer = transfer
+    try:
+        yield
+    finally:
+        _this_thread.transfer = before
 
 
 @dataclass(frozen=True)
@@ -107,7 +143,7 @@ def watch(
     """
     if getattr(sdo, "_pycangui_logged", False):
         return
-    upload, download, opened = sdo.upload, sdo.download, sdo.open
+    upload, download, opened, abort = sdo.upload, sdo.download, sdo.open, sdo.abort
 
     def logged(write: bool, index: int, sub: int, call, data: bytes | None = None):
         at, started = now(), time.perf_counter()
@@ -119,7 +155,8 @@ def watch(
         try:
             if stopped():
                 raise NodeStopped(node_id)
-            answer = call()
+            with _making((node_id, index, sub)):
+                answer = call()
         except Exception as exc:
             report(record(None, reason(exc)))
             raise
@@ -139,7 +176,13 @@ def watch(
             raise NodeStopped(node_id)
         return opened(*args, **kwargs)
 
+    def named_abort(*args, **kwargs):
+        # Within an upload or download, that one; a stream's, by its node.
+        with _making(under_way() or (node_id, None, None)):
+            return abort(*args, **kwargs)
+
     sdo.upload = logged_upload
     sdo.download = logged_download
     sdo.open = refused_unless_able
+    sdo.abort = named_abort
     sdo._pycangui_logged = True

@@ -8,6 +8,8 @@ press Add from DBC with no database, or tick Cyclic with no bus, and the
 button appeared to do nothing at all.
 """
 
+import time
+
 import pytest
 from PySide6.QtCore import QSettings
 
@@ -379,3 +381,39 @@ def test_the_word_is_not_said_twice():
         already = f"{PREFIXES[level]}: written that way by whoever raised it"
         assert with_level(already, level) == already
         assert with_level(already.upper(), level) == already.upper()
+
+
+def test_an_sdo_line_from_the_library_says_whose_transfer_it_was(app):
+    """Reported: two nodes timed out and the Event Log showed one error, with
+    no node in it. The library logs the abort code alone; the two lines were
+    the same, so the second was folded into the first as a repeat."""
+    import logging
+
+    import can
+    import canopen
+
+    from pycangui.canopen import sdo_log
+    from pycangui.core.logbridge import LogBridge
+
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    network = canopen.Network(bus=can.Bus(interface="virtual", channel="vcan_named_sdo"))
+    try:
+        for node_id in (40, 41):  # nobody is there to answer
+            node = network.add_node(canopen.RemoteNode(node_id, None))
+            node.sdo.RESPONSE_TIMEOUT = 0.02
+            sdo_log.watch(node.sdo, node_id, lambda _r: None, time.monotonic, lambda _i, _s: "")
+            with pytest.raises(canopen.SdoCommunicationError):
+                node.sdo.upload(0x1018, 1)
+        # A transfer opened as a file is known by its node when it aborts.
+        network[41].sdo.abort(0x05040000)
+        logging.getLogger("canopen.sdo.client").error("not during a transfer")
+    finally:
+        bridge.detach()
+        network.bus.shutdown()
+
+    errors = [text for level, text in said if level == "error"]
+    assert any("Node 40, 1018:01" in text for text in errors)
+    assert any("Node 41, 1018:01" in text for text in errors), "the second is said too"
+    assert any("Node 41:" in text and "1018" not in text for text in errors)
+    assert errors[-1].endswith("not during a transfer"), "and nothing claimed when unknown"

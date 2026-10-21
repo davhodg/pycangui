@@ -28,6 +28,12 @@ since the last version, and comes out in the next one.
   reason in their tooltip. Identifying it and reading its PDOs wait until it leaves Stopped. A
   boot-up counts as Pre-operational.
 
+### Fixed
+
+- Event Log: the SDO lines the CANopen library writes say which node and object they are
+  about, *Node 5, 1018:01: Transfer aborted...*. Two nodes timing out showed as one error,
+  the second taken for a repeat of the first.
+
 ## [0.4.1] - 2026-10-18
 
 ### Fixed

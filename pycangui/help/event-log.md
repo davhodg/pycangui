@@ -46,7 +46,11 @@ there, which is a number and a shrug, so it arrives as *...0x05040000 (Timeout
 of transfer communication detected)*. The code is what goes to the device's
 maker; the meaning is what tells you whether the node refused or never
 answered at all. *Aborted by client* is pycangui's own end giving up -- an
-SDO timeout -- rather than the device saying no.
+SDO timeout -- rather than the device saying no. Nor does the library say
+whose transfer it was, so pycangui puts that in front: *Node 5, 1018:01:
+Transfer aborted...*, or *Node 5:* alone for a transfer opened as a stream,
+such as *Read EDS from node*. Two nodes timing out are two lines, not one
+counted as a repeat.
 *Tools > Settings > Verbose CAN logging* adds their information messages too, which is
 where the detail is when something is actually wrong, and more than you want
 the rest of the time.
