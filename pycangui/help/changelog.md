@@ -14,6 +14,8 @@ since the last version, and comes out in the next one.
 - CAN Trace: *Check counter / checksum...* checks a device's messages as they arrive, with
   CAN Transmit's settings: a Counter / checksum column, green or red, and faults counted in
   Signals and Plot.
+- CANopen: a node's RPDOs are decoded as well as its TPDOs, in *Live PDOs* (which says which
+  way each goes) and in Signals and Plot, for a bus where another master sends them.
 
 ### Changed
 

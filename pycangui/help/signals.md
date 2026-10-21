@@ -14,7 +14,7 @@ about, and can be loaded anyway, rather than simply refused; turning off *Tools 
 Strict DBC checks* stops the asking. Signals with a `VAL_` table are
 picked from a list in [CAN Transmit](transmit.md), or typed by name or by number,
 and are shown here with their names: *Run (1)* in the Value column, and in Min
-and Max. So are a CANopen TPDO's objects where the EDS or a hook names their
+and Max. So are a CANopen PDO's objects where the EDS or a hook names their
 values. The plot and *Export* keep the numbers.
 
 **A named value is written one way everywhere** -- the name, then the number
@@ -27,11 +27,11 @@ can be copied into it when you load it, so it travels with the workspace; see
 
 Once loaded: the trace shows the message
 name and the **Signals and Plot** pane lists every signal with its live value.
-CANopen TPDO values appear there too -- except a TPDO a loaded database also
-describes, which is listed once, as the database decodes it: the database has
-the names and scaling, and the PDO decode would put the same frame beside it
+CANopen PDO values appear there too, a node's TPDOs and the RPDOs it is
+sent -- except a PDO a loaded database also describes, which is listed once,
+as the database decodes it: the database has the names and scaling, and the PDO decode would put the same frame beside it
 with raw numbers. Removing a database takes its signals off the list and the
-plot, and a TPDO it described comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
+plot, and a PDO it described comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
 alongside the list; drag the splitter to give
 the plot the whole pane, or the list. `resources/demo.dbc` matches the demo
 device.

@@ -278,8 +278,11 @@ be labelled as node 81's RPDO. True about the number, and about nothing else
 on the screen. What a PDO actually carries is the mapped objects underneath
 it.
 
-The *Live PDOs* tab shows each
-PDO with its receive count and rate. A frame shorter than its mapping is said
+The *Live PDOs* tab shows each PDO with its receive count and rate, and
+which way it goes: a TPDO the node sends, or an RPDO it is sent. Both are
+decoded, since pycangui may only be listening while another master sends the
+RPDOs; an RPDO sent from CAN Transmit is decoded too, from the frame as it
+comes back from the bus. A frame shorter than its mapping is said
 once in the Event Log, with the numbers -- *expected 64 bits, received 48 bits*
 -- as an error if the mapping was read from the node, since the node is then
 sending it short.

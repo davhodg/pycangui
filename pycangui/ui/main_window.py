@@ -2585,22 +2585,23 @@ class MainWindow(QMainWindow):
 
     @Slot(int, str, dict)
     def _on_pdo_update(self, node_id: int, pdo_name: str, values: dict) -> None:
-        """A TPDO's values into Signals and Plot -- unless a database decodes it.
+        """A PDO's values into Signals and Plot -- unless a database decodes it.
 
-        A DBC written for a CANopen device describes its TPDOs as messages,
+        Either direction: a TPDO the node sends, or an RPDO sent to it.
+        A DBC written for a CANopen device describes its PDOs as messages,
         with names and scaling; the PDO decode has the EDS's names and raw
         values. Both at once put the same frame in the list twice with
         numbers that disagree, 12.345 km beside 12345. The database was
         loaded on purpose to say what the frame means, so it wins.
         """
-        cob_id = self.canopen.tpdo_cob_id(node_id, pdo_name)
+        cob_id = self.canopen.pdo_cob_id(node_id, pdo_name)
         if cob_id is not None and self.dbc.describes(cob_id):
             return
         group = f"CANopen node {node_id} {pdo_name}"
         first = self._is_new_to_signals(group, values)
         self.signals.push_many(group, self.bus.now(), values)
         if first:
-            self._name_values(group, self.canopen.tpdo_choices(node_id, pdo_name))
+            self._name_values(group, self.canopen.pdo_choices(node_id, pdo_name))
 
     def _is_new_to_signals(self, group: str, values: dict) -> bool:
         """Whether this is the first of a message's values to reach the signal list."""
@@ -2612,7 +2613,7 @@ class MainWindow(QMainWindow):
             self.signals.set_choices(f"{group}/{name}", table)
 
     def _drop_pdos_a_database_decodes(self) -> None:
-        """Take out TPDOs listed before a database describing them was loaded.
+        """Take out PDOs listed before a database describing them was loaded.
 
         From then on the database decodes them and the PDO decode stands
         aside; without this the PDO's rows would stay, stuck at their last
@@ -2623,7 +2624,7 @@ class MainWindow(QMainWindow):
             f"CANopen node {node_id} {config.name}"
             for node_id in (list(network.nodes) if network is not None else [])
             for config in self.canopen.pdo_configs(node_id)
-            if config.direction == "TPDO" and self.dbc.describes(config.cob_id)
+            if self.dbc.describes(config.cob_id)
         ]
         self.signals.forget_groups(groups)
 

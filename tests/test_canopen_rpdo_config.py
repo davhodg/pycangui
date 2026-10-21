@@ -58,8 +58,9 @@ class FakeMap:
 
 
 class FakeNode:
-    def __init__(self, *maps):
+    def __init__(self, *maps, rpdo=()):
         self.tpdo = {n: m for n, m in enumerate(maps, 1)}
+        self.rpdo = {n: m for n, m in enumerate(rpdo, 1)}
 
 
 def test_each_tpdo_is_decoded_once_however_often_it_is_read(view):
@@ -69,14 +70,23 @@ def test_each_tpdo_is_decoded_once_however_often_it_is_read(view):
     on, off = FakeMap("TxPDO1", True), FakeMap("TxPDO2", False)
     node = FakeNode(on, off)
     manager = view.manager
-    assert manager._decode_tpdos(5, node) == ["TxPDO1"]
-    assert manager._decode_tpdos(5, node) == ["TxPDO1"]
+    assert manager._decode_pdos(5, node) == ["TxPDO1"]
+    assert manager._decode_pdos(5, node) == ["TxPDO1"]
     assert len(on.callbacks) == 1, "read twice, decoded once"
     assert off.callbacks == [], "a disabled TPDO is not decoded"
 
     off.enabled = True  # enabled in the PDO tab, then read again
-    assert manager._decode_tpdos(5, node) == ["TxPDO1", "TxPDO2"]
+    assert manager._decode_pdos(5, node) == ["TxPDO1", "TxPDO2"]
     assert len(off.callbacks) == 1
+
+
+def test_enabled_rpdos_are_decoded_too(view):
+    """Another master may be the one sending a node its RPDOs."""
+    rpdo, disabled = FakeMap("RxPDO1", True), FakeMap("RxPDO2", False)
+    node = FakeNode(FakeMap("TxPDO1", True), rpdo=(rpdo, disabled))
+    assert view.manager._decode_pdos(5, node) == ["TxPDO1", "RxPDO1"]
+    assert view.manager._decode_pdos(5, node) == ["TxPDO1", "RxPDO1"]
+    assert len(rpdo.callbacks) == 1 and disabled.callbacks == []
 
 
 def test_nmt_says_who_it_goes_to_and_can_go_to_all(view, monkeypatch):
@@ -105,3 +115,20 @@ def test_nmt_says_who_it_goes_to_and_can_go_to_all(view, monkeypatch):
     view.nodes.setCurrentItem(view._node_item(5))
     view.nodes.keyPressEvent(QKeyEvent(QEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier))
     assert view.selected_node() is None, "and Esc does the same"
+
+
+def test_live_pdos_say_which_way_each_goes(view, monkeypatch):
+    directions = {"TxPDO1_node5": "TPDO", "RxPDO1_node5": "RPDO"}
+    monkeypatch.setattr(view, "selected_node", lambda: 5)
+    monkeypatch.setattr(view.manager, "pdo_direction", lambda _n, name: directions[name])
+    view.on_pdo_update(5, "TxPDO1_node5", {"Status": 1})
+    view.on_pdo_update(5, "RxPDO1_node5", {"Speed demand": 300})
+    column = next(
+        c for c in range(view.pdos.columnCount()) if view.pdos.headerItem().text(c) == "Direction"
+    )
+    rows = {
+        view.pdos.topLevelItem(i).text(0): view.pdos.topLevelItem(i).text(column)
+        for i in range(view.pdos.topLevelItemCount())
+    }
+    assert set(rows) == set(directions), "both directions are listed"
+    assert rows["TxPDO1_node5"].startswith("TPDO") and rows["RxPDO1_node5"].startswith("RPDO")

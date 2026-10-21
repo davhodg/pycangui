@@ -591,7 +591,8 @@ class CanopenManager(QObject):
         if node is not None:
             # The library leaves a read PDO's subscription behind, and its
             # frames would go on being decoded for a node no longer listed.
-            for pdo_map in getattr(node, "tpdo", {}).values():
+            maps = [*getattr(node, "tpdo", {}).values(), *getattr(node, "rpdo", {}).values()]
+            for pdo_map in maps:
                 try:
                     self.network.unsubscribe(pdo_map.cob_id, pdo_map.on_message)
                 except (KeyError, ValueError):
@@ -1115,7 +1116,7 @@ class CanopenManager(QObject):
             else:
                 # Decoded by the EDS's mapping, which is all there is to go
                 # by until the node is asked.
-                self._decode_tpdos(node_id, node)
+                self._decode_pdos(node_id, node)
 
         self._worker.submit(job, done)
 
@@ -1393,23 +1394,29 @@ class CanopenManager(QObject):
         self._mapping_read.add(node_id)
         self._pdo_size_said = {key for key in self._pdo_size_said if key[0] != node_id}
 
-    def _decode_tpdos(self, node_id: int, node) -> list[str]:
-        """Decode every enabled TPDO into Signals and Plot, each once. Its names.
+    def _decode_pdos(self, node_id: int, node) -> list[str]:
+        """Decode every enabled PDO into Signals and Plot, each once. Its names.
 
-        Asked after every read of the mapping, not only the first: a TPDO the
+        Both directions: pycangui may be only listening, with another master
+        sending the node its RPDOs, and what the node is told is as much a
+        part of the picture as what it says. An RPDO sent from CAN Transmit
+        is decoded too, from its echo, as any other frame on the bus is.
+
+        Asked after every read of the mapping, not only the first: a PDO the
         node had disabled gets no callback, and one enabled since -- in the
         PDO tab, or by the node's own application -- would never be decoded.
         The map objects outlive a re-read, so a mark on each keeps a second
         read from decoding every frame twice.
         """
         names = []
-        for pdo_map in node.tpdo.values():
-            if pdo_map.cob_id is None or not pdo_map.enabled:
-                continue
-            if not getattr(pdo_map, "_pycangui_decoded", False):
-                pdo_map.add_callback(lambda m, n=node_id: self._on_pdo(n, m))
-                pdo_map._pycangui_decoded = True
-            names.append(pdo_name(pdo_map))
+        for maps in (node.tpdo, getattr(node, "rpdo", {})):
+            for pdo_map in maps.values():
+                if pdo_map.cob_id is None or not pdo_map.enabled:
+                    continue
+                if not getattr(pdo_map, "_pycangui_decoded", False):
+                    pdo_map.add_callback(lambda m, n=node_id: self._on_pdo(n, m))
+                    pdo_map._pycangui_decoded = True
+                names.append(pdo_name(pdo_map))
         return names
 
     def _choices_of(self, node_id: int, pdo_map) -> dict[str, dict[int, str]]:
@@ -1420,12 +1427,17 @@ class CanopenManager(QObject):
                 out[var.name] = dict(choices)
         return out
 
-    def tpdo_choices(self, node_id: int, name: str) -> dict[str, dict[int, str]]:
-        """Named values for the variables of a node's TPDO of this name."""
+    def _pdo_named(self, node_id: int, name: str):
+        """A node's PDO of this name, of either direction, or None."""
         node = self.node(node_id)
-        pdo_map = None
-        if node is not None:
-            pdo_map = next((m for m in node.tpdo.values() if pdo_name(m) == name), None)
+        if node is None:
+            return None
+        maps = [*node.tpdo.values(), *node.rpdo.values()]
+        return next((m for m in maps if pdo_name(m) == name), None)
+
+    def pdo_choices(self, node_id: int, name: str) -> dict[str, dict[int, str]]:
+        """Named values for the variables of a node's PDO of this name."""
+        pdo_map = self._pdo_named(node_id, name)
         return {} if pdo_map is None else self._choices_of(node_id, pdo_map)
 
     def rpdo_choices(self, node_id: int, number: int) -> dict[str, dict[int, str]]:
@@ -1444,12 +1456,17 @@ class CanopenManager(QObject):
         """
         return self.read_domains or var.data_type != datatypes.DOMAIN
 
-    def tpdo_cob_id(self, node_id: int, name: str) -> int | None:
-        """The identifier a node's TPDO of this name is sent on, if it is known."""
-        node = self.node(node_id)
-        if node is None:
+    def pdo_direction(self, node_id: int, name: str) -> str | None:
+        """Whether a node's PDO of this name is its TPDO or its RPDO; None if unknown."""
+        pdo_map = self._pdo_named(node_id, name)
+        if pdo_map is None:
             return None
-        return next((m.cob_id for m in node.tpdo.values() if pdo_name(m) == name), None)
+        return "TPDO" if any(m is pdo_map for m in self.node(node_id).tpdo.values()) else "RPDO"
+
+    def pdo_cob_id(self, node_id: int, name: str) -> int | None:
+        """The identifier a node's PDO of this name is on, either direction, if known."""
+        pdo_map = self._pdo_named(node_id, name)
+        return None if pdo_map is None else pdo_map.cob_id
 
     # --- PDO configuration (both directions) -----------------------------------
     def pdo_configs(self, node_id: int) -> list[PdoConfig]:
@@ -1496,7 +1513,7 @@ class CanopenManager(QObject):
             self._mapping_from_node(node_id)
             node.rpdo.read()
             self._rpdo_read.add(node_id)
-            self._decode_tpdos(node_id, node)
+            self._decode_pdos(node_id, node)
             self.emcy_cob_ids[node_id] = self._optional(node, 0x1014)[0]
             self.heartbeat_times[node_id] = self._optional(node, 0x1017)[0]
             return len(self.pdo_configs(node_id))

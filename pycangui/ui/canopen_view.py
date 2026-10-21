@@ -578,7 +578,8 @@ class CanopenView(QWidget):
 
         # --- PDOs -----------------------------------------------------------
         self.pdos = QTreeWidget()
-        self.pdos.setHeaderLabels(["PDO / variable", "Value", "Count", "Rate"])
+        # Direction last: the widths saved for the columns before it still fit.
+        self.pdos.setHeaderLabels(["PDO / variable", "Value", "Count", "Rate", "Direction"])
         self.pdos.setFont(mono)
         self.pdos_widths = ColumnWidths(self.pdos, ctx.settings, "canopen.pdos")
 
@@ -2141,11 +2142,14 @@ class CanopenView(QWidget):
     # --- PDOs -----------------------------------------------------------------
     @Slot(int, str, dict)
     def on_pdo_update(self, node_id: int, pdo_name: str, values: dict) -> None:
+        """A PDO's values into the Live PDOs tab: what the node sends, and what
+        it is sent, since another master may be the one sending its RPDOs."""
         if node_id != self.selected_node():
             return
         parent = self._pdo_items.get((pdo_name, None))
         if parent is None:
-            parent = QTreeWidgetItem([pdo_name, "", "0", ""])
+            direction = direction_text(node_id, self.manager.pdo_direction(node_id, pdo_name))
+            parent = QTreeWidgetItem([pdo_name, "", "0", "", direction])
             self.pdos.addTopLevelItem(parent)
             parent.setExpanded(True)
             self._pdo_items[(pdo_name, None)] = parent
@@ -2181,6 +2185,15 @@ class CanopenView(QWidget):
         self._pdo_items.clear()
         self._pdo_counts.clear()
         self._pdo_last.clear()
+
+
+def direction_text(node_id: int, direction: str | None) -> str:
+    """Which way a PDO goes, for the Live PDOs tab."""
+    if direction == "TPDO":
+        return f"TPDO, sent by node {node_id}"
+    if direction == "RPDO":
+        return f"RPDO, received by node {node_id}"
+    return ""
 
 
 def _hex(value: int | None) -> str:
