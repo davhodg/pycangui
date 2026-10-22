@@ -76,6 +76,11 @@ class PluginApp:
         self._closers: list[Callable] = []
         self._labellers: list[Callable] = []
         self._widget_kinds: list[str] = []
+        #: Told of a pause and of Stop all, and disconnected on unloading.
+        self._on_pause: list[Callable] = []
+        self._on_stop_all: list[Callable] = []
+        #: The pauses this plugin holds, given back if it is unloaded holding one.
+        self._holding: list[str] = []
 
     # --- a screen of its own ------------------------------------------------------------
     def add_pane(
@@ -214,6 +219,50 @@ class PluginApp:
         """
         self.canopen.background(job, done)
 
+    # --- pycangui's own traffic: paused, and stopped -----------------------------------------
+    @property
+    def paused(self) -> bool:
+        """Whether pycangui's own traffic is paused: see on_pause."""
+        return self.ctx.pause.paused
+
+    def on_pause(self, callback: Callable[[bool], None]) -> None:
+        """Be told when pycangui's own traffic is paused, and when it goes on.
+
+        During a flash, or by hand from the status bar. What pycangui does by
+        itself -- polling, SYNC and TIME, reading a node unasked -- is held
+        back until it lifts; a plugin that polls or repeats something should
+        do the same. What somebody does by hand is never held. API 2.
+        """
+        self.ctx.pause.changed.connect(callback)
+        self._on_pause.append(callback)
+
+    def on_stop_all(self, callback: Callable[[], None]) -> None:
+        """Be told when somebody asks for everything that repeats to stop.
+
+        For good, unlike a pause: polling unticked, a demand taken away,
+        anything this plugin keeps sending stopped until it is asked for
+        again. API 2.
+        """
+        self.ctx.pause.stop_all_requested.connect(callback)
+        self._on_stop_all.append(callback)
+
+    def hold_traffic(self, why: str) -> None:
+        """Pause pycangui's own traffic while this plugin does ``why``.
+
+        For work that the bus being quiet matters to -- a firmware download.
+        It lifts when ``release_traffic(why)`` is called, or the plugin is
+        unloaded, and not before: a pause set by hand meanwhile stays. API 2.
+        """
+        if why not in self._holding:
+            self._holding.append(why)
+        self.ctx.pause.hold(why)
+
+    def release_traffic(self, why: str) -> None:
+        """This plugin no longer needs the pause it took for ``why``. API 2."""
+        if why in self._holding:
+            self._holding.remove(why)
+        self.ctx.pause.release(why)
+
     # --- saying something -------------------------------------------------------------------
     def log(self, message: str) -> None:
         self.ctx.events.information(f"{self.plugin}: {message}")
@@ -237,6 +286,16 @@ class PluginApp:
         for closer in self._closers:
             self.window.closing.disconnect(closer)
         self._closers.clear()
+        for signal, callbacks in (
+            (self.ctx.pause.changed, self._on_pause),
+            (self.ctx.pause.stop_all_requested, self._on_stop_all),
+        ):
+            for callback in callbacks:
+                signal.disconnect(callback)
+            callbacks.clear()
+        for why in self._holding:
+            self.ctx.pause.release(why)  # a plugin gone cannot finish what it held it for
+        self._holding.clear()
         for action in self._actions:
             if (parent := action.parent()) is not None and hasattr(parent, "removeAction"):
                 parent.removeAction(action)

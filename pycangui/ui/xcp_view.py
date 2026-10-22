@@ -432,12 +432,21 @@ class XcpView(QWidget):
         manager.value.connect(self._on_value)
         manager.connected.connect(lambda _on: self._ids_changed())
         self.engine_box.currentTextChanged.connect(lambda _n: self._engine_changed())
+        ctx.pause.stop_all_requested.connect(self.stop_polling)
         if manager.a2l is not None:
             self._populate()
         self._show_a2l()
         self._ids_changed()
         self._engine_changed()
         self._whose_ids()
+
+    def stop_polling(self) -> None:
+        """Stop all: every polled value unticked, as though by hand."""
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            for row in (item, *(item.child(c) for c in range(item.childCount()))):
+                if row.checkState(5) == Qt.Checked:
+                    row.setCheckState(5, Qt.Unchecked)  # and _on_item_changed tells the manager
 
     # --- connection -------------------------------------------------------------
     def _engine_changed(self) -> None:

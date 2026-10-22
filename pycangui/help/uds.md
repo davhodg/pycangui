@@ -214,6 +214,9 @@ then 0x37); *Upload* reads memory back into a file of whichever of those
 formats the name you choose asks for. The rest of the list are RequestFileTransfer
 (0x38) operations -- add, replace, resume, read, delete, list a directory -- which
 name a file on the ECU's own filesystem instead of an address.
+While a transfer runs, the rest of pycangui's own traffic is [paused](pause.md):
+polling, CANopen SYNC and TIME, and CANopen's unasked reads of a node wait until
+it is over. Tester Present goes on.
 
 A hex or S-record file carries its own addresses, so the address box fills itself
 in and stays locked: the file is right, and a typed number could only be wrong.

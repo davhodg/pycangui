@@ -292,7 +292,7 @@ def test_it_installs_and_loads(app, window):
 def test_it_says_which_version_it_is(app, window):
     """A plugin travels, and the copy in a workspace is the user's own: the
     only way to know which of ours it started as is for it to say."""
-    assert window.plugins.loaded["firmware"].version == "1.1"
+    assert window.plugins.loaded["firmware"].version == "1.2"
 
 
 def test_it_brings_a_pane(app, window):
@@ -454,6 +454,26 @@ def test_the_whole_download_runs_with_the_programming_timeout(app, window, monke
     assert sdo.timeouts == [20]
     assert sdo.RESPONSE_TIMEOUT == 0.3, "and the usual one afterwards"
     assert window.ctx.settings.get("plugins.firmware.programming_timeout_s") == 20
+
+
+def test_programming_holds_the_rest_of_pycangui_back_while_it_runs(app, window, monkeypatch):
+    """A node rebooting into its loader was identified, and its PDOs read,
+    over SDO in the middle of the download."""
+    view = window.panes.view("firmware:main")
+    sdo = on_node_5(window, view, monkeypatch)
+    sdo.objects[PROGRAM_CONTROL] = {1: type("Control", (), {"raw": 0})()}
+    monkeypatch.setattr(window.confirm, "ask", lambda *_a: True)
+    held = []
+
+    def run(job, done):
+        held.append(window.ctx.pause.holders)
+        done(job(), None)
+
+    monkeypatch.setattr(view.app, "run_in_background", run)
+    view.image = Image([Segment(0, b"firmware")])
+    view._download()
+    assert held == [["CANopen firmware download"]]
+    assert not window.ctx.pause.paused, "given back when it is done"
 
 
 def test_an_image_that_will_not_read_is_reported(app, window, tmp_path):

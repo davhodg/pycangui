@@ -5,6 +5,7 @@
 - [Your files](files.md) --- what pycangui keeps, where, and where the file dialogs open
 - [Workspaces](workspaces.md) --- one folder per product or network; skip this if you only have one
 - [Panes and layout](panes.md) --- docking, floating, pinning, more than one of a pane
+- [Pausing and stopping](pause.md) --- holding back what pycangui sends by itself, as during a flash
 
 ## Panes
 

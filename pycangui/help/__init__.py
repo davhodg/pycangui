@@ -42,6 +42,7 @@ PAGES = (
     "files.md",
     "workspaces.md",
     "panes.md",
+    "pause.md",
     "trace.md",
     "transmit.md",
     "signals.md",

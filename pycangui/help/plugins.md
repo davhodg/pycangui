@@ -101,6 +101,9 @@ pycangui ships rather than the one you are editing.
 | `add_trace_labeller(fn)` | name frames in every trace: `fn(frame) -> str \| None` |
 | `add_field_widget(kind, class)` | an eighth way for a [custom pane](custom-panes.md) to show an object |
 | `run_in_background(job, done)` | work off the GUI thread, so the window does not freeze |
+| `paused`, `on_pause(fn)` | whether pycangui's own traffic is [paused](pause.md), and `fn(on)` when that changes; hold back your own polling too (API 2) |
+| `on_stop_all(fn)` | `fn()` when everything that repeats is stopped, for good (API 2) |
+| `hold_traffic(why)` / `release_traffic(why)` | pause pycangui's traffic while you do `why`, a download say; given back if you are unloaded (API 2) |
 | `log` / `warn` / `error` | say something in the Event Log, prefixed with your name |
 | `window` `ctx` `hooks` `panes` `channels` `bus` `signals` `canopen` `uds` `j1939` `xcp` `dbc` | the live objects |
 | `confirm` | the confirmations pycangui asks before disturbing equipment, for a plugin that does too |

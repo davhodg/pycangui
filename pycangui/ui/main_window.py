@@ -53,6 +53,7 @@ from pycangui.core.export import write_csv
 from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
+from pycangui.core.pause import described
 from pycangui.core.plugins import Plugins
 from pycangui.core.signals import BYTES_PER_SAMPLE, LIMITS, SignalHub, stored_text
 from pycangui.core.simnodes import SimulatedNodes
@@ -80,6 +81,7 @@ from pycangui.ui.database_view import DatabaseView
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.panes import PaneKind, Panes
+from pycangui.ui.pause_status import PauseStatus
 from pycangui.ui.plugin_app import PluginApp
 from pycangui.ui.plugin_manager import (
     BEHIND,
@@ -178,6 +180,8 @@ LOG_TIMES_TIP = (
     "of it: 14:03:27 Warning: ... From the next line on; kept when lines are\n"
     "copied."
 )
+#: Who holds the pause while a UDS download or upload runs.
+UDS_TRANSFER = "UDS transfer"
 HISTORY_KEY = "signals.history"
 HISTORY_TIP = (
     "How many samples of each decoded signal are kept, for the plot and for\n"
@@ -326,6 +330,16 @@ class MainWindow(QMainWindow):
         self.ctx.uds = self.uds
         self.ctx.j1939 = self.j1939
         self.ctx.xcp = self.xcp
+        # pycangui's own traffic: a pause holds back what it sends by itself
+        # and Stop all ends everything that repeats (core/pause.py). The
+        # panes, the XCP manager, simulated nodes and plugins hear it from
+        # ctx.pause themselves; these are what has no ctx to hear it from.
+        pause = self.ctx.pause
+        pause.changed.connect(self.canopen.set_paused)
+        pause.changed.connect(self._say_paused)
+        pause.stop_all_requested.connect(self._stop_all_transmits)
+        pause.stop_all_requested.connect(self._say_stopped_all)
+        self.uds.transferring.connect(self._uds_transferring)
         self.recorder = Recorder(self.channels)  # every connected channel
 
         # --- panes -----------------------------------------------------------
@@ -391,6 +405,8 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
         self.bus_status = BusStatus(self.channels, ctx=self.ctx)
         self.statusBar().addWidget(self.bus_status, 1)
+        self.pause_status = PauseStatus(self.ctx.pause)
+        self.statusBar().addPermanentWidget(self.pause_status)
         self._frame_count = 0
         self._status_timer = QTimer(self, interval=500, timeout=self._update_status)
         self._status_timer.start()
@@ -545,6 +561,11 @@ class MainWindow(QMainWindow):
             "The Python files the simulated nodes are made from, one per\n"
             "kind of device. Kept in the workspace, beside the hooks."
         )
+        # Also on the status bar's right-click, where what they do is shown;
+        # here for the keyboard.
+        tools_menu.addSeparator()
+        tools_menu.addAction(self.pause_status.pause_action)
+        tools_menu.addAction(self.pause_status.stop_action)
         tools_menu.addSeparator()
         # Together, because "put something back the way it was" is one thing
         # to go looking for, and entries scattered down a menu are
@@ -1228,6 +1249,31 @@ class MainWindow(QMainWindow):
         title = self.panes.docks[name].windowTitle() if name in self.panes.docks else name
         self.events.information(
             f"{title} was closed with {stopped} cyclic message(s) sending, so they were stopped."
+        )
+
+    @Slot(bool)
+    def _uds_transferring(self, on: bool) -> None:
+        """A UDS download or upload holds pycangui's other traffic back while it runs."""
+        if on:
+            self.ctx.pause.hold(UDS_TRANSFER)
+        else:
+            self.ctx.pause.release(UDS_TRANSFER)
+
+    @Slot(bool)
+    def _say_paused(self, on: bool) -> None:
+        if on:
+            self.events.information(
+                f"Automatic traffic paused ({described(self.ctx.pause.holders)}): polling, "
+                "CANopen SYNC and TIME, and CANopen's unasked reads wait. What is done by "
+                "hand still goes out, as do UDS Tester Present and the J1939 DM13 hold."
+            )
+        else:
+            self.events.information("Automatic traffic going again.")
+
+    def _say_stopped_all(self) -> None:
+        self.events.information(
+            "Stopped all repeating traffic: cyclic messages, polling, CANopen SYNC and TIME, "
+            "and what plugins keep doing. Each starts again only when asked."
         )
 
     def _stop_all_transmits(self) -> None:

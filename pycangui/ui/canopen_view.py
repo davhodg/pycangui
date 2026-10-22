@@ -514,6 +514,8 @@ class CanopenView(QWidget):
         self.send_time_btn.setToolTip(SEND_TIME_TIP)
         self.send_time_btn.clicked.connect(self._send_time)
         producers_in.addWidget(self.send_time_btn)
+        # Stop all ends both for good; a pause only holds them (the manager's).
+        ctx.pause.stop_all_requested.connect(self.stop_producers)
         nmt_bar.addWidget(producers)
         nmt_bar.addStretch()
         # What is set once rather than done lives on a dialog of its own: the
@@ -1598,6 +1600,11 @@ class CanopenView(QWidget):
             self.manager.start_time(chosen.time_period_s, chosen.time_local)
         else:
             self.manager.stop_time()
+
+    def stop_producers(self) -> None:
+        """Stop all: SYNC and TIME unticked, as though by hand."""
+        self.sync_btn.setChecked(False)
+        self.time_btn.setChecked(False)
 
     def _send_time(self) -> None:
         self.manager.send_time(canopen_settings.load(self.ctx).time_local)

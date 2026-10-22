@@ -11,6 +11,11 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- Pausing pycangui's own traffic -- polling, CANopen SYNC and TIME, CANopen's unasked reads --
+  while a UDS transfer or a CANopen firmware download runs, or by hand from the status bar's
+  right-click or the Tools menu. *Stop all repeating traffic* beside it stops cyclic messages,
+  polling, SYNC and TIME and plugins' own for good. Plugins (API 2) and simulated nodes
+  (`on_pause`) are told of both; the CiA 402 pane halts its drive.
 - CAN Trace: *Check counter / checksum...* checks a device's messages as they arrive, with
   CAN Transmit's settings: a Counter / checksum column, green or red, and faults counted in
   Signals and Plot.

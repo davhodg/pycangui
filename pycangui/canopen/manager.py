@@ -296,6 +296,13 @@ class CanopenManager(QObject):
         self._time_timer.timeout.connect(self._transmit_time)
         self._time_local = True
         self._sync_on = False
+        #: SYNC's period and counter while it runs, so a pause can start it again.
+        self._sync_settings: tuple[float, int] | None = None
+        #: Whether pycangui's own traffic is held back (core/pause.py), and
+        #: what the pause stopped that it is to start again.
+        self._paused = False
+        self._sync_after_pause: tuple[float, int] | None = None
+        self._time_after_pause = False
         self._sync_thread: threading.Thread | None = None
         self._sync_stop = threading.Event()
         self._worker = Worker()  # starts itself the first time it is used
@@ -328,7 +335,8 @@ class CanopenManager(QObject):
         self._not_heartbeats_said: set[int] = set()
         #: Work pycangui does unasked that is SDO -- identifying a node first
         #: heard, reading its PDO configuration again -- put off while the
-        #: node is stopped, and done when it leaves Stopped: node -> which.
+        #: node is stopped or pycangui's traffic is paused, and done when
+        #: neither is so any more: node -> which.
         self._held: dict[int, set[str]] = {}
         # Queued: a boot-up is heard on the bus's thread.
         self.node_seen.connect(self._on_state)
@@ -376,6 +384,8 @@ class CanopenManager(QObject):
     @Slot()
     def _on_bus_disconnected(self) -> None:
         self.forget_nodes()
+        # Nothing to start again on: a producer is started by hand next time.
+        self._sync_after_pause, self._time_after_pause = None, False
         if self.network is None:
             return
         for listener in self.network.listeners:
@@ -1126,11 +1136,56 @@ class CanopenManager(QObject):
         return self.nmt_states.get(node_id) == NODE_STOPPED
 
     def identify_unasked(self, node_id: int) -> None:
-        """Identify a node first heard -- now, or once it is no longer stopped."""
-        if self.is_stopped(node_id):
-            self._held.setdefault(node_id, set()).add("identify")
-        else:
+        """Identify a node first heard -- now, or once nothing holds it back."""
+        self._unasked(node_id, {"identify"})
+
+    def _holding(self, node_id: int) -> bool:
+        """Whether what pycangui reads unasked waits, for now, for this node."""
+        return self._paused or self.is_stopped(node_id)
+
+    def _unasked(self, node_id: int, what: set[str]) -> None:
+        """Do this unasked work now, or keep it for when nothing holds it back."""
+        if not what:
+            return
+        if self._holding(node_id):
+            self._held.setdefault(node_id, set()).update(what)
+            return
+        if "identify" in what:
             self.identify(node_id)
+        if "pdos" in what and self.read_pdos_when_found:
+            self.read_pdo_config(node_id)
+
+    # --- pausing pycangui's own traffic ------------------------------------------
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    def set_paused(self, on: bool) -> None:
+        """Hold back what this manager sends unasked, or let it go again.
+
+        SYNC and TIME stop and start again as they were; identifying a node
+        and reading its PDOs again wait, and are done when it lifts. What is
+        asked for by hand is not held: see core/pause.py.
+        """
+        if on == self._paused:
+            return
+        self._paused = on
+        if on:
+            self._sync_after_pause = self._sync_settings if self._sync_on else None
+            self._time_after_pause = self._time_timer.isActive()
+            if self._sync_on:
+                self._halt_sync()
+            self._time_timer.stop()
+            return
+        if self._sync_after_pause is not None and not self._sync_on:
+            self.start_sync(*self._sync_after_pause)
+        if self._time_after_pause and not self._time_timer.isActive():
+            self._transmit_time()
+            self._time_timer.start()
+        self._sync_after_pause, self._time_after_pause = None, False
+        for node_id in list(self._held):
+            if not self.is_stopped(node_id):
+                self._unasked(node_id, self._held.pop(node_id))
 
     def identify(self, node_id: int) -> None:
         """Read 0x1000 and 0x1018 with raw SDO uploads (no EDS needed)."""
@@ -1186,9 +1241,9 @@ class CanopenManager(QObject):
                 node_id, path, node.object_dictionary.device_information.product_name or ""
             )
             self.load_pdos_from_eds(node_id)
-            if not self.read_pdos_when_found or self.is_stopped(node_id):
+            if not self.read_pdos_when_found or self._holding(node_id):
                 # Decoded by the EDS's mapping, which is all there is to go
-                # by until the node is asked -- or, while stopped, can be.
+                # by until the node is asked -- or, while held back, can be.
                 self._decode_pdos(node_id, node)
             self.refresh_pdo_config(node_id)
 
@@ -1447,13 +1502,9 @@ class CanopenManager(QObject):
 
     def refresh_pdo_config(self, node_id: int) -> None:
         """Read the PDO configuration again, where reading it unasked is on --
-        now, or once the node is no longer stopped."""
-        if not self.read_pdos_when_found:
-            return
-        if self.is_stopped(node_id):
-            self._held.setdefault(node_id, set()).add("pdos")
-        else:
-            self.read_pdo_config(node_id)
+        now, or once nothing holds it back."""
+        if self.read_pdos_when_found:
+            self._unasked(node_id, {"pdos"})
 
     def _on_state(self, node_id: int, state: str) -> None:
         """What a heartbeat means for the work pycangui does unasked.
@@ -1462,7 +1513,8 @@ class CanopenManager(QObject):
         configuration is read again -- only one with an EDS, whose first
         read comes when that is loaded: the first boot-up of a node nobody
         knows yet is what finds it one. A node that has left Stopped is
-        given whatever was put off while it was there.
+        given whatever was put off while it was there, unless pycangui's
+        traffic is paused, when it goes on waiting.
         """
         if state == NODE_STOPPED:
             return
@@ -1470,10 +1522,7 @@ class CanopenManager(QObject):
         node = self.node(node_id)
         if state == BOOT_UP and node is not None and len(node.object_dictionary):
             held.add("pdos")
-        if "identify" in held:
-            self.identify(node_id)
-        if "pdos" in held:
-            self.refresh_pdo_config(node_id)
+        self._unasked(node_id, held)
 
     def read_from_node(self, node_id: int) -> tuple[bool, bool]:
         """Whether its TPDO and its RPDO configuration were read from the node
@@ -1736,12 +1785,21 @@ class CanopenManager(QObject):
             self.network.sync.start(period_s)  # returns None; it keeps its own task
             counting = ""
         self._sync_on = True
+        self._sync_settings = (period_s, overflow)
+        self._sync_after_pause = None  # started by hand, during a pause or not
         self.message.emit(f"SYNC started at {period_s * 1000:.0f} ms{counting}", INFORMATION)
         self.sync_changed.emit(True, period_s)
 
     def stop_sync(self) -> None:
+        self._sync_after_pause = None  # stopped by hand: not to start again
         if not self._sync_on:
             return
+        self._halt_sync()
+        self.message.emit("SYNC stopped", INFORMATION)
+        self.sync_changed.emit(False, 0.0)
+
+    def _halt_sync(self) -> None:
+        """Stop sending SYNC, saying nothing: a pause says it, once, for all of it."""
         if self._sync_thread is not None:
             self._sync_stop.set()
             self._sync_thread.join(1.0)
@@ -1751,8 +1809,6 @@ class CanopenManager(QObject):
         except Exception:  # the bus went away first
             pass
         self._sync_on = False
-        self.message.emit("SYNC stopped", INFORMATION)
-        self.sync_changed.emit(False, 0.0)
 
     # --- TIME producer (CiA 301 TIME_OF_DAY on 0x100) ---------------------------
     @property
@@ -1774,6 +1830,7 @@ class CanopenManager(QObject):
             self.message.emit(f"TIME: {NOT_CONNECTED}", WARNING)
             return
         self._time_local = local
+        self._time_after_pause = False  # started by hand, during a pause or not
         self._transmit_time(local)
         self._time_timer.start(max(1, round(period_s * 1000)))
         self.message.emit(
@@ -1781,6 +1838,7 @@ class CanopenManager(QObject):
         )
 
     def stop_time(self) -> None:
+        self._time_after_pause = False  # stopped by hand: not to start again
         if not self._time_timer.isActive():
             return
         self._time_timer.stop()

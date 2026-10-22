@@ -28,6 +28,12 @@ needs::
 All four are optional -- a node that only listens implements ``on_frame``, one
 that only shouts implements ``poll``.
 
+A fifth, ``on_pause(node, paused, *, ctx)``, is told when pycangui's own
+traffic is paused and when it goes on again -- during a flash, say (see
+core/pause.py). A simulated node stands for another device, so nothing about
+it is paused unless it chooses: ``node.paused`` says which, for a ``poll``
+that would rather stay quiet.
+
 **Each node runs on a thread of its own.**  It is a device on the bus, and a
 device does not answer late because the tool's window is busy redrawing a
 trace. All four functions of one node run on that node's thread, one at a
@@ -67,6 +73,8 @@ DEFAULTS_PACKAGE = "pycangui.nodes"
 #: declares nothing at all still runs -- under its own filename.
 DEFAULT_RATE_HZ = 10.0
 FUNCTIONS = ("start", "poll", "on_frame", "stop")
+#: Called if a node file has it, and not enough by itself to make a node.
+OPTIONAL_FUNCTIONS = ("on_pause",)
 
 #: Slower than this and polling is the wrong tool; faster and Python is the
 #: wrong language. Both ends are held to rather than warned about, because a
@@ -100,6 +108,13 @@ STOP_WAIT_S = 2.0
 
 #: On a node's queue, between the frames: time to go.
 _STOP = object()
+
+
+@dataclass(frozen=True)
+class _Pause:
+    """On a node's queue, between the frames: pycangui paused, or going again."""
+
+    paused: bool
 
 
 class NodeError(RuntimeError):
@@ -202,6 +217,8 @@ class Node(QObject):
         self.ctx = ctx
         #: Yours. pycangui never reads it.
         self.state = SimpleNamespace()
+        #: Whether pycangui's own traffic is paused. Read it; on_pause is told.
+        self.paused = False
 
         self._functions = functions
         #: The application's channels this node stands on, by name. Used
@@ -503,7 +520,19 @@ class Node(QObject):
             if job is _STOP:
                 self._call("stop")
                 return  # whoever asked takes the buses down
+            if isinstance(job, _Pause):
+                self._call("on_pause", job.paused)
+                continue
             self._call("on_frame", job)
+
+    def set_paused(self, on: bool) -> None:
+        """pycangui's own traffic paused or going again: the node's on_pause is
+        called on its own thread, between frames, like everything else."""
+        if on == self.paused:
+            return
+        self.paused = on
+        if self._running and "on_pause" in self._functions:
+            self._jobs.put(_Pause(on))
 
     def _deliver(self, frame: can.Message) -> None:
         """A frame, from the reader's thread, on its way to the node's own."""
@@ -628,6 +657,10 @@ class SimulatedNodes(QObject):
         #: that.
         self._may_transmit = may_transmit or (lambda _channels: True)
         self._running: list[Node] = []
+        #: pycangui's own traffic paused: each node is told, and decides.
+        self._pause = getattr(ctx, "pause", None)
+        if self._pause is not None:
+            self._pause.changed.connect(self.set_paused)
         self.ensure_user_files()
 
     # --- the files ----------------------------------------------------------
@@ -709,6 +742,8 @@ class SimulatedNodes(QObject):
             # nothing. It never reaches the list.
             raise NodeError(f"{kind.label} would not start: {exc}") from exc
         self._running.append(node)
+        if self._pause is not None and self._pause.paused:
+            node.set_paused(True)  # started during a pause: told, as the others were
         self.ctx.log(
             f"Simulated node {node.name} started on {', '.join(node.channels)} "
             f"at {node.rate_hz:g} Hz"
@@ -722,6 +757,11 @@ class SimulatedNodes(QObject):
         node.stop()
         self.ctx.log(f"Simulated node {node.name} stopped")
         self.changed.emit()
+
+    def set_paused(self, on: bool) -> None:
+        """Tell every running node that pycangui's own traffic is paused, or not."""
+        for node in self._running:
+            node.set_paused(on)
 
     def stop_all(self) -> None:
         """Every node, on the way out. A simulated node holding a bus open
@@ -782,4 +822,8 @@ class SimulatedNodes(QObject):
             raise NodeError(f"{kind.label} failed to load:\n{traceback.format_exc()}") from exc
         finally:
             sys.dont_write_bytecode = saved
-        return {name: fn for name in FUNCTIONS if callable(fn := getattr(module, name, None))}
+        return {
+            name: fn
+            for name in (*FUNCTIONS, *OPTIONAL_FUNCTIONS)
+            if callable(fn := getattr(module, name, None))
+        }

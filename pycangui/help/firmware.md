@@ -24,7 +24,9 @@ manufacturer software version (0x100A), and the software identification
 (0x1F56) and flash status (0x1F57) where the device keeps them. It works
 without an EDS, which is the usual case for a device sitting in its loader.
 Enter bootloader and Download are designed to ask first, once a session for each node, because
-stopping the program stops whatever it was controlling.
+stopping the program stops whatever it was controlling. While a program goes in, the rest of
+pycangui's own traffic is [paused](pause.md), so the node is not identified or its PDOs read as
+it reboots into its loader.
 
 ## Programming timeout
 

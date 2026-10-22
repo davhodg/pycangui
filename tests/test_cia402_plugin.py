@@ -846,3 +846,27 @@ def test_its_values_are_in_the_font_that_follows_the_text_size(app):
         assert plugin._fixed_pitch().pointSizeF() > before.pointSizeF()
     finally:
         app.setFont(before)
+
+
+def test_a_pause_or_stop_all_puts_the_drive_in_its_safe_state(app, window, view, monkeypatch):
+    """The global stop reaches the plugin: a running drive is halted and its
+    polling unticked, as when its pane is closed."""
+    from pycangui.plugins.cia402 import plugin
+
+    halted = []
+    monkeypatch.setattr(
+        view, "stop_demand", lambda background=True, why=plugin.CLOSING: halted.append(why)
+    )
+    view.node.addItem("Node 5", 5)
+    window.panes.show("cia402:main")
+    app.processEvents()
+    view.poll.setChecked(True)
+
+    window.ctx.pause.hold("UDS transfer")
+    assert view.poller.paused and view.poll.isChecked()
+    assert halted == [plugin.PAUSING], "nothing watches it while paused: put in its safe state"
+    window.ctx.pause.release("UDS transfer")
+    assert not view.poller.paused and halted == [plugin.PAUSING], "and not set moving again"
+
+    window.ctx.pause.stop_all()
+    assert halted[-1] == plugin.STOPPING_ALL and not view.poll.isChecked()
