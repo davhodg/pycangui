@@ -383,6 +383,17 @@ class CanopenManager(QObject):
 
     @Slot()
     def _on_bus_disconnected(self) -> None:
+        # The producers first, while there is still a network to stop them
+        # on. The selection moving to another channel arrives as this too,
+        # and the channel left behind would go on carrying SYNC with nothing
+        # on screen ticked for it.
+        if self._sync_on:
+            self._halt_sync()
+            self.message.emit("SYNC stopped", INFORMATION)
+            self.sync_changed.emit(False, 0.0)
+        if self._time_timer.isActive():
+            self._time_timer.stop()
+            self.message.emit("TIME producer stopped", INFORMATION)
         self.forget_nodes()
         # Nothing to start again on: a producer is started by hand next time.
         self._sync_after_pause, self._time_after_pause = None, False

@@ -11,7 +11,9 @@ Tabbing a transmit pane behind another, or detaching it into a window of its
 own, are not putting it away: it is still on screen and still sending.
 
 *Stop all cyclic* means all of them, in every transmit pane, however many are
-open.
+open. Disconnecting the channel, or selecting another one in the toolbar, stops
+them too and takes their ticks off: the channel left behind stays open, and
+would otherwise go on carrying them.
 
 Each **CAN Transmit** pane holds one list of everything it sends, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded

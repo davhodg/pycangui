@@ -39,6 +39,8 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- Selecting another channel stops cyclic messages and CANopen SYNC and TIME on the channel left
+  behind, which stayed open and went on carrying them with nothing ticked for them.
 - CAN Transmit: an extra transmit pane closed for good stops its cyclic messages; they went on
   with no row left to untick, out of reach of *Stop all cyclic*.
 - CANopen: a frame on 0x701-0x77F that is not a heartbeat -- one byte, carrying a state -- is

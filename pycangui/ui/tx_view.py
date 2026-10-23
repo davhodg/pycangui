@@ -1222,9 +1222,24 @@ class TxView(QWidget):
 
     @Slot()
     def _on_disconnected(self) -> None:
-        self._tasks.clear()  # the bus stops its own tasks
+        """The channel went, or another one was selected: stop what this list sent on it.
+
+        Stopped here rather than left to the bus. A disconnect does stop the
+        bus's own tasks, but the selection moving to another channel arrives
+        the same way, and the channel left behind goes on -- with whatever
+        was repeating on it still repeating and no row left to untick.
+        """
+        stopped = len(self._tasks)
+        for row in [*self._tasks]:
+            self._stop_row(row)
         for row in range(self.message_count()):
             self._set_cyclic(row, False)
+        if stopped:
+            self.ctx.log(
+                f"CAN Transmit: {stopped} cyclic message(s) stopped, as "
+                f"{self.bus.channel_name or 'the channel'} was disconnected or another "
+                "channel was selected."
+            )
 
     # --- edits ---------------------------------------------------------------------------
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
