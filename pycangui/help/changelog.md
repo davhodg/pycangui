@@ -39,6 +39,9 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- Cyclic messages are stopped one at a time when a channel closes, and one that will not stop --
+  possible where the adapter keeps the time itself -- is said in the Event Log rather than
+  leaving the rest running.
 - Selecting another channel stops cyclic messages and CANopen SYNC and TIME on the channel left
   behind, which stayed open and went on carrying them with nothing ticked for them.
 - CAN Transmit: an extra transmit pane closed for good stops its cyclic messages; they went on

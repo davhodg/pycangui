@@ -54,7 +54,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core import tx_fields
-from pycangui.core.bus import BusManager
+from pycangui.core.bus import BusManager, stop_task
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.named_values import named, number_in, with_its_name
@@ -1173,7 +1173,16 @@ class TxView(QWidget):
                 msg.data = bytearray(payload)
                 msg.dlc = len(payload)
 
-        task = self.bus.send_periodic(can_id, data, period, extended=ext, fd=fd, modifier=stamp)
+        owner = self.item(row).text(COL_NAME) or f"0x{can_id:X}"
+        task = self.bus.send_periodic(
+            can_id,
+            data,
+            period,
+            extended=ext,
+            fd=fd,
+            modifier=stamp,
+            owner=f"CAN Transmit: {owner}",
+        )
         if task is None:
             self._set_cyclic(row, False)
             return
@@ -1181,8 +1190,16 @@ class TxView(QWidget):
 
     def _stop_row(self, row: int) -> None:
         task = self._tasks.pop(row, None)
-        if task is not None:
-            task.stop()
+        if task is None:
+            return
+        if (why := stop_task(task)) is not None:
+            # Said, never swallowed: where the adapter keeps the time, a task
+            # that would not stop is a message still on the bus.
+            self.ctx.error(
+                f"TX row {row + 1}: its cyclic message could not be stopped ({why}). If the "
+                "adapter times it itself it may still be sending: disconnect the channel, or "
+                "unplug the adapter, to be sure."
+            )
 
     def _rebuild_tasks(self) -> None:
         """Row numbers shift when rows are removed; restart from the checkboxes."""
