@@ -927,6 +927,7 @@ class MainWindow(QMainWindow):
                 Qt.BottomDockWidgetArea,
                 self._new_transmit,
                 several=True,
+                shutdown=self._close_transmit,
             ),
             PaneKind(
                 "scope",
@@ -1274,6 +1275,21 @@ class MainWindow(QMainWindow):
         self.events.information(
             "Stopped all repeating traffic: cyclic messages, polling, CANopen SYNC and TIME, "
             "and what plugins keep doing. Each starts again only when asked."
+        )
+
+    def _close_transmit(self, view) -> None:
+        """A transmit pane closed for good takes its cyclic messages with it.
+
+        Put away, it stops them in _on_pane_shown; closed for good, it had
+        already been forgotten as a transmit pane by the time it was hidden,
+        and its messages went on with no row left anywhere to untick.
+        """
+        if not isinstance(view, TxView) or not (stopped := view.cyclic_count()):
+            return
+        view.stop_all()
+        self.events.information(
+            f"A CAN Transmit pane was closed with {stopped} cyclic message(s) sending, "
+            "so they were stopped."
         )
 
     def _stop_all_transmits(self) -> None:

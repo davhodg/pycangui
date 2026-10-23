@@ -39,6 +39,8 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- CAN Transmit: an extra transmit pane closed for good stops its cyclic messages; they went on
+  with no row left to untick, out of reach of *Stop all cyclic*.
 - CANopen: a frame on 0x701-0x77F that is not a heartbeat -- one byte, carrying a state -- is
   no longer taken for a node, listed, identified and sent SDO.
 - Event Log: the SDO lines the CANopen library writes say which node and object they are

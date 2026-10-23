@@ -2,9 +2,10 @@
 
 # CAN Transmit
 
-A transmit pane only sends while it is on screen. Closing one stops whatever
-it was repeating -- frames arriving on a live bus from a pane nobody can see is
-the hardest sort of fault to find, since nothing on screen accounts for them --
+A transmit pane only sends while it is on screen. Closing one, or closing an
+extra one for good, stops whatever it was repeating -- frames arriving on a
+live bus from a pane nobody can see is the hardest sort of fault to find,
+since nothing on screen accounts for them --
 and it says so in the Event Log. Bringing it back does not start them again.
 Tabbing a transmit pane behind another, or detaching it into a window of its
 own, are not putting it away: it is still on screen and still sending.
