@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -78,6 +79,7 @@ from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.custom_pane_view import CustomPaneView
 from pycangui.ui.database_view import DatabaseView
+from pycangui.ui.diagnostics import RECENT_PROBLEMS
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.panes import PaneKind, Panes
@@ -259,6 +261,8 @@ class MainWindow(QMainWindow):
         #: the only thing that writes to the pane. Warnings and errors open it
         #: if it has been closed; notes do not.
         self.events = EventLog()
+        #: The last warnings and errors, for Help > Diagnostics: (time, level, text).
+        self.recent_problems: deque[tuple[str, str, str]] = deque(maxlen=RECENT_PROBLEMS)
         self._log_times = QSettings().value(LOG_TIMES_KEY, False, type=bool)
         self._surfacing = False
         self.events.posted.connect(self._on_event)
@@ -1772,6 +1776,7 @@ class MainWindow(QMainWindow):
         if at_end:
             bar.setValue(bar.maximum())
         if level in PROBLEMS:
+            self.recent_problems.append((f"{datetime.now():%H:%M:%S}", level, message))
             self._surface_log()
 
     def log_menu(self):

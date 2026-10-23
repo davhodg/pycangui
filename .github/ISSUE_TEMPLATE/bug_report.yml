@@ -27,7 +27,7 @@ body:
     attributes:
       label: Diagnostics
       description: |
-        *Help > Diagnostics...* copies a report to the clipboard: the versions of pycangui, Python, PySide6, python-can and canopen, the platform, and each channel's adapter, state and load. Paste it here. An adapter's description can include its serial number; remove that if you would rather.
+        *Help > Diagnostics...* opens a report and copies it to the clipboard: the versions of pycangui, Python, PySide6, python-can and canopen, the platform, each channel's adapter, state and load, what is being sent, and the state of each protocol. Paste it here. An adapter's description can include its serial number, and the report names your workspace folder and the files loaded; remove any of that if you would rather.
         If pycangui will not start at all, say so, and paste whatever it printed instead.
       render: text
 

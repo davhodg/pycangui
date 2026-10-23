@@ -64,6 +64,6 @@ An error inside pycangui itself -- a bug -- is reported here with its
 traceback, rather than disappearing with only a button that did nothing to show
 for it. Please send it with a bug report.
 
-*Help > Diagnostics...* writes a report of the versions and each channel's
-adapter, state, load and error count here, and copies it to the clipboard; see
-[About, licences and updates](about.md).
+*Help > Diagnostics...* opens a report in a window of its own, with the last
+twenty warnings and errors from here among it, and copies it to the clipboard;
+see [About, licences and updates](about.md).

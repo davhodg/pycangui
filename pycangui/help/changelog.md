@@ -31,6 +31,10 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- *Help > Diagnostics...* opens in a window of its own, with Refresh, Copy and Save, and says
+  what is being sent -- each channel's cyclic messages, whose they are and who keeps their time --
+  with the pause, polling, simulated nodes, the protocols' state, what is loaded, recent warnings
+  and errors, and running threads.
 - CANopen: *Store* and *Restore defaults* show their result in a box.
 - CANopen: nothing goes over SDO to a node whose heartbeat says Stopped: it is refused at once,
   saying why, rather than left to time out, and the node's SDO commands are greyed with the
@@ -39,6 +43,7 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- *Help > Diagnostics*: the demo device was always reported as running.
 - Cyclic messages are stopped one at a time when a channel closes, and one that will not stop --
   possible where the adapter keeps the time itself -- is said in the Event Log rather than
   leaving the rest running.
