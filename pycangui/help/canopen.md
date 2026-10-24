@@ -185,8 +185,8 @@ The selected node's dictionary fills from its EDS. Double-click an entry to
 read it from the node, and edit a value to write it back. The filter box
 matches the index or the name, and several words must all match.
 
-Tick **Watch** against the objects a job uses and **Watched** shows only those.
-The list is kept per device, so the next controller of the same kind opens with
+Tick **Bookmark** against the objects a job uses and **Bookmarked** shows only
+those; nothing is read because of a bookmark. The list is kept per device, so the next controller of the same kind opens with
 the objects you were using on the last one. **Read all** reads every readable
 entry, one SDO at a time, which takes a while on a large node: while it runs,
 a bar in its place says how far it has got, with **Stop** beside it. Objects

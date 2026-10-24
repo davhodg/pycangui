@@ -117,7 +117,7 @@ COL_VALUE = 4
 #: fifteen hundred of them and a job uses eight, so the list you build is
 #: worth more than the search that built it -- and it is the shape a
 #: user-composed pane will need later.
-COL_WATCH = 5
+COL_BOOKMARK = 5
 
 # --- columns of the node list, which is a different tree with its own 5 ---
 COL_LEVEL = 4  #: the access level held
@@ -534,7 +534,7 @@ class CanopenView(QWidget):
 
         # --- object dictionary ---------------------------------------------
         self.od = QTreeWidget()
-        self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value", "Watch"])
+        self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value", "Bookmark"])
         self.od.setFont(mono)
         self.od_widths = ColumnWidths(
             self.od, ctx.settings, "canopen.od", stretch=COL_VALUE, last_stretches=False
@@ -561,19 +561,20 @@ class CanopenView(QWidget):
             "discarded -- clearing the box brings the rest back."
         )
         self.od_search.textChanged.connect(lambda _t: self._apply_od_filter())
-        self.watched_only = QPushButton("Watched")
-        self.watched_only.setCheckable(True)
-        self.watched_only.setToolTip(
-            "Show only the objects ticked in the Watch column.\n"
+        self.bookmarked_only = QPushButton("Bookmarked")
+        self.bookmarked_only.setCheckable(True)
+        self.bookmarked_only.setToolTip(
+            "Show only the objects ticked in the Bookmark column. Nothing is\n"
+            "read because of it: a bookmark is for finding an object again.\n"
             "The list is kept per device, so the next controller of the same\n"
             "kind opens with the objects you were using on the last one."
         )
-        self.watched_only.toggled.connect(lambda _on: self._apply_od_filter())
+        self.bookmarked_only.toggled.connect(lambda _on: self._apply_od_filter())
 
         od_bar = QHBoxLayout()
         od_bar.addWidget(QLabel("Object dictionary"))
         od_bar.addWidget(self.od_search, 1)
-        od_bar.addWidget(self.watched_only)
+        od_bar.addWidget(self.bookmarked_only)
         read_all = QPushButton("Read all")
         read_all.setToolTip(
             "Read every readable entry in the dictionary, one SDO at a time.\n"
@@ -1844,7 +1845,7 @@ class CanopenView(QWidget):
             if source is not None
             else getattr(node, "object_dictionary", None)
         )
-        watched = self._watched(node_id)
+        bookmarked = self._bookmarked(node_id)
         if od is not None:
             parent_items: dict[int, QTreeWidgetItem] = {}
             for index, sub, var, name in od_entries(od):
@@ -1869,10 +1870,10 @@ class CanopenView(QWidget):
                     f"{index:04X} {sub_text} {name} {parent_name}".lower(),
                 )
                 if var is not None and source is None:
-                    # Watching is about a device, and a file is not one.
+                    # Bookmarks are kept per device, and a file is not one.
                     item.setCheckState(
-                        COL_WATCH,
-                        Qt.Checked if (index, sub or 0) in watched else Qt.Unchecked,
+                        COL_BOOKMARK,
+                        Qt.Checked if (index, sub or 0) in bookmarked else Qt.Unchecked,
                     )
                 if var is not None and var.writable:
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
@@ -1883,8 +1884,8 @@ class CanopenView(QWidget):
         self._apply_od_filter()
 
     # --- finding one of fifteen hundred -------------------------------------------
-    def _watch_key(self, node_id: int | None) -> str:
-        """Which device this watch list belongs to.
+    def _bookmark_key(self, node_id: int | None) -> str:
+        """Which device a list of bookmarks belongs to.
 
         The identity where the node has told us one, so the same kind of
         controller opens with the same list next time; the node id only as a
@@ -1896,31 +1897,36 @@ class CanopenView(QWidget):
         identity = self._identities.get(node_id)
         return identity.key if identity is not None else f"node{node_id}"
 
-    def _watched(self, node_id: int | None) -> set[tuple[int, int]]:
-        key = self._watch_key(node_id)
+    def _bookmarked(self, node_id: int | None) -> set[tuple[int, int]]:
+        key = self._bookmark_key(node_id)
         if not key:
             return set()
+        # Stored under the name the column had before it was called Bookmark,
+        # so lists made then are still there.
         stored = self.ctx.settings.get("canopen.watch", {}).get(key, [])
         return {(int(i), int(s)) for i, s in stored}
 
-    def _save_watched(self, node_id: int, watched: set[tuple[int, int]]) -> None:
+    def _save_bookmarks(self, node_id: int, bookmarked: set[tuple[int, int]]) -> None:
         all_lists = dict(self.ctx.settings.get("canopen.watch", {}))
-        key = self._watch_key(node_id)
-        if watched:
-            all_lists[key] = sorted([index, sub] for index, sub in watched)
+        key = self._bookmark_key(node_id)
+        if bookmarked:
+            all_lists[key] = sorted([index, sub] for index, sub in bookmarked)
         else:
             all_lists.pop(key, None)  # an empty list is the same as no list
         self.ctx.settings.set("canopen.watch", all_lists)
 
-    def _on_watch_toggled(self, item: QTreeWidgetItem) -> None:
+    def _on_bookmark_toggled(self, item: QTreeWidgetItem) -> None:
         node_id = self._od_node
         if node_id is None:
             return
         where = (item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
-        watched = self._watched(node_id)
-        watched.add(where) if item.checkState(COL_WATCH) == Qt.Checked else watched.discard(where)
-        self._save_watched(node_id, watched)
-        if self.watched_only.isChecked():
+        bookmarked = self._bookmarked(node_id)
+        if item.checkState(COL_BOOKMARK) == Qt.Checked:
+            bookmarked.add(where)
+        else:
+            bookmarked.discard(where)
+        self._save_bookmarks(node_id, bookmarked)
+        if self.bookmarked_only.isChecked():
             self._apply_od_filter()
 
     def _apply_od_filter(self) -> None:
@@ -1931,10 +1937,10 @@ class CanopenView(QWidget):
         the record shows the whole of it.
         """
         needles = self.od_search.text().lower().split()
-        only_watched = self.watched_only.isChecked()
+        only_bookmarked = self.bookmarked_only.isChecked()
 
         def keep(item: QTreeWidgetItem) -> bool:
-            if only_watched and item.checkState(COL_WATCH) != Qt.Checked:
+            if only_bookmarked and item.checkState(COL_BOOKMARK) != Qt.Checked:
                 return False
             haystack = item.data(0, ROLE_SEARCH) or ""
             return all(needle in haystack for needle in needles)
@@ -2021,8 +2027,8 @@ class CanopenView(QWidget):
     def _on_od_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if self._updating:
             return
-        if column == COL_WATCH:
-            self._on_watch_toggled(item)
+        if column == COL_BOOKMARK:
+            self._on_bookmark_toggled(item)
             return
         if column != COL_VALUE:
             return

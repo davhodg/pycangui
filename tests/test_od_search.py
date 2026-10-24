@@ -3,7 +3,7 @@
 """Finding one object in a dictionary of fifteen hundred, and keeping the ones you use.
 
 A real controller offers well over a thousand entries and any given job uses
-eight of them. The search is how you find those eight; the watch list is how
+eight of them. The search is how you find those eight; the bookmarks are how
 you stop finding them again every morning.
 """
 
@@ -15,7 +15,7 @@ from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.ui.canopen_view import COL_WATCH, ROLE_INDEX, ROLE_SUB, CanopenView
+from pycangui.ui.canopen_view import COL_BOOKMARK, ROLE_INDEX, ROLE_SUB, CanopenView
 
 
 @pytest.fixture
@@ -115,49 +115,49 @@ def test_nothing_matching_hides_everything_and_keeps_it(loaded):
     assert len(visible(loaded)) == before, "nothing was discarded"
 
 
-# --- the watch list ----------------------------------------------------------------
+# --- bookmarks ----------------------------------------------------------------------
 def _item(view, index, sub):
     return view._od_item(index, sub)
 
 
-def test_ticking_watch_remembers_the_object(loaded):
-    _item(loaded, 0x1018, 1).setCheckState(COL_WATCH, Qt.Checked)
-    assert (0x1018, 1) in loaded._watched(5)
+def test_ticking_bookmark_remembers_the_object(loaded):
+    _item(loaded, 0x1018, 1).setCheckState(COL_BOOKMARK, Qt.Checked)
+    assert (0x1018, 1) in loaded._bookmarked(5)
 
 
 def test_unticking_forgets_it(loaded):
     item = _item(loaded, 0x1018, 1)
-    item.setCheckState(COL_WATCH, Qt.Checked)
-    item.setCheckState(COL_WATCH, Qt.Unchecked)
-    assert (0x1018, 1) not in loaded._watched(5)
+    item.setCheckState(COL_BOOKMARK, Qt.Checked)
+    item.setCheckState(COL_BOOKMARK, Qt.Unchecked)
+    assert (0x1018, 1) not in loaded._bookmarked(5)
 
 
-def test_watched_only_shows_the_short_list(loaded):
-    _item(loaded, 0x1018, 1).setCheckState(COL_WATCH, Qt.Checked)
-    loaded.watched_only.setChecked(True)
+def test_bookmarked_only_shows_the_short_list(loaded):
+    _item(loaded, 0x1018, 1).setCheckState(COL_BOOKMARK, Qt.Checked)
+    loaded.bookmarked_only.setChecked(True)
     found = visible(loaded)
     assert (0x1018, 1) in found
-    assert (0x1000, None) not in found, "an object nobody watched is not on the list"
+    assert (0x1000, None) not in found, "an object nobody bookmarked is not on the list"
 
 
-def test_a_watched_child_keeps_its_parent_visible(loaded):
-    _item(loaded, 0x1018, 1).setCheckState(COL_WATCH, Qt.Checked)
-    loaded.watched_only.setChecked(True)
+def test_a_bookmarked_child_keeps_its_parent_visible(loaded):
+    _item(loaded, 0x1018, 1).setCheckState(COL_BOOKMARK, Qt.Checked)
+    loaded.bookmarked_only.setChecked(True)
     assert (0x1018, None) in visible(loaded)
 
 
 def test_the_filter_and_the_list_narrow_together(loaded):
     for sub in (1, 2):
-        _item(loaded, 0x1018, sub).setCheckState(COL_WATCH, Qt.Checked)
-    loaded.watched_only.setChecked(True)
+        _item(loaded, 0x1018, sub).setCheckState(COL_BOOKMARK, Qt.Checked)
+    loaded.bookmarked_only.setChecked(True)
     loaded.od_search.setText("vendor")
     found = [(i, s) for i, s in visible(loaded) if s is not None]
-    assert found == [(0x1018, 1)], "watched and matching, not one or the other"
+    assert found == [(0x1018, 1)], "bookmarked and matching, not one or the other"
 
 
 def test_the_list_belongs_to_the_device_not_the_address(loaded):
     """Two different controllers can sit at node 5 on different days."""
-    _item(loaded, 0x1018, 1).setCheckState(COL_WATCH, Qt.Checked)
+    _item(loaded, 0x1018, 1).setCheckState(COL_BOOKMARK, Qt.Checked)
     stored = loaded.ctx.settings.get("canopen.watch", {})
     assert loaded._identities[5].key in stored
     assert "node5" not in stored
@@ -165,24 +165,24 @@ def test_the_list_belongs_to_the_device_not_the_address(loaded):
 
 def test_an_unidentified_node_still_gets_a_list(view):
     """Falling back to the address is worse than an identity and better than nothing."""
-    assert view._watch_key(7) == "node7"
+    assert view._bookmark_key(7) == "node7"
 
 
 def test_the_list_survives_a_restart(loaded, app, tmp_path, monkeypatch):
-    _item(loaded, 0x1018, 1).setCheckState(COL_WATCH, Qt.Checked)
+    _item(loaded, 0x1018, 1).setCheckState(COL_BOOKMARK, Qt.Checked)
 
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     ctx = Context(log=print)
     bus = BusManager()
     again = CanopenView(CanopenManager(bus), Hooks(ctx), ctx)
     again._identities[5] = loaded._identities[5]
-    assert (0x1018, 1) in again._watched(5)
+    assert (0x1018, 1) in again._bookmarked(5)
     bus.disconnect_bus()
 
 
 def test_an_empty_list_is_not_stored(loaded):
     """Otherwise settings.json fills with keys saying nothing."""
     item = _item(loaded, 0x1018, 1)
-    item.setCheckState(COL_WATCH, Qt.Checked)
-    item.setCheckState(COL_WATCH, Qt.Unchecked)
+    item.setCheckState(COL_BOOKMARK, Qt.Checked)
+    item.setCheckState(COL_BOOKMARK, Qt.Unchecked)
     assert loaded.ctx.settings.get("canopen.watch", {}) == {}

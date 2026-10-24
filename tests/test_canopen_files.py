@@ -204,11 +204,11 @@ def test_nothing_typed_is_not_a_value(app, view, eds, typed):
     assert source.edited == {}
 
 
-def test_the_watch_column_is_not_offered_for_a_file(view, eds):
+def test_the_bookmark_column_is_not_offered_for_a_file(view, eds):
     view.open_file(eds)
-    from pycangui.ui.canopen_view import COL_WATCH
+    from pycangui.ui.canopen_view import COL_BOOKMARK
 
-    assert view._od_item(0x2001, 0).data(COL_WATCH, Qt.CheckStateRole) is None
+    assert view._od_item(0x2001, 0).data(COL_BOOKMARK, Qt.CheckStateRole) is None
 
 
 # --- the PDO tab, for a file ----------------------------------------------------------------

@@ -37,6 +37,8 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- CANopen: the object dictionary's *Watch* column is now *Bookmark*, and its button
+  *Bookmarked*: it marks objects to find again, and reads nothing.
 - *Help > Diagnostics...* opens in a window of its own, with Refresh, Copy and Save, and says
   what is being sent -- each channel's cyclic messages, whose they are and who keeps their time --
   with the pause, polling, simulated nodes, the protocols' state, what is loaded, recent warnings
