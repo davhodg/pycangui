@@ -35,12 +35,17 @@ Once loaded: the trace shows the message
 name and the **Signals and Plot** pane lists every signal with its live value.
 CANopen PDO values appear there too, a node's TPDOs and the RPDOs it is
 sent -- except a PDO a loaded database also describes, which is listed once,
-as the database decodes it: the database has the names and scaling, and the PDO decode would put the same frame beside it
-with raw numbers. Removing a database takes its signals off the list and the
-plot, and a PDO it described comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
-alongside the list; drag the splitter to give
-the plot the whole pane, or the list. `resources/demo.dbc` matches the demo
-device.
+as the database decodes it: the database has the names and scaling, and the
+PDO decode would put the same frame beside it with raw numbers. Removing a
+database takes its signals off the list and the plot, and a PDO it described
+comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
+alongside the list; drag the splitter to give the plot the whole pane, or the
+list. `resources/demo.dbc` matches the demo device.
+
+**The list goes beside the plot or below it**: *List below the plot*, on the
+list's right-click, puts it underneath, so the plot has the whole width and
+the list room for its statistics columns -- in a pane undocked and made full
+screen, say. Each Signals and Plot pane keeps its own choice.
 
 The filter box above the list narrows it to the signals whose names match.
 **Right-click** the list, or its *Plot Y1* or *Plot Y2* heading, to plot or

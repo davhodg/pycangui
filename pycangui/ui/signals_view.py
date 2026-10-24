@@ -55,7 +55,7 @@ COLUMN_TIPS = {
 Y1_TIP = "Plot the signal against the left Y axis.\nRight-click to plot or unplot several at once."
 MENU_TIP = (
     "Right-click to plot or unplot every signal, or every signal of one message,\n"
-    "and to show the Count, Rate, Min and Max columns."
+    "to show the Count, Rate, Min and Max columns, and to put the list below the plot."
 )
 
 
@@ -73,6 +73,12 @@ def _number(value: float | None, choices=None) -> str:
     )
 
 
+BELOW_TEXT = "List below the plot"
+BELOW_TIP = (
+    "Put this list under the plot rather than beside it: the plot gets the\n"
+    "whole width, and the list room for more columns -- in a pane undocked\n"
+    "and made full screen, say. Kept with this pane."
+)
 Y2_TIP = (
     "Plot the signal against a second Y axis, on the right of the plot, with a\n"
     "scale of its own. A signal is on one axis at a time."
@@ -87,6 +93,8 @@ class SignalsView(QWidget):
     all_unplotted = Signal()
     #: Which optional columns are showing changed, for whoever remembers it.
     columns_changed = Signal(list)
+    #: *List below the plot* was ticked or unticked on the right-click.
+    below_wanted = Signal(bool)
 
     def __init__(self, hub: SignalHub, settings=None, now=None) -> None:
         super().__init__()
@@ -97,6 +105,9 @@ class SignalsView(QWidget):
         self._groups: dict[str, QTreeWidgetItem] = {}
         self._items: dict[str, QTreeWidgetItem] = {}
         self._updating = False
+        #: Whether the pane shows this list below the plot rather than beside
+        #: it: the pane's to decide and remember, said here for the menu.
+        self.below = False
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
@@ -307,6 +318,11 @@ class SignalsView(QWidget):
             action.setChecked(not self.tree.isColumnHidden(column))
             action.setToolTip(COLUMN_TIPS[column])
             action.toggled.connect(lambda on, n=column_name: self._toggle_column(n, on))
+        below = menu.addAction(BELOW_TEXT)
+        below.setCheckable(True)
+        below.setChecked(self.below)
+        below.setToolTip(BELOW_TIP)
+        below.toggled.connect(self.below_wanted.emit)
         return menu
 
     def _signals(self, group: QTreeWidgetItem | None, shown_only: bool) -> list[QTreeWidgetItem]:

@@ -211,6 +211,55 @@ def test_the_columns_shown_come_back_with_the_pane(app, tmp_path, monkeypatch):
     assert bare.signals_view.columns() == [], "none at all is remembered too, not put back"
 
 
+# --- the list beside the plot, or below it -----------------------------------------------------
+def test_the_list_can_go_below_the_plot_and_comes_back_there(app, tmp_path, monkeypatch):
+    """Below, the plot has the whole width and the list room for columns --
+    in a pane undocked and made full screen, say."""
+    from pycangui.core.context import Context
+    from pycangui.core.signals import SignalHub
+    from pycangui.ui.scope_view import ScopeView
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    hub = SignalHub()
+    first = ScopeView(hub, lambda: 0.0, ctx, key="scope")
+    assert first.splitter.orientation() == Qt.Horizontal
+    assert first.splitter.widget(0) is first.signals_view, "beside, the list on the left"
+
+    below = next(a for a in first.signals_view.menu_for(None, 0).actions() if a.isCheckable())
+    below.setChecked(True)  # chosen on the list's right-click
+    assert first.splitter.orientation() == Qt.Vertical
+    assert first.splitter.widget(0) is first.plot and first.splitter.widget(1) is first.signals_view
+
+    again = ScopeView(hub, lambda: 0.0, ctx, key="scope")
+    assert again.list_below and again.splitter.orientation() == Qt.Vertical, "kept with the pane"
+    other = ScopeView(hub, lambda: 0.0, ctx, key="scope 2")
+    assert not other.list_below, "each pane keeps its own"
+
+    again.set_list_below(False)
+    assert again.splitter.orientation() == Qt.Horizontal
+    assert again.splitter.widget(0) is again.signals_view
+    assert not ScopeView(hub, lambda: 0.0, ctx, key="scope").list_below
+
+
+def test_a_layout_saved_side_by_side_does_not_undo_the_list_below(app, tmp_path, monkeypatch):
+    """A splitter's saved state carries its orientation; the choice wins."""
+    from pycangui.core.context import Context
+    from pycangui.core.signals import SignalHub
+    from pycangui.ui.scope_view import ScopeView
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    ctx = Context(log=print)
+    hub = SignalHub()
+    beside = ScopeView(hub, lambda: 0.0, ctx, key="scope")
+    saved = beside.save_state()
+    beside.set_list_below(True)
+    pane = ScopeView(hub, lambda: 0.0, ctx, key="scope")
+    pane.restore_state(saved)
+    assert pane.splitter.orientation() == Qt.Vertical and pane.splitter.widget(0) is pane.plot
+    assert all(size >= 0 for size in pane.splitter.sizes())
+
+
 # --- how much is kept, and saying so ---------------------------------------------------------
 def test_the_history_keeps_as_many_samples_as_it_is_set_to():
     from pycangui.core.signals import SignalHub

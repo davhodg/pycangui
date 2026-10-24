@@ -11,6 +11,7 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- Signals and Plot: the signal list can go below the plot as well as beside it.
 - Pausing pycangui's own traffic -- polling, CANopen SYNC and TIME, CANopen's unasked reads --
   while a UDS transfer or a CANopen firmware download runs, or by hand from the status bar's
   right-click or the Tools menu. *Stop all repeating traffic* beside it stops cyclic messages,
