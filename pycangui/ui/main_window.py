@@ -964,7 +964,9 @@ class MainWindow(QMainWindow):
                 "canopen",
                 "CANopen",
                 Qt.RightDockWidgetArea,
-                lambda _name: CanopenView(self.canopen, self.hooks, self.ctx),
+                lambda _name: CanopenView(
+                    self.canopen, self.hooks, self.ctx, signals=self.signals, now=self.bus.now
+                ),
                 detached_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),

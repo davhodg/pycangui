@@ -126,7 +126,8 @@ def pause(window) -> list[str]:
 
 
 def polling(window) -> list[str]:
-    """Every pane reading something over and over: custom panes, plugin panes."""
+    """Every pane reading something over and over: custom panes, plugin panes,
+    and objects polled from the CANopen object dictionary."""
     lines = []
     for name in window.panes.names():
         poller = getattr(window.panes.view(name), "poller", None)
@@ -136,6 +137,19 @@ def polling(window) -> list[str]:
         title = dock.windowTitle() if dock is not None else name
         held = " (paused)" if getattr(poller, "paused", False) else ""
         lines.append(f"{title}: {poller.hz:g} Hz asked, {poller.achieved:.1f} Hz achieved{held}")
+    for name in window.panes.names():
+        # The CANopen pane's object dictionary, polling the objects ticked there.
+        poll = getattr(window.panes.view(name), "sdo_poll", None)
+        if poll is None or not poll.running:
+            continue
+        dock = window.panes.docks.get(name)
+        title = dock.windowTitle() if dock is not None else name
+        nodes = ", ".join(str(n) for n in poll.nodes()) or "none that can answer"
+        held = " (paused)" if poll.paused else ""
+        lines.append(
+            f"{title} object dictionary: nodes {nodes}; {poll.hz:g} Hz asked, "
+            f"{poll.achieved:.1f} Hz achieved{held}"
+        )
     return lines
 
 

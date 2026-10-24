@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -69,6 +70,7 @@ from pycangui.core.hooks import Hooks
 from pycangui.core.named_values import plain
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
+from pycangui.custom_panes.polling import MAX_HZ, MIN_HZ, rate_text
 from pycangui.custom_panes.source import FileSource
 from pycangui.ui import (
     canopen_dbc,
@@ -85,7 +87,9 @@ from pycangui.ui.compare_view import CompareView, CompareWindow
 from pycangui.ui.edit_columns import EditColumns
 from pycangui.ui.faults_view import FaultsView
 from pycangui.ui.lss_view import LssView
+from pycangui.ui.od_poll import DEFAULT_HZ, DictionaryPoll
 from pycangui.ui.pdo_view import PdoConfigView
+from pycangui.ui.persist import remember
 
 ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
@@ -118,6 +122,24 @@ COL_VALUE = 4
 #: worth more than the search that built it -- and it is the shape a
 #: user-composed pane will need later.
 COL_BOOKMARK = 5
+#: A tick against the objects to read over and over while *Poll ticked* is on;
+#: see od_poll.py. Its own column, apart from Bookmark: finding an object
+#: again and sending a request for it a few times a second are not the same.
+COL_POLL = 6
+POLL_TICKED_TIP = (
+    "Read the objects ticked in the Poll column over and over, on every node\n"
+    "that has some, so their values follow the controller. Numbers go to\n"
+    "Signals and Plot, to plot and export like any other signal.\n"
+    "Held while pycangui's own traffic is paused, and stopped by Stop all."
+)
+POLL_HZ_TIP = (
+    "How often to read them, at most. SDO reads are a request and an answer\n"
+    "each, so the rate achieved, beside this, is often lower."
+)
+POLL_COLUMN_TIP = (
+    "Tick an object to read it over and over while Poll ticked is on.\n"
+    "Kept per device, like the bookmarks."
+)
 
 # --- columns of the node list, which is a different tree with its own 5 ---
 COL_LEVEL = 4  #: the access level held
@@ -302,7 +324,9 @@ class CanopenView(QWidget):
     #: A pane name (or "" for one not made yet) and the objects to put on it.
     add_to_custom_pane = Signal(str, object)
 
-    def __init__(self, manager: CanopenManager, hooks: Hooks, ctx: Context) -> None:
+    def __init__(
+        self, manager: CanopenManager, hooks: Hooks, ctx: Context, signals=None, now=None
+    ) -> None:
         super().__init__()
         self.manager = manager
         self.hooks = hooks
@@ -534,7 +558,8 @@ class CanopenView(QWidget):
 
         # --- object dictionary ---------------------------------------------
         self.od = QTreeWidget()
-        self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value", "Bookmark"])
+        self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value", "Bookmark", "Poll"])
+        self.od.headerItem().setToolTip(COL_POLL, POLL_COLUMN_TIP)
         self.od.setFont(mono)
         self.od_widths = ColumnWidths(
             self.od, ctx.settings, "canopen.od", stretch=COL_VALUE, last_stretches=False
@@ -575,6 +600,45 @@ class CanopenView(QWidget):
         od_bar.addWidget(QLabel("Object dictionary"))
         od_bar.addWidget(self.od_search, 1)
         od_bar.addWidget(self.bookmarked_only)
+
+        # Polling the ticked objects: a row of its own under the bar, in a
+        # frame, since a tick, a rate and what it achieves are one thing.
+        self.sdo_poll = DictionaryPoll(
+            manager, ctx.settings, self._bookmark_key, signals=signals, now=now, parent=self
+        )
+        poll_frame, poll_in = _framed("SDO poll")
+        self.poll_ticked = QCheckBox("Poll ticked")
+        self.poll_ticked.setToolTip(POLL_TICKED_TIP)
+        self.poll_ticked.toggled.connect(self._on_poll_ticked)
+        self.poll_hz = QDoubleSpinBox()
+        self.poll_hz.setRange(MIN_HZ, MAX_HZ)
+        self.poll_hz.setDecimals(2)
+        self.poll_hz.setSingleStep(0.5)
+        self.poll_hz.setSuffix(" Hz")
+        self.poll_hz.setToolTip(POLL_HZ_TIP)
+        self.poll_hz.setAccessibleName("SDO poll rate")
+        remember(ctx, "canopen.poll_hz", self.poll_hz, DEFAULT_HZ)
+        self.poll_hz.valueChanged.connect(self.sdo_poll.set_rate)
+        self.sdo_poll.set_rate(self.poll_hz.value())
+        self.poll_rate = QLabel("")
+        self.poll_rate.setAccessibleName("SDO poll rate achieved")
+        self.poll_rate.setToolTip("The rate the ticked objects are actually being read at.")
+        self.sdo_poll.rate.connect(
+            lambda asked, got, running, paused: self.poll_rate.setText(
+                rate_text(asked, got, running, paused)
+            )
+        )
+        for widget in (self.poll_ticked, self.poll_hz, self.poll_rate):
+            poll_in.addWidget(widget)
+        self.sdo_poll.set_paused(ctx.pause.paused)
+        ctx.pause.changed.connect(self.sdo_poll.set_paused)
+        ctx.pause.stop_all_requested.connect(lambda: self.poll_ticked.setChecked(False))
+        #: Objects whose polled reads are failing, so it is said once and not
+        #: a few times a second: (node, index, sub).
+        self._poll_failing: set[tuple[int, int, int]] = set()
+        poll_bar = QHBoxLayout()
+        poll_bar.addWidget(poll_frame)
+        poll_bar.addStretch()
         read_all = QPushButton("Read all")
         read_all.setToolTip(
             "Read every readable entry in the dictionary, one SDO at a time.\n"
@@ -619,6 +683,7 @@ class CanopenView(QWidget):
         objects_l = QVBoxLayout(objects)
         objects_l.setContentsMargins(0, 0, 0, 0)
         objects_l.addLayout(od_bar)
+        objects_l.addLayout(poll_bar)
         objects_l.addWidget(self.od)
         self.pdo_config = PdoConfigView(manager, ctx)
         self.pdo_config.save_requested.connect(lambda: self.save_file(self.selected_file()))
@@ -1846,6 +1911,7 @@ class CanopenView(QWidget):
             else getattr(node, "object_dictionary", None)
         )
         bookmarked = self._bookmarked(node_id)
+        polled = self.sdo_poll.polled(node_id) if node_id is not None else set()
         if od is not None:
             parent_items: dict[int, QTreeWidgetItem] = {}
             for index, sub, var, name in od_entries(od):
@@ -1875,6 +1941,11 @@ class CanopenView(QWidget):
                         COL_BOOKMARK,
                         Qt.Checked if (index, sub or 0) in bookmarked else Qt.Unchecked,
                     )
+                    if getattr(var, "readable", True):
+                        item.setCheckState(
+                            COL_POLL,
+                            Qt.Checked if (index, sub or 0) in polled else Qt.Unchecked,
+                        )
                 if var is not None and var.writable:
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
                 if var is not None and source is not None:
@@ -2022,13 +2093,21 @@ class CanopenView(QWidget):
             return
         node_id = self.selected_node()
         if node_id is not None and item.childCount() == 0:
-            self.manager.sdo_read(node_id, item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+            where = (item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+            self.sdo_poll.note_read(node_id, *where)
+            self.manager.sdo_read(node_id, *where)
 
     def _on_od_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if self._updating:
             return
         if column == COL_BOOKMARK:
             self._on_bookmark_toggled(item)
+            return
+        if column == COL_POLL:
+            if self._od_node is not None:
+                where = (item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+                on = item.checkState(COL_POLL) == Qt.Checked
+                self.sdo_poll.set_polled(self._od_node, where, on)
             return
         if column != COL_VALUE:
             return
@@ -2175,7 +2254,9 @@ class CanopenView(QWidget):
 
     @Slot(int, int, int, object, object)
     def on_sdo_result(self, node_id: int, index: int, sub: int, value, error) -> None:
-        if error and node_id == getattr(self, "_reading_node", None):
+        if self.sdo_poll.answer(node_id, index, sub, value, error):
+            self._note_poll_result(node_id, index, sub, error)
+        elif error and node_id == getattr(self, "_reading_node", None):
             self._read_failures.append((index, sub, error))  # said when Read all is over
         elif error and self.manager.is_stopped(node_id):
             # Refused at once rather than timed out, so a custom pane polling
@@ -2200,6 +2281,21 @@ class CanopenView(QWidget):
         item.setToolTip(4, tip)
         item.setToolTip(1, tip)
         self._updating = False
+
+    def _note_poll_result(self, node_id: int, index: int, sub: int, error) -> None:
+        """A failing polled read is said once, and again only after it has read."""
+        where = (node_id, index, sub)
+        if not error:
+            self._poll_failing.discard(where)
+        elif where not in self._poll_failing:
+            self._poll_failing.add(where)
+            self.ctx.warn(
+                f"Node {node_id}: polling SDO {index:04X}:{sub:02X} failed: {error}. "
+                "Said once until it reads again."
+            )
+
+    def _on_poll_ticked(self, on: bool) -> None:
+        self.sdo_poll.start() if on else self.sdo_poll.stop()
 
     # --- PDOs -----------------------------------------------------------------
     @Slot(int, str, dict)

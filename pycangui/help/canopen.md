@@ -186,8 +186,25 @@ read it from the node, and edit a value to write it back. The filter box
 matches the index or the name, and several words must all match.
 
 Tick **Bookmark** against the objects a job uses and **Bookmarked** shows only
-those; nothing is read because of a bookmark. The list is kept per device, so the next controller of the same kind opens with
-the objects you were using on the last one. **Read all** reads every readable
+those; nothing is read because of a bookmark. The list is kept per device, so
+the next controller of the same kind opens with the objects you were using on
+the last one.
+
+**Polling.** Tick **Poll** against objects to follow, and **Poll ticked** in
+the *SDO poll* frame reads them over and over, on every node that has some
+ticked, up to the rate in the box beside it; the rate actually managed is shown
+after it, since every SDO read is a request and an answer and is often slower
+than asked. Their values update in the *Value* column, and numbers go to
+[Signals and Plot](signals.md) under *Node 5* (for node 5), to plot and export
+like any other signal. The ticks are kept per device, like bookmarks; polling
+itself starts only when *Poll ticked* is ticked, never on its own when
+pycangui opens. A node that is stopped or has lost its heartbeat is left alone
+until it is back, a failing object is warned about once until it reads again,
+a pause of pycangui's own traffic holds the polling, and *Stop all repeating
+traffic* stops it. A [custom pane](custom-panes.md) polls the objects on it in
+the same way.
+
+**Read all** reads every readable
 entry, one SDO at a time, which takes a while on a large node: while it runs,
 a bar in its place says how far it has got, with **Stop** beside it. Objects
 it could not read are counted rather than each given a warning: a box at the

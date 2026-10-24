@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen: a *Poll* column in the object dictionary and *Poll ticked* beside it read the ticked
+  objects over and over, into Signals and Plot.
 - Signals and Plot: the signal list can go below the plot as well as beside it, from a new
   *View* button.
 - Plots: dark to match the theme, or always light or always dark, from the same *View* button,

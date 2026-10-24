@@ -111,3 +111,14 @@ def test_it_opens_in_a_window_of_its_own_and_is_copied(app, window, tmp_path, mo
     dialog.save()
     assert "Sending" in path.read_text(encoding="utf-8")
     dialog.close()
+
+
+def test_polling_from_the_object_dictionary_is_listed_while_it_runs(window, monkeypatch):
+    view = window.canopen_view
+    monkeypatch.setattr(window.canopen, "nodes", lambda: [5])
+    before = len(report.polling(window))
+    view.sdo_poll.set_polled(5, (0x1018, 1), True)
+    view.poll_ticked.setChecked(True)
+    assert len(report.polling(window)) == before + 1
+    view.poll_ticked.setChecked(False)
+    assert len(report.polling(window)) == before
