@@ -55,6 +55,7 @@ from pycangui.canopen.display import (
 )
 from pycangui.canopen.display import text as value_text
 from pycangui.custom_panes.model import Field, display_for
+from pycangui.ui import plot_colours
 
 #: A value that was refused, and one that has not been read yet.
 REFUSED = QColor(200, 40, 40)
@@ -678,7 +679,10 @@ class MapWidget(FieldWidget):
         self.plot.showGrid(x=True, y=True, alpha=0.3)
         self.plot.setLabel("bottom", item.x_label or "X")
         self.plot.setLabel("left", item.y_label or self.display.unit or "Y")
-        self.curve = self.plot.plot([], [], pen=pg.mkPen("#1f77b4", width=2), symbol="o")
+        self.curve = self.plot.plot([], [], symbol="o")
+        # The same colours as Signals and Plot, chosen from its View button.
+        plot_colours.Follower(self, self.repaint_colours)
+        self.repaint_colours()
 
         self.reread = QPushButton("Read")
         self.reread.setToolTip("Read every point of the map again.")
@@ -699,6 +703,14 @@ class MapWidget(FieldWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setMinimumHeight(180)
         self._updating = False
+
+    def repaint_colours(self) -> None:
+        scheme = plot_colours.scheme_for(self)
+        plot_colours.paint(self.plot, scheme)
+        colour = scheme.curve(0)
+        self.curve.setPen(pg.mkPen(colour, width=2))
+        self.curve.setSymbolPen(colour)
+        self.curve.setSymbolBrush(colour)
 
     # --- reading it -------------------------------------------------------------------
     def refresh(self) -> None:

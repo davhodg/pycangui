@@ -42,10 +42,19 @@ comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
 alongside the list; drag the splitter to give the plot the whole pane, or the
 list. `resources/demo.dbc` matches the demo device.
 
-**The list goes beside the plot or below it**: *List below the plot*, on the
-list's right-click, puts it underneath, so the plot has the whole width and
-the list room for its statistics columns -- in a pane undocked and made full
-screen, say. Each Signals and Plot pane keeps its own choice.
+**The list goes beside the plot or below it**: the **View** button on the
+plot's top row, or the list's right-click, puts it underneath, so the plot has
+the whole width and the list room for its statistics columns -- in a pane
+undocked and made full screen, say. Each Signals and Plot pane keeps its own
+choice.
+
+**The plot's colours** are chosen from the same *View* button: *Match the
+theme*, so the plot is dark in the dark theme and light in the light one;
+*Always light*, for pictures going into a report; or *Always dark*. The choice
+is kept on this computer and applies to every plot, the graphs of maps in
+custom panes as well. Each has its own set of curve colours, picked so that
+every one stands out clearly from its background, and the first signal plotted
+is blue in all of them.
 
 The filter box above the list narrows it to the signals whose names match.
 **Right-click** the list, or its *Plot Y1* or *Plot Y2* heading, to plot or

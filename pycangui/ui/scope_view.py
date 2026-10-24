@@ -9,15 +9,16 @@ switching tabs. In one pane with a splitter between them, both are always
 visible, and either can be dragged shut when only the other is wanted: a full
 width plot, or a plain watch window of live values.
 
-The list is beside the plot, or below it -- chosen on the list's right-click
-and kept with the pane. Below gives the plot the whole width and the list room
-for its statistics columns, which is what a pane undocked and made full screen
-has the space for.
+The list is beside the plot, or below it -- chosen from the plot's *View*
+button or the list's right-click, and kept with the pane. Below gives the plot
+the whole width and the list room for its statistics columns, which is what a
+pane undocked and made full screen has the space for.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QActionGroup
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from pycangui.core.context import Context
@@ -29,6 +30,8 @@ from pycangui.ui.signals_view import DEFAULT_COLUMNS, SignalsView
 LIST_WIDTH = 320
 #: Below the plot, the share of the height the list starts with.
 LIST_SHARE_BELOW = 1 / 3
+BESIDE_TEXT, BELOW_TEXT = "List beside the plot", "List below the plot"
+PLACE_TIP = "Where this pane's signal list goes. Kept with the pane."
 
 
 def _saved_keys(saved) -> list[str]:
@@ -68,6 +71,7 @@ class ScopeView(QWidget):
             widget.setMinimumSize(0, 0)
         self._arrange(below=False)
         self.signals_view.below_wanted.connect(self.set_list_below)
+        self._add_place_choice()
         self.plot.cursors_changed.connect(self.signals_view.set_cursors)
 
         layout = QVBoxLayout(self)
@@ -175,6 +179,25 @@ class ScopeView(QWidget):
             self._arrange(below=on)
         if self._settings is not None:
             self._settings.set(f"{self._key}.list_below", on)
+
+    def _add_place_choice(self) -> None:
+        """The list's place, at the top of the plot's View menu."""
+        menu = self.plot.view_menu
+        first = menu.actions()[0]
+        menu.insertSection(first, "Signal list")
+        self.place_actions = QActionGroup(self)
+        for below, text in ((False, BESIDE_TEXT), (True, BELOW_TEXT)):
+            action = self.place_actions.addAction(text)
+            action.setCheckable(True)
+            action.setData(below)
+            action.setToolTip(PLACE_TIP)
+            menu.insertAction(first, action)
+        self.place_actions.triggered.connect(lambda a: self.set_list_below(a.data()))
+        menu.aboutToShow.connect(self._show_place)
+
+    def _show_place(self) -> None:
+        for action in self.place_actions.actions():
+            action.setChecked(action.data() == self.list_below)
 
     def _arrange(self, below: bool) -> None:
         """Lay the two out: the list on the left, or the plot above the list.

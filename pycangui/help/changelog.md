@@ -11,7 +11,10 @@ since the last version, and comes out in the next one.
 
 ### Added
 
-- Signals and Plot: the signal list can go below the plot as well as beside it.
+- Signals and Plot: the signal list can go below the plot as well as beside it, from a new
+  *View* button.
+- Plots: dark to match the theme, or always light or always dark, from the same *View* button,
+  with curve colours chosen to stand out on each.
 - Signals and Plot: two cursors on the plot, moved by mouse or keyboard, with each signal's
   value at each, the change between them, and the lowest, highest and mean between them.
 - Pausing pycangui's own traffic -- polling, CANopen SYNC and TIME, CANopen's unasked reads --

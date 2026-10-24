@@ -26,20 +26,23 @@ from bisect import bisect_left, bisect_right
 
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
+from pycangui.ui import plot_colours
 from pycangui.ui.persist import remember
 from pycangui.ui.refresh import FAST_MS, SLOW_MS, display_choice
 from pycangui.ui.refresh import LABEL as SLOW_LABEL
@@ -121,7 +124,8 @@ NAMES_TIP = (
     "other axis, with Plot Y2, to give it one of its own."
 )
 LEFT, RIGHT = "left", "right"
-COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
+VIEW_TEXT = "View"
+VIEW_TIP = "How the pane is laid out, and what colours the plot is drawn in."
 
 
 #: Where the marks on the time axis may fall once it shows more than a
@@ -300,6 +304,26 @@ class PlotView(QWidget):
         self.cursor_times = QLabel("")
         self.cursor_times.setAccessibleName("Cursor times")
         self.cursor_times.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        # Choices made about once, so behind one worded button rather than
+        # on the bar: the pane adds where its list goes, above the colours.
+        self.view_menu = QMenu(self)
+        self.view_menu.setToolTipsVisible(True)
+        self.view_menu.addSection("Plot colours")
+        self.colour_actions = QActionGroup(self)
+        for choice, text in plot_colours.CHOICES:
+            action = self.view_menu.addAction(text)
+            action.setCheckable(True)
+            action.setData(choice)
+            action.setToolTip(plot_colours.TIP)
+            self.colour_actions.addAction(action)
+        self.colour_actions.triggered.connect(lambda a: plot_colours.choose(a.data()))
+        self.view_button = QToolButton()
+        self.view_button.setText(VIEW_TEXT)
+        self.view_button.setToolTip(VIEW_TIP)
+        self.view_button.setAccessibleName("View choices")
+        self.view_button.setPopupMode(QToolButton.InstantPopup)
+        self.view_button.setMenu(self.view_menu)
+        self.view_menu.aboutToShow.connect(self._show_colour_choice)
         self._lines: list[pg.InfiniteLine] = []
         #: Which cursor the keys move: 0 for A, 1 for B.
         self._active = 0
@@ -315,6 +339,7 @@ class PlotView(QWidget):
         bar.addWidget(self.cursors)
         bar.addWidget(self.cursor_times)
         bar.addStretch()
+        bar.addWidget(self.view_button)
         bar.addWidget(self.export)
         bar.addWidget(clear)
 
@@ -341,6 +366,35 @@ class PlotView(QWidget):
             # Whether they are on; not where, which is a bus time from one connection.
             remember(ctx, "plot.cursors", self.cursors)
         self._show_time()
+        #: Which of the scheme's colours each curve has: kept, so a curve keeps
+        #: its place in the order when the colours change.
+        self._colour_of: dict[str, int] = {}
+        self._scheme = plot_colours.scheme_for(self)
+        plot_colours.Follower(self, self.repaint_colours)
+        self.repaint_colours()
+
+    # --- colours --------------------------------------------------------------------------
+    @property
+    def scheme(self) -> plot_colours.Scheme:
+        return self._scheme
+
+    def repaint_colours(self) -> None:
+        """Draw everything in the colours chosen, as they now are."""
+        self._scheme = scheme = plot_colours.scheme_for(self)
+        plot_colours.paint(self.plot, scheme)
+        for key, curve in self._curves.items():
+            curve.setPen(pg.mkPen(scheme.curve(self._colour_of.get(key, 0)), width=1.5))
+        for line in self._lines:
+            line.setHoverPen(pg.mkPen(scheme.cursor_hover, width=2.5))
+            line.label.setColor(scheme.cursor_label)
+            line.label.fill = pg.mkBrush(scheme.cursor_label_fill)
+            line.label.update()
+        self.set_active_cursor(self._active)
+
+    def _show_colour_choice(self) -> None:
+        choice = plot_colours.chosen()
+        for action in self.colour_actions.actions():
+            action.setChecked(action.data() == choice)
 
     # --- which stretch of time ------------------------------------------------------------
     def _on_time_chosen(self, index: int) -> None:
@@ -395,9 +449,13 @@ class PlotView(QWidget):
             line = pg.InfiniteLine(
                 angle=90,
                 movable=True,
-                hoverPen=pg.mkPen("#000000", width=2.5),
+                hoverPen=pg.mkPen(self._scheme.cursor_hover, width=2.5),
                 label=name,
-                labelOpts={"position": 0.95, "color": "#202020", "fill": "#ffffffc0"},
+                labelOpts={
+                    "position": 0.95,
+                    "color": self._scheme.cursor_label,
+                    "fill": self._scheme.cursor_label_fill,
+                },
             )
             line.sigPositionChanged.connect(self._on_cursor_moved)
             # The one dragged last is the one the keys go on with.
@@ -448,7 +506,7 @@ class PlotView(QWidget):
         self._active = which
         for i, line in enumerate(self._lines):
             style, width = CURSOR_PENS[i == which]
-            line.setPen(pg.mkPen("#404040", width=width, style=style))
+            line.setPen(pg.mkPen(self._scheme.cursor, width=width, style=style))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if watched is self.plot and event.type() == QEvent.KeyPress and self._lines:
@@ -657,13 +715,15 @@ class PlotView(QWidget):
     def set_plotted(self, key: str, on: bool) -> None:
         if on and key not in self._curves:
             s = self.hub.get(key)
-            pen = pg.mkPen(COLOURS[len(self._curves) % len(COLOURS)], width=1.5)
+            self._colour_of[key] = colour = len(self._curves)
+            pen = pg.mkPen(self._scheme.curve(colour), width=1.5)
             label = f"{s.name} [{s.unit}]" if s and s.unit else (s.name if s else key)
             curve = pg.PlotDataItem([], [], pen=pen, name=label)
             self._curves[key] = curve
             self._attach(key, curve)
         elif not on and key in self._curves:
             self._detach(key, self._curves.pop(key))
+            self._colour_of.pop(key, None)
             self._right.discard(key)
         self._show_axes()
 
