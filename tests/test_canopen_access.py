@@ -297,6 +297,7 @@ def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
     offered = {a.text() for a in view.node_menu(7).actions() if not a.isSeparator()}
     assert offered == {
         "Add node...",
+        "Scan for nodes...",
         "Remove node",
         "Read EDS from node",
         "Identify",
@@ -312,7 +313,7 @@ def test_the_right_click_menu_offers_everything_the_buttons_do(app, window):
     }
     # Save as DBC is under DBC, named for the node; Save DCF is under DCF and
     # is for a file as well, so it is not one of the node's own.
-    besides = {"Add node...", "Remove node", "Save as DBC..."}
+    besides = {"Add node...", "Scan for nodes...", "Remove node", "Save as DBC..."}
     under_the_list = {b.text() for b in view._node_buttons} | {view.save_dcf_action.text()}
     assert offered - besides == under_the_list
 
@@ -321,7 +322,7 @@ def test_the_menu_greys_out_what_needs_a_node_when_none_was_clicked(app, window)
     view = window.canopen_view
     menu = view.node_menu(None)  # right-clicked empty space
     live = {a.text() for a in menu.actions() if a.isEnabled() and not a.isSeparator()}
-    assert live == {"Add node..."}, "the only one that does not need a node"
+    assert live == {"Add node...", "Scan for nodes..."}, "the only ones that need no node"
 
 
 def test_the_menu_greys_out_what_a_lost_node_cannot_answer(app, window):
@@ -329,7 +330,7 @@ def test_the_menu_greys_out_what_a_lost_node_cannot_answer(app, window):
     menu = window.canopen_view.node_menu(7)
     live = {a.text() for a in menu.actions() if a.isEnabled() and not a.isSeparator()}
     # Taken away, and described from what is known of it: neither asks it anything.
-    assert live == {"Add node...", "Remove node", "Save as DBC..."}
+    assert live == {"Add node...", "Scan for nodes...", "Remove node", "Save as DBC..."}
 
 
 def test_a_lost_node_can_no_longer_be_asked_anything(app, window):
@@ -539,7 +540,7 @@ def test_double_clicking_a_nodes_access_level_asks_for_it(app, window, monkeypat
 
 def test_a_row_is_added_or_opened_from_one_button_and_removed_by_another(app, window):
     view = window.canopen_view
-    assert _in(view.add_menu_btn) == ["Add node...", "Open DCF/EDS..."]
+    assert _in(view.add_menu_btn) == ["Add node...", "Scan for nodes...", "Open DCF/EDS..."]
     assert view.add_menu_btn.isEnabled(), "neither needs a node selected"
     before = view.remove_btn.text()
     seen_by_hand(window, 7)

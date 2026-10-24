@@ -82,10 +82,19 @@ is what an EDS is matched from. It happens by itself the first time a node is
 heard, and *only* then: nothing re-reads it afterwards, so a node you have
 reflashed keeps what it said before until this is pressed.
 
-Above the list, **Add / Open** holds the two ways a row gets into it.
+Above the list, **Add / Open** holds the ways a row gets into it.
 **Add node...** puts in a node that has not been heard from:
 one with its heartbeat switched off, held in pre-operational, or sitting in its
-bootloader. It is identified straight away. **Remove** takes the selected
+bootloader. It is identified straight away. **Scan for nodes...** finds such
+nodes instead of you naming them: it reads object 0x1000 from every id in
+*Settings... > Node ids* whose heartbeat is not heard, one at a time, waiting a
+tenth of a second for each, with a bar and **Stop** -- so all 127 ids take
+about thirteen seconds. Any answer, a refusal included, means a node is there,
+and it is put in the list as *found by scan* (and identified, if *Identify a
+node when it is first heard* is on). It is only ever started by hand, so a
+pause does not hold it; *Stop all* ends it. The Event Log and a box say which
+ids answered; the ids that did not are in the SDO log, not the Event Log.
+**Remove** takes the selected
 node out of the list -- one added at the wrong id, or unplugged for good -- and
 works on a lost node too. A node still on the bus comes back with its next
 heartbeat, because it is there. **Login...** asks the selected

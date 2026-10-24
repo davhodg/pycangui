@@ -43,7 +43,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui import resources
-from pycangui.canopen import NodeIdentity, find_eds, load_od
+from pycangui.canopen import NodeIdentity, find_eds, load_od, node_ids
 from pycangui.canopen import emcy as emcy_mod
 from pycangui.canopen.display import (
     Display,
@@ -56,6 +56,7 @@ from pycangui.canopen.display import text as value_text
 from pycangui.canopen.manager import (
     NODE_STOPPED,
     NOT_CONNECTED,
+    SCAN_TIMEOUT_S,
     STOPPED,
     CanopenManager,
     od_entries,
@@ -242,6 +243,11 @@ ADD_MENU_TIP = (
     "Put a row in the list: a node that has not been heard from, or a DCF\n"
     "or EDS file to look at and change with no node at all."
 )
+SCAN_TIP = (
+    "Ask every node id in Settings... > Node ids whether a node is there, by\n"
+    "reading its object 0x1000: finds nodes with their heartbeat off, held\n"
+    "silent, or in a bootloader. Ids whose heartbeat is heard are skipped."
+)
 COMPARE_TIP = (
     "Compare two configurations side by side: a DCF or EDS file, or a node on\n"
     "the bus, against another. Opens with the node or file selected here on\n"
@@ -380,6 +386,7 @@ class CanopenView(QWidget):
             "identified straight away.",
             self._add_node,
         )
+        self.add_menu_btn.add("Scan for nodes...", SCAN_TIP, self.scan_for_nodes)
         self.add_menu_btn.add("Open DCF/EDS...", OPEN_FILE_TIP, self._open_file_dialog)
         # A node or a file, whichever is selected: either way the row goes
         # from the list, so it is one button with one word on it, and its
@@ -540,6 +547,8 @@ class CanopenView(QWidget):
         producers_in.addWidget(self.send_time_btn)
         # Stop all ends both for good; a pause only holds them (the manager's).
         ctx.pause.stop_all_requested.connect(self.stop_producers)
+        # And a scan running, which a pause does not hold: somebody started it.
+        ctx.pause.stop_all_requested.connect(manager.stop_scan)
         nmt_bar.addWidget(producers)
         nmt_bar.addStretch()
         # What is set once rather than done lives on a dialog of its own: the
@@ -766,6 +775,8 @@ class CanopenView(QWidget):
         manager.node_seen.connect(self.on_node_seen)
         manager.access_level.connect(self.on_access_level)
         manager.node_lost.connect(self.on_node_lost)
+        manager.scan_progress.connect(self._on_scan_progress)
+        manager.scan_finished.connect(self._on_scan_finished)
         manager.parameters_done.connect(self._on_parameters_done)
         manager.node_back.connect(self.on_node_back)
         manager.identified.connect(self.on_identified)
@@ -1032,6 +1043,7 @@ class CanopenView(QWidget):
         """Built apart from being shown, so what it offers can be looked at."""
         menu = QMenu(self.nodes)
         menu.addAction("Add node...", self._add_node)
+        menu.addAction("Scan for nodes...", self.scan_for_nodes)
         menu.addAction("Remove node", lambda: self.remove_node(node_id)).setEnabled(
             node_id is not None
         )
@@ -1107,6 +1119,67 @@ class CanopenView(QWidget):
             return
         if (item := self._node_item(node_id)) is not None:
             self.nodes.setCurrentItem(item)
+
+    def scan_for_nodes(self) -> None:
+        """Add / Open > Scan for nodes...: asked first, then a bar with Stop."""
+        if self.manager.network is None:
+            self.ctx.warn(f"Scan: {NOT_CONNECTED}")
+            messages.warning(self, "No scan", NOT_CONNECTED[:1].upper() + NOT_CONNECTED[1:])
+            return
+        wanted = self.manager.scan_ids()
+        if not wanted:
+            messages.information(
+                self,
+                "Scan for nodes",
+                "Every node id in Settings... > Node ids is heard from already.",
+            )
+            return
+        seconds = len(wanted) * SCAN_TIMEOUT_S
+        answer = messages.question(
+            self,
+            "Scan for nodes",
+            f"Read object 0x1000 from node ids {node_ids.text(wanted)} "
+            f"({len(wanted)} id{'s' if len(wanted) != 1 else ''}), to find nodes that send no "
+            f"heartbeat? It takes up to about {max(1, round(seconds))} s; "
+            "Stop ends it at any time.",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes or not self.manager.scan():
+            return
+        self._close_scan_progress()
+        self._scan_progress = self._progress_box(
+            "Scan for nodes", "Starting the scan...", self.manager.stop_scan
+        )
+        self._scan_progress.setMaximum(len(wanted))
+
+    @Slot(int, int, int)
+    def _on_scan_progress(self, node_id: int, done: int, total: int) -> None:
+        if (box := getattr(self, "_scan_progress", None)) is None:
+            return
+        box.setMaximum(total)
+        box.setValue(done)
+        box.setLabelText(f"Asking node id {node_id} ({done + 1} of {total})...")
+
+    @Slot(list, int, bool)
+    def _on_scan_finished(self, found: list, asked: int, stopped: bool) -> None:
+        """Said in a box as well as the Event Log: it was asked for, and waited for."""
+        self._close_scan_progress()
+        if found and (item := self._node_item(found[0])) is not None:
+            self.nodes.setCurrentItem(item)
+        ended = "Stopped part way. " if stopped else ""
+        if found:
+            text = f"{ended}Nodes answering: {node_ids.text(found)}."
+        else:
+            text = f"{ended}No node answered, of {asked} id{'s' if asked != 1 else ''} asked."
+        messages.information(self, "Scan for nodes", text)
+
+    def _close_scan_progress(self) -> None:
+        box, self._scan_progress = getattr(self, "_scan_progress", None), None
+        if box is not None:
+            box.canceled.disconnect(self.manager.stop_scan)
+            box.close()
+            box.deleteLater()
 
     def _remove_selected(self) -> None:
         if (source := self.selected_file()) is not None:

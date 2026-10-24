@@ -65,6 +65,12 @@ MIN_HEARTBEAT_TIMEOUT_S = 1.0
 
 #: The state shown for a node put in the list by hand, until it is heard from.
 ADDED_BY_HAND = "added by hand"
+#: The State column of a node that answered a scan and has sent no heartbeat.
+FOUND_BY_SCAN = "found by scan"
+#: How long a scan waits for each id. A node that is there answers an SDO
+#: within a few milliseconds; waiting the SDO timeout for each of 127 empty
+#: ids would take minutes.
+SCAN_TIMEOUT_S = 0.1
 #: What a heartbeat of 0 is called: the boot-up a node sends as it enters
 #: Pre-operational, and the state it is then in. CiA 301 serves SDO in
 #: Pre-operational and Operational, so of the states a heartbeat says, only
@@ -218,6 +224,8 @@ class CanopenManager(QObject):
     dcf_finished = Signal(int, str, bool)
     read_progress = Signal(int, int, int)  # Read all: node_id, objects done, in all
     read_finished = Signal(int, int, int, bool)  # node_id, done, in all, stopped
+    scan_progress = Signal(int, int, int)  # id being asked, done, in all
+    scan_finished = Signal(list, int, bool)  # ids that answered, ids asked, stopped
     #: The EDS a node keeps in 0x1021: node_id, its bytes, and 0x1022's format.
     stored_eds = Signal(int, object, int)
     #: While that is read: node_id, bytes so far, bytes in all (0: not said).
@@ -308,6 +316,8 @@ class CanopenManager(QObject):
         self._worker = Worker()  # starts itself the first time it is used
         self._stop_stored_eds = False
         self._stop_batch = False
+        self._stop_scan = False
+        self._scanning = False
         #: Nodes whose TPDO mapping was read from the node itself, rather than
         #: taken from the EDS: what a frame of the wrong size is judged against.
         self._mapping_read: set[int] = set()
@@ -721,6 +731,113 @@ class CanopenManager(QObject):
         self.forget_labels()
         self.node_seen.emit(node_id, ADDED_BY_HAND)
         return True
+
+    # --- scanning for nodes that send no heartbeat --------------------------------
+    @property
+    def scanning(self) -> bool:
+        return self._scanning
+
+    def scan_ids(self) -> list[int]:
+        """The ids a scan asks: the node ids from Settings, less the nodes whose
+        heartbeat says they are there already."""
+        heard = {n for n in self.last_heartbeat if n not in self.lost_nodes}
+        return [n for n in sorted(self.node_ids) if n not in heard]
+
+    def scan(self) -> bool:
+        """Ask each id in the node ids whether a node is there. Whether it started.
+
+        A node with its heartbeat off, held silent, or sitting in a bootloader
+        is not seen until somebody adds it by hand; this finds them the way
+        CiA 301 allows, by reading object 0x1000 from each id. Any answer, an
+        abort included, is a node. Started by hand only, so the pause does not
+        hold it (see core/pause.py); Stop all and Stop end it.
+
+        One id at a time on the SDO worker, so it queues behind -- and holds
+        up -- the other SDO work of the pane until it is done.
+        """
+        if self.network is None:
+            self.message.emit(f"Scan: {NOT_CONNECTED}", WARNING)
+            return False
+        if self._scanning:
+            return False
+        wanted = self.scan_ids()
+        network = self.network
+        self._stop_scan, self._scanning = False, True
+        stopped_ids = set()
+
+        def job() -> list[int]:
+            found = []
+            for done, node_id in enumerate(wanted):
+                if self._stop_scan or self.network is not network:
+                    stopped_ids.add(node_id)
+                    break
+                self.scan_progress.emit(node_id, done, len(wanted))
+                if self._answers(network, node_id):
+                    found.append(node_id)
+            return found
+
+        def done(found: list[int] | None, error: str | None) -> None:
+            self._scanning = False
+            stopped = bool(stopped_ids)  # a Stop during the last id is a scan done
+            found = found or []
+            if error:
+                self.message.emit(f"Scan failed: {error}", WARNING)
+            for node_id in found:
+                if self.network is not None:
+                    self._ensure_node(node_id)
+                    self.node_seen.emit(node_id, FOUND_BY_SCAN)
+            if found:
+                self.forget_labels()
+            asked = f"{len(wanted)} id{'s' if len(wanted) != 1 else ''}"
+            said = node_ids.text(found) if found else "none"
+            ended = "stopped part way" if stopped else "done"
+            self.message.emit(
+                f"Scan of {asked} {ended}: nodes answering {said}",
+                GOOD if found else INFORMATION,
+            )
+            self.scan_finished.emit(found, len(wanted), stopped)
+
+        self._worker.submit(job, done)
+        return True
+
+    def stop_scan(self) -> None:
+        """Stop a scan after the id in hand."""
+        self._stop_scan = True
+
+    def _answers(self, network, node_id: int) -> bool:
+        """Whether anything answers an SDO read of 0x1000 at this id.
+
+        A client of its own, for the length of one read, rather than a node
+        object: an id where nothing answers should leave nothing behind. Its
+        abort on a timeout sends and says nothing -- nobody was there to tell,
+        and 127 empty ids would be 127 error lines.
+        """
+        request, response = self.sdo_channel(node_id)
+        client = canopen.sdo.SdoClient(request, response, canopen.ObjectDictionary())
+        client.network = network
+        client.RESPONSE_TIMEOUT = SCAN_TIMEOUT_S
+        client.MAX_RETRIES = 1
+        client.abort = lambda *_args, **_kwargs: None
+        sdo_log.watch(
+            client,
+            node_id,
+            self.sdo_logged.emit,
+            self._bus.now,
+            lambda index, sub: "Device type" if (index, sub) == (0x1000, 0) else "",
+        )
+        network.subscribe(response, client.on_response)
+        try:
+            client.upload(0x1000, 0)
+            return True
+        except canopen.SdoAbortedError:
+            return True  # it said no, so it is there
+        except canopen.SdoCommunicationError:
+            return False
+        finally:
+            try:
+                network.unsubscribe(response, client.on_response)
+            except (KeyError, ValueError):
+                pass
 
     # --- access levels: the maker's login, through the hooks -------------------------
     def login(self, node_id: int, level: int, password: str = "") -> None:

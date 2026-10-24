@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen: *Add / Open > Scan for nodes...* finds nodes that send no heartbeat, by reading 0x1000
+  from each node id, with a bar and Stop.
 - CANopen: a *Poll* column in the object dictionary and an *SDO poll* tick read the ticked
   objects over and over, into Signals and Plot.
 - Signals and Plot: the signal list can go below the plot as well as beside it, from a new
