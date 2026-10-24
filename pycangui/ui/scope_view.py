@@ -68,6 +68,7 @@ class ScopeView(QWidget):
             widget.setMinimumSize(0, 0)
         self._arrange(below=False)
         self.signals_view.below_wanted.connect(self.set_list_below)
+        self.plot.cursors_changed.connect(self.signals_view.set_cursors)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

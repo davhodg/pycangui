@@ -132,6 +132,36 @@ looked at, and what arrived meanwhile is there when you go back.
 Both Y axes share the one time axis, so the *Time* choice applies to signals
 on either side, and *All* scales each Y axis to its own signals.
 
+## Cursors
+
+Tick **Cursors** on the plot's top row for two cursors, **A** and **B**: lines
+across the plot at a third and two thirds of the time in view, to be dragged
+wherever they are wanted. Beside the tick are the times of A and B and the
+time between them, *B - A*.
+
+While they are on, the list has six more columns for each plotted signal:
+
+- **At A** and **At B** -- its value at each cursor: the sample there, or the
+  last one before it. A value between two samples is not made up, the same as
+  in *Export*; before a signal's first sample there is nothing to show.
+- **Change** -- the value at B less the value at A.
+- **Lowest**, **Highest** and **Mean** -- of the samples between the cursors.
+  These are not *Min* and *Max*, which are since the history was last cleared.
+  The mean is of the samples, each counting the same however long it was
+  until the next, so a signal sent faster at some times than others leans
+  toward those times.
+
+Named values are shown by name, the change and the mean as numbers. The
+columns come with the cursors and go when they are unticked, and are not among
+the ones chosen under *Columns*. The list is the place for them rather than
+the plot, so they can be read out and copied and nothing covers the curves;
+with several signals plotted, *List below the plot* gives them room.
+
+The cursors stay at the times they were put, so in *Follow* they scroll off
+the left with the data; *Manual* or *All* holds them in view. Each pane
+remembers whether its cursors are on, but not where: those are times on one
+connection's clock.
+
 ## Importing a measurement file
 
 **File > Import signals...** reads an **MDF** or **MF4** file -- what a

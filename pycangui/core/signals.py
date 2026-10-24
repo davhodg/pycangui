@@ -14,7 +14,7 @@ first (that is already how bus frames and PDO updates arrive).
 from __future__ import annotations
 
 from array import array
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -49,6 +49,20 @@ RATE_WINDOW_S = 1.0
 #: seconds, or this many of its own periods, whichever is longer.
 STOPPED_AFTER_S = 2.0
 STOPPED_AFTER_PERIODS = 3
+
+
+@dataclass(frozen=True)
+class Stretch:
+    """What a signal did between two times: its lowest, highest and mean sample.
+
+    The mean is of the samples, not weighted by the time between them: a
+    signal sent faster while it was high counts that stretch for more.
+    """
+
+    lowest: float
+    highest: float
+    mean: float
+    count: int
 
 
 @dataclass
@@ -131,6 +145,32 @@ class SignalSeries:
     def window(self, t_from: float) -> tuple[np.ndarray, np.ndarray]:
         i = bisect_left(self.times, t_from)
         return np.asarray(self.times[i:], dtype=float), np.asarray(self.values[i:], dtype=float)
+
+    def value_at(self, t: float) -> float | None:
+        """The value the signal had at ``t``: the sample at it or just before.
+
+        None before its first sample, when it had no value yet.
+        """
+        i = bisect_right(self.times, t) - 1
+        return None if i < 0 else self.values[i]
+
+    def span(self, t_a: float, t_b: float) -> tuple[int, int]:
+        """The samples between two times, either way round, as a slice's ends."""
+        low, high = min(t_a, t_b), max(t_a, t_b)
+        return bisect_left(self.times, low), bisect_right(self.times, high)
+
+    def between(self, t_a: float, t_b: float) -> Stretch | None:
+        """Lowest, highest and mean of the samples between two times, or None
+        where there are none. Found by bisect and worked out by numpy on that
+        slice alone: a signal can hold millions of samples."""
+        return self.stretch(*self.span(t_a, t_b))
+
+    def stretch(self, first: int, last: int) -> Stretch | None:
+        """The same, for a slice already found by :meth:`span`."""
+        if last <= first:
+            return None
+        values = np.frombuffer(self.values[first:last], dtype=float)
+        return Stretch(float(values.min()), float(values.max()), float(values.mean()), last - first)
 
 
 class SignalHub(QObject):

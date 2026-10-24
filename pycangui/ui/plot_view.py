@@ -11,6 +11,12 @@ because the temperature becomes a flat line along the bottom.
 
 An axis whose signals all have the same named values is marked with the
 names -- *Off*, *Run*, *Fault* -- in place of 0, 1 and 2.
+
+Two cursors, A and B, can be put on the plot and dragged: the time between
+them is on the plot's top row, and each signal's value at each, the change
+between them and what it did in the stretch between them are columns in the
+signal list beside or below (see signals_view.py), where a screen reader can
+reach them and nothing is drawn over the curves.
 """
 
 from __future__ import annotations
@@ -79,6 +85,19 @@ TIME_ITEM_TIPS = (
     "The plot stays where you put it. Dragging or zooming the plot\nchooses this by itself.",
 )
 WINDOW_TIP = "How many seconds Follow keeps in view."
+CURSORS_TEXT = "Cursors"
+CURSORS_TIP = (
+    "Two cursors, A and B, to drag along the time axis. The time between them\n"
+    "is shown here; each signal's value at each, the change between them, and\n"
+    "its lowest, highest and mean between them are columns in the signal list.\n"
+    "They stay at the times they are put, so in Follow they scroll off."
+)
+#: Where the cursors start, as shares of the time in view.
+CURSOR_STARTS = (1 / 3, 2 / 3)
+CURSOR_NAMES = ("A", "B")
+#: How long a dragged cursor waits before the list works the stretch out
+#: again: a drag moves it many times a second, and once a pause is enough.
+CURSOR_SETTLE_MS = 60
 NAMES_TEXT = "Value names on axis"
 NAMES_TIP = (
     "Mark a Y axis with the names of its values -- Off, Run, Fault --\n"
@@ -172,6 +191,9 @@ class PlotView(QWidget):
     #: *Export...* was pressed. The plot holds the samples but not the file
     #: dialogs or the Event Log, so whoever made it does the exporting.
     export_requested = Signal()
+    #: The cursors' times, (A, B), as they are put and moved; None when they
+    #: are turned off.
+    cursors_changed = Signal(object)
 
     def __init__(self, hub: SignalHub, now: callable, ctx: Context | None = None) -> None:
         super().__init__()
@@ -245,11 +267,26 @@ class PlotView(QWidget):
         clear = QPushButton("Clear history")
         clear.setToolTip("Throw away the samples collected so far, for every signal")
         clear.clicked.connect(hub.clear)
+        # A tick, worded: turned on and off often, so on the bar.
+        self.cursors = QCheckBox(CURSORS_TEXT)
+        self.cursors.setToolTip(CURSORS_TIP)
+        self.cursors.setAccessibleName("Cursors on the plot")
+        self.cursors.toggled.connect(self._on_cursors)
+        self.cursor_times = QLabel("")
+        self.cursor_times.setAccessibleName("Cursor times")
+        self.cursor_times.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._lines: list[pg.InfiniteLine] = []
+        self._place_cursors = False
+        self._cursors_moved = QTimer(
+            self, singleShot=True, interval=CURSOR_SETTLE_MS, timeout=self._say_cursors
+        )
         bar = QHBoxLayout()
         bar.addWidget(self.display)
         bar.addWidget(QLabel("Time:"))
         bar.addWidget(self.time)
         bar.addWidget(self.window_s)
+        bar.addWidget(self.cursors)
+        bar.addWidget(self.cursor_times)
         bar.addStretch()
         bar.addWidget(self.export)
         bar.addWidget(clear)
@@ -274,6 +311,8 @@ class PlotView(QWidget):
             # drawing four times a second is still a live plot.
             remember(ctx, "plot.slow", self.slow)
             remember(ctx, "plot.value_names", self.names)
+            # Whether they are on; not where, which is a bus time from one connection.
+            remember(ctx, "plot.cursors", self.cursors)
         self._show_time()
 
     # --- which stretch of time ------------------------------------------------------------
@@ -313,6 +352,84 @@ class PlotView(QWidget):
     @Slot(bool)
     def _on_slow(self, slow: bool) -> None:
         self._timer.setInterval(SLOW_MS if slow else FAST_MS)
+
+    # --- the cursors ----------------------------------------------------------------------
+    @Slot(bool)
+    def _on_cursors(self, on: bool) -> None:
+        for line in self._lines:
+            self.plot.removeItem(line)
+        self._lines = []
+        self._place_cursors = False
+        if not on:
+            self.cursor_times.setText("")
+            self.cursors_changed.emit(None)
+            return
+        pen = pg.mkPen("#404040", width=1.5, style=Qt.DashLine)
+        for name in CURSOR_NAMES:
+            line = pg.InfiniteLine(
+                angle=90,
+                movable=True,
+                pen=pen,
+                hoverPen=pg.mkPen("#000000", width=2.5),
+                label=name,
+                labelOpts={"position": 0.95, "color": "#202020", "fill": "#ffffffc0"},
+            )
+            line.sigPositionChanged.connect(self._on_cursor_moved)
+            self.plot.addItem(line, ignoreBounds=True)
+            self._lines.append(line)
+        # Where the data is, if there is any yet: a plot restored with its
+        # cursors on has no time range worth a third of until it has drawn.
+        if self._curves and any(len(s.times) for k in self._curves if (s := self.hub.get(k))):
+            self._put_cursors()
+        else:
+            self._place_cursors = True
+
+    def _put_cursors(self) -> None:
+        """At a third and two thirds of the time in view."""
+        low, high = self.plot.getViewBox().viewRange()[0]
+        for line, share in zip(self._lines, CURSOR_STARTS, strict=True):
+            line.blockSignals(True)
+            line.setValue(low + share * (high - low))
+            line.blockSignals(False)
+        self._place_cursors = False
+        self._say_cursors()
+
+    def cursor_positions(self) -> tuple[float, float] | None:
+        """The cursors' times, (A, B), or None while they are off."""
+        if len(self._lines) != 2:
+            return None
+        return float(self._lines[0].value()), float(self._lines[1].value())
+
+    def set_cursor_positions(self, a: float, b: float) -> None:
+        """Put the cursors at these times, for the console and the tests."""
+        if not self.cursors.isChecked():
+            self.cursors.setChecked(True)
+        for line, t in zip(self._lines, (a, b), strict=True):
+            line.blockSignals(True)
+            line.setValue(t)
+            line.blockSignals(False)
+        self._place_cursors = False
+        self._say_cursors()
+
+    def _on_cursor_moved(self, *_args) -> None:
+        self._show_cursor_times()
+        self._cursors_moved.start()
+
+    def _say_cursors(self) -> None:
+        self._show_cursor_times()
+        self.cursors_changed.emit(self.cursor_positions())
+
+    def _show_cursor_times(self) -> None:
+        where = self.cursor_positions()
+        if where is None:
+            self.cursor_times.setText("")
+            return
+        a, b = where
+        clock = max(abs(a), abs(b)) >= 60
+        self.cursor_times.setText(
+            f"A {time_text(a, 3, clock)}   B {time_text(b, 3, clock)}   "
+            f"B - A {time_text(b - a, 3, abs(b - a) >= 60)}"
+        )
 
     # --- the right hand axis --------------------------------------------------------------
     def _make_right_axis(self) -> None:
@@ -583,3 +700,5 @@ class PlotView(QWidget):
         if following:
             # The right hand box is linked to this X range and follows it.
             self.plot.setXRange(t_from, edge, padding=0)
+        if self._place_cursors:
+            self._put_cursors()
