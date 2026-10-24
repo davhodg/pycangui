@@ -313,6 +313,11 @@ class CanopenManager(QObject):
         self._mapping_read: set[int] = set()
         #: The same for RPDOs, which are read only when asked for.
         self._rpdo_read: set[int] = set()
+        #: node -> PDO configuration reads queued and not yet done, and the
+        #: nodes one of them has read: only the last says the configuration
+        #: changed -- see read_pdo_config.
+        self._pdo_reads: dict[int, int] = {}
+        self._pdo_read_ok: set[int] = set()
         #: What the node said its emergency COB-ID (0x1014) and heartbeat
         #: producer time (0x1017) were, when its PDO configuration was read:
         #: None for an object it has not got. An EDS's are only suggestions,
@@ -1659,6 +1664,13 @@ class CanopenManager(QObject):
             self.message.emit(f"Node {node_id}: load an EDS first", WARNING)
             return
 
+        # Counted, so that only the last of several queued reads says the
+        # configuration changed. A boot-up during an EDS load, or Read PDO
+        # config pressed twice, queues two: the first one's word arrived while
+        # the second was rewriting the maps on the worker, and CAN Transmit
+        # rebuilt its rows from a mapping half read.
+        self._pdo_reads[node_id] = self._pdo_reads.get(node_id, 0) + 1
+
         def job() -> int:
             node.tpdo.read()
             self._mapping_from_node(node_id)
@@ -1670,12 +1682,22 @@ class CanopenManager(QObject):
             return len(self.pdo_configs(node_id))
 
         def done(count: int | None, error: str | None) -> None:
+            left = self._pdo_reads.get(node_id, 1) - 1
+            if left > 0:
+                self._pdo_reads[node_id] = left
+            else:
+                self._pdo_reads.pop(node_id, None)
             if error:
                 self.message.emit(
                     f"Node {node_id}: PDO configuration read failed ({error})", WARNING
                 )
-                return
-            self.message.emit(f"Node {node_id}: {count} PDO(s) configured", INFORMATION)
+            else:
+                self._pdo_read_ok.add(node_id)
+            if left > 0 or node_id not in self._pdo_read_ok:
+                return  # another read of this node is queued, or none of them read it
+            self._pdo_read_ok.discard(node_id)
+            if not error:
+                self.message.emit(f"Node {node_id}: {count} PDO(s) configured", INFORMATION)
             self.flag_mapping_sizes(node_id, again=True)
             self.forget_labels()
             self.pdo_config.emit(node_id)

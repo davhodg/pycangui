@@ -43,6 +43,9 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- CANopen: two PDO configuration reads of one node queued together -- a boot-up during an EDS
+  load -- say the configuration changed once, when both are done; CAN Transmit could rebuild
+  its rows from a mapping half read.
 - *Help > Diagnostics*: the demo device was always reported as running.
 - Cyclic messages are stopped one at a time when a channel closes, and one that will not stop --
   possible where the adapter keeps the time itself -- is said in the Event Log rather than
