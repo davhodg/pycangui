@@ -122,7 +122,7 @@ COL_VALUE = 4
 #: worth more than the search that built it -- and it is the shape a
 #: user-composed pane will need later.
 COL_BOOKMARK = 5
-#: A tick against the objects to read over and over while *Poll ticked* is on;
+#: A tick against the objects to read over and over while *SDO poll* is on;
 #: see od_poll.py. Its own column, apart from Bookmark: finding an object
 #: again and sending a request for it a few times a second are not the same.
 COL_POLL = 6
@@ -137,7 +137,7 @@ POLL_HZ_TIP = (
     "each, so the rate achieved, beside this, is often lower."
 )
 POLL_COLUMN_TIP = (
-    "Tick an object to read it over and over while Poll ticked is on.\n"
+    "Tick an object to read it over and over while SDO poll is on.\n"
     "Kept per device, like the bookmarks."
 )
 
@@ -601,13 +601,12 @@ class CanopenView(QWidget):
         od_bar.addWidget(self.od_search, 1)
         od_bar.addWidget(self.bookmarked_only)
 
-        # Polling the ticked objects: a row of its own under the bar, in a
-        # frame, since a tick, a rate and what it achieves are one thing.
+        # Polling the ticked objects: the tick, the rate and what it achieves,
+        # on the bar beside Bookmarked, the tick's name saying what all three are.
         self.sdo_poll = DictionaryPoll(
             manager, ctx.settings, self._bookmark_key, signals=signals, now=now, parent=self
         )
-        poll_frame, poll_in = _framed("SDO poll")
-        self.poll_ticked = QCheckBox("Poll ticked")
+        self.poll_ticked = QCheckBox("SDO poll")
         self.poll_ticked.setToolTip(POLL_TICKED_TIP)
         self.poll_ticked.toggled.connect(self._on_poll_ticked)
         self.poll_hz = QDoubleSpinBox()
@@ -629,16 +628,13 @@ class CanopenView(QWidget):
             )
         )
         for widget in (self.poll_ticked, self.poll_hz, self.poll_rate):
-            poll_in.addWidget(widget)
+            od_bar.addWidget(widget)
         self.sdo_poll.set_paused(ctx.pause.paused)
         ctx.pause.changed.connect(self.sdo_poll.set_paused)
         ctx.pause.stop_all_requested.connect(lambda: self.poll_ticked.setChecked(False))
         #: Objects whose polled reads are failing, so it is said once and not
         #: a few times a second: (node, index, sub).
         self._poll_failing: set[tuple[int, int, int]] = set()
-        poll_bar = QHBoxLayout()
-        poll_bar.addWidget(poll_frame)
-        poll_bar.addStretch()
         read_all = QPushButton("Read all")
         read_all.setToolTip(
             "Read every readable entry in the dictionary, one SDO at a time.\n"
@@ -683,7 +679,6 @@ class CanopenView(QWidget):
         objects_l = QVBoxLayout(objects)
         objects_l.setContentsMargins(0, 0, 0, 0)
         objects_l.addLayout(od_bar)
-        objects_l.addLayout(poll_bar)
         objects_l.addWidget(self.od)
         self.pdo_config = PdoConfigView(manager, ctx)
         self.pdo_config.save_requested.connect(lambda: self.save_file(self.selected_file()))

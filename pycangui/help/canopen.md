@@ -190,14 +190,14 @@ those; nothing is read because of a bookmark. The list is kept per device, so
 the next controller of the same kind opens with the objects you were using on
 the last one.
 
-**Polling.** Tick **Poll** against objects to follow, and **Poll ticked** in
-the *SDO poll* frame reads them over and over, on every node that has some
-ticked, up to the rate in the box beside it; the rate actually managed is shown
+**Polling.** Tick **Poll** against objects to follow, and **SDO poll**, beside
+*Bookmarked*, reads them over and over, on every node that has some ticked, up
+to the rate in the box beside it; the rate actually managed is shown
 after it, since every SDO read is a request and an answer and is often slower
 than asked. Their values update in the *Value* column, and numbers go to
 [Signals and Plot](signals.md) under *Node 5* (for node 5), to plot and export
 like any other signal. The ticks are kept per device, like bookmarks; polling
-itself starts only when *Poll ticked* is ticked, never on its own when
+itself starts only when *SDO poll* is ticked, never on its own when
 pycangui opens. A node that is stopped or has lost its heartbeat is left alone
 until it is back, a failing object is warned about once until it reads again,
 a pause of pycangui's own traffic holds the polling, and *Stop all repeating
