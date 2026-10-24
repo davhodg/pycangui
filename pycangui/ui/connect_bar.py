@@ -110,11 +110,15 @@ class ConnectBar(QToolBar):
         self.selector = QComboBox()
         self.selector.setToolTip("The channel the protocol panes work with")
         self.selector.currentTextChanged.connect(self._on_selected)
+        # A sign on the button, for its width; words for a screen reader,
+        # which would otherwise say "plus" and nothing about what it does.
         add = QPushButton("+")
+        add.setAccessibleName("Add channel")
         add.setToolTip("Add another channel (a second port, or a second adapter)")
         add.setFixedWidth(fonts.width_for(add, "+"))
         add.clicked.connect(self._add_channel)
         remove = QPushButton("-")
+        remove.setAccessibleName("Remove channel")
         remove.setToolTip("Remove this channel")
         remove.setFixedWidth(fonts.width_for(remove, "+"))
         remove.clicked.connect(self._remove_channel)

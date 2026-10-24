@@ -55,6 +55,8 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- Accessibility: the channel's + and - buttons have names a screen reader can say, Pin and
+  Detach are reached with Tab, and the plot's legend and time box grow with large text.
 - CANopen: two PDO configuration reads of one node queued together -- a boot-up during an EDS
   load -- say the configuration changed once, when both are done; CAN Transmit could rebuild
   its rows from a mapping half read.

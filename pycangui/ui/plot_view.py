@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
-from pycangui.ui import plot_colours
+from pycangui.ui import fonts, plot_colours
 from pycangui.ui.persist import remember
 from pycangui.ui.refresh import FAST_MS, SLOW_MS, display_choice
 from pycangui.ui.refresh import LABEL as SLOW_LABEL
@@ -239,7 +239,11 @@ class PlotView(QWidget):
         )
         self.plot.installEventFilter(self)
         self.plot.showGrid(x=True, y=True, alpha=0.3)
-        self.legend = self.plot.addLegend(offset=(10, 10))
+        # In the text size everything else is in: pyqtgraph's own is a fixed
+        # 9 points, which stayed small at 150 % and 200 % text while the rest grew.
+        self.legend = self.plot.addLegend(
+            offset=(10, 10), labelTextSize=f"{max(1.0, self.font().pointSizeF()):g}pt"
+        )
         # A tick underneath, never shown, and an entry in the
         # plot's own right-click menu: a choice about the axes, made about
         # once, which is what that menu holds and what the bar has no room for.
@@ -262,6 +266,9 @@ class PlotView(QWidget):
         self.window_s.setValue(10)
         self.window_s.setSuffix(" s")
         self.window_s.setToolTip(WINDOW_TIP)
+        # Wide enough for its longest value and its arrows, which at large text
+        # it does not ask for by itself, and was cut to "10.00 s" in the row.
+        self.window_s.setMinimumWidth(fonts.width_with_arrows(self.window_s, "3600.00 s"))
         # Two ticks, shown as one menu -- Live refresh, Slow refresh or Paused; see
         # refresh.display_choice.
         self.pause = QCheckBox("Pause", self)
