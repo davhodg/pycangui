@@ -92,6 +92,10 @@ from pycangui.ui.od_poll import DEFAULT_HZ, DictionaryPoll
 from pycangui.ui.pdo_view import PdoConfigView
 from pycangui.ui.persist import remember
 
+#: The devices, by identity, whose EDS question was cancelled: not asked
+#: again in this workspace until an EDS is loaded for one by hand.
+EDS_DECLINED_KEY = "canopen.eds_declined"
+
 ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
 #: The text a row is filtered on, built once when the tree is filled.
@@ -1443,9 +1447,27 @@ class CanopenView(QWidget):
         return None
 
     def _ask_for_eds(self, identity: NodeIdentity) -> str | None:
+        """Ask for this device's EDS, once -- and, once cancelled, never again here.
+
+        A bootloader that sends a CANopen boot-up for a processor with no EDS
+        had the file dialog open in the middle of a flash, every time pycangui
+        was started. So a cancel is kept with the workspace, and the device is
+        then only said in the Event Log, once a run. *Load EDS...* on the node
+        gives it one and forgets the cancel.
+        """
         if identity.key in self._asked:
             return None
         self._asked.add(identity.key)
+        device = (
+            f"vendor {_hex(identity.vendor_id)}, product {_hex(identity.product_code)}, "
+            f"revision {_hex(identity.revision)}"
+        )
+        if identity.key in self._declined():
+            self.ctx.log(
+                f"Node {identity.node_id} ({device}): no EDS, and not asked for one: "
+                "asking was cancelled before. Load EDS... on the node gives it one."
+            )
+            return None
         path = folders.open_file(
             self,
             self.ctx,
@@ -1456,6 +1478,14 @@ class CanopenView(QWidget):
             self.ctx.eds_dir,
         )
         if not path:
+            # Kept only for a device that can be told apart: with no vendor,
+            # every such device would be covered by this one cancel.
+            if identity.vendor_id is not None:
+                self._set_declined(identity.key, True)
+                self.ctx.log(
+                    f"Node {identity.node_id} ({device}): no EDS chosen. Not asked again in "
+                    "this workspace; Load EDS... on the node gives it one."
+                )
             return None
         if identity.vendor_id is not None:
             answer = messages.question(
@@ -1485,7 +1515,20 @@ class CanopenView(QWidget):
             self.ctx.eds_dir,
         )
         if path:
+            if (identity := self._identities.get(node_id)) is not None:
+                self._set_declined(identity.key, False)  # somebody chose one after all
             self.manager.load_eds(node_id, path)
+
+    def _declined(self) -> set[str]:
+        saved = self.ctx.settings.get(EDS_DECLINED_KEY, [])
+        return {str(key) for key in saved} if isinstance(saved, list) else set()
+
+    def _set_declined(self, key: str, declined: bool) -> None:
+        keys = self._declined()
+        if (key in keys) == declined:
+            return
+        keys = keys | {key} if declined else keys - {key}
+        self.ctx.settings.set(EDS_DECLINED_KEY, sorted(keys))
 
     # --- the EDS a node keeps (0x1021) ------------------------------------------
     def _read_stored_eds(self) -> None:

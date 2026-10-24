@@ -240,14 +240,20 @@ programming sequence. With none ticked, *Download* is the download alone.
 | Before | After |
 | --- | --- |
 | Extended session (0x10 03) | Check memory (0x31) |
-| Unlock (0x27) | ECU reset (0x11), then a wait |
-| DTC setting off (0x85 02) | Back to own bitrate |
-| Communication off (0x28) | Extended session (0x10 03) |
-| Programming session (0x10 02) | Unlock (0x27) |
-| Unlock (0x27) | Communication on (0x28 00) |
-| Change bitrate (0x87) | DTC setting on (0x85 01) |
+| Tester present on (0x3E) | ECU reset (0x11), then a wait |
+| Unlock (0x27) | Back to own bitrate |
+| DTC setting off (0x85 02) | Extended session (0x10 03) |
+| Communication off (0x28) | Unlock (0x27) |
+| Programming session (0x10 02) | Communication on (0x28 00) |
+| Unlock (0x27) | DTC setting on (0x85 01) |
+| Change bitrate (0x87) | |
 | Write fingerprint (0x2E) | |
 | Erase memory (0x31 FF00) | |
+
+**Tester present on** keeps the sessions open through the download, without
+having to remember to tick *Tester present* first: the box ticks itself when the
+step is reached. It is turned off again when the sequence ends, whether it
+worked or not, unless it was already on before the sequence began.
 
 **Values...** holds the numbers the steps need and the pane has no box for: a
 security level for each of the three unlocks, how communication is switched off

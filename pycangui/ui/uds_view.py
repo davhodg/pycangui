@@ -1013,6 +1013,8 @@ class UdsView(QWidget):
         self.sequence = sequence.Sequence(manager, self)
         self.sequence.said.connect(self._append)
         self.sequence.running.connect(lambda _on: self._show_busy())
+        # The box says what is happening, whoever turned it on or off.
+        self.sequence.tester_present.connect(self.tp.setChecked)
         self.step_actions: dict[str, QAction] = {}
         ticked = uds_sequence.chosen(ctx.settings)
         self.before_btn, self.after_btn = QPushButton(), QPushButton()

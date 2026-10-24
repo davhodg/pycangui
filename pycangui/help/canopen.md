@@ -24,7 +24,10 @@ reflashed controller wants a different file or a different name can say so,
 and can read the device itself to find out. Only those two: the remembered
 choice, the search of the EDS folder and the file dialog are for a node
 nobody has an answer for yet, and a dialog opening every time a heartbeat
-came back would be a way of making people unplug things.
+came back would be a way of making people unplug things. **Cancel** in that file
+dialog is remembered with the workspace: the device is not asked about again,
+only named in the Event Log, until **Load EDS...** on its node gives it one -- so a
+bootloader with no EDS of its own no longer opens a dialog at every start.
 
 **NMT**, with the send button beside it, sends Start, Pre-operational,
 Stop, Reset node or Reset communication to the selected node, or to every node
