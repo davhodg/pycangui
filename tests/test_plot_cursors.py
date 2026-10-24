@@ -199,3 +199,67 @@ def test_a_million_samples_are_read_between_the_cursors_quickly():
     took = (time.perf_counter() - started) / 10
     assert stretch.count == 980_001 and stretch.highest == 996
     assert took < 0.25, f"{took:.3f}s for one reading"
+
+
+def keyed_plot(hub):
+    plot = PlotView(hub, now=lambda: 10.0)
+    plot.show()
+    plot.set_plotted("g/x", True)
+    plot.time.setCurrentIndex(plot.time.findText("Manual"))
+    plot.plot.setXRange(0.0, 10.0, padding=0)
+    plot.set_cursor_positions(2.0, 8.0)
+    return plot
+
+
+def test_the_cursors_move_from_the_keyboard(app):
+    from PySide6.QtTest import QTest
+
+    hub, _ = series(*[(t / 4, t) for t in range(41)])  # a sample every 0.25 s
+    plot = keyed_plot(hub)
+    heard = []
+    plot.cursors_changed.connect(heard.append)
+    width = plot.plot.getViewBox().viewRange()[0]
+    hundredth = (width[1] - width[0]) / 100
+
+    assert plot.active_cursor == 0, "A to begin with"
+    QTest.keyClick(plot.plot, Qt.Key_Right)
+    assert plot.cursor_positions()[0] == pytest.approx(2.0 + hundredth)
+    QTest.keyClick(plot.plot, Qt.Key_Left, Qt.ShiftModifier)
+    assert plot.cursor_positions()[0] == pytest.approx(2.0 + hundredth - 10 * hundredth)
+
+    QTest.keyClick(plot.plot, Qt.Key_B)
+    assert plot.active_cursor == 1
+    QTest.keyClick(plot.plot, Qt.Key_Right, Qt.ControlModifier)
+    assert plot.cursor_positions()[1] == 8.25, "to the next sample"
+    QTest.keyClick(plot.plot, Qt.Key_Left, Qt.ControlModifier)
+    QTest.keyClick(plot.plot, Qt.Key_Left, Qt.ControlModifier)
+    assert plot.cursor_positions()[1] == 7.75, "back past where it began"
+
+    # Held keys are told to the list once they pause, not at every step.
+    deadline = time.monotonic() + 2.0
+    while not (heard and heard[-1] == plot.cursor_positions()) and time.monotonic() < deadline:
+        QTest.qWait(10)
+    assert heard and heard[-1] == plot.cursor_positions()
+    plot.close()
+
+
+def test_ctrl_stops_at_the_last_sample_and_keys_do_nothing_without_cursors(app):
+    from PySide6.QtTest import QTest
+
+    hub, _ = series((1.0, 1), (2.0, 2))
+    plot = keyed_plot(hub)
+    QTest.keyClick(plot.plot, Qt.Key_B)
+    QTest.keyClick(plot.plot, Qt.Key_Right, Qt.ControlModifier)
+    assert plot.cursor_positions()[1] == 8.0, "no sample after B: it stays"
+    plot.cursors.setChecked(False)
+    QTest.keyClick(plot.plot, Qt.Key_Right)  # not swallowed, and nothing to move
+    assert plot.cursor_positions() is None
+    plot.close()
+
+
+def test_dragging_a_cursor_makes_it_the_one_the_keys_move(app):
+    hub, _ = series((1.0, 1), (2.0, 2))
+    plot = keyed_plot(hub)
+    plot._lines[1].sigDragged.emit(plot._lines[1])
+    assert plot.active_cursor == 1
+    plot.close()

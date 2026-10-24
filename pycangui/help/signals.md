@@ -139,6 +139,16 @@ across the plot at a third and two thirds of the time in view, to be dragged
 wherever they are wanted. Beside the tick are the times of A and B and the
 time between them, *B - A*.
 
+They move from the keyboard too. **Tab** to the plot -- it gets a coloured
+border while it has the keys -- and:
+
+- **A** or **B** picks the cursor to move. The one picked is drawn solid and
+  the other dashed; dragging one picks it as well.
+- **Left** and **Right** move it a hundredth of the time in view, and with
+  **Shift** a tenth.
+- **Ctrl+Left** and **Ctrl+Right** move it to the previous or next sample of
+  any plotted signal, to read the samples one at a time.
+
 While they are on, the list has six more columns for each plotted signal:
 
 - **At A** and **At B** -- its value at each cursor: the sample there, or the

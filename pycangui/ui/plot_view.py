@@ -22,9 +22,10 @@ reach them and nothing is drawn over the curves.
 from __future__ import annotations
 
 import math
+from bisect import bisect_left, bisect_right
 
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -90,8 +91,22 @@ CURSORS_TIP = (
     "Two cursors, A and B, to drag along the time axis. The time between them\n"
     "is shown here; each signal's value at each, the change between them, and\n"
     "its lowest, highest and mean between them are columns in the signal list.\n"
-    "They stay at the times they are put, so in Follow they scroll off."
+    "They stay at the times they are put, so in Follow they scroll off.\n"
+    "\n"
+    "From the keyboard, with the plot focused (Tab to it): A or B picks a\n"
+    "cursor, Left and Right move it a hundredth of the time in view, with\n"
+    "Shift a tenth, and with Ctrl to the previous or next sample."
 )
+PLOT_KEYS_DESCRIPTION = (
+    "With the cursors on: A or B picks a cursor; Left and Right move it a hundredth "
+    "of the time in view, Shift with them a tenth, Ctrl with them to the previous "
+    "or next sample of a plotted signal."
+)
+#: How far Left and Right move a cursor, as shares of the time in view.
+CURSOR_STEP, CURSOR_BIG_STEP = 1 / 100, 1 / 10
+#: The cursor being moved from the keyboard is drawn solid, the other dashed,
+#: so which one the keys move can be seen.
+CURSOR_PENS = {True: (Qt.SolidLine, 2.0), False: (Qt.DashLine, 1.5)}
 #: Where the cursors start, as shares of the time in view.
 CURSOR_STARTS = (1 / 3, 2 / 3)
 CURSOR_NAMES = ("A", "B")
@@ -209,6 +224,16 @@ class PlotView(QWidget):
 
         pg.setConfigOptions(antialias=False, background="w", foreground="k")
         self.plot = pg.PlotWidget(axisItems={"bottom": TimeAxis("bottom")})
+        self.plot.setObjectName("plot")
+        self.plot.setAccessibleName("Signal plot")
+        self.plot.setAccessibleDescription(PLOT_KEYS_DESCRIPTION)
+        # Focus shown, since the keys move the cursors only while it has it.
+        # The border is there unfocused too, so focusing does not shift the plot.
+        self.plot.setStyleSheet(
+            "#plot { border: 2px solid transparent; }"
+            "#plot:focus { border: 2px solid palette(highlight); }"
+        )
+        self.plot.installEventFilter(self)
         self.plot.showGrid(x=True, y=True, alpha=0.3)
         self.legend = self.plot.addLegend(offset=(10, 10))
         # A tick underneath, never shown, and an entry in the
@@ -276,6 +301,8 @@ class PlotView(QWidget):
         self.cursor_times.setAccessibleName("Cursor times")
         self.cursor_times.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._lines: list[pg.InfiniteLine] = []
+        #: Which cursor the keys move: 0 for A, 1 for B.
+        self._active = 0
         self._place_cursors = False
         self._cursors_moved = QTimer(
             self, singleShot=True, interval=CURSOR_SETTLE_MS, timeout=self._say_cursors
@@ -364,19 +391,20 @@ class PlotView(QWidget):
             self.cursor_times.setText("")
             self.cursors_changed.emit(None)
             return
-        pen = pg.mkPen("#404040", width=1.5, style=Qt.DashLine)
         for name in CURSOR_NAMES:
             line = pg.InfiniteLine(
                 angle=90,
                 movable=True,
-                pen=pen,
                 hoverPen=pg.mkPen("#000000", width=2.5),
                 label=name,
                 labelOpts={"position": 0.95, "color": "#202020", "fill": "#ffffffc0"},
             )
             line.sigPositionChanged.connect(self._on_cursor_moved)
+            # The one dragged last is the one the keys go on with.
+            line.sigDragged.connect(lambda _line, i=len(self._lines): self.set_active_cursor(i))
             self.plot.addItem(line, ignoreBounds=True)
             self._lines.append(line)
+        self.set_active_cursor(self._active)
         # Where the data is, if there is any yet: a plot restored with its
         # cursors on has no time range worth a third of until it has drawn.
         if self._curves and any(len(s.times) for k in self._curves if (s := self.hub.get(k))):
@@ -410,6 +438,63 @@ class PlotView(QWidget):
             line.blockSignals(False)
         self._place_cursors = False
         self._say_cursors()
+
+    @property
+    def active_cursor(self) -> int:
+        """Which cursor the keys move: 0 for A, 1 for B."""
+        return self._active
+
+    def set_active_cursor(self, which: int) -> None:
+        self._active = which
+        for i, line in enumerate(self._lines):
+            style, width = CURSOR_PENS[i == which]
+            line.setPen(pg.mkPen("#404040", width=width, style=style))
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self.plot and event.type() == QEvent.KeyPress and self._lines:
+            return self._cursor_key(event)
+        return super().eventFilter(watched, event)
+
+    def _cursor_key(self, event) -> bool:
+        """Pick or move a cursor; False for a key that is not about them."""
+        key, mods = event.key(), event.modifiers()
+        if key in (Qt.Key_A, Qt.Key_B) and not mods & ~Qt.KeypadModifier:
+            self.set_active_cursor(0 if key == Qt.Key_A else 1)
+            return True
+        if key not in (Qt.Key_Left, Qt.Key_Right):
+            return False
+        ahead = key == Qt.Key_Right
+        line = self._lines[self._active]
+        t = float(line.value())
+        if mods & Qt.ControlModifier:
+            to = self._next_sample(t, ahead)
+            if to is None:
+                return True  # nothing further that way: the key is still spent
+        else:
+            low, high = self.plot.getViewBox().viewRange()[0]
+            share = CURSOR_BIG_STEP if mods & Qt.ShiftModifier else CURSOR_STEP
+            to = t + (share if ahead else -share) * (high - low)
+        line.setValue(to)  # sigPositionChanged shows it and tells the list
+        return True
+
+    def _next_sample(self, t: float, ahead: bool) -> float | None:
+        """The nearest sample time past ``t`` that way, over every plotted signal."""
+        found = []
+        for key in self._curves:
+            s = self.hub.get(key)
+            if s is None or not len(s.times):
+                continue
+            if ahead:
+                i = bisect_right(s.times, t)
+                if i < len(s.times):
+                    found.append(s.times[i])
+            else:
+                i = bisect_left(s.times, t) - 1
+                if i >= 0:
+                    found.append(s.times[i])
+        if not found:
+            return None
+        return min(found) if ahead else max(found)
 
     def _on_cursor_moved(self, *_args) -> None:
         self._show_cursor_times()
