@@ -789,9 +789,8 @@ def _multiplex(message, signal, mux: str | None, values) -> None:
 def _value_tables(database):
     """The database's value tables, made if a file had none to start with."""
     if database.dbc is None:
-        from cantools.database.can.formats.dbc_specifics import DbcSpecifics
-
-        database.dbc = DbcSpecifics()
+        specifics = _dbc_classes()[0]
+        database.dbc = specifics()
     return database.dbc.value_tables
 
 
@@ -816,6 +815,27 @@ def _change_value_table(database, change) -> None:
         tables.update(renamed)
     else:
         raise EditError(f"A value table has no {change.field} to set.")
+
+
+def _dbc_classes():
+    """cantools' DBC part, attribute and attribute definition.
+
+    Moved and renamed in cantools 45 (``formats/dbc/``, ``DbcAttribute``,
+    ``DbcAttributeDefinition``); the same classes inside, so either will do.
+    """
+    try:
+        from cantools.database.can.formats.dbc.dbc_attribute import DbcAttribute
+        from cantools.database.can.formats.dbc.dbc_attribute_definition import (
+            DbcAttributeDefinition,
+        )
+        from cantools.database.can.formats.dbc.dbc_specifics import DbcSpecifics
+    except ImportError:  # before 45
+        from cantools.database.can.attribute import Attribute as DbcAttribute
+        from cantools.database.can.attribute_definition import (
+            AttributeDefinition as DbcAttributeDefinition,
+        )
+        from cantools.database.can.formats.dbc_specifics import DbcSpecifics
+    return DbcSpecifics, DbcAttribute, DbcAttributeDefinition
 
 
 # --- nodes ---------------------------------------------------------------------------------------
@@ -927,17 +947,15 @@ def _change_group(message, change) -> None:
 def _specifics(database):
     """The database's own DBC part, made for a file that had none."""
     if database.dbc is None:
-        from cantools.database.can.formats.dbc_specifics import DbcSpecifics
-
-        database.dbc = DbcSpecifics()
+        specifics = _dbc_classes()[0]
+        database.dbc = specifics()
     return database.dbc
 
 
 def _new_specifics(database):
     """A DBC part for a node, message or signal, sharing the database's definitions."""
-    from cantools.database.can.formats.dbc_specifics import DbcSpecifics
-
-    return DbcSpecifics(attribute_definitions=_definitions(database))
+    specifics = _dbc_classes()[0]
+    return specifics(attribute_definitions=_definitions(database))
 
 
 def _definitions(database):
@@ -1002,8 +1020,7 @@ def attribute_value(definition, value: Any) -> Any:
 
 
 def _set_attribute(database, change: SetAttribute) -> None:
-    from cantools.database.can.attribute import Attribute
-
+    attribute = _dbc_classes()[1]
     definition = _definitions(database).get(change.name)
     if definition is None:
         raise EditError(f"There is no attribute called {change.name}.")
@@ -1026,7 +1043,7 @@ def _set_attribute(database, change: SetAttribute) -> None:
     if value is None:
         held.pop(change.name, None)
     else:
-        held[change.name] = Attribute(value=value, definition=definition)
+        held[change.name] = attribute(value=value, definition=definition)
     if kind == "message" and change.name == "GenMsgSendType":
         # Read from the attribute when the file is, and kept by cantools apart
         # from it after, with no setter: so that the copy says what the file will.
@@ -1037,8 +1054,7 @@ def _set_attribute(database, change: SetAttribute) -> None:
 
 def _definition_from(spec: AttributeSpec):
     """A cantools definition of a spec, checked."""
-    from cantools.database.can.attribute_definition import AttributeDefinition
-
+    definition_class = _dbc_classes()[2]
     if spec.kind not in KINDS:
         raise EditError(
             f"An attribute is of the database, a node, a message or a signal: not {spec.kind}."
@@ -1053,7 +1069,7 @@ def _definition_from(spec: AttributeSpec):
     high = spec.maximum if spec.maximum is not None else 0
     if numeric:
         low, high = (int(low), int(high)) if whole else (float(low), float(high))
-    definition = AttributeDefinition(
+    definition = definition_class(
         name=spec.name,
         kind=KINDS[spec.kind],
         type_name=spec.type_name,
