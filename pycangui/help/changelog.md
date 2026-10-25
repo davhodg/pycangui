@@ -9,6 +9,10 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Fixed
+
+- The plot's *Cursors* checkbox indicator grows with the text size.
+
 ### Added
 
 - CANopen: a *Poll* column in the object dictionary and an *SDO poll* tick read the ticked
