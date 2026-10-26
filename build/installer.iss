@@ -65,10 +65,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
-Name: "fileassoc"; Description: "Open .dcf and .eds files with pycangui"; GroupDescription: "File types:"
+Name: "fileassoc"; Description: "Open .dcf, .eds and .dbc files with pycangui"; GroupDescription: "File types:"
 
 ; pycangui is offered in Open with, rather than made the default: another
-; CANopen tool somebody already uses for these keeps them until they choose
+; CANopen or CAN tool somebody already uses for these keeps them until they choose
 ; otherwise, which Windows asks the first time one is opened. HKA is HKCU for
 ; a per-user install and HKLM for an all-users one. A file double-clicked
 ; while pycangui is open goes to that one (pycangui/ui/handoff.py).
@@ -81,8 +81,13 @@ Root: HKA; Subkey: "Software\Classes\.eds\OpenWithProgids"; ValueType: string; V
 Root: HKA; Subkey: "Software\Classes\pycangui.eds"; ValueType: string; ValueName: ""; ValueData: "CANopen electronic data sheet"; Flags: uninsdeletekey; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\pycangui.eds\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\pycangui.eds\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\.dbc\OpenWithProgids"; ValueType: string; ValueName: "pycangui.dbc"; ValueData: ""; Flags: uninsdeletevalue; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.dbc"; ValueType: string; ValueName: ""; ValueData: "CAN database"; Flags: uninsdeletekey; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.dbc\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\pycangui.dbc\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".dcf"; ValueData: ""; Flags: uninsdeletekey; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".eds"; ValueData: ""; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".dbc"; ValueData: ""; Tasks: fileassoc
 
 [Files]
 Source: "..\dist\pycangui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

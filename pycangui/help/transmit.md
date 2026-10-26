@@ -2,15 +2,18 @@
 
 # CAN Transmit
 
-A transmit pane only sends while it is on screen. Closing one stops whatever
-it was repeating -- frames arriving on a live bus from a pane nobody can see is
-the hardest sort of fault to find, since nothing on screen accounts for them --
+A transmit pane only sends while it is on screen. Closing one, or closing an
+extra one for good, stops whatever it was repeating -- frames arriving on a
+live bus from a pane nobody can see is the hardest sort of fault to find,
+since nothing on screen accounts for them --
 and it says so in the Event Log. Bringing it back does not start them again.
 Tabbing a transmit pane behind another, or detaching it into a window of its
 own, are not putting it away: it is still on screen and still sending.
 
 *Stop all cyclic* means all of them, in every transmit pane, however many are
-open.
+open. Disconnecting the channel, or selecting another one in the toolbar, stops
+them too and takes their ticks off: the channel left behind stays open, and
+would otherwise go on carrying them.
 
 Each **CAN Transmit** pane holds one list of everything it sends, with three kinds
 of row: **raw** (type the id and bytes), **DBC** (pick a message from a loaded

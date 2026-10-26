@@ -518,6 +518,11 @@ class UdsManager(QObject):
             return
         self._run("TesterPresent", lambda c: (c.tester_present(), "TesterPresent OK")[1])
 
+    @property
+    def tester_present_on(self) -> bool:
+        """Whether TesterPresent is being sent every couple of seconds."""
+        return self._tp_timer.isActive()
+
     def set_tester_present(self, on: bool) -> None:
         if on and self.client is not None:
             self._tp_timer.start(int(self.config.tester_present_s * 1000))

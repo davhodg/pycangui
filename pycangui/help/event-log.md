@@ -23,6 +23,11 @@ the log is copied into a report or read aloud.
 The colours follow the theme: one set reads against a pale background, another
 against a dark one.
 
+*Tools > Settings > Time on Event Log lines* puts the time of day each line was
+written in front of it, to the second -- *14:03:27 Warning: ...* -- from the next
+line on, and it is kept when the log is copied. Off to begin with; it is kept
+with this computer rather than the workspace, like the theme.
+
 Everything is kept for the whole session -- the line that matters is often the
 first of a thousand -- until **Clear**, on the pane's right-click, empties it.
 
@@ -46,7 +51,11 @@ there, which is a number and a shrug, so it arrives as *...0x05040000 (Timeout
 of transfer communication detected)*. The code is what goes to the device's
 maker; the meaning is what tells you whether the node refused or never
 answered at all. *Aborted by client* is pycangui's own end giving up -- an
-SDO timeout -- rather than the device saying no.
+SDO timeout -- rather than the device saying no. Nor does the library say
+whose transfer it was, so pycangui puts that in front: *Node 5, 1018:01:
+Transfer aborted...*, or *Node 5:* alone for a transfer opened as a stream,
+such as *Read EDS from node*. Two nodes timing out are two lines, not one
+counted as a repeat.
 *Tools > Settings > Verbose CAN logging* adds their information messages too, which is
 where the detail is when something is actually wrong, and more than you want
 the rest of the time.
@@ -55,6 +64,6 @@ An error inside pycangui itself -- a bug -- is reported here with its
 traceback, rather than disappearing with only a button that did nothing to show
 for it. Please send it with a bug report.
 
-*Help > Diagnostics...* writes a report of the versions and each channel's
-adapter, state, load and error count here, and copies it to the clipboard; see
-[About, licences and updates](about.md).
+*Help > Diagnostics...* opens a report in a window of its own, with the last
+twenty warnings and errors from here among it, and copies it to the clipboard;
+see [About, licences and updates](about.md).

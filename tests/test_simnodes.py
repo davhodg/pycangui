@@ -794,3 +794,41 @@ def test_the_canopen_node_raises_and_clears_an_emergency(app, canopen_bus):
     )
     resets = [m for m in seen if m.arbitration_id == emcy]
     assert resets and int.from_bytes(bytes(resets[-1].data)[:2], "little") == 0, "never cleared"
+
+
+# --- pycangui's own traffic paused --------------------------------------------------------
+def test_a_node_is_told_of_a_pause_on_its_own_thread_and_decides(app, folder, manager):
+    """A simulated node stands for another device: nothing about it stops by
+    itself, but one that wants to keep quiet during a flash can."""
+    import threading
+
+    write(
+        folder,
+        "quiet",
+        "def start(node, *, ctx): node.state.told = []\n"
+        "def on_pause(node, paused, *, ctx):\n"
+        "    import threading\n"
+        "    node.state.told.append((paused, threading.current_thread().name))\n",
+    )
+    node = manager.start("quiet", "CAN")
+    manager.set_paused(True)
+    assert node.paused
+    assert spin(app, 2.0, until=lambda: len(node.state.told) == 1)
+    manager.set_paused(False)
+    assert spin(app, 2.0, until=lambda: len(node.state.told) == 2)
+    assert [paused for paused, _ in node.state.told] == [True, False]
+    assert all(name != threading.current_thread().name for _, name in node.state.told)
+
+
+def test_a_node_without_on_pause_runs_on_regardless(app, folder, manager):
+    write(folder, "counter", COUNTER)
+    node = manager.start("counter", "CAN")
+    manager.set_paused(True)
+    before = node.state.n
+    assert spin(app, 2.0, until=lambda: node.state.n > before + 3), "still polling"
+
+
+def test_on_pause_alone_is_not_a_node(folder):
+    write(folder, "only", "def on_pause(node, paused, *, ctx): pass\n")
+    (kind,) = simnodes.kinds_in(folder)
+    assert kind.error, "it has nothing to do the rest of the time"

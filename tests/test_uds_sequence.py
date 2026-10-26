@@ -33,6 +33,7 @@ class Manager(QObject):
         self.fails: set[str] = set()
         self._tag = None
         self.cancelled = False
+        self.tester_present_on = False
 
     def tagged(self, tag) -> None:
         self._tag = tag
@@ -75,6 +76,11 @@ class Manager(QObject):
     def cancel_transfer(self):
         self.cancelled = True
 
+    def set_tester_present(self, on):
+        """Not a request: noted, and nothing comes back to wait for."""
+        self.tester_present_on = on
+        self.asked.append(("tester", on))
+
 
 @pytest.fixture
 def run(app):
@@ -97,6 +103,7 @@ def test_every_step_is_done_in_the_order_a_flash_needs(run):
     assert worked
     assert names == [
         "session",  # extended
+        "tester",  # on, for the rest of it
         "unlock",
         "dtc",
         "comm",
@@ -111,6 +118,7 @@ def test_every_step_is_done_in_the_order_a_flash_needs(run):
         "unlock",
         "comm",
         "dtc",
+        "tester",  # off again, at the end
     ]
 
 
@@ -221,3 +229,27 @@ def test_the_values_come_back_from_what_was_saved():
     assert again == values
     assert Values.from_saved({"bitrate": "fast", "unlock_after": 4}) == Values(unlock_after=4)
     assert Values.from_saved(None) == Values()
+
+
+# --- tester present ------------------------------------------------------------------------------
+def test_tester_present_is_on_through_the_flash_and_off_after(run):
+    shown = []
+    run.runner.tester_present.connect(shown.append)
+    run({"extended", "tester_on", "programming"})
+    asked = run.manager.asked
+    on, off = asked.index(("tester", True)), asked.index(("tester", False))
+    assert asked.index(("transfer",)) in range(on, off), "on all the way through"
+    assert shown == [True, False], "and the pane's box says so"
+
+
+def test_tester_present_goes_off_after_a_failure_too(run):
+    run.manager.fails = {"session"}
+    _names, worked = run({"tester_on", "programming"})
+    assert not worked
+    assert run.manager.asked[-1] == ("tester", False)
+
+
+def test_tester_present_on_before_the_sequence_is_left_on(run):
+    run.manager.tester_present_on = True  # ticked by hand beforehand
+    run({"extended", "tester_on"})
+    assert ("tester", False) not in run.manager.asked

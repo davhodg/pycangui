@@ -839,3 +839,45 @@ def test_an_edited_copy_is_not_called_out_of_date(app, window, monkeypatch):
     )
 
     assert window.plugin_actions.changed_since_install() == []
+
+
+# --- pycangui's own traffic: paused, and stopped -----------------------------------------
+PAUSING = """
+NAME = "Pausing"
+API_VERSION = 2
+
+heard = []
+
+
+def register(app):
+    app.on_pause(lambda on: heard.append(("pause", on)))
+    app.on_stop_all(lambda: heard.append(("stop",)))
+    app.add_menu_action("Flash", lambda: app.hold_traffic("Flashing"), "")
+    app.add_menu_action("Done", lambda: app.release_traffic("Flashing"), "")
+    app.heard = heard
+"""
+
+
+def test_a_plugin_hears_of_a_pause_and_of_stop_all_and_can_hold_one(app, window):
+    write_plugin(window, "pausing", PAUSING)
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["pausing"]
+    assert record.ok, record.error
+    heard = record.app.heard
+
+    pause = window.ctx.pause
+    pause.set_by_hand(True)
+    pause.set_by_hand(False)
+    pause.stop_all()
+    assert heard == [("pause", True), ("pause", False), ("stop",)]
+
+    record.app.hold_traffic("Flashing")
+    assert pause.holders == ["Flashing"]
+    assert not window.pause_status.pause_action.isEnabled(), "not lifted by hand mid-flash"
+    window._reload_plugins()  # unloaded holding it
+    settle(app)
+    assert not pause.paused, "a plugin gone gives back the pause it held"
+    count = len(heard)
+    pause.stop_all()
+    assert len(heard) == count, "and the old code is no longer called"

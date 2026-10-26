@@ -74,6 +74,7 @@ class Poller(QObject):
         self._watchdog = QTimer(self)
         self._watchdog.setSingleShot(True)
         self._watchdog.timeout.connect(self._give_up_on_round)
+        self._paused = False
 
     # --- what to read, and how often --------------------------------------------------
     def set_objects(self, objects: Iterable[tuple[int, int]]) -> None:
@@ -87,6 +88,27 @@ class Poller(QObject):
     @property
     def running(self) -> bool:
         return self._running
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    def set_paused(self, on: bool) -> None:
+        """Hold the rounds back while pycangui's own traffic is paused.
+
+        Still running -- the tick stays ticked -- and a round starts again
+        as soon as the pause lifts. A round under way when it began is let
+        finish: its requests have gone out already.
+        """
+        if on == self._paused:
+            return
+        self._paused = on
+        if on:
+            self._rounds.clear()  # the rate over a pause is not the bus's
+        elif self._running and not self._outstanding:
+            self._timer.stop()
+            self._round()
+        self._announce()
 
     @property
     def hz(self) -> float:
@@ -119,7 +141,7 @@ class Poller(QObject):
 
     # --- a round ------------------------------------------------------------------------
     def _round(self) -> None:
-        if not self._running:
+        if not self._running or self._paused:
             return
         if not self._objects:
             # Nothing to read: keep the clock running rather than stopping, so
@@ -158,7 +180,8 @@ class Poller(QObject):
         # actually needs. Asking for more than it can do is answered by going
         # as fast as it can, not by queueing up the difference.
         wait = max(0.0, (1.0 / self._hz) - took)
-        self._timer.start(int(wait * 1000))
+        if not self._paused:
+            self._timer.start(int(wait * 1000))
 
     def _interval_ms(self) -> int:
         return max(1, int(1000.0 / self._hz))
@@ -167,7 +190,7 @@ class Poller(QObject):
     @property
     def achieved(self) -> float:
         """Rounds a second, over the recent ones. 0 until one has completed."""
-        if not self._running or not self._rounds:
+        if not self._running or self._paused or not self._rounds:
             return 0.0
         mean = sum(self._rounds) / len(self._rounds)
         # The gap between rounds counts too: a poller asked for 1 Hz and
@@ -179,7 +202,7 @@ class Poller(QObject):
         self.rate.emit(self._hz, self.achieved)
 
 
-def rate_text(requested: float, achieved: float, running: bool) -> str:
+def rate_text(requested: float, achieved: float, running: bool, paused: bool = False) -> str:
     """What to put on screen beside the box.
 
     Says the achieved figure and nothing else while the two agree, because
@@ -188,6 +211,8 @@ def rate_text(requested: float, achieved: float, running: bool) -> str:
     """
     if not running:
         return ""
+    if paused:
+        return "paused"
     if achieved <= 0:
         return "starting..."
     shown = f"{achieved:.2f} Hz" if achieved < 1 else f"{achieved:.1f} Hz"

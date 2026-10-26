@@ -8,7 +8,28 @@ The report names the version, and -- when pycangui is being run from a source ch
 
 **Help > Known CAN ids...** lists every identifier pycangui would put a name to -- the messages in the [databases](signals.md) loaded, the [CANopen](canopen.md) nodes it knows of, the [UDS](uds.md) addresses and the [XCP](xcp.md) identifiers -- with where each name comes from, and marks any id two sources both claim. **Copy** puts the whole list on the clipboard, tab separated, ready for a spreadsheet or an email. J1939 is not in the list: 29-bit frames are named from the PGN in the identifier rather than from a list.
 
-**Help > Diagnostics...** writes a report of the versions, each channel's adapter, state, load and error count, and any panes out on their own, to the [Event Log](event-log.md) and copies it to the clipboard -- ready to paste into a bug report.
+**Help > Diagnostics...** opens a report in a window of its own, and copies it to the
+clipboard as it opens -- ready to paste into a bug report. **Refresh** makes it again,
+**Copy** copies it again and **Save...** writes it to a file. It gives:
+
+- the versions, each channel's adapter, state, load and error count, and any panes out on
+  their own;
+- **what is being sent**: every cyclic message on each channel, with its identifier, bytes
+  and period, whose it is -- a CAN Transmit row, CANopen's SYNC, or one started on the bus
+  directly from the console or a script -- and whether pycangui or the adapter keeps its
+  time; then how many frames were sent and received in the last five seconds, and the
+  identifiers sent most. A frame nothing on screen accounts for is told apart from a
+  device's here;
+- whether pycangui's own traffic is [paused](pause.md), and who holds the pause; the panes
+  polling and the simulated nodes running;
+- CANopen's nodes and their states, its node ids, SDO timing, SYNC and TIME; UDS's
+  identifiers, Tester Present and any transfer; J1939's address and DM13 hold; XCP or CCP's
+  connection and polling;
+- the DBCs, A2L and plugins loaded and the workspace; the last twenty warnings and errors
+  from the [Event Log](event-log.md); and the threads running.
+
+A part of it that cannot be read says so and the rest is still given. Names, files and
+identifiers are listed; hook contents and passwords never are.
 
 **Help > Check for updates...** asks the question that fits how pycangui was installed. The Windows installer's build asks GitHub whether there is a newer release, and offers to open the releases page. A pip installation asks PyPI for its newest version, and says the pip command that updates it. Run from a source folder, it asks about commits instead, since a release is behind everything pulled since: how many newer commits GitHub has on the branch this folder is on, and it offers to open the list of them. A branch GitHub does not have is compared with master.
 

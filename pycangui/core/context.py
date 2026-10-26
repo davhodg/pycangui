@@ -14,6 +14,7 @@ from pathlib import Path
 from pycangui.core import paths, timing, workspaces
 from pycangui.core.events import ERROR, GOOD, INFORMATION, WARNING, EventLog
 from pycangui.core.layout import Layout
+from pycangui.core.pause import TrafficPause
 from pycangui.core.settings import Settings
 
 
@@ -55,6 +56,10 @@ class Context:
         self.uds = None
         self.j1939 = None
         self.xcp = None
+        #: Who is holding pycangui's own traffic back, and Stop all. Here
+        #: rather than on the window so that a pane, a simulated node or a
+        #: plugin made with this context hears it without being wired up.
+        self.pause = TrafficPause()
         #: Everything said to the user goes through here, with a level.
         self.events = events if events is not None else EventLog()
         if events is None:

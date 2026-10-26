@@ -23,6 +23,8 @@ importing anything.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from PySide6.QtCore import QObject, Signal
 
 INFORMATION = "information"
@@ -61,6 +63,16 @@ def with_level(message: str, level: str) -> str:
     if word is None or message.lstrip().lower().startswith(word.lower()):
         return message
     return f"{word}: {message}"
+
+
+def with_time(line: str, at: datetime) -> str:
+    """A line with the time of day it was written in front, to the second.
+
+    To the second and no finer: a line is written a moment after it was
+    said, by far less than a second, and the time is for reading a log back
+    against a clock, not for timing anything -- the trace has the bus clock.
+    """
+    return f"{at:%H:%M:%S} {line}"
 
 
 class EventLog(QObject):

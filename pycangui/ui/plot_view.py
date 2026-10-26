@@ -11,28 +11,38 @@ because the temperature becomes a flat line along the bottom.
 
 An axis whose signals all have the same named values is marked with the
 names -- *Off*, *Run*, *Fault* -- in place of 0, 1 and 2.
+
+Two cursors, A and B, can be put on the plot and dragged: the time between
+them is on the plot's top row, and each signal's value at each, the change
+between them and what it did in the stretch between them are columns in the
+signal list beside or below (see signals_view.py), where a screen reader can
+reach them and nothing is drawn over the curves.
 """
 
 from __future__ import annotations
 
 import math
+from bisect import bisect_left, bisect_right
 
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
+from pycangui.ui import fonts, plot_colours
 from pycangui.ui.persist import remember
 from pycangui.ui.refresh import FAST_MS, SLOW_MS, display_choice
 from pycangui.ui.refresh import LABEL as SLOW_LABEL
@@ -79,6 +89,33 @@ TIME_ITEM_TIPS = (
     "The plot stays where you put it. Dragging or zooming the plot\nchooses this by itself.",
 )
 WINDOW_TIP = "How many seconds Follow keeps in view."
+CURSORS_TEXT = "Cursors"
+CURSORS_TIP = (
+    "Two cursors, A and B, to drag along the time axis. The time between them\n"
+    "is shown here; each signal's value at each, the change between them, and\n"
+    "its lowest, highest and mean between them are columns in the signal list.\n"
+    "They stay at the times they are put, so in Follow they scroll off.\n"
+    "\n"
+    "From the keyboard, with the plot focused (Tab to it): A or B picks a\n"
+    "cursor, Left and Right move it a hundredth of the time in view, with\n"
+    "Shift a tenth, and with Ctrl to the previous or next sample."
+)
+PLOT_KEYS_DESCRIPTION = (
+    "With the cursors on: A or B picks a cursor; Left and Right move it a hundredth "
+    "of the time in view, Shift with them a tenth, Ctrl with them to the previous "
+    "or next sample of a plotted signal."
+)
+#: How far Left and Right move a cursor, as shares of the time in view.
+CURSOR_STEP, CURSOR_BIG_STEP = 1 / 100, 1 / 10
+#: The cursor being moved from the keyboard is drawn solid, the other dashed,
+#: so which one the keys move can be seen.
+CURSOR_PENS = {True: (Qt.SolidLine, 2.0), False: (Qt.DashLine, 1.5)}
+#: Where the cursors start, as shares of the time in view.
+CURSOR_STARTS = (1 / 3, 2 / 3)
+CURSOR_NAMES = ("A", "B")
+#: How long a dragged cursor waits before the list works the stretch out
+#: again: a drag moves it many times a second, and once a pause is enough.
+CURSOR_SETTLE_MS = 60
 NAMES_TEXT = "Value names on axis"
 NAMES_TIP = (
     "Mark a Y axis with the names of its values -- Off, Run, Fault --\n"
@@ -87,7 +124,8 @@ NAMES_TIP = (
     "other axis, with Plot Y2, to give it one of its own."
 )
 LEFT, RIGHT = "left", "right"
-COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#17becf")
+VIEW_TEXT = "View"
+VIEW_TIP = "How the pane is laid out, and what colours the plot is drawn in."
 
 
 #: Where the marks on the time axis may fall once it shows more than a
@@ -172,6 +210,9 @@ class PlotView(QWidget):
     #: *Export...* was pressed. The plot holds the samples but not the file
     #: dialogs or the Event Log, so whoever made it does the exporting.
     export_requested = Signal()
+    #: The cursors' times, (A, B), as they are put and moved; None when they
+    #: are turned off.
+    cursors_changed = Signal(object)
 
     def __init__(self, hub: SignalHub, now: callable, ctx: Context | None = None) -> None:
         super().__init__()
@@ -187,8 +228,22 @@ class PlotView(QWidget):
 
         pg.setConfigOptions(antialias=False, background="w", foreground="k")
         self.plot = pg.PlotWidget(axisItems={"bottom": TimeAxis("bottom")})
+        self.plot.setObjectName("plot")
+        self.plot.setAccessibleName("Signal plot")
+        self.plot.setAccessibleDescription(PLOT_KEYS_DESCRIPTION)
+        # Focus shown, since the keys move the cursors only while it has it.
+        # The border is there unfocused too, so focusing does not shift the plot.
+        self.plot.setStyleSheet(
+            "#plot { border: 2px solid transparent; }"
+            "#plot:focus { border: 2px solid palette(highlight); }"
+        )
+        self.plot.installEventFilter(self)
         self.plot.showGrid(x=True, y=True, alpha=0.3)
-        self.legend = self.plot.addLegend(offset=(10, 10))
+        # In the text size everything else is in: pyqtgraph's own is a fixed
+        # 9 points, which stayed small at 150 % and 200 % text while the rest grew.
+        self.legend = self.plot.addLegend(
+            offset=(10, 10), labelTextSize=f"{max(1.0, self.font().pointSizeF()):g}pt"
+        )
         # A tick underneath, never shown, and an entry in the
         # plot's own right-click menu: a choice about the axes, made about
         # once, which is what that menu holds and what the bar has no room for.
@@ -211,6 +266,9 @@ class PlotView(QWidget):
         self.window_s.setValue(10)
         self.window_s.setSuffix(" s")
         self.window_s.setToolTip(WINDOW_TIP)
+        # Wide enough for its longest value and its arrows, which at large text
+        # it does not ask for by itself, and was cut to "10.00 s" in the row.
+        self.window_s.setMinimumWidth(fonts.width_with_arrows(self.window_s, "3600.00 s"))
         # Two ticks, shown as one menu -- Live refresh, Slow refresh or Paused; see
         # refresh.display_choice.
         self.pause = QCheckBox("Pause", self)
@@ -245,12 +303,50 @@ class PlotView(QWidget):
         clear = QPushButton("Clear history")
         clear.setToolTip("Throw away the samples collected so far, for every signal")
         clear.clicked.connect(hub.clear)
+        # A tick, worded: turned on and off often, so on the bar.
+        self.cursors = QCheckBox(CURSORS_TEXT)
+        self.cursors.setToolTip(CURSORS_TIP)
+        self.cursors.setAccessibleName("Cursors on the plot")
+        self.cursors.toggled.connect(self._on_cursors)
+        self.cursor_times = QLabel("")
+        self.cursor_times.setAccessibleName("Cursor times")
+        self.cursor_times.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        # Choices made about once, so behind one worded button rather than
+        # on the bar: the pane adds where its list goes, above the colours.
+        self.view_menu = QMenu(self)
+        self.view_menu.setToolTipsVisible(True)
+        self.view_menu.addSection("Plot colours")
+        self.colour_actions = QActionGroup(self)
+        for choice, text in plot_colours.CHOICES:
+            action = self.view_menu.addAction(text)
+            action.setCheckable(True)
+            action.setData(choice)
+            action.setToolTip(plot_colours.TIP)
+            self.colour_actions.addAction(action)
+        self.colour_actions.triggered.connect(lambda a: plot_colours.choose(a.data()))
+        self.view_button = QToolButton()
+        self.view_button.setText(VIEW_TEXT)
+        self.view_button.setToolTip(VIEW_TIP)
+        self.view_button.setAccessibleName("View choices")
+        self.view_button.setPopupMode(QToolButton.InstantPopup)
+        self.view_button.setMenu(self.view_menu)
+        self.view_menu.aboutToShow.connect(self._show_colour_choice)
+        self._lines: list[pg.InfiniteLine] = []
+        #: Which cursor the keys move: 0 for A, 1 for B.
+        self._active = 0
+        self._place_cursors = False
+        self._cursors_moved = QTimer(
+            self, singleShot=True, interval=CURSOR_SETTLE_MS, timeout=self._say_cursors
+        )
         bar = QHBoxLayout()
         bar.addWidget(self.display)
         bar.addWidget(QLabel("Time:"))
         bar.addWidget(self.time)
         bar.addWidget(self.window_s)
+        bar.addWidget(self.cursors)
+        bar.addWidget(self.cursor_times)
         bar.addStretch()
+        bar.addWidget(self.view_button)
         bar.addWidget(self.export)
         bar.addWidget(clear)
 
@@ -274,7 +370,38 @@ class PlotView(QWidget):
             # drawing four times a second is still a live plot.
             remember(ctx, "plot.slow", self.slow)
             remember(ctx, "plot.value_names", self.names)
+            # Whether they are on; not where, which is a bus time from one connection.
+            remember(ctx, "plot.cursors", self.cursors)
         self._show_time()
+        #: Which of the scheme's colours each curve has: kept, so a curve keeps
+        #: its place in the order when the colours change.
+        self._colour_of: dict[str, int] = {}
+        self._scheme = plot_colours.scheme_for(self)
+        plot_colours.Follower(self, self.repaint_colours)
+        self.repaint_colours()
+
+    # --- colours --------------------------------------------------------------------------
+    @property
+    def scheme(self) -> plot_colours.Scheme:
+        return self._scheme
+
+    def repaint_colours(self) -> None:
+        """Draw everything in the colours chosen, as they now are."""
+        self._scheme = scheme = plot_colours.scheme_for(self)
+        plot_colours.paint(self.plot, scheme)
+        for key, curve in self._curves.items():
+            curve.setPen(pg.mkPen(scheme.curve(self._colour_of.get(key, 0)), width=1.5))
+        for line in self._lines:
+            line.setHoverPen(pg.mkPen(scheme.cursor_hover, width=2.5))
+            line.label.setColor(scheme.cursor_label)
+            line.label.fill = pg.mkBrush(scheme.cursor_label_fill)
+            line.label.update()
+        self.set_active_cursor(self._active)
+
+    def _show_colour_choice(self) -> None:
+        choice = plot_colours.chosen()
+        for action in self.colour_actions.actions():
+            action.setChecked(action.data() == choice)
 
     # --- which stretch of time ------------------------------------------------------------
     def _on_time_chosen(self, index: int) -> None:
@@ -313,6 +440,146 @@ class PlotView(QWidget):
     @Slot(bool)
     def _on_slow(self, slow: bool) -> None:
         self._timer.setInterval(SLOW_MS if slow else FAST_MS)
+
+    # --- the cursors ----------------------------------------------------------------------
+    @Slot(bool)
+    def _on_cursors(self, on: bool) -> None:
+        for line in self._lines:
+            self.plot.removeItem(line)
+        self._lines = []
+        self._place_cursors = False
+        if not on:
+            self.cursor_times.setText("")
+            self.cursors_changed.emit(None)
+            return
+        for name in CURSOR_NAMES:
+            line = pg.InfiniteLine(
+                angle=90,
+                movable=True,
+                hoverPen=pg.mkPen(self._scheme.cursor_hover, width=2.5),
+                label=name,
+                labelOpts={
+                    "position": 0.95,
+                    "color": self._scheme.cursor_label,
+                    "fill": self._scheme.cursor_label_fill,
+                },
+            )
+            line.sigPositionChanged.connect(self._on_cursor_moved)
+            # The one dragged last is the one the keys go on with.
+            line.sigDragged.connect(lambda _line, i=len(self._lines): self.set_active_cursor(i))
+            self.plot.addItem(line, ignoreBounds=True)
+            self._lines.append(line)
+        self.set_active_cursor(self._active)
+        # Where the data is, if there is any yet: a plot restored with its
+        # cursors on has no time range worth a third of until it has drawn.
+        if self._curves and any(len(s.times) for k in self._curves if (s := self.hub.get(k))):
+            self._put_cursors()
+        else:
+            self._place_cursors = True
+
+    def _put_cursors(self) -> None:
+        """At a third and two thirds of the time in view."""
+        low, high = self.plot.getViewBox().viewRange()[0]
+        for line, share in zip(self._lines, CURSOR_STARTS, strict=True):
+            line.blockSignals(True)
+            line.setValue(low + share * (high - low))
+            line.blockSignals(False)
+        self._place_cursors = False
+        self._say_cursors()
+
+    def cursor_positions(self) -> tuple[float, float] | None:
+        """The cursors' times, (A, B), or None while they are off."""
+        if len(self._lines) != 2:
+            return None
+        return float(self._lines[0].value()), float(self._lines[1].value())
+
+    def set_cursor_positions(self, a: float, b: float) -> None:
+        """Put the cursors at these times, for the console and the tests."""
+        if not self.cursors.isChecked():
+            self.cursors.setChecked(True)
+        for line, t in zip(self._lines, (a, b), strict=True):
+            line.blockSignals(True)
+            line.setValue(t)
+            line.blockSignals(False)
+        self._place_cursors = False
+        self._say_cursors()
+
+    @property
+    def active_cursor(self) -> int:
+        """Which cursor the keys move: 0 for A, 1 for B."""
+        return self._active
+
+    def set_active_cursor(self, which: int) -> None:
+        self._active = which
+        for i, line in enumerate(self._lines):
+            style, width = CURSOR_PENS[i == which]
+            line.setPen(pg.mkPen(self._scheme.cursor, width=width, style=style))
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self.plot and event.type() == QEvent.KeyPress and self._lines:
+            return self._cursor_key(event)
+        return super().eventFilter(watched, event)
+
+    def _cursor_key(self, event) -> bool:
+        """Pick or move a cursor; False for a key that is not about them."""
+        key, mods = event.key(), event.modifiers()
+        if key in (Qt.Key_A, Qt.Key_B) and not mods & ~Qt.KeypadModifier:
+            self.set_active_cursor(0 if key == Qt.Key_A else 1)
+            return True
+        if key not in (Qt.Key_Left, Qt.Key_Right):
+            return False
+        ahead = key == Qt.Key_Right
+        line = self._lines[self._active]
+        t = float(line.value())
+        if mods & Qt.ControlModifier:
+            to = self._next_sample(t, ahead)
+            if to is None:
+                return True  # nothing further that way: the key is still spent
+        else:
+            low, high = self.plot.getViewBox().viewRange()[0]
+            share = CURSOR_BIG_STEP if mods & Qt.ShiftModifier else CURSOR_STEP
+            to = t + (share if ahead else -share) * (high - low)
+        line.setValue(to)  # sigPositionChanged shows it and tells the list
+        return True
+
+    def _next_sample(self, t: float, ahead: bool) -> float | None:
+        """The nearest sample time past ``t`` that way, over every plotted signal."""
+        found = []
+        for key in self._curves:
+            s = self.hub.get(key)
+            if s is None or not len(s.times):
+                continue
+            if ahead:
+                i = bisect_right(s.times, t)
+                if i < len(s.times):
+                    found.append(s.times[i])
+            else:
+                i = bisect_left(s.times, t) - 1
+                if i >= 0:
+                    found.append(s.times[i])
+        if not found:
+            return None
+        return min(found) if ahead else max(found)
+
+    def _on_cursor_moved(self, *_args) -> None:
+        self._show_cursor_times()
+        self._cursors_moved.start()
+
+    def _say_cursors(self) -> None:
+        self._show_cursor_times()
+        self.cursors_changed.emit(self.cursor_positions())
+
+    def _show_cursor_times(self) -> None:
+        where = self.cursor_positions()
+        if where is None:
+            self.cursor_times.setText("")
+            return
+        a, b = where
+        clock = max(abs(a), abs(b)) >= 60
+        self.cursor_times.setText(
+            f"A {time_text(a, 3, clock)}   B {time_text(b, 3, clock)}   "
+            f"B - A {time_text(b - a, 3, abs(b - a) >= 60)}"
+        )
 
     # --- the right hand axis --------------------------------------------------------------
     def _make_right_axis(self) -> None:
@@ -455,13 +722,15 @@ class PlotView(QWidget):
     def set_plotted(self, key: str, on: bool) -> None:
         if on and key not in self._curves:
             s = self.hub.get(key)
-            pen = pg.mkPen(COLOURS[len(self._curves) % len(COLOURS)], width=1.5)
+            self._colour_of[key] = colour = len(self._curves)
+            pen = pg.mkPen(self._scheme.curve(colour), width=1.5)
             label = f"{s.name} [{s.unit}]" if s and s.unit else (s.name if s else key)
             curve = pg.PlotDataItem([], [], pen=pen, name=label)
             self._curves[key] = curve
             self._attach(key, curve)
         elif not on and key in self._curves:
             self._detach(key, self._curves.pop(key))
+            self._colour_of.pop(key, None)
             self._right.discard(key)
         self._show_axes()
 
@@ -583,3 +852,5 @@ class PlotView(QWidget):
         if following:
             # The right hand box is linked to this X range and follows it.
             self.plot.setXRange(t_from, edge, padding=0)
+        if self._place_cursors:
+            self._put_cursors()

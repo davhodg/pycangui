@@ -19,6 +19,12 @@ Two rules, whatever is chosen. It stops at the first step that fails. And
 having stopped, it still puts back what it took away from the rest of the bus
 -- the bitrate, communication, the recording of faults -- because a failed
 flash that leaves every other ECU silent is two problems.
+
+Tester present is a step too, after the first session change, rather than
+something to remember to tick beforehand: a session an ECU closes for want of
+it, half way through, is a failed flash. It is not a request with an answer,
+so it is done at once, and the sequence turns it off again when it ends,
+either way -- unless it was on already before the sequence began.
 """
 
 from __future__ import annotations
@@ -49,6 +55,14 @@ STEPS = (
         "Extended session (0x10 03)",
         BEFORE,
         "The session the steps that quieten the bus are allowed in.",
+    ),
+    Step(
+        "tester_on",
+        "Tester present on (0x3E)",
+        BEFORE,
+        "Send TesterPresent every couple of seconds from here on, so the sessions\n"
+        "stay open through the download. Turned off again when the sequence ends,\n"
+        "unless it was on before it began.",
     ),
     Step(
         "unlock_extended",
@@ -152,6 +166,9 @@ BY_KEY = {step.key: step for step in STEPS}
 #: carried out there: the erase before the first block, the check after the last.
 IN_TRANSFER = frozenset({"erase", "check"})
 
+#: Done at once, with no request whose answer to wait for.
+INSTANT = frozenset({"tester_on"})
+
 #: What a failed sequence puts back, and the step that says it was taken away.
 PUT_BACK = (("bitrate", "rate_back"), ("comm_off", "comm_on"), ("dtc_off", "dtc_on"))
 
@@ -212,6 +229,8 @@ class Sequence(QObject):
     running = Signal(bool)
     #: Whether every step went through.
     finished = Signal(bool)
+    #: Tester present turned on or off by the sequence, for the pane's tick box.
+    tester_present = Signal(bool)
 
     def __init__(self, manager, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -224,6 +243,8 @@ class Sequence(QObject):
         self._putting_back = False
         self._cancelled = False
         self._values = Values()
+        #: Whether this sequence turned tester present on, and so turns it off.
+        self._tester_ours = False
         self.is_running = False
         manager.completed.connect(self._on_completed)
 
@@ -236,6 +257,7 @@ class Sequence(QObject):
         m = self._manager
         how = {
             "extended": lambda: m.change_session(EXTENDED_SESSION),
+            "tester_on": self._tester_on,
             "unlock_extended": lambda: m.unlock(values.unlock_extended),
             "dtc_off": lambda: m.set_dtc_setting(False),
             "comm_off": lambda: m.communication_control(values.comm_control, values.comm_messages),
@@ -280,6 +302,7 @@ class Sequence(QObject):
         self._done = []
         self._putting_back = False
         self._cancelled = False
+        self._tester_ours = False
         self.is_running = True
         self.running.emit(True)
         self._next()
@@ -300,9 +323,21 @@ class Sequence(QObject):
             self._token = None
             QTimer.singleShot(round(start * 1000), self._waited)
             return
+        if self._key in INSTANT:
+            self._token = None
+            start()
+            QTimer.singleShot(0, self._waited)  # done, once the loop comes round
+            return
         self._token = object()
         self._manager.tagged(self._token)
         start()
+
+    def _tester_on(self) -> None:
+        """Tester present on, and noted as the sequence's to turn off -- unless
+        it was on already, in which case it is somebody else's to turn off."""
+        self._tester_ours = not getattr(self._manager, "tester_present_on", False)
+        self._manager.set_tester_present(True)
+        self.tester_present.emit(True)
 
     def _waited(self) -> None:
         if self.is_running:
@@ -347,6 +382,13 @@ class Sequence(QObject):
     def _end(self, worked: bool) -> None:
         self.is_running = False
         self._token = None
+        if self._tester_ours:
+            # After putting back, which wants the sessions kept as much as the
+            # download did.
+            self._tester_ours = False
+            self._manager.set_tester_present(False)
+            self.tester_present.emit(False)
+            self.said.emit("Sequence: tester present off")
         self.said.emit("Sequence complete" if worked else "Sequence did not complete")
         self.running.emit(False)
         self.finished.emit(worked)

@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSpinBox,
     QTableWidget,
@@ -35,6 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.canopen import node_ids
 from pycangui.canopen.manager import (
     DEFAULT_SDO_RETRIES,
     DEFAULT_SDO_TIMEOUT_S,
@@ -57,6 +59,7 @@ DOMAINS_KEY = "canopen.read_domain_objects"
 READ_PDOS_KEY = "canopen.read_pdo_config"
 TIME_PERIOD_KEY = "canopen.time_period_s"
 TIME_LOCAL_KEY = "canopen.time_local"
+NODE_IDS_KEY = "canopen.node_ids"
 DEFAULT_TIME_S = 10
 MAX_TIME_S = 3600
 
@@ -102,6 +105,14 @@ IDENTIFY_TIP = (
     "off as well, nothing goes out unless you ask for it, which is what\n"
     "watching somebody else's live machine wants. The cost is that a new\n"
     "node stays Node <id> with no EDS until Identify or Load EDS is pressed."
+)
+NODE_IDS_TIP = (
+    "The node ids whose heartbeats make a node, as 1-20 or 1-10, 32.\n"
+    "\n"
+    "1-127, every one, unless something else on the bus uses identifiers\n"
+    "CANopen reserves for heartbeats (0x701 to 0x77F): its frames are then\n"
+    "not taken for nodes, listed, identified or named in the trace. A node\n"
+    "added by hand is heard whatever this says."
 )
 READ_PDOS_TIP = (
     "Read each node's PDO configuration from it once its EDS is loaded: both\n"
@@ -176,6 +187,8 @@ class CanopenSettings:
     #: and whether it is local time or UTC.
     time_period_s: float = DEFAULT_TIME_S
     time_local: bool = True
+    #: Whose heartbeats make a node.
+    node_ids: frozenset[int] = node_ids.ALL
 
 
 def why_not(node_id: int, request: int, response: int) -> str:
@@ -253,6 +266,10 @@ def load(ctx: Context) -> CanopenSettings:
     if (period := _milliseconds(ctx.settings.get(TIME_PERIOD_KEY))) is not None:
         out.time_period_s = min(max(period, 1), MAX_TIME_S)
     out.time_local = bool(ctx.settings.get(TIME_LOCAL_KEY, True))
+    try:
+        out.node_ids = node_ids.parse(str(ctx.settings.get(NODE_IDS_KEY, "1-127")))
+    except ValueError:
+        pass  # every id, rather than none
     saved = ctx.settings.get(CHANNELS_KEY, {})
     if isinstance(saved, dict):
         for node, pair in saved.items():
@@ -283,6 +300,7 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
     ctx.settings.set(READ_PDOS_KEY, settings.read_pdos)
     ctx.settings.set(TIME_PERIOD_KEY, settings.time_period_s)
     ctx.settings.set(TIME_LOCAL_KEY, settings.time_local)
+    ctx.settings.set(NODE_IDS_KEY, node_ids.text(settings.node_ids))
     # In hex, the way a COB-ID is spoken, so the file reads as the dialog does.
     ctx.settings.set(
         CHANNELS_KEY,
@@ -324,6 +342,7 @@ _SHOWN = (
     ("sync_period_ms", "SYNC period", lambda v: f"{v:g} ms"),
     ("sync_counter_overflow", "SYNC counter", _counter),
     ("identify", "identify new nodes", _on_off),
+    ("node_ids", "node ids", node_ids.text),
     ("read_domains", "read DOMAIN objects", _on_off),
     ("read_pdos", "read the PDO configuration", _on_off),
     ("time_period_s", "TIME period", lambda v: f"{v:g} s"),
@@ -361,6 +380,7 @@ def changed(old: CanopenSettings, new: CanopenSettings, fields) -> bool:
 
 
 def apply(manager, settings: CanopenSettings) -> None:
+    manager.set_node_ids(settings.node_ids)
     manager.read_domains = settings.read_domains
     manager.read_pdos_when_found = settings.read_pdos
     manager.set_sdo_timing(settings.timeout_ms / 1000, settings.retries)
@@ -417,6 +437,10 @@ class CanopenSettingsDialog(QDialog):
         self.identify = QCheckBox("Identify a node when it is first heard")
         self.identify.setChecked(settings.identify)
         self.identify.setToolTip(IDENTIFY_TIP)
+        self.node_ids = QLineEdit(node_ids.text(settings.node_ids))
+        self.node_ids.setPlaceholderText("1-127")
+        self.node_ids.setToolTip(NODE_IDS_TIP)
+        self.node_ids.setAccessibleName("Node ids")
         self.read_domains = QCheckBox("Read DOMAIN objects with Read all and Save DCF")
         self.read_domains.setChecked(settings.read_domains)
         self.read_domains.setToolTip(DOMAINS_TIP)
@@ -444,6 +468,7 @@ class CanopenSettingsDialog(QDialog):
         form.addRow("SYNC period:", self.sync_period)
         form.addRow("SYNC counter:", self.sync_counter)
         form.addRow("", self.identify)
+        form.addRow("Node ids:", self.node_ids)
         form.addRow("", self.read_pdos)
         form.addRow("", self.read_domains)
         form.addRow("TIME period:", self.time_period)
@@ -562,8 +587,17 @@ class CanopenSettingsDialog(QDialog):
             seen.add(row.node_id)
         return rows, problems
 
+    def _chosen_ids(self) -> frozenset[int]:
+        """The node ids typed; every one when the box is left empty."""
+        typed = self.node_ids.text().strip()
+        return node_ids.parse(typed) if typed else node_ids.ALL
+
     def _accept(self) -> None:
         _rows, problems = self._rows()
+        try:
+            self._chosen_ids()
+        except ValueError as exc:
+            problems.insert(0, f"node ids: {exc}")
         if problems:
             messages.warning(self, "These settings will not do", "\n".join(problems))
             return
@@ -582,6 +616,7 @@ class CanopenSettingsDialog(QDialog):
             read_pdos=self.read_pdos.isChecked(),
             time_period_s=self.time_period.value(),
             time_local=self.time_zone.currentIndex() == 0,
+            node_ids=self._ids_or_all(),
             channels={
                 row.node_id: (row.request, row.response)
                 for row in rows
@@ -591,3 +626,9 @@ class CanopenSettingsDialog(QDialog):
                 row.node_id: row.heartbeat_ms for row in rows if row.heartbeat_ms is not None
             },
         )
+
+    def _ids_or_all(self) -> frozenset[int]:
+        try:
+            return self._chosen_ids()
+        except ValueError:  # refused by OK, so only for a dialog read without it
+            return node_ids.ALL

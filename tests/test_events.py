@@ -8,6 +8,8 @@ press Add from DBC with no database, or tick Cyclic with no bus, and the
 button appeared to do nothing at all.
 """
 
+import time
+
 import pytest
 from PySide6.QtCore import QSettings
 
@@ -379,3 +381,93 @@ def test_the_word_is_not_said_twice():
         already = f"{PREFIXES[level]}: written that way by whoever raised it"
         assert with_level(already, level) == already
         assert with_level(already.upper(), level) == already.upper()
+
+
+def test_an_sdo_line_from_the_library_says_whose_transfer_it_was(app):
+    """Reported: two nodes timed out and the Event Log showed one error, with
+    no node in it. The library logs the abort code alone; the two lines were
+    the same, so the second was folded into the first as a repeat."""
+    import logging
+
+    import can
+    import canopen
+
+    from pycangui.canopen import sdo_log
+    from pycangui.core.logbridge import LogBridge
+
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    network = canopen.Network(bus=can.Bus(interface="virtual", channel="vcan_named_sdo"))
+    try:
+        for node_id in (40, 41):  # nobody is there to answer
+            node = network.add_node(canopen.RemoteNode(node_id, None))
+            node.sdo.RESPONSE_TIMEOUT = 0.02
+            sdo_log.watch(node.sdo, node_id, lambda _r: None, time.monotonic, lambda _i, _s: "")
+            with pytest.raises(canopen.SdoCommunicationError):
+                node.sdo.upload(0x1018, 1)
+        # A transfer opened as a file is known by its node when it aborts.
+        network[41].sdo.abort(0x05040000)
+        logging.getLogger("canopen.sdo.client").error("not during a transfer")
+    finally:
+        bridge.detach()
+        network.bus.shutdown()
+
+    errors = [text for level, text in said if level == "error"]
+    assert any("Node 40, 1018:01" in text for text in errors)
+    assert any("Node 41, 1018:01" in text for text in errors), "the second is said too"
+    assert any("Node 41:" in text and "1018" not in text for text in errors)
+    assert errors[-1].endswith("not during a transfer"), "and nothing claimed when unknown"
+
+
+# --- a time on each line, when chosen ---------------------------------------------------------
+def last_line(window) -> str:
+    return window.log.toPlainText().splitlines()[-1]
+
+
+def test_lines_carry_no_time_unless_chosen(app, window):
+    import re
+
+    window.events.post("plain", WARNING)
+    app.processEvents()
+    assert last_line(window) == "Warning: plain"
+    assert not window.log_times.isChecked()
+    assert not re.match(r"\d\d:\d\d:\d\d ", window.log.toPlainText()), "on no line at all"
+
+
+def test_a_chosen_time_is_the_time_of_day_before_the_level_and_kept_when_copied(
+    app, window, monkeypatch
+):
+    from datetime import datetime
+
+    from pycangui.ui import main_window
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 21, 14, 3, 27, 900000)
+
+    monkeypatch.setattr(main_window, "datetime", Clock)
+    window.log_times.setChecked(True)
+    window.events.post("the node did not answer", WARNING)
+    app.processEvents()
+    assert last_line(window) == "14:03:27 Warning: the node did not answer", "to the second"
+
+    window.log.selectAll()
+    window.log.copy()
+    copied = app.clipboard().text()
+    assert "14:03:27 Warning: the node did not answer" in copied
+
+
+def test_the_choice_is_kept_for_the_next_window(app, tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    QSettings().clear()
+    first = MainWindow()
+    first.log_times.setChecked(True)
+    first.close()
+    second = MainWindow()
+    try:
+        assert second.log_times.isChecked()
+        assert second.log_times in second.settings_menu.actions(), "under Tools > Settings"
+    finally:
+        second.close()
+        QSettings().clear()

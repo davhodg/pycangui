@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""Open .dcf and .eds files with this pycangui, from the file manager.
+"""Open .dcf, .eds and .dbc files with this pycangui, from the file manager.
 
 The installer offers this as a task. Everything else -- a source folder, a pip
 installation, an installed build whose task was left unticked -- gets it from
 Tools > Settings, which is this module.
 
 pycangui is added to *Open with*, and not made the default: another CANopen
-tool somebody already uses for these files keeps them until they choose
-otherwise. Written for the user only, so no administrator is asked.
+or CAN tool somebody already uses for these files keeps them until they
+choose otherwise. Written for the user only, so no administrator is asked.
 
 How pycangui is started with a file depends on how it got here:
 
@@ -35,9 +35,16 @@ from pycangui.core import shortcut
 TYPES = (
     (".dcf", "pycangui.dcf", "CANopen device configuration file"),
     (".eds", "pycangui.eds", "CANopen electronic data sheet"),
+    # Not .kcd, .sym or .arxml, which pycangui reads as well: those are more
+    # likely another tool's own, and an .arxml is far more than a database.
+    (".dbc", "pycangui.dbc", "CAN database"),
 )
-#: There is no registered type for either, so these are pycangui's own.
-MIME = {".dcf": "application/x-canopen-dcf", ".eds": "application/x-canopen-eds"}
+#: There is no registered type for any of them, so these are pycangui's own.
+MIME = {
+    ".dcf": "application/x-canopen-dcf",
+    ".eds": "application/x-canopen-eds",
+    ".dbc": "application/x-can-dbc",
+}
 DESKTOP_NAME = "pycangui-open.desktop"
 MIME_PACKAGE = "pycangui.xml"
 
@@ -97,7 +104,7 @@ def _register_windows(start: list[str]) -> str:
 
 # --- Linux --------------------------------------------------------------------------------
 def mime_package() -> str:
-    """The shared-mime-info file that says which files are a DCF or an EDS."""
+    """The shared-mime-info file that says which files are a DCF, an EDS or a DBC."""
     types = "".join(
         f'  <mime-type type="{MIME[extension]}">\n'
         f"    <comment>{description}</comment>\n"
@@ -127,7 +134,7 @@ def desktop_entry(start: list[str], icon_path: Path) -> str:
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=pycangui\n"
-        "Comment=Open a CANopen DCF or EDS\n"
+        "Comment=Open a CANopen DCF or EDS, or a CAN database\n"
         f"Exec={' '.join(_desktop_quoted(part) for part in start)} %f\n"
         f"Icon={icon_path}\n"
         # The launcher may install libraries after a pull, and says so there.
@@ -157,7 +164,7 @@ def _register_linux(start: list[str], environ=None) -> str:
 
 
 def register(platform: str | None = None) -> str:
-    """Offer this pycangui for .dcf and .eds files. Returns where that was
+    """Offer this pycangui for .dcf, .eds and .dbc files. Returns where that was
     written; OSError if it could not be."""
     platform = sys.platform if platform is None else platform
     start = command(platform)

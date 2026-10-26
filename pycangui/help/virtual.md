@@ -87,6 +87,12 @@ def stop(node, *, ctx): ...  # once, on the way out
 All four are optional. A device that only announces itself has a `poll`; a
 diagnostic server that says nothing until asked has only an `on_frame`.
 
+A fifth, `on_pause(node, paused, *, ctx)`, is called on the node's thread when
+pycangui's own traffic is [paused](pause.md) -- during a flash, say -- and when
+it goes on again. A node stands for another device, so nothing about it stops
+unless it chooses to; `node.paused` says which, for a `poll` that would rather
+keep quiet.
+
 `node` is the running instance, and is where anything you keep between calls
 goes: `node.state` is yours and pycangui never reads it, so two copies of one
 node on two channels do not tread on each other. `node.send(id, data)` puts a

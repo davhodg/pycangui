@@ -2,7 +2,14 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Signals pane: every live signal in the hub, grouped by source, with its
 latest value and two checkboxes: Plot Y1 draws it against the plot's left
-axis, Plot Y2 against the second axis on the right."""
+axis, Plot Y2 against the second axis on the right.
+
+While the plot's cursors are on, six more columns read them for each plotted
+signal: its value at A and at B, the change between, and its lowest, highest
+and mean between them. Columns rather than labels on the plot, so that they
+are in a list a screen reader walks and can be copied, and nothing is drawn
+over the curves. They come and go with the cursors and are not among the
+columns somebody chooses, since without cursors they have nothing to say."""
 
 from __future__ import annotations
 
@@ -31,13 +38,20 @@ RIGHT = 4
 #: columns on a list that opens in a third of the pane is a list nobody can
 #: read. Each is kept for every signal whether its column shows or not.
 COUNT, RATE, MINIMUM, MAXIMUM = 5, 6, 7, 8
-HEADERS = ["Signal", "Value", "Unit", "Plot Y1", "Plot Y2", "Count", "Rate", "Min", "Max"]
+#: What the cursors read, for the plotted signals.
+AT_A, AT_B, CHANGE, LOWEST, HIGHEST, MEAN = 9, 10, 11, 12, 13, 14
+CURSOR_COLUMNS = (AT_A, AT_B, CHANGE, LOWEST, HIGHEST, MEAN)
+HEADERS = [
+    "Signal", "Value", "Unit", "Plot Y1", "Plot Y2", "Count", "Rate", "Min", "Max",
+    "At A", "At B", "Change", "Lowest", "Highest", "Mean",
+]  # fmt: skip
 UNIT = 2
 #: Left to right as they are shown: Min and Max sit beside the value they are
 #: the extremes of, and Unit after them. The columns are moved into this
 #: order on screen rather than renumbered, so a column is still the number
-#: everything else knows it by.
-SHOWN_ORDER = (0, 1, MINIMUM, MAXIMUM, UNIT, PLOT, RIGHT, COUNT, RATE)
+#: everything else knows it by. The cursors' columns come after the two
+#: checkboxes, so turning the cursors on moves nothing already there.
+SHOWN_ORDER = (0, 1, MINIMUM, MAXIMUM, UNIT, PLOT, RIGHT, *CURSOR_COLUMNS, COUNT, RATE)
 #: The columns that can be hidden, in the order the menu offers them. Unit is
 #: one of them, and the only one showing until somebody chooses otherwise.
 OPTIONAL = {"Min": MINIMUM, "Max": MAXIMUM, "Unit": UNIT, "Count": COUNT, "Rate": RATE}
@@ -51,11 +65,22 @@ COLUMN_TIPS = {
     MINIMUM: "The smallest value since the history was last cleared.",
     MAXIMUM: "The largest value since the history was last cleared.",
     UNIT: "The unit the value is in, where the database or the EDS gives one.",
+    AT_A: "The value at cursor A: the sample at it, or the last one before it.\n"
+    "Not worked out between samples: a value that was never sent is not shown.",
+    AT_B: "The value at cursor B: the sample at it, or the last one before it.",
+    CHANGE: "The value at B less the value at A.",
+    LOWEST: "The lowest sample between the cursors.\n"
+    "Not Min, which is the lowest since the history was last cleared.",
+    HIGHEST: "The highest sample between the cursors.\n"
+    "Not Max, which is the highest since the history was last cleared.",
+    MEAN: "The mean of the samples between the cursors: each sample counts the\n"
+    "same, however long it was until the next, so a signal sent faster at\n"
+    "some times than others leans toward those times.",
 }
 Y1_TIP = "Plot the signal against the left Y axis.\nRight-click to plot or unplot several at once."
 MENU_TIP = (
     "Right-click to plot or unplot every signal, or every signal of one message,\n"
-    "and to show the Count, Rate, Min and Max columns."
+    "to show the Count, Rate, Min and Max columns, and to put the list below the plot."
 )
 
 
@@ -73,6 +98,12 @@ def _number(value: float | None, choices=None) -> str:
     )
 
 
+BELOW_TEXT = "List below the plot"
+BELOW_TIP = (
+    "Put this list under the plot rather than beside it: the plot gets the\n"
+    "whole width, and the list room for more columns -- in a pane undocked\n"
+    "and made full screen, say. Kept with this pane."
+)
 Y2_TIP = (
     "Plot the signal against a second Y axis, on the right of the plot, with a\n"
     "scale of its own. A signal is on one axis at a time."
@@ -87,6 +118,8 @@ class SignalsView(QWidget):
     all_unplotted = Signal()
     #: Which optional columns are showing changed, for whoever remembers it.
     columns_changed = Signal(list)
+    #: *List below the plot* was ticked or unticked on the right-click.
+    below_wanted = Signal(bool)
 
     def __init__(self, hub: SignalHub, settings=None, now=None) -> None:
         super().__init__()
@@ -97,6 +130,15 @@ class SignalsView(QWidget):
         self._groups: dict[str, QTreeWidgetItem] = {}
         self._items: dict[str, QTreeWidgetItem] = {}
         self._updating = False
+        #: Whether the pane shows this list below the plot rather than beside
+        #: it: the pane's to decide and remember, said here for the menu.
+        self.below = False
+        #: The cursors' times, (A, B), while they are on.
+        self._cursors: tuple[float, float] | None = None
+        #: Key -> (the span's ends and its first and last times, its Stretch):
+        #: worked out again only when the samples between the cursors change,
+        #: not every time the list is refreshed.
+        self._stretches: dict[str, tuple[tuple, object]] = {}
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
@@ -109,6 +151,8 @@ class SignalsView(QWidget):
             header.moveSection(header.visualIndex(column), place)
         for name, column in OPTIONAL.items():
             self.tree.setColumnHidden(column, name not in DEFAULT_COLUMNS)
+        for column in CURSOR_COLUMNS:
+            self.tree.setColumnHidden(column, True)
         self.tree.setFont(fonts.mono())
         self.widths = ColumnWidths(self.tree, settings, "signals")
         self.tree.itemChanged.connect(self._on_item_changed)
@@ -166,6 +210,7 @@ class SignalsView(QWidget):
     def _on_removed(self, keys: list) -> None:
         """Take forgotten signals off the list, and a source left empty with them."""
         for key in keys:
+            self._stretches.pop(key, None)
             item = self._items.pop(key, None)
             if item is None:
                 continue
@@ -189,6 +234,8 @@ class SignalsView(QWidget):
                     item.setText(2, s.unit)
             if s is not None:
                 self._show_statistics(item, s)
+                if self._cursors is not None:
+                    self._show_cursors(key, item, s)
 
     def _time(self) -> float | None:
         return self._now() if self._now is not None else None
@@ -205,6 +252,67 @@ class SignalsView(QWidget):
                 continue
             if item.text(column) != (new := text()):
                 item.setText(column, new)
+
+    # --- the plot's cursors ------------------------------------------------------------
+    @Slot(object)
+    def set_cursors(self, where: tuple[float, float] | None) -> None:
+        """The cursors were put or moved to (A, B), or turned off with None."""
+        was_on = self._cursors is not None
+        self._cursors = None if where is None else (float(where[0]), float(where[1]))
+        if (self._cursors is not None) != was_on:
+            for column in CURSOR_COLUMNS:
+                self.tree.setColumnHidden(column, self._cursors is None)
+        if self._cursors is None:
+            self._stretches.clear()
+            for item in self._items.values():
+                for column in CURSOR_COLUMNS:
+                    item.setText(column, "")
+            return
+        for key, item in self._items.items():
+            if (s := self.hub.get(key)) is not None:
+                self._show_cursors(key, item, s)
+
+    @property
+    def cursors(self) -> tuple[float, float] | None:
+        return self._cursors
+
+    def _plotted(self, item: QTreeWidgetItem) -> bool:
+        return Qt.Checked in (item.checkState(PLOT), item.checkState(RIGHT))
+
+    def _show_cursors(self, key: str, item: QTreeWidgetItem, s) -> None:
+        """Fill the cursors' columns for one signal, if it is on the plot."""
+        texts = [""] * len(CURSOR_COLUMNS)
+        if self._plotted(item):
+            a, b = self._cursors
+            at_a, at_b = s.value_at(a), s.value_at(b)
+            texts[0] = _number(at_a, s.choices)
+            texts[1] = _number(at_b, s.choices)
+            # A difference is a number even between named values: Run less Off
+            # is 1, not a state called "1".
+            texts[2] = "" if at_a is None or at_b is None else _number(at_b - at_a)
+            stretch = self._stretch(key, s, a, b)
+            if stretch is not None:
+                texts[3] = _number(stretch.lowest, s.choices)
+                texts[4] = _number(stretch.highest, s.choices)
+                texts[5] = _number(stretch.mean)
+        else:
+            self._stretches.pop(key, None)
+        for column, text in zip(CURSOR_COLUMNS, texts, strict=True):
+            if item.text(column) != text:
+                item.setText(column, text)
+
+    def _stretch(self, key: str, s, a: float, b: float):
+        first, last = s.span(a, b)
+        # The times at the ends as well as where they are: trimming the oldest
+        # samples moves every index, and the same two numbers can then be a
+        # different stretch.
+        mark = (first, last, s.times[first], s.times[last - 1]) if last > first else None
+        held = self._stretches.get(key)
+        if held is not None and held[0] == mark:
+            return held[1]
+        stretch = s.stretch(first, last)
+        self._stretches[key] = (mark, stretch)
+        return stretch
 
     # --- which optional columns show --------------------------------------------------
     def columns(self) -> list[str]:
@@ -227,6 +335,8 @@ class SignalsView(QWidget):
         key = item.data(0, ROLE_KEY)
         if not key:
             return
+        if self._cursors is not None and (s := self.hub.get(key)) is not None:
+            self._show_cursors(key, item, s)
         y1 = item.checkState(PLOT) == Qt.Checked
         y2 = item.checkState(RIGHT) == Qt.Checked
         # One axis at a time. Two boxes both ticked would read as the signal
@@ -307,6 +417,11 @@ class SignalsView(QWidget):
             action.setChecked(not self.tree.isColumnHidden(column))
             action.setToolTip(COLUMN_TIPS[column])
             action.toggled.connect(lambda on, n=column_name: self._toggle_column(n, on))
+        below = menu.addAction(BELOW_TEXT)
+        below.setCheckable(True)
+        below.setChecked(self.below)
+        below.setToolTip(BELOW_TIP)
+        below.toggled.connect(self.below_wanted.emit)
         return menu
 
     def _signals(self, group: QTreeWidgetItem | None, shown_only: bool) -> list[QTreeWidgetItem]:

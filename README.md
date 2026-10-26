@@ -155,11 +155,11 @@ roles, and the privacy policy.
   pycangui* in its Start menu folder. It takes away its file associations and shortcuts too.
 - **pip:** `pip uninstall pycangui`, and what *Tools > Settings* added, as for a clone.
 - **A Git clone:** delete the folder. If *Tools > Settings* was used to add a shortcut
-  or to open `.dcf` and `.eds` files with it, take those away as well: the shortcuts are
+  or to open `.dcf`, `.eds` and `.dbc` files with it, take those away as well: the shortcuts are
   `%APPDATA%\Microsoft\Windows\Start Menu\Programs\pycangui.lnk` and `pycangui.lnk` on
   the desktop (on Linux, `~/.local/share/applications/pycangui.desktop`), and the file types are
-  `HKEY_CURRENT_USER\Software\Classes\pycangui.dcf` and `pycangui.eds` with their entries under
-  `.dcf` and `.eds` (on Linux, `pycangui-open.desktop` and `mime/packages/pycangui.xml` under
+  `HKEY_CURRENT_USER\Software\Classes\pycangui.dcf`, `pycangui.eds` and `pycangui.dbc` with their
+  entries under `.dcf`, `.eds` and `.dbc` (on Linux, `pycangui-open.desktop` and `mime/packages/pycangui.xml` under
   `~/.local/share`). The same applies to a pip installation that used them.
 
 Your hooks, EDS files and settings are in `%APPDATA%\pycangui` (`~/.config/pycangui` on

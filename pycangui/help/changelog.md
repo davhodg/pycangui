@@ -11,16 +11,74 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen: *Add / Open > Scan for nodes...* finds nodes that send no heartbeat, by reading 0x1000
+  from each node id, with a bar and Stop.
+- UDS: *Tester present on* as a step of a flash sequence, after the extended session, turned
+  off again when the sequence ends.
+- CANopen: a cancelled EDS question is kept with the workspace, so that device is not asked
+  about again until an EDS is loaded for it by hand.
+- CANopen: a *Poll* column in the object dictionary and an *SDO poll* tick read the ticked
+  objects over and over, into Signals and Plot.
+- Signals and Plot: the signal list can go below the plot as well as beside it, from a new
+  *View* button.
+- Plots: dark to match the theme, or always light or always dark, from the same *View* button,
+  with curve colours chosen to stand out on each.
+- Signals and Plot: two cursors on the plot, moved by mouse or keyboard, with each signal's
+  value at each, the change between them, and the lowest, highest and mean between them.
+- Pausing pycangui's own traffic -- polling, CANopen SYNC and TIME, CANopen's unasked reads --
+  while a UDS transfer or a CANopen firmware download runs, or by hand from the status bar's
+  right-click or the Tools menu. *Stop all repeating traffic* beside it stops cyclic messages,
+  polling, SYNC and TIME and plugins' own for good. Plugins (API 2) and simulated nodes
+  (`on_pause`) are told of both; the CiA 402 pane halts its drive.
 - Database pane: change a DBC -- messages, signals, multiplexing, value tables, nodes, signal
   groups and attributes -- saved as a new file that is read back to check it.
 - CAN Trace: *Check counter / checksum...* checks a device's messages as they arrive, with
   CAN Transmit's settings: a Counter / checksum column, green or red, and faults counted in
   Signals and Plot.
+- CANopen: a node's RPDOs are decoded as well as its TPDOs, in *Live PDOs* (which says which
+  way each goes) and in Signals and Plot, for a bus where another master sends them.
+- CANopen: *Settings... > Node ids*, the node ids whose heartbeats make a node, so another
+  protocol can share the identifiers CANopen reserves for heartbeats.
+- *Tools > Settings > Time on Event Log lines*: the time of day in front of each line, to the
+  second, kept when it is copied.
+- A `.dbc` file double-clicked in the file manager is loaded, as *File > Load DBC...* does: the
+  installer's file-type tick box and *Tools > Settings* add pycangui to *Open with* for it,
+  without taking it over.
 
 ### Changed
 
-- CANopen: *Store* and *Restore defaults* show their result in a box, and ask first when the
-  node's heartbeat says it is in neither Pre-operational nor Operational.
+- CANopen: the object dictionary's *Watch* column is now *Bookmark*, and its button
+  *Bookmarked*: it marks objects to find again, and reads nothing.
+- *Help > Diagnostics...* opens in a window of its own, with Refresh, Copy and Save, and says
+  what is being sent -- each channel's cyclic messages, whose they are and who keeps their time --
+  with the pause, polling, simulated nodes, the protocols' state, what is loaded, recent warnings
+  and errors, and running threads.
+- CANopen: *Store* and *Restore defaults* show their result in a box.
+- CANopen: nothing goes over SDO to a node whose heartbeat says Stopped: it is refused at once,
+  saying why, rather than left to time out, and the node's SDO commands are greyed with the
+  reason in their tooltip. Identifying it and reading its PDOs wait until it leaves Stopped. A
+  boot-up counts as Pre-operational.
+
+### Fixed
+
+- Accessibility: the channel's + and - buttons have names a screen reader can say, Pin and
+  Detach are reached with Tab, and the plot's legend and time box grow with large text.
+- CANopen: two PDO configuration reads of one node queued together -- a boot-up during an EDS
+  load -- say the configuration changed once, when both are done; CAN Transmit could rebuild
+  its rows from a mapping half read.
+- *Help > Diagnostics*: the demo device was always reported as running.
+- Cyclic messages are stopped one at a time when a channel closes, and one that will not stop --
+  possible where the adapter keeps the time itself -- is said in the Event Log rather than
+  leaving the rest running.
+- Selecting another channel stops cyclic messages and CANopen SYNC and TIME on the channel left
+  behind, which stayed open and went on carrying them with nothing ticked for them.
+- CAN Transmit: an extra transmit pane closed for good stops its cyclic messages; they went on
+  with no row left to untick, out of reach of *Stop all cyclic*.
+- CANopen: a frame on 0x701-0x77F that is not a heartbeat -- one byte, carrying a state -- is
+  no longer taken for a node, listed, identified and sent SDO.
+- Event Log: the SDO lines the CANopen library writes say which node and object they are
+  about, *Node 5, 1018:01: Transfer aborted...*. Two nodes timing out showed as one error,
+  the second taken for a repeat of the first.
 
 ## [0.4.1] - 2026-10-18
 

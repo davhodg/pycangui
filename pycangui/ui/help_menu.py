@@ -50,7 +50,9 @@ from pycangui.core.updates import (
 from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
 from pycangui.help import manual_text
+from pycangui.ui import diagnostics as diagnostics_report
 from pycangui.ui import fonts, messages
+from pycangui.ui.diagnostics import DiagnosticsDialog
 
 
 class LicenceFile(NamedTuple):
@@ -491,12 +493,14 @@ def diagnostics(window) -> str:
         f"  paused={trace.pause.isChecked()} search={trace.search.text()!r}",
         f"  hidden groups={hidden_groups or 'none'}",
         f"  hidden channels={hidden_channels or 'none'}",
-        f"  demo device={'running' if window._demo is not None else 'off'}",
+        f"  demo device={'running' if window._demo else 'off'}",
     ]
     if trace.model.rowCount() and not trace.table.model().rowCount():
         lines.append("  >> frames ARE arriving and the filter is hiding all of them")
     elif not trace.model.rowCount():
         lines.append("  >> no frames have reached the trace at all")
+    # What is being sent, the protocols, what is loaded: see ui/diagnostics.py.
+    lines += diagnostics_report.sections(window)
     # Starting is measured on every run, so a report can say how long it took
     # without anybody having thought to ask beforehand -- which is the whole
     # difficulty with "it has got slow to start".
@@ -516,6 +520,8 @@ class HelpMenu(QObject):
         #: The manual, once opened: kept, so Documentation brings the same
         #: window forward -- on the page it was left at -- rather than a second.
         self.manual: ManualDialog | None = None
+        #: Diagnostics, kept like the manual, so asking again refreshes it.
+        self.diagnostics: DiagnosticsDialog | None = None
 
         menu = window.menuBar().addMenu("&Help")
         menu.addAction("Documentation", self._open_docs)
@@ -562,13 +568,26 @@ class HelpMenu(QObject):
         self.manual.activateWindow()
 
     def _show_diagnostics(self) -> None:
-        """Report the state of the window, and put it on the clipboard."""
-        report = diagnostics(self.window)
-        QGuiApplication.clipboard().setText(report)
-        # Through the Event Log like every other line, as information. Written
-        # into the pane directly it had no level of its own, and took the
-        # colour of whatever came before it -- red and bold after an error.
-        self.window.events.information("Diagnostics (copied to the clipboard):\n" + report)
+        """Report the state of the window in a window of its own, and copy it.
+
+        It was written into the Event Log, where a report of a hundred lines
+        pushed everything else out of sight and could not be asked again
+        without making another. Still copied as it opens, as the bug report
+        form says it is.
+        """
+        if self.diagnostics is None:
+            self.diagnostics = DiagnosticsDialog(
+                self.window, lambda: diagnostics(self.window), self.window.ctx
+            )
+        else:
+            self.diagnostics.refresh()
+        self.diagnostics.copy_to_clipboard()
+        self.diagnostics.show()
+        self.diagnostics.raise_()
+        self.diagnostics.activateWindow()
+        # As information, like every other line: written into the pane
+        # directly it took the colour of whatever came before it.
+        self.window.events.information("Diagnostics report made, and copied to the clipboard.")
 
     def _show_known_ids(self) -> None:
         window = self.window

@@ -99,6 +99,45 @@ def udp_hop_limit() -> int:
     return _udp_hop_limit
 
 
+#: Who keeps a cyclic message's time, by the kind of task python-can made.
+TIMED_HERE = "pycangui"
+TIMED_BY_DRIVER = "the adapter or its driver"
+
+
+@dataclass
+class Cyclic:
+    """One cyclic message started through ``send_periodic``, and whose it is.
+
+    Kept by the bus manager rather than read out of python-can, whose own list
+    is not part of its interface, so that what is repeating on a channel can
+    always be said -- above all when the adapter is the one keeping time,
+    where nothing in this process would otherwise show it.
+    """
+
+    task: object
+    owner: str
+    can_id: int
+    data: bytes
+    extended: bool
+    fd: bool
+    period_s: float
+
+    @property
+    def timed_by(self) -> str:
+        """pycangui, on a thread of python-can's, or the adapter's own scheduler."""
+        threaded = isinstance(self.task, can.broadcastmanager.ThreadBasedCyclicSendTask)
+        return TIMED_HERE if threaded else TIMED_BY_DRIVER
+
+
+def stop_task(task) -> str | None:
+    """Stop one cyclic task; why it would not stop, or None if it did."""
+    try:
+        task.stop()
+    except Exception as exc:  # a driver refusing, whatever it calls that
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
 class _Collector(can.Listener):
     """Runs on the Notifier thread; just stores frames for the GUI to drain."""
 
@@ -242,6 +281,8 @@ class BusManager(QObject):
         self._timer = QTimer(self, interval=self.DRAIN_PERIOD_MS, timeout=self._drain)
         self._load_timer = QTimer(self, interval=self.LOAD_PERIOD_MS, timeout=self._update_load)
         self._load_timer.start()
+        #: What send_periodic started and has not been stopped, oldest first.
+        self._cyclic: list[Cyclic] = []
 
     def now(self) -> float:
         """Seconds on the shared clock: what Frame.timestamp is measured against."""
@@ -407,12 +448,16 @@ class BusManager(QObject):
         # told it is still an FD channel that no longer exists.
         self.fd = False
         self.disconnected.emit()  # protocol stacks detach their listeners first
-        self.bus.stop_all_periodic_tasks()
+        self._stop_periodic_tasks()
         self._timer.stop()
         self.notifier.stop(timeout=1.0)
         self._drain()
-        self.bus.shutdown()
+        try:
+            self.bus.shutdown()
+        except Exception as exc:  # the driver's own failure: the channel is gone all the same
+            self.error.emit(f"{self.channel_name}: the adapter did not close cleanly: {exc}")
         self.bus = self.notifier = self._collector = None
+        self._cyclic.clear()
         self.description = ""
         self.interface = ""
         self.channel = ""
@@ -486,6 +531,7 @@ class BusManager(QObject):
         extended: bool = False,
         fd: bool = False,
         modifier: Callable[[can.Message], None] | None = None,
+        owner: str = "",
     ) -> can.broadcastmanager.CyclicSendTaskABC | None:
         """Start a cyclic transmission; hardware-timed where the adapter supports it.
 
@@ -495,16 +541,76 @@ class BusManager(QObject):
 
         Returns the task (``task.modify_data(msg)`` / ``task.stop()``), or None
         if not connected. All tasks are stopped automatically on disconnect.
+        ``owner`` says whose it is -- "CAN Transmit: EngineSpeed" -- for
+        Help > Diagnostics, which lists what is repeating on each channel.
         """
         if self.bus is None:
             self.error.emit("Not connected")
             return None
         msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=extended, is_fd=fd)
         try:
-            return self.bus.send_periodic(msg, period_s, modifier_callback=modifier)
+            task = self.bus.send_periodic(msg, period_s, modifier_callback=modifier)
         except can.CanError as exc:
             self.error.emit(f"Cyclic send failed: {exc}")
             return None
+        entry = Cyclic(task, owner, can_id, bytes(data), extended, fd, period_s)
+        self._cyclic.append(entry)
+        stop = task.stop
+
+        def forgotten_once_stopped(*args, **kwargs):
+            if entry in self._cyclic:
+                self._cyclic.remove(entry)
+            return stop(*args, **kwargs)
+
+        task.stop = forgotten_once_stopped
+        return task
+
+    def cyclic(self) -> list[Cyclic]:
+        """The cyclic messages started here and still running, oldest first."""
+        return list(self._cyclic)
+
+    def untracked_tasks(self) -> list | None:
+        """Cyclic tasks on the bus that send_periodic did not start -- the
+        console's, a script's, a library's like CANopen's SYNC -- or None
+        where this python-can does not say."""
+        if self.bus is None:
+            return []
+        tasks = getattr(self.bus, "_periodic_tasks", None)
+        if not isinstance(tasks, list):
+            return None
+        mine = {id(entry.task) for entry in self._cyclic}
+        return [task for task in tasks if id(task) not in mine]
+
+    def _stop_periodic_tasks(self) -> None:
+        """Every cyclic task on the bus, one at a time, saying which would not stop.
+
+        One at a time because python-can's own stop_all leaves the rest
+        undefined once one of them raises, and an adapter that keeps time
+        itself is exactly where one might: what it was not told to stop, it
+        goes on sending after the channel has gone.
+        """
+        tasks = [*(entry.task for entry in self._cyclic), *(self.untracked_tasks() or [])]
+        for task in tasks:
+            if (why := stop_task(task)) is not None:
+                ids = getattr(task, "messages", None) or []
+                which = f"0x{ids[0].arbitration_id:X}" if ids else "a cyclic message"
+                self.error.emit(
+                    f"{self.channel_name}: {which} could not be stopped ({why}). An adapter "
+                    "that times its cyclic messages itself may still be sending it: unplug "
+                    "or reset the adapter to be sure."
+                )
+        known = getattr(self.bus, "_periodic_tasks", None)
+        if isinstance(known, list):
+            # Each has been asked once, above. Left in python-can's list, the
+            # one that refused would be asked again by its shutdown, and the
+            # same failure said twice more.
+            known.clear()
+        else:
+            try:
+                self.bus.stop_all_periodic_tasks()  # a python-can that does not say
+            except Exception as exc:
+                self.error.emit(f"{self.channel_name}: stopping cyclic messages failed: {exc}")
+        self._cyclic.clear()
 
     # --- what the controller is doing ---------------------------------------------
     def _read_state(self) -> str:

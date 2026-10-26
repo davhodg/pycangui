@@ -55,8 +55,9 @@ from typing import Any
 #: What ``app`` offers. A plugin declares the version it was written against
 #: and is refused if it is newer than this -- a plugin from the future asking
 #: for methods that do not exist yet fails in the middle of doing something,
-#: which is a worse way to find out.
-API_VERSION = 1
+#: which is a worse way to find out. 2 added on_pause, on_stop_all,
+#: hold_traffic and release_traffic.
+API_VERSION = 2
 
 #: The file inside a plugin folder. A folder rather than a single file so that
 #: a plugin can bring its own modules, icons and data with it. A single file

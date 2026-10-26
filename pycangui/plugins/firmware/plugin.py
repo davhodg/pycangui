@@ -45,7 +45,9 @@ from .program import Device
 
 API_VERSION = 1
 NAME = "CANopen firmware (CiA 302-3)"
-VERSION = "1.1"
+VERSION = "1.2"
+#: What the pause is held for while a program is downloaded.
+FLASHING = "CANopen firmware download"
 DESCRIPTION = "Download firmware to a CANopen node (CiA 302-3)."
 
 WARNING = (
@@ -394,6 +396,12 @@ class FirmwareView(QWidget):
             return len(data)
 
         self._start("Programming")
+        # The rest of pycangui's traffic held back while the program goes in:
+        # a node rebooting into its loader would otherwise be identified, and
+        # its PDOs read, over SDO in the middle of it. An older pycangui has
+        # no pause to hold.
+        if getattr(self.app, "api_version", 1) >= 2:
+            self.app.hold_traffic(FLASHING)
         self.progress.setRange(0, len(data))
         self.progress.setValue(0)
         self.progress.setVisible(True)
@@ -411,6 +419,8 @@ class FirmwareView(QWidget):
 
     def _finished(self, what: str, error) -> None:
         self._busy = False
+        if getattr(self.app, "api_version", 1) >= 2:
+            self.app.release_traffic(FLASHING)  # nothing if it was not held
         self.download.setEnabled(True)
         self.progress.setVisible(False)
         if error:

@@ -170,6 +170,11 @@ class CustomPaneView(QWidget):
         self.poll_rate = QLabel("")
         self.poll_rate.setToolTip("The rate this pane is actually being read at.")
         self.poller.rate.connect(self._on_rate)
+        # Held back while pycangui's own traffic is paused, and stopped for
+        # good by Stop all.
+        self.poller.set_paused(ctx.pause.paused)
+        ctx.pause.changed.connect(self.poller.set_paused)
+        ctx.pause.stop_all_requested.connect(self.stop_polling)
 
         bar = QHBoxLayout()
         bar.addWidget(QLabel("Values from:"))
@@ -489,7 +494,13 @@ class CustomPaneView(QWidget):
         self.poller.start(self.poll_hz.value()) if on else self.poller.stop()
 
     def _on_rate(self, requested: float, achieved: float) -> None:
-        self.poll_rate.setText(rate_text(requested, achieved, self.poller.running))
+        self.poll_rate.setText(
+            rate_text(requested, achieved, self.poller.running, self.poller.paused)
+        )
+
+    def stop_polling(self) -> None:
+        """Stop all: the tick comes off, and polling waits to be asked again."""
+        self.poll.setChecked(False)
 
     # --- and back again ------------------------------------------------------------------
     def _on_poll_read(self, index: int, sub: int) -> None:

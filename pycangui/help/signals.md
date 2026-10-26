@@ -3,7 +3,13 @@
 # Databases, signals and the plot
 
 **File > Load DBC...** decodes matching frames, from a DBC, KCD, SYM or ARXML
-database. *File > Remove DBC* lists the ones this workspace knows of, each with
+database. A database double-clicked in the file manager, or given on the command
+line, is loaded the same way and the [Database](database.md) pane shown: *Tools >
+Settings > Open .dcf, .eds and .dbc files with pycangui*, or the installer's tick
+box, puts pycangui in *Open with* for `.dbc` files, and leaves the default alone so
+another CAN tool keeps them until you choose. KCD, SYM and ARXML files are not
+offered there, being more likely another tool's own, but one opened with pycangui
+by hand is loaded all the same. *File > Remove DBC* lists the ones this workspace knows of, each with
 how many messages it holds, and takes one off the list; *Remove all* at the
 bottom clears the lot. A database that has moved since it was loaded is on
 that list marked *(missing)*, which is how it is dropped without disturbing
@@ -14,7 +20,7 @@ about, and can be loaded anyway, rather than simply refused; turning off *Tools 
 Strict DBC checks* stops the asking. Signals with a `VAL_` table are
 picked from a list in [CAN Transmit](transmit.md), or typed by name or by number,
 and are shown here with their names: *Run (1)* in the Value column, and in Min
-and Max. So are a CANopen TPDO's objects where the EDS or a hook names their
+and Max. So are a CANopen PDO's objects where the EDS or a hook names their
 values. The plot and *Export* keep the numbers.
 
 **A named value is written one way everywhere** -- the name, then the number
@@ -27,14 +33,28 @@ can be copied into it when you load it, so it travels with the workspace; see
 
 Once loaded: the trace shows the message
 name and the **Signals and Plot** pane lists every signal with its live value.
-CANopen TPDO values appear there too -- except a TPDO a loaded database also
-describes, which is listed once, as the database decodes it: the database has
-the names and scaling, and the PDO decode would put the same frame beside it
-with raw numbers. Removing a database takes its signals off the list and the
-plot, and a TPDO it described comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
-alongside the list; drag the splitter to give
-the plot the whole pane, or the list. `resources/demo.dbc` matches the demo
-device.
+CANopen PDO values appear there too, a node's TPDOs and the RPDOs it is
+sent -- except a PDO a loaded database also describes, which is listed once,
+as the database decodes it: the database has the names and scaling, and the
+PDO decode would put the same frame beside it with raw numbers. Removing a
+database takes its signals off the list and the plot, and a PDO it described
+comes back as the PDO decode has it. Tick *Plot Y1* on any signal to draw it
+alongside the list; drag the splitter to give the plot the whole pane, or the
+list. `resources/demo.dbc` matches the demo device.
+
+**The list goes beside the plot or below it**: the **View** button on the
+plot's top row, or the list's right-click, puts it underneath, so the plot has
+the whole width and the list room for its statistics columns -- in a pane
+undocked and made full screen, say. Each Signals and Plot pane keeps its own
+choice.
+
+**The plot's colours** are chosen from the same *View* button: *Match the
+theme*, so the plot is dark in the dark theme and light in the light one;
+*Always light*, for pictures going into a report; or *Always dark*. The choice
+is kept on this computer and applies to every plot, the graphs of maps in
+custom panes as well. Each has its own set of curve colours, picked so that
+every one stands out clearly from its background, and the first signal plotted
+is blue in all of them.
 
 The filter box above the list narrows it to the signals whose names match.
 **Right-click** the list, or its *Plot Y1* or *Plot Y2* heading, to plot or
@@ -120,6 +140,46 @@ looked at, and what arrived meanwhile is there when you go back.
 
 Both Y axes share the one time axis, so the *Time* choice applies to signals
 on either side, and *All* scales each Y axis to its own signals.
+
+## Cursors
+
+Tick **Cursors** on the plot's top row for two cursors, **A** and **B**: lines
+across the plot at a third and two thirds of the time in view, to be dragged
+wherever they are wanted. Beside the tick are the times of A and B and the
+time between them, *B - A*.
+
+They move from the keyboard too. **Tab** to the plot -- it gets a coloured
+border while it has the keys -- and:
+
+- **A** or **B** picks the cursor to move. The one picked is drawn solid and
+  the other dashed; dragging one picks it as well.
+- **Left** and **Right** move it a hundredth of the time in view, and with
+  **Shift** a tenth.
+- **Ctrl+Left** and **Ctrl+Right** move it to the previous or next sample of
+  any plotted signal, to read the samples one at a time.
+
+While they are on, the list has six more columns for each plotted signal:
+
+- **At A** and **At B** -- its value at each cursor: the sample there, or the
+  last one before it. A value between two samples is not made up, the same as
+  in *Export*; before a signal's first sample there is nothing to show.
+- **Change** -- the value at B less the value at A.
+- **Lowest**, **Highest** and **Mean** -- of the samples between the cursors.
+  These are not *Min* and *Max*, which are since the history was last cleared.
+  The mean is of the samples, each counting the same however long it was
+  until the next, so a signal sent faster at some times than others leans
+  toward those times.
+
+Named values are shown by name, the change and the mean as numbers. The
+columns come with the cursors and go when they are unticked, and are not among
+the ones chosen under *Columns*. The list is the place for them rather than
+the plot, so they can be read out and copied and nothing covers the curves;
+with several signals plotted, *List below the plot* gives them room.
+
+The cursors stay at the times they were put, so in *Follow* they scroll off
+the left with the data; *Manual* or *All* holds them in view. Each pane
+remembers whether its cursors are on, but not where: those are times on one
+connection's clock.
 
 ## Importing a measurement file
 

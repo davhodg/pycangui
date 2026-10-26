@@ -39,7 +39,10 @@ def _button(text: str, tip: str, checkable: bool = False) -> QToolButton:
     button.setToolTip(tip)
     button.setCheckable(checkable)
     button.setAutoRaise(True)  # flat until the mouse is over it
-    button.setFocusPolicy(Qt.NoFocus)
+    # Reached with Tab, and Space or Enter presses it, but a click does not
+    # take the focus from whatever in the pane had it. NoFocus left the two
+    # out of reach of anybody not using a mouse.
+    button.setFocusPolicy(Qt.TabFocus)
     return button
 
 

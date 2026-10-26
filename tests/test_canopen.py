@@ -150,6 +150,61 @@ def test_a_tpdo_is_found_by_the_name_it_is_decoded_under(stack):
     wait_until(lambda: loaded)
     manager.nmt(5, "OPERATIONAL")
     wait_until(lambda: names)
-    assert manager.tpdo_cob_id(5, names[0]) == 0x185, "demo.dbc's DriveStatus"
-    assert manager.tpdo_cob_id(5, "no such PDO") is None
-    assert manager.tpdo_cob_id(99, names[0]) is None, "nor a node nobody knows"
+    assert manager.pdo_cob_id(5, names[0]) == 0x185, "demo.dbc's DriveStatus"
+    assert manager.pdo_direction(5, names[0]) == "TPDO"
+    assert manager.pdo_cob_id(5, "no such PDO") is None
+    assert manager.pdo_cob_id(99, names[0]) is None, "nor a node nobody knows"
+
+
+def _loaded(manager):
+    loaded = []
+    manager.eds_loaded.connect(lambda *a: loaded.append(a))
+    manager.load_eds(5, str(resources.path("demo.eds")))
+    wait_until(lambda: loaded)
+    wait_until(lambda: manager.read_from_node(5) == (True, True))
+    QCoreApplication.processEvents()
+
+
+def test_an_rpdo_another_master_sends_is_decoded(stack):
+    """pycangui may only be listening, with another master sending the node
+    its RPDOs: what the node is told is decoded as well as what it says."""
+    import can
+
+    _bus, manager, _demo = stack
+    _loaded(manager)
+    updates = []
+    manager.pdo_update.connect(lambda n, name, values: updates.append((n, name, values)))
+    other_master = can.Bus(interface="virtual", channel="vcan_test")
+    try:
+        other_master.send(can.Message(arbitration_id=0x205, data=b"\x2c\x01", is_extended_id=False))
+        wait_until(lambda: any(name.startswith("Rx") for _n, name, _v in updates))
+    finally:
+        other_master.shutdown()
+    node, name, values = next(u for u in updates if u[1].startswith("Rx"))
+    assert node == 5 and list(values.values()) == [300]
+    assert manager.pdo_direction(5, name) == "RPDO"
+    assert manager.pdo_cob_id(5, name) == 0x205, "found by name, as a TPDO is"
+
+
+def test_an_rpdo_pycangui_sends_itself_is_decoded_from_its_echo(stack):
+    """CAN Transmit sends by the same mapping; the frame comes back from the
+    bus as anyone else's would, so a monitor shows what was on the wire."""
+    bus, manager, _demo = stack
+    _loaded(manager)
+    updates = []
+    manager.pdo_update.connect(lambda n, name, values: updates.append((name, values)))
+    cob_id, data = manager.encode_rpdo(5, 1, {"Speed demand": -2})
+    bus.send(cob_id, data)
+    wait_until(lambda: any(name.startswith("Rx") for name, _v in updates))
+    assert next(v for name, v in updates if name.startswith("Rx")) == {"Speed demand": -2}
+
+
+def test_each_rpdo_is_decoded_once_however_often_it_is_read(stack):
+    _bus, manager, _demo = stack
+    _loaded(manager)
+    node = manager.node(5)
+    rpdo1 = node.rpdo.map[1]
+    before = len(rpdo1.callbacks)
+    assert before == 1
+    manager._decode_pdos(5, node)
+    assert len(rpdo1.callbacks) == 1, "a second read does not decode every frame twice"

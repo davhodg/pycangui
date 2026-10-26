@@ -64,7 +64,7 @@ def _fixed_pitch() -> QFont:
 
 
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.7"
+VERSION = "1.8"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -90,13 +90,18 @@ STALE = (
 
 DISABLE_TOO_TIP = (
     "Off by default. Closing this pane always halts the drive and zeroes a\n"
-    "speed or torque demand -- that part is not optional. Removing power on\n"
+    "speed or torque demand -- that part is not optional -- and so do Stop\n"
+    "all and pausing pycangui's own traffic. Removing power on\n"
     "top of that is a decision about the machine rather than about the tool:\n"
     "on a vertical axis it is the load that decides, and whether a brake\n"
     "catches it is not something pycangui can know."
 )
 
-STOPPED = "Halted node {node} and zeroed its demand, because this pane was closing."
+STOPPED = "Halted node {node} and zeroed its demand, because {why}."
+#: Why the demand was taken away, for STOPPED.
+CLOSING = "this pane was closing"
+STOPPING_ALL = "everything that repeats was stopped"
+PAUSING = "pycangui's own traffic was paused, and nothing is watching the drive"
 COULD_NOT_STOP = (
     "Node {node} was left enabled and could NOT be halted: {why}\n"
     "It is still acting on the last target it was given."
@@ -444,6 +449,8 @@ class MotorView(QWidget):
         self.poller.rate.connect(self._on_rate)
         self.hz.valueChanged.connect(self.poller.set_rate)
         self.poller.set_rate(self.hz.value())
+        if getattr(app, "api_version", 1) >= 2:  # an older pycangui has no pause
+            self.poller.set_paused(app.paused)
 
         self._fill_nodes()
         # A bound method rather than a lambda, and that is not a style choice.
@@ -741,7 +748,7 @@ class MotorView(QWidget):
         # Polling starting or stopping changes what the banner is entitled to
         # say, not only what the rate label says.
         self._show_banner()
-        self.rate.setText(rate_text(requested, achieved, self.poller.running))
+        self.rate.setText(rate_text(requested, achieved, self.poller.running, self.poller.paused))
 
     # --- saying what it is ------------------------------------------------------------------
     def _show_state(self) -> None:
@@ -957,7 +964,24 @@ class MotorView(QWidget):
             self.poll.setChecked(False)
         self.stop_demand()
 
-    def stop_demand(self, background: bool = True) -> None:
+    def stop_all(self) -> None:
+        """Stop all: the demand taken away and polling unticked, for good."""
+        self.stop_demand(why=STOPPING_ALL)
+        self.poll.setChecked(False)
+
+    def set_paused(self, on: bool) -> None:
+        """pycangui's own traffic paused -- a flash, most likely -- or going again.
+
+        Polling waits, and with nothing reading the drive a demand running is
+        a motor turning with nobody watching it, so the drive is put in the
+        same safe state as when the pane closes. Not given back when the
+        pause lifts: setting a drive moving again is asked for, never assumed.
+        """
+        self.poller.set_paused(on)
+        if on:
+            self.stop_demand(why=PAUSING)
+
+    def stop_demand(self, background: bool = True, why: str = CLOSING) -> None:
         """Halt the drive and take back a rate demand, if it is running at all.
 
         ``background`` is false when the tool itself is closing. The writes then
@@ -985,7 +1009,7 @@ class MotorView(QWidget):
             if error:
                 self.app.error(COULD_NOT_STOP.format(node=node, why=error))
                 return
-            self.app.log(STOPPED.format(node=node))
+            self.app.log(STOPPED.format(node=node, why=why))
             # What it is doing now is no longer known: the pane is going, and
             # the next thing to read it should read it rather than trust this.
             self.statusword = 0
@@ -1041,3 +1065,16 @@ def register(app) -> None:
 
     app.on_pane_shown(shown)
     app.on_closing(closing)
+    if getattr(app, "api_version", 1) < 2:
+        return  # a pycangui from before pausing and Stop all
+
+    def paused(on: bool) -> None:
+        if (view := app.panes.view(f"{app.plugin}:main")) is not None:
+            view.set_paused(on)
+
+    def stop_all() -> None:
+        if (view := app.panes.view(f"{app.plugin}:main")) is not None:
+            view.stop_all()
+
+    app.on_pause(paused)
+    app.on_stop_all(stop_all)

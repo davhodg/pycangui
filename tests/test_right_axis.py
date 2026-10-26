@@ -487,7 +487,7 @@ def test_export_is_beside_clear_history_and_asks_whoever_made_the_plot(app, plot
 def test_plot_all_and_unplot_all_are_on_the_right_click(app, listed):
     signals, plot = listed
     actions = signals.menu_for(None, PLOT).actions()
-    offered = [a.text() for a in actions if a.text() and a.menu() is None]
+    offered = [a.text() for a in actions if a.text() and a.menu() is None and not a.isCheckable()]
     assert len(offered) == 2, "plot all, and unplot all"
 
     signals.plot_all()
@@ -512,7 +512,7 @@ def test_a_messages_signals_have_entries_of_their_own(app, listed):
     settle(app)
     group = signals._groups["Other"]
     actions = signals.menu_for(group.child(0), PLOT).actions()
-    offered = [a.text() for a in actions if a.text() and a.menu() is None]
+    offered = [a.text() for a in actions if a.text() and a.menu() is None and not a.isCheckable()]
     assert len(offered) == 4, "this message's two, then everything's two"
 
     forgotten = []

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -42,7 +43,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui import resources
-from pycangui.canopen import NodeIdentity, find_eds, load_od
+from pycangui.canopen import NodeIdentity, find_eds, load_od, node_ids
 from pycangui.canopen import emcy as emcy_mod
 from pycangui.canopen.display import (
     Display,
@@ -53,10 +54,13 @@ from pycangui.canopen.display import (
 )
 from pycangui.canopen.display import text as value_text
 from pycangui.canopen.manager import (
+    NODE_STOPPED,
     NOT_CONNECTED,
+    SCAN_TIMEOUT_S,
     STOPPED,
     CanopenManager,
     od_entries,
+    settled,
     totals_text,
     type_name,
 )
@@ -67,6 +71,7 @@ from pycangui.core.hooks import Hooks
 from pycangui.core.named_values import plain
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
+from pycangui.custom_panes.polling import MAX_HZ, MIN_HZ, rate_text
 from pycangui.custom_panes.source import FileSource
 from pycangui.ui import (
     canopen_dbc,
@@ -83,7 +88,13 @@ from pycangui.ui.compare_view import CompareView, CompareWindow
 from pycangui.ui.edit_columns import EditColumns
 from pycangui.ui.faults_view import FaultsView
 from pycangui.ui.lss_view import LssView
+from pycangui.ui.od_poll import DEFAULT_HZ, DictionaryPoll
 from pycangui.ui.pdo_view import PdoConfigView
+from pycangui.ui.persist import remember
+
+#: The devices, by identity, whose EDS question was cancelled: not asked
+#: again in this workspace until an EDS is loaded for one by hand.
+EDS_DECLINED_KEY = "canopen.eds_declined"
 
 ROLE_INDEX = Qt.UserRole
 ROLE_SUB = Qt.UserRole + 1
@@ -115,7 +126,25 @@ COL_VALUE = 4
 #: fifteen hundred of them and a job uses eight, so the list you build is
 #: worth more than the search that built it -- and it is the shape a
 #: user-composed pane will need later.
-COL_WATCH = 5
+COL_BOOKMARK = 5
+#: A tick against the objects to read over and over while *SDO poll* is on;
+#: see od_poll.py. Its own column, apart from Bookmark: finding an object
+#: again and sending a request for it a few times a second are not the same.
+COL_POLL = 6
+POLL_TICKED_TIP = (
+    "Read the objects ticked in the Poll column over and over, on every node\n"
+    "that has some, so their values follow the controller. Numbers go to\n"
+    "Signals and Plot, to plot and export like any other signal.\n"
+    "Held while pycangui's own traffic is paused, and stopped by Stop all."
+)
+POLL_HZ_TIP = (
+    "How often to read them, at most. SDO reads are a request and an answer\n"
+    "each, so the rate achieved, beside this, is often lower."
+)
+POLL_COLUMN_TIP = (
+    "Tick an object to read it over and over while SDO poll is on.\n"
+    "Kept per device, like the bookmarks."
+)
 
 # --- columns of the node list, which is a different tree with its own 5 ---
 COL_LEVEL = 4  #: the access level held
@@ -146,9 +175,13 @@ NMT_COMMANDS_UI = (
 
 
 NODE_MENU_TIP = "The selected node: who it is, and what it keeps when the power goes."
-#: The NMT states a node answers SDO in (CiA 301); Store and Restore defaults
-#: are SDO writes, and in any other state are asked about first.
-SDO_STATES = ("PRE-OPERATIONAL", "OPERATIONAL")
+#: Why what is asked of a node over SDO is greyed, added to its tooltip.
+WHY_LOST = "Node {node_id}'s heartbeat is lost: nothing can be asked of it until it is back."
+WHY_STOPPED = (
+    "Node {node_id} is STOPPED, and a node answers SDO only in PRE-OPERATIONAL or\n"
+    "OPERATIONAL. NMT Start or Pre-operational, here or from the NMT master,\n"
+    "brings it back."
+)
 #: The abort a node gives when it will not do it in the state it is in.
 REFUSED_IN_STATE = "0x08000022"
 REFUSED_WHY = (
@@ -213,6 +246,11 @@ CLOSE_FILE_TIP = "Take the file out of the list; asks first if it has changes no
 ADD_MENU_TIP = (
     "Put a row in the list: a node that has not been heard from, or a DCF\n"
     "or EDS file to look at and change with no node at all."
+)
+SCAN_TIP = (
+    "Ask every node id in Settings... > Node ids whether a node is there, by\n"
+    "reading its object 0x1000: finds nodes with their heartbeat off, held\n"
+    "silent, or in a bootloader. Ids whose heartbeat is heard are skipped."
 )
 COMPARE_TIP = (
     "Compare two configurations side by side: a DCF or EDS file, or a node on\n"
@@ -296,7 +334,9 @@ class CanopenView(QWidget):
     #: A pane name (or "" for one not made yet) and the objects to put on it.
     add_to_custom_pane = Signal(str, object)
 
-    def __init__(self, manager: CanopenManager, hooks: Hooks, ctx: Context) -> None:
+    def __init__(
+        self, manager: CanopenManager, hooks: Hooks, ctx: Context, signals=None, now=None
+    ) -> None:
         super().__init__()
         self.manager = manager
         self.hooks = hooks
@@ -318,6 +358,10 @@ class CanopenView(QWidget):
         #: because they were there a moment ago and which one went is the
         #: news, but nothing can be asked of them until they are back.
         self._lost: set[int] = set()
+        #: Nodes whose heartbeat says STOPPED: listed, and answering NMT, but
+        #: not SDO. And those of them already said to refuse a read.
+        self._stopped: set[int] = set()
+        self._stopped_said: set[int] = set()
         #: The Emergencies tree, which is grouped: a row per node, and the
         #: arrivals under it. The flat list beside it is arrival order, which
         #: is what says which to drop when there are too many.
@@ -346,6 +390,7 @@ class CanopenView(QWidget):
             "identified straight away.",
             self._add_node,
         )
+        self.add_menu_btn.add("Scan for nodes...", SCAN_TIP, self.scan_for_nodes)
         self.add_menu_btn.add("Open DCF/EDS...", OPEN_FILE_TIP, self._open_file_dialog)
         # A node or a file, whichever is selected: either way the row goes
         # from the list, so it is one button with one word on it, and its
@@ -449,6 +494,13 @@ class CanopenView(QWidget):
             restore,
             apply_dcf,
         ]
+        #: Loading an EDS asks the node nothing, so a stopped node can be given one.
+        self._load_eds_action = load_eds
+        #: Each one's own tooltip, to which why it is greyed is added.
+        self._usual_tips = [
+            (control, control.toolTip())
+            for control in [*self._node_buttons, *self._menu_buttons, self.save_dcf_action]
+        ]
         node_bar.addStretch()
         # Above the list: the network, and what changes who is on it. NMT and
         # SYNC are not about whichever row happens to be highlighted -- they
@@ -497,6 +549,10 @@ class CanopenView(QWidget):
         self.send_time_btn.setToolTip(SEND_TIME_TIP)
         self.send_time_btn.clicked.connect(self._send_time)
         producers_in.addWidget(self.send_time_btn)
+        # Stop all ends both for good; a pause only holds them (the manager's).
+        ctx.pause.stop_all_requested.connect(self.stop_producers)
+        # And a scan running, which a pause does not hold: somebody started it.
+        ctx.pause.stop_all_requested.connect(manager.stop_scan)
         nmt_bar.addWidget(producers)
         nmt_bar.addStretch()
         # What is set once rather than done lives on a dialog of its own: the
@@ -515,7 +571,8 @@ class CanopenView(QWidget):
 
         # --- object dictionary ---------------------------------------------
         self.od = QTreeWidget()
-        self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value", "Watch"])
+        self.od.setHeaderLabels(["Index", "Name", "Type", "Access", "Value", "Bookmark", "Poll"])
+        self.od.headerItem().setToolTip(COL_POLL, POLL_COLUMN_TIP)
         self.od.setFont(mono)
         self.od_widths = ColumnWidths(
             self.od, ctx.settings, "canopen.od", stretch=COL_VALUE, last_stretches=False
@@ -542,19 +599,55 @@ class CanopenView(QWidget):
             "discarded -- clearing the box brings the rest back."
         )
         self.od_search.textChanged.connect(lambda _t: self._apply_od_filter())
-        self.watched_only = QPushButton("Watched")
-        self.watched_only.setCheckable(True)
-        self.watched_only.setToolTip(
-            "Show only the objects ticked in the Watch column.\n"
+        self.bookmarked_only = QPushButton("Bookmarked")
+        self.bookmarked_only.setCheckable(True)
+        self.bookmarked_only.setToolTip(
+            "Show only the objects ticked in the Bookmark column. Nothing is\n"
+            "read because of it: a bookmark is for finding an object again.\n"
             "The list is kept per device, so the next controller of the same\n"
             "kind opens with the objects you were using on the last one."
         )
-        self.watched_only.toggled.connect(lambda _on: self._apply_od_filter())
+        self.bookmarked_only.toggled.connect(lambda _on: self._apply_od_filter())
 
         od_bar = QHBoxLayout()
         od_bar.addWidget(QLabel("Object dictionary"))
         od_bar.addWidget(self.od_search, 1)
-        od_bar.addWidget(self.watched_only)
+        od_bar.addWidget(self.bookmarked_only)
+
+        # Polling the ticked objects: the tick, the rate and what it achieves,
+        # on the bar beside Bookmarked, the tick's name saying what all three are.
+        self.sdo_poll = DictionaryPoll(
+            manager, ctx.settings, self._bookmark_key, signals=signals, now=now, parent=self
+        )
+        self.poll_ticked = QCheckBox("SDO poll")
+        self.poll_ticked.setToolTip(POLL_TICKED_TIP)
+        self.poll_ticked.toggled.connect(self._on_poll_ticked)
+        self.poll_hz = QDoubleSpinBox()
+        self.poll_hz.setRange(MIN_HZ, MAX_HZ)
+        self.poll_hz.setDecimals(2)
+        self.poll_hz.setSingleStep(0.5)
+        self.poll_hz.setSuffix(" Hz")
+        self.poll_hz.setToolTip(POLL_HZ_TIP)
+        self.poll_hz.setAccessibleName("SDO poll rate")
+        remember(ctx, "canopen.poll_hz", self.poll_hz, DEFAULT_HZ)
+        self.poll_hz.valueChanged.connect(self.sdo_poll.set_rate)
+        self.sdo_poll.set_rate(self.poll_hz.value())
+        self.poll_rate = QLabel("")
+        self.poll_rate.setAccessibleName("SDO poll rate achieved")
+        self.poll_rate.setToolTip("The rate the ticked objects are actually being read at.")
+        self.sdo_poll.rate.connect(
+            lambda asked, got, running, paused: self.poll_rate.setText(
+                rate_text(asked, got, running, paused)
+            )
+        )
+        for widget in (self.poll_ticked, self.poll_hz, self.poll_rate):
+            od_bar.addWidget(widget)
+        self.sdo_poll.set_paused(ctx.pause.paused)
+        ctx.pause.changed.connect(self.sdo_poll.set_paused)
+        ctx.pause.stop_all_requested.connect(lambda: self.poll_ticked.setChecked(False))
+        #: Objects whose polled reads are failing, so it is said once and not
+        #: a few times a second: (node, index, sub).
+        self._poll_failing: set[tuple[int, int, int]] = set()
         read_all = QPushButton("Read all")
         read_all.setToolTip(
             "Read every readable entry in the dictionary, one SDO at a time.\n"
@@ -578,7 +671,8 @@ class CanopenView(QWidget):
 
         # --- PDOs -----------------------------------------------------------
         self.pdos = QTreeWidget()
-        self.pdos.setHeaderLabels(["PDO / variable", "Value", "Count", "Rate"])
+        # Direction last: the widths saved for the columns before it still fit.
+        self.pdos.setHeaderLabels(["PDO / variable", "Value", "Count", "Rate", "Direction"])
         self.pdos.setFont(mono)
         self.pdos_widths = ColumnWidths(self.pdos, ctx.settings, "canopen.pdos")
 
@@ -685,6 +779,8 @@ class CanopenView(QWidget):
         manager.node_seen.connect(self.on_node_seen)
         manager.access_level.connect(self.on_access_level)
         manager.node_lost.connect(self.on_node_lost)
+        manager.scan_progress.connect(self._on_scan_progress)
+        manager.scan_finished.connect(self._on_scan_finished)
         manager.parameters_done.connect(self._on_parameters_done)
         manager.node_back.connect(self.on_node_back)
         manager.identified.connect(self.on_identified)
@@ -951,6 +1047,7 @@ class CanopenView(QWidget):
         """Built apart from being shown, so what it offers can be looked at."""
         menu = QMenu(self.nodes)
         menu.addAction("Add node...", self._add_node)
+        menu.addAction("Scan for nodes...", self.scan_for_nodes)
         menu.addAction("Remove node", lambda: self.remove_node(node_id)).setEnabled(
             node_id is not None
         )
@@ -977,7 +1074,10 @@ class CanopenView(QWidget):
         ):
             menu.addSeparator()
             for text, slot in group:
-                menu.addAction(text, slot).setEnabled(on_a_node)
+                usable = (
+                    self._can_give_eds(node_id) if slot == self._load_eds_clicked else on_a_node
+                )
+                menu.addAction(text, slot).setEnabled(usable)
         # Not asked of the node, so there whether or not it answers.
         menu.addAction(
             "Save as DBC...", lambda: canopen_dbc.save(self, [node_id], [], False)
@@ -1024,6 +1124,67 @@ class CanopenView(QWidget):
         if (item := self._node_item(node_id)) is not None:
             self.nodes.setCurrentItem(item)
 
+    def scan_for_nodes(self) -> None:
+        """Add / Open > Scan for nodes...: asked first, then a bar with Stop."""
+        if self.manager.network is None:
+            self.ctx.warn(f"Scan: {NOT_CONNECTED}")
+            messages.warning(self, "No scan", NOT_CONNECTED[:1].upper() + NOT_CONNECTED[1:])
+            return
+        wanted = self.manager.scan_ids()
+        if not wanted:
+            messages.information(
+                self,
+                "Scan for nodes",
+                "Every node id in Settings... > Node ids is heard from already.",
+            )
+            return
+        seconds = len(wanted) * SCAN_TIMEOUT_S
+        answer = messages.question(
+            self,
+            "Scan for nodes",
+            f"Read object 0x1000 from node ids {node_ids.text(wanted)} "
+            f"({len(wanted)} id{'s' if len(wanted) != 1 else ''}), to find nodes that send no "
+            f"heartbeat? It takes up to about {max(1, round(seconds))} s; "
+            "Stop ends it at any time.",
+            QMessageBox.Yes | QMessageBox.Cancel,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes or not self.manager.scan():
+            return
+        self._close_scan_progress()
+        self._scan_progress = self._progress_box(
+            "Scan for nodes", "Starting the scan...", self.manager.stop_scan
+        )
+        self._scan_progress.setMaximum(len(wanted))
+
+    @Slot(int, int, int)
+    def _on_scan_progress(self, node_id: int, done: int, total: int) -> None:
+        if (box := getattr(self, "_scan_progress", None)) is None:
+            return
+        box.setMaximum(total)
+        box.setValue(done)
+        box.setLabelText(f"Asking node id {node_id} ({done + 1} of {total})...")
+
+    @Slot(list, int, bool)
+    def _on_scan_finished(self, found: list, asked: int, stopped: bool) -> None:
+        """Said in a box as well as the Event Log: it was asked for, and waited for."""
+        self._close_scan_progress()
+        if found and (item := self._node_item(found[0])) is not None:
+            self.nodes.setCurrentItem(item)
+        ended = "Stopped part way. " if stopped else ""
+        if found:
+            text = f"{ended}Nodes answering: {node_ids.text(found)}."
+        else:
+            text = f"{ended}No node answered, of {asked} id{'s' if asked != 1 else ''} asked."
+        messages.information(self, "Scan for nodes", text)
+
+    def _close_scan_progress(self) -> None:
+        box, self._scan_progress = getattr(self, "_scan_progress", None), None
+        if box is not None:
+            box.canceled.disconnect(self.manager.stop_scan)
+            box.close()
+            box.deleteLater()
+
     def _remove_selected(self) -> None:
         if (source := self.selected_file()) is not None:
             self.close_file(source)
@@ -1036,6 +1197,7 @@ class CanopenView(QWidget):
             return
         self.manager.remove_node(node_id)
         self._lost.discard(node_id)
+        self._stopped.discard(node_id)
         self._identities.pop(node_id, None)
         self.nodes.takeTopLevelItem(self.nodes.indexOfTopLevelItem(item))
         if self._od_node == node_id and self._od_file is None:
@@ -1120,6 +1282,11 @@ class CanopenView(QWidget):
         canopen_settings.save(self.ctx, chosen)
         canopen_settings.apply(self.manager, chosen)
         self.ctx.log("CANopen settings: " + "; ".join(said))
+        # Heard before the node ids left them out: their heartbeats are now
+        # ignored, and they would only be reported lost.
+        for node_id in self.manager.nodes():
+            if not self.manager.listens_to(node_id):
+                self.remove_node(node_id)
         if self.time_btn.isChecked() and canopen_settings.changed(
             before, chosen, canopen_settings.TIME_FIELDS
         ):
@@ -1155,6 +1322,16 @@ class CanopenView(QWidget):
 
     @Slot(int, str)
     def on_node_seen(self, node_id: int, state: str) -> None:
+        # A boot-up is the node entering Pre-operational, and is shown as that.
+        state = settled(state)
+        was_stopped = node_id in self._stopped
+        if state == NODE_STOPPED:
+            self._stopped.add(node_id)
+        else:
+            self._stopped.discard(node_id)
+            self._stopped_said.discard(node_id)
+        if was_stopped != (node_id in self._stopped):
+            self._offer_node_buttons()
         item = self._node_item(node_id)
         if item is None:
             item = QTreeWidgetItem([str(node_id), f"Node {node_id}", state, ""])
@@ -1164,9 +1341,10 @@ class CanopenView(QWidget):
                 self.nodes.setCurrentItem(item)
             # The one thing pycangui sends a node unasked, so it is the one
             # thing worth being able to stop. Off, the row keeps its number
-            # and waits for Identify or Load EDS.
+            # and waits for Identify or Load EDS. A stopped node is asked
+            # once it is out of Stopped.
             if canopen_settings.load(self.ctx).identify:
-                self.manager.identify(node_id)
+                self.manager.identify_unasked(node_id)
         else:
             item.setText(2, state)  # a fresh heartbeat replaces any "lost" text
 
@@ -1269,9 +1447,27 @@ class CanopenView(QWidget):
         return None
 
     def _ask_for_eds(self, identity: NodeIdentity) -> str | None:
+        """Ask for this device's EDS, once -- and, once cancelled, never again here.
+
+        A bootloader that sends a CANopen boot-up for a processor with no EDS
+        had the file dialog open in the middle of a flash, every time pycangui
+        was started. So a cancel is kept with the workspace, and the device is
+        then only said in the Event Log, once a run. *Load EDS...* on the node
+        gives it one and forgets the cancel.
+        """
         if identity.key in self._asked:
             return None
         self._asked.add(identity.key)
+        device = (
+            f"vendor {_hex(identity.vendor_id)}, product {_hex(identity.product_code)}, "
+            f"revision {_hex(identity.revision)}"
+        )
+        if identity.key in self._declined():
+            self.ctx.log(
+                f"Node {identity.node_id} ({device}): no EDS, and not asked for one: "
+                "asking was cancelled before. Load EDS... on the node gives it one."
+            )
+            return None
         path = folders.open_file(
             self,
             self.ctx,
@@ -1282,6 +1478,14 @@ class CanopenView(QWidget):
             self.ctx.eds_dir,
         )
         if not path:
+            # Kept only for a device that can be told apart: with no vendor,
+            # every such device would be covered by this one cancel.
+            if identity.vendor_id is not None:
+                self._set_declined(identity.key, True)
+                self.ctx.log(
+                    f"Node {identity.node_id} ({device}): no EDS chosen. Not asked again in "
+                    "this workspace; Load EDS... on the node gives it one."
+                )
             return None
         if identity.vendor_id is not None:
             answer = messages.question(
@@ -1311,7 +1515,20 @@ class CanopenView(QWidget):
             self.ctx.eds_dir,
         )
         if path:
+            if (identity := self._identities.get(node_id)) is not None:
+                self._set_declined(identity.key, False)  # somebody chose one after all
             self.manager.load_eds(node_id, path)
+
+    def _declined(self) -> set[str]:
+        saved = self.ctx.settings.get(EDS_DECLINED_KEY, [])
+        return {str(key) for key in saved} if isinstance(saved, list) else set()
+
+    def _set_declined(self, key: str, declined: bool) -> None:
+        keys = self._declined()
+        if (key in keys) == declined:
+            return
+        keys = keys | {key} if declined else keys - {key}
+        self.ctx.settings.set(EDS_DECLINED_KEY, sorted(keys))
 
     # --- the EDS a node keeps (0x1021) ------------------------------------------
     def _read_stored_eds(self) -> None:
@@ -1459,34 +1676,13 @@ class CanopenView(QWidget):
 
     def _store(self) -> None:
         node_id = self.selected_node()
-        if node_id is not None and self._state_allows(node_id, "Store"):
+        if node_id is not None:
             self.manager.store_parameters(node_id)
 
     def _restore(self) -> None:
         node_id = self.selected_node()
-        if node_id is not None and self._state_allows(node_id, "Restore defaults"):
+        if node_id is not None:
             self.manager.restore_parameters(node_id)
-
-    def _state_allows(self, node_id: int, which: str) -> bool:
-        """Asked first when the node's heartbeat says it is in neither state a
-        node answers SDO in. Nothing is sent to change its state: whether
-        pycangui is the NMT master is not pycangui's to assume.
-
-        A node with no heartbeat is not asked about -- its state is not
-        known -- and one whose heartbeat stopped cannot be chosen for this.
-        """
-        state = self.manager.nmt_states.get(node_id)
-        if state is None or state in SDO_STATES:
-            return True
-        answer = messages.question(
-            self,
-            which,
-            f"Node {node_id} is {state}. A node answers SDO only in PRE-OPERATIONAL or "
-            f"OPERATIONAL, so {which} is likely to time out.\n\n{which} anyway?",
-            QMessageBox.Yes | QMessageBox.Cancel,
-            QMessageBox.Cancel,
-        )
-        return answer == QMessageBox.Yes
 
     @Slot(int, str, str, bool)
     def _on_parameters_done(self, node_id: int, which: str, said: str, ok: bool) -> None:
@@ -1582,6 +1778,11 @@ class CanopenView(QWidget):
         else:
             self.manager.stop_time()
 
+    def stop_producers(self) -> None:
+        """Stop all: SYNC and TIME unticked, as though by hand."""
+        self.sync_btn.setChecked(False)
+        self.time_btn.setChecked(False)
+
     def _send_time(self) -> None:
         self.manager.send_time(canopen_settings.load(self.ctx).time_local)
 
@@ -1601,6 +1802,8 @@ class CanopenView(QWidget):
         self._identities.clear()
         self._asked.clear()
         self._lost.clear()
+        self._stopped.clear()
+        self._stopped_said.clear()
         if self.selected_file() is None:  # a file's PDOs are not the bus's to take
             self.pdo_config.set_node(None)
         self.sync_btn.setChecked(False)
@@ -1714,24 +1917,46 @@ class CanopenView(QWidget):
 
     # --- object dictionary -------------------------------------------------------
     def _can_act_on(self, node_id: int | None) -> bool:
-        """Whether there is a node there to be asked anything.
+        """Whether there is a node there to be asked anything over SDO."""
+        return node_id is not None and self._why_not(node_id) is None
+
+    def _can_give_eds(self, node_id: int | None) -> bool:
+        """Load EDS asks the node nothing, so a stopped node can be given one;
+        a lost one cannot, since it may not be what it was when it is back."""
+        return node_id is not None and node_id not in self._lost
+
+    def _why_not(self, node_id: int) -> str | None:
+        """Why nothing can be asked of this node over SDO, or None if it can be.
 
         A lost node is one whose heartbeat has stopped: it is still in the
         list, and every request to it would sit there until the SDO timeout
-        gave up.
+        gave up. A stopped one answers NMT and not SDO, and what is asked of
+        it is refused at once (sdo_log), so is not offered either.
         """
-        return node_id is not None and node_id not in self._lost
+        if node_id in self._lost:
+            return WHY_LOST.format(node_id=node_id)
+        if node_id in self._stopped:
+            return WHY_STOPPED.format(node_id=node_id)
+        return None
 
     def _offer_node_buttons(self) -> None:
         """Only with a node to act on. See _node_buttons. A file has its own."""
-        on_a_node = self._can_act_on(self.selected_node())
+        node_id = self.selected_node()
+        on_a_node = self._can_act_on(node_id)
         for button in self._node_buttons:
             button.setEnabled(on_a_node)
+        self._load_eds_action.setEnabled(self._can_give_eds(node_id))
         if hasattr(self, "selected_dbc_action"):
             self._offer_selected_dbc()
             self._offer_file_actions()
         for button in getattr(self, "_menu_buttons", []):
             button.follow()
+        why = (
+            None if node_id is None or self.selected_file() is not None else self._why_not(node_id)
+        )
+        for control, usual in getattr(self, "_usual_tips", []):
+            greyed = why is not None and not control.isEnabled()
+            control.setToolTip(f"{usual}\n\n{why}" if greyed else usual)
         if hasattr(self, "remove_btn"):
             if self.selected_file() is not None:
                 self.remove_btn.setToolTip(CLOSE_FILE_TIP)
@@ -1796,7 +2021,8 @@ class CanopenView(QWidget):
             if source is not None
             else getattr(node, "object_dictionary", None)
         )
-        watched = self._watched(node_id)
+        bookmarked = self._bookmarked(node_id)
+        polled = self.sdo_poll.polled(node_id) if node_id is not None else set()
         if od is not None:
             parent_items: dict[int, QTreeWidgetItem] = {}
             for index, sub, var, name in od_entries(od):
@@ -1821,11 +2047,16 @@ class CanopenView(QWidget):
                     f"{index:04X} {sub_text} {name} {parent_name}".lower(),
                 )
                 if var is not None and source is None:
-                    # Watching is about a device, and a file is not one.
+                    # Bookmarks are kept per device, and a file is not one.
                     item.setCheckState(
-                        COL_WATCH,
-                        Qt.Checked if (index, sub or 0) in watched else Qt.Unchecked,
+                        COL_BOOKMARK,
+                        Qt.Checked if (index, sub or 0) in bookmarked else Qt.Unchecked,
                     )
+                    if getattr(var, "readable", True):
+                        item.setCheckState(
+                            COL_POLL,
+                            Qt.Checked if (index, sub or 0) in polled else Qt.Unchecked,
+                        )
                 if var is not None and var.writable:
                     item.setFlags(item.flags() | Qt.ItemIsEditable)
                 if var is not None and source is not None:
@@ -1835,8 +2066,8 @@ class CanopenView(QWidget):
         self._apply_od_filter()
 
     # --- finding one of fifteen hundred -------------------------------------------
-    def _watch_key(self, node_id: int | None) -> str:
-        """Which device this watch list belongs to.
+    def _bookmark_key(self, node_id: int | None) -> str:
+        """Which device a list of bookmarks belongs to.
 
         The identity where the node has told us one, so the same kind of
         controller opens with the same list next time; the node id only as a
@@ -1848,31 +2079,36 @@ class CanopenView(QWidget):
         identity = self._identities.get(node_id)
         return identity.key if identity is not None else f"node{node_id}"
 
-    def _watched(self, node_id: int | None) -> set[tuple[int, int]]:
-        key = self._watch_key(node_id)
+    def _bookmarked(self, node_id: int | None) -> set[tuple[int, int]]:
+        key = self._bookmark_key(node_id)
         if not key:
             return set()
+        # Stored under the name the column had before it was called Bookmark,
+        # so lists made then are still there.
         stored = self.ctx.settings.get("canopen.watch", {}).get(key, [])
         return {(int(i), int(s)) for i, s in stored}
 
-    def _save_watched(self, node_id: int, watched: set[tuple[int, int]]) -> None:
+    def _save_bookmarks(self, node_id: int, bookmarked: set[tuple[int, int]]) -> None:
         all_lists = dict(self.ctx.settings.get("canopen.watch", {}))
-        key = self._watch_key(node_id)
-        if watched:
-            all_lists[key] = sorted([index, sub] for index, sub in watched)
+        key = self._bookmark_key(node_id)
+        if bookmarked:
+            all_lists[key] = sorted([index, sub] for index, sub in bookmarked)
         else:
             all_lists.pop(key, None)  # an empty list is the same as no list
         self.ctx.settings.set("canopen.watch", all_lists)
 
-    def _on_watch_toggled(self, item: QTreeWidgetItem) -> None:
+    def _on_bookmark_toggled(self, item: QTreeWidgetItem) -> None:
         node_id = self._od_node
         if node_id is None:
             return
         where = (item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
-        watched = self._watched(node_id)
-        watched.add(where) if item.checkState(COL_WATCH) == Qt.Checked else watched.discard(where)
-        self._save_watched(node_id, watched)
-        if self.watched_only.isChecked():
+        bookmarked = self._bookmarked(node_id)
+        if item.checkState(COL_BOOKMARK) == Qt.Checked:
+            bookmarked.add(where)
+        else:
+            bookmarked.discard(where)
+        self._save_bookmarks(node_id, bookmarked)
+        if self.bookmarked_only.isChecked():
             self._apply_od_filter()
 
     def _apply_od_filter(self) -> None:
@@ -1883,10 +2119,10 @@ class CanopenView(QWidget):
         the record shows the whole of it.
         """
         needles = self.od_search.text().lower().split()
-        only_watched = self.watched_only.isChecked()
+        only_bookmarked = self.bookmarked_only.isChecked()
 
         def keep(item: QTreeWidgetItem) -> bool:
-            if only_watched and item.checkState(COL_WATCH) != Qt.Checked:
+            if only_bookmarked and item.checkState(COL_BOOKMARK) != Qt.Checked:
                 return False
             haystack = item.data(0, ROLE_SEARCH) or ""
             return all(needle in haystack for needle in needles)
@@ -1968,13 +2204,21 @@ class CanopenView(QWidget):
             return
         node_id = self.selected_node()
         if node_id is not None and item.childCount() == 0:
-            self.manager.sdo_read(node_id, item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+            where = (item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+            self.sdo_poll.note_read(node_id, *where)
+            self.manager.sdo_read(node_id, *where)
 
     def _on_od_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if self._updating:
             return
-        if column == COL_WATCH:
-            self._on_watch_toggled(item)
+        if column == COL_BOOKMARK:
+            self._on_bookmark_toggled(item)
+            return
+        if column == COL_POLL:
+            if self._od_node is not None:
+                where = (item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+                on = item.checkState(COL_POLL) == Qt.Checked
+                self.sdo_poll.set_polled(self._od_node, where, on)
             return
         if column != COL_VALUE:
             return
@@ -2121,8 +2365,19 @@ class CanopenView(QWidget):
 
     @Slot(int, int, int, object, object)
     def on_sdo_result(self, node_id: int, index: int, sub: int, value, error) -> None:
-        if error and node_id == getattr(self, "_reading_node", None):
+        if self.sdo_poll.answer(node_id, index, sub, value, error):
+            self._note_poll_result(node_id, index, sub, error)
+        elif error and node_id == getattr(self, "_reading_node", None):
             self._read_failures.append((index, sub, error))  # said when Read all is over
+        elif error and self.manager.is_stopped(node_id):
+            # Refused at once rather than timed out, so a custom pane polling
+            # a stopped node would say it many times a second. Once is enough.
+            if node_id not in self._stopped_said:
+                self._stopped_said.add(node_id)
+                self.ctx.warn(
+                    f"Node {node_id}: SDO {index:04X}:{sub:02X} failed: {error}. "
+                    "Said once while it is stopped."
+                )
         elif error:
             self.ctx.warn(f"Node {node_id}: SDO {index:04X}:{sub:02X} failed: {error}")
         if node_id != self.selected_node():
@@ -2138,14 +2393,32 @@ class CanopenView(QWidget):
         item.setToolTip(1, tip)
         self._updating = False
 
+    def _note_poll_result(self, node_id: int, index: int, sub: int, error) -> None:
+        """A failing polled read is said once, and again only after it has read."""
+        where = (node_id, index, sub)
+        if not error:
+            self._poll_failing.discard(where)
+        elif where not in self._poll_failing:
+            self._poll_failing.add(where)
+            self.ctx.warn(
+                f"Node {node_id}: polling SDO {index:04X}:{sub:02X} failed: {error}. "
+                "Said once until it reads again."
+            )
+
+    def _on_poll_ticked(self, on: bool) -> None:
+        self.sdo_poll.start() if on else self.sdo_poll.stop()
+
     # --- PDOs -----------------------------------------------------------------
     @Slot(int, str, dict)
     def on_pdo_update(self, node_id: int, pdo_name: str, values: dict) -> None:
+        """A PDO's values into the Live PDOs tab: what the node sends, and what
+        it is sent, since another master may be the one sending its RPDOs."""
         if node_id != self.selected_node():
             return
         parent = self._pdo_items.get((pdo_name, None))
         if parent is None:
-            parent = QTreeWidgetItem([pdo_name, "", "0", ""])
+            direction = direction_text(node_id, self.manager.pdo_direction(node_id, pdo_name))
+            parent = QTreeWidgetItem([pdo_name, "", "0", "", direction])
             self.pdos.addTopLevelItem(parent)
             parent.setExpanded(True)
             self._pdo_items[(pdo_name, None)] = parent
@@ -2181,6 +2454,15 @@ class CanopenView(QWidget):
         self._pdo_items.clear()
         self._pdo_counts.clear()
         self._pdo_last.clear()
+
+
+def direction_text(node_id: int, direction: str | None) -> str:
+    """Which way a PDO goes, for the Live PDOs tab."""
+    if direction == "TPDO":
+        return f"TPDO, sent by node {node_id}"
+    if direction == "RPDO":
+        return f"RPDO, received by node {node_id}"
+    return ""
 
 
 def _hex(value: int | None) -> str:

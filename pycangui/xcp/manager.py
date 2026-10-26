@@ -55,6 +55,11 @@ class XcpManager(QObject):
         self._worker = threading.Thread(target=self._run, name="xcp", daemon=True)
         self._worker.start()
         bus.disconnected.connect(lambda: self.set_connected(False))
+        #: Measurement polling waits while pycangui's own traffic is paused.
+        self._paused = False
+        if (pause := getattr(ctx, "pause", None)) is not None:
+            self._paused = pause.paused
+            pause.changed.connect(self.set_paused)
         self._make_engine()
 
     # --- component --------------------------------------------------------------
@@ -393,8 +398,20 @@ class XcpManager(QObject):
             if not self._polled:
                 self._poll_timer.stop()
 
+    def set_paused(self, on: bool) -> None:
+        """Hold measurement polling back, or let it go on: see core/pause.py.
+
+        What is ticked stays ticked, and a read or a write asked for by hand
+        still goes out.
+        """
+        self._paused = on
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
     def _poll(self) -> None:
-        if not self._connected or not self._polled:
+        if not self._connected or not self._polled or self._paused:
             return
         for name, param in list(self._polled.items()):
 

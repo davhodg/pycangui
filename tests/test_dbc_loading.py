@@ -392,10 +392,11 @@ def test_removing_a_database_takes_its_signals_away(app, tmp_path, dbc_file, mon
     window.close()
 
 
-def test_a_database_describing_a_tpdo_wins_over_the_pdo_decode(app, tmp_path, monkeypatch):
+def test_a_database_describing_a_pdo_wins_over_the_pdo_decode(app, tmp_path, monkeypatch):
     """Reported: a CANopen device's TPDO showed in Signals twice, once from
     its DBC with scaling and once from the PDO decode raw, and the numbers
-    disagreed. The database was loaded to say what the frame means."""
+    disagreed. The database was loaded to say what the frame means. An RPDO,
+    sent to the node by another master, is treated the same way."""
     from types import SimpleNamespace
 
     from pycangui import resources
@@ -403,24 +404,36 @@ def test_a_database_describing_a_tpdo_wins_over_the_pdo_decode(app, tmp_path, mo
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     window = MainWindow()
-    ids = {"TxPDO1": 0x185, "TxPDO2": 0x285}  # demo.dbc has 0x185 and not 0x285
-    monkeypatch.setattr(window.canopen, "tpdo_cob_id", lambda _node, name: ids.get(name))
-    tpdo = [
-        SimpleNamespace(direction="TPDO", name=name, cob_id=cob_id) for name, cob_id in ids.items()
+    # demo.dbc has 0x185 and 0x123, and not 0x285 or 0x205
+    ids = {"TxPDO1": 0x185, "TxPDO2": 0x285, "RxPDO1": 0x123, "RxPDO2": 0x205}
+    monkeypatch.setattr(window.canopen, "pdo_cob_id", lambda _node, name: ids.get(name))
+    configs = [
+        SimpleNamespace(
+            direction=name[:2].replace("Tx", "TPDO").replace("Rx", "RPDO"), name=name, cob_id=cob_id
+        )
+        for name, cob_id in ids.items()
     ]
-    monkeypatch.setattr(window.canopen, "pdo_configs", lambda _node: tpdo)
+    monkeypatch.setattr(window.canopen, "pdo_configs", lambda _node: configs)
     network = SimpleNamespace(nodes={5: None}, listeners=[])  # listeners, for closing
     monkeypatch.setattr(window.canopen, "network", network)
 
     window._on_pdo_update(5, "TxPDO1", {"Odometer": 12345})
-    assert window.signals.groups() == ["CANopen node 5 TxPDO1"], "decoded while no DBC says"
+    window._on_pdo_update(5, "RxPDO1", {"Pump speed": 100})
+    assert window.signals.groups() == ["CANopen node 5 TxPDO1", "CANopen node 5 RxPDO1"], (
+        "decoded while no DBC says"
+    )
 
     assert window._load_dbc(resources.path("demo.dbc"))
     assert window.signals.groups() == [], "listed before the DBC, and dropped once it loads"
-    window._on_pdo_update(5, "TxPDO1", {"Odometer": 12345})
-    window._on_pdo_update(5, "TxPDO2", {"Temperature": 40})
-    assert window.signals.groups() == ["CANopen node 5 TxPDO2"], (
-        "the DBC's TPDO is left to it, and one it does not describe is still decoded"
+    for name, values in (
+        ("TxPDO1", {"Odometer": 12345}),
+        ("TxPDO2", {"Temperature": 40}),
+        ("RxPDO1", {"Pump speed": 100}),
+        ("RxPDO2", {"Speed demand": 5}),
+    ):
+        window._on_pdo_update(5, name, values)
+    assert window.signals.groups() == ["CANopen node 5 TxPDO2", "CANopen node 5 RxPDO2"], (
+        "the DBC's PDOs are left to it, and ones it does not describe are still decoded"
     )
     window.close()
 

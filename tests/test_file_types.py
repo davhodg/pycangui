@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
-"""Offering pycangui for .dcf and .eds files, however it was installed."""
+"""Offering pycangui for .dcf, .eds and .dbc files, however it was installed."""
 
 import sys
 from pathlib import Path

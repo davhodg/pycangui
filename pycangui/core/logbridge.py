@@ -66,9 +66,13 @@ class _Bridge(logging.Handler):
         # is a code and a shrug. It has the table, and so do we, so the
         # meaning goes in beside it.
         if record.name.startswith("canopen"):
-            from pycangui.canopen import explain_aborts
+            from pycangui.canopen import explain_aborts, sdo_log
 
             text = explain_aborts(text)
+            # Nor does it say whose: this thread's transfer, where there is one,
+            # which also keeps two nodes' failures from reading as one repeated.
+            if record.name.startswith("canopen.sdo") and (doing := sdo_log.under_way()):
+                text = f"{sdo_log.where(doing)}: {text}"
         # The logger name says which backend spoke, which is the useful part
         # when two adapters are connected at once.
         line = f"{record.levelname.title()} [{record.name}]: {text}"

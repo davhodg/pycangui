@@ -5,7 +5,11 @@
 ## Nodes
 
 Nodes appear in the list as they are heard on the bus, with their name, NMT
-state and the EDS matched to them. The EDS is found from the node's identity,
+state and the EDS matched to them. Heard means a heartbeat, or a node-guarding
+reply: one byte on 0x701-0x77F carrying boot-up, Stopped, Operational or
+Pre-operational. Anything else on those identifiers is somebody else's use of
+them, said once in the Event Log for each identifier, and is not taken for a
+node, identified or named in the trace. The EDS is found from the node's identity,
 by [`hooks/canopen.py::eds_for_node`](hooks.md), or by **Load EDS...**, which
 chooses one by hand for the selected node. The **name** is whatever
 [`hooks/canopen.py::node_name`](hooks.md) answers, or the EDS's ProductName,
@@ -20,7 +24,10 @@ reflashed controller wants a different file or a different name can say so,
 and can read the device itself to find out. Only those two: the remembered
 choice, the search of the EDS folder and the file dialog are for a node
 nobody has an answer for yet, and a dialog opening every time a heartbeat
-came back would be a way of making people unplug things.
+came back would be a way of making people unplug things. **Cancel** in that file
+dialog is remembered with the workspace: the device is not asked about again,
+only named in the Event Log, until **Load EDS...** on its node gives it one -- so a
+bootloader with no EDS of its own no longer opens a dialog at every start.
 
 **NMT**, with the send button beside it, sends Start, Pre-operational,
 Stop, Reset node or Reset communication to the selected node, or to every node
@@ -50,9 +57,21 @@ and SYNC are services the whole bus hears, and **Add / Open** and **Remove**
 put a row in the list or take one out rather than doing anything to a
 node. Everything below it acts on the
 node highlighted in it, and is switched off while no node is highlighted, or
-while the highlighted one is lost: a button that looks pressable and then says
-"no node selected" is a worse way to find that out than one that is plainly
-not.
+while the highlighted one is lost or stopped, with the reason added to its
+tooltip: a button that looks pressable and then says "no node selected" is a
+worse way to find that out than one that is plainly not.
+
+**Nothing goes over SDO to a stopped node.** CiA 301 serves SDO only in
+Pre-operational and Operational, so a request to a node whose heartbeat says
+Stopped could only wait for the timeout. It is refused at once instead, from
+wherever it comes -- the object dictionary, Read all, the PDO tab, the faults,
+a DCF, a comparison, the console, a script or a plugin through `node.sdo` --
+and the CANopen log and the Event Log say why. A boot-up is the node entering
+Pre-operational, and is shown as that; SDO goes straight out after one. What
+pycangui reads unasked -- identifying a node first heard, reading its PDO
+configuration again -- waits while the node is stopped and is done when it
+leaves Stopped. NMT, LSS and the heartbeat are not SDO, and are unaffected:
+**Load EDS...** stays offered too, since it asks the node nothing.
 
 Under the list, what is pressed often is a button and what is done once to a
 node is in one of four menus, each named for what it is about: **Node**
@@ -66,10 +85,19 @@ is what an EDS is matched from. It happens by itself the first time a node is
 heard, and *only* then: nothing re-reads it afterwards, so a node you have
 reflashed keeps what it said before until this is pressed.
 
-Above the list, **Add / Open** holds the two ways a row gets into it.
+Above the list, **Add / Open** holds the ways a row gets into it.
 **Add node...** puts in a node that has not been heard from:
 one with its heartbeat switched off, held in pre-operational, or sitting in its
-bootloader. It is identified straight away. **Remove** takes the selected
+bootloader. It is identified straight away. **Scan for nodes...** finds such
+nodes instead of you naming them: it reads object 0x1000 from every id in
+*Settings... > Node ids* whose heartbeat is not heard, one at a time, waiting a
+tenth of a second for each, with a bar and **Stop** -- so all 127 ids take
+about thirteen seconds. Any answer, a refusal included, means a node is there,
+and it is put in the list as *found by scan* (and identified, if *Identify a
+node when it is first heard* is on). It is only ever started by hand, so a
+pause does not hold it; *Stop all* ends it. The Event Log and a box say which
+ids answered; the ids that did not are in the SDO log, not the Event Log.
+**Remove** takes the selected
 node out of the list -- one added at the wrong id, or unplugged for good -- and
 works on a lost node too. A node still on the bus comes back with its next
 heartbeat, because it is there. **Login...** asks the selected
@@ -99,10 +127,9 @@ Transmit](transmit.md) offers the RPDOs it receives. **Read PDO config** reads
 it again -- the same as *Read from node* in the PDO tab -- for a mapping
 something else has changed since, or for every read where *Settings...* has
 reading it turned off. **Store** and **Restore defaults** are 0x1010 and 0x1011, and what
-came of them is shown in a box as well as the Event Log. A node answers SDO only in
-Pre-operational or Operational, so one whose heartbeat says any other state -- Stopped,
-say -- is asked about first; pycangui does not change its state, since it may not be the
-NMT master. Which state a node will store in is the device's choice, not the standard's:
+came of them is shown in a box as well as the Event Log. Neither is offered for a
+stopped node, and pycangui does not change its state, since it may not be the NMT
+master. Which state a node will store in is the device's choice, not the standard's:
 many store only in Pre-operational, and a drive may also want its power stage off. A
 node that refuses in its present state answers abort 0800 0022h, and the box says so.
 **Save
@@ -134,6 +161,12 @@ workspace. *OK* writes what it changed to the Event Log, and only that:
   goes out that you did not ask for, which is what watching somebody else's
   live machine wants -- at the cost that a new node stays `Node <id>` with no
   EDS until *Identify* or *Load EDS* is pressed.
+- **Node ids** are those whose heartbeats make a node: `1-127`, every one, to
+  begin with, or fewer as `1-20` or `1-10, 32`. Narrowed, heartbeat
+  identifiers outside them are left alone -- not listed, not identified, not
+  named in the trace -- so another protocol can use them on the same bus, and
+  a node already listed outside them is taken off the list. A node added by
+  hand is heard whatever this says.
 - **Read the PDO configuration from each node** is on to begin with: the
   reading described above, when its EDS is loaded, at each boot-up and after a
   write that changes a mapping. Off, nothing is read without asking, and the
@@ -164,9 +197,26 @@ The selected node's dictionary fills from its EDS. Double-click an entry to
 read it from the node, and edit a value to write it back. The filter box
 matches the index or the name, and several words must all match.
 
-Tick **Watch** against the objects a job uses and **Watched** shows only those.
-The list is kept per device, so the next controller of the same kind opens with
-the objects you were using on the last one. **Read all** reads every readable
+Tick **Bookmark** against the objects a job uses and **Bookmarked** shows only
+those; nothing is read because of a bookmark. The list is kept per device, so
+the next controller of the same kind opens with the objects you were using on
+the last one.
+
+**Polling.** Tick **Poll** against objects to follow, and **SDO poll**, beside
+*Bookmarked*, reads them over and over, on every node that has some ticked, up
+to the rate in the box beside it; the rate actually managed is shown
+after it, since every SDO read is a request and an answer and is often slower
+than asked. Their values update in the *Value* column, and numbers go to
+[Signals and Plot](signals.md) under *Node 5* (for node 5), to plot and export
+like any other signal. The ticks are kept per device, like bookmarks; polling
+itself starts only when *SDO poll* is ticked, never on its own when
+pycangui opens. A node that is stopped or has lost its heartbeat is left alone
+until it is back, a failing object is warned about once until it reads again,
+a pause of pycangui's own traffic holds the polling, and *Stop all repeating
+traffic* stops it. A [custom pane](custom-panes.md) polls the objects on it in
+the same way.
+
+**Read all** reads every readable
 entry, one SDO at a time, which takes a while on a large node: while it runs,
 a bar in its place says how far it has got, with **Stop** beside it. Objects
 it could not read are counted rather than each given a warning: a box at the
@@ -217,10 +267,11 @@ list.
 `pycangui drive.dcf` opens one from the command line. To open one with a
 double-click, pycangui has to be in *Open with* for `.dcf` and `.eds` files: the
 installer has a tick box for it beside the desktop shortcut, and *Tools > Settings >
-Open .dcf and .eds files with pycangui* does the same at any time, for a source
+Open .dcf, .eds and .dbc files with pycangui* does the same at any time, for a source
 folder or a pip installation as well (Windows and Linux). Either puts pycangui
 in *Open with* and leaves the default alone, so another CANopen tool that has
-these files keeps them until you choose. With pycangui already open, the file
+these files keeps them until you choose. The same goes for `.dbc` files, which
+are [loaded](signals.md) rather than opened here. With pycangui already open, the file
 goes to that one, which comes to the front: not a second pycangui fighting the
 first for the adapter.
 
@@ -278,8 +329,11 @@ be labelled as node 81's RPDO. True about the number, and about nothing else
 on the screen. What a PDO actually carries is the mapped objects underneath
 it.
 
-The *Live PDOs* tab shows each
-PDO with its receive count and rate. A frame shorter than its mapping is said
+The *Live PDOs* tab shows each PDO with its receive count and rate, and
+which way it goes: a TPDO the node sends, or an RPDO it is sent. Both are
+decoded, since pycangui may only be listening while another master sends the
+RPDOs; an RPDO sent from CAN Transmit is decoded too, from the frame as it
+comes back from the bus. A frame shorter than its mapping is said
 once in the Event Log, with the numbers -- *expected 64 bits, received 48 bits*
 -- as an error if the mapping was read from the node, since the node is then
 sending it short.

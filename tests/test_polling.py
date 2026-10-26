@@ -439,3 +439,51 @@ def test_reads_that_are_never_answered_do_not_pile_up(app, pane):
     for _ in range(MAX_WAITING * 3):
         view._on_poll_read(0x2001, 0)
     assert len(view._asked[(0x2001, 0)]) == MAX_WAITING
+
+
+# --- paused, and stopped for good --------------------------------------------------------
+def test_a_paused_poller_asks_for_nothing_and_goes_on_when_it_lifts(app, poller):
+    """pycangui's own traffic paused -- a flash running -- holds polling back
+    without unticking it, and it starts again by itself afterwards."""
+    made, asked = poller
+    made.set_paused(True)
+    made.start(50)
+    pump(app, 0.2)
+    assert asked == [] and made.running, "still running, asking nothing"
+    assert rate_text(50, made.achieved, made.running, made.paused) == "paused"
+    made.set_paused(False)
+    settle(app)
+    assert asked[:2] == [(0x2001, 0), (0x2002, 0)]
+
+
+def test_a_pause_lets_a_round_already_asked_for_finish_and_starts_no_more(app, poller):
+    made, asked = poller
+    made.start(50)
+    settle(app)
+    made.set_paused(True)
+    made.answered(0x2001, 0)
+    made.answered(0x2002, 0)
+    pump(app, 0.2)
+    assert len(asked) == 2, "the round in hand finished, and none after it"
+
+
+def test_a_pane_pauses_with_pycangui_and_stop_all_unticks_it(app, pane):
+    window, view = pane
+    source = FakeNode()
+    view.bind(source)
+    settle(app)
+    view.poll_hz.setValue(50.0)
+    view.poll.setChecked(True)
+    wait_until(app, lambda: source.reads > 2)
+
+    window.ctx.pause.hold("UDS transfer")
+    wait_until(app, lambda: answered(view))
+    held = source.reads
+    pump(app, 0.2)
+    assert source.reads == held and view.poll.isChecked()
+    assert view.poll_rate.text() == "paused"
+    window.ctx.pause.release("UDS transfer")
+    wait_until(app, lambda: source.reads > held)
+
+    window.ctx.pause.stop_all()
+    assert not view.poll.isChecked() and not view.poller.running, "for good"

@@ -8,11 +8,17 @@ the plot -- ticking a signal and watching the trace it draws would mean
 switching tabs. In one pane with a splitter between them, both are always
 visible, and either can be dragged shut when only the other is wanted: a full
 width plot, or a plain watch window of live values.
+
+The list is beside the plot, or below it -- chosen from the plot's *View*
+button or the list's right-click, and kept with the pane. Below gives the plot
+the whole width and the list room for its statistics columns, which is what a
+pane undocked and made full screen has the space for.
 """
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QActionGroup
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from pycangui.core.context import Context
@@ -22,6 +28,10 @@ from pycangui.ui.signals_view import DEFAULT_COLUMNS, SignalsView
 
 # Enough for a signal name and its value; the plot takes whatever is left.
 LIST_WIDTH = 320
+#: Below the plot, the share of the height the list starts with.
+LIST_SHARE_BELOW = 1 / 3
+BESIDE_TEXT, BELOW_TEXT = "List beside the plot", "List below the plot"
+PLACE_TIP = "Where this pane's signal list goes. Kept with the pane."
 
 
 def _saved_keys(saved) -> list[str]:
@@ -39,6 +49,9 @@ class ScopeView(QWidget):
     ) -> None:
         super().__init__()
         self.hub = hub
+        #: Where this pane's choices are kept: none for a pane made without a context.
+        self._settings = None
+        self._key = key
         self.signals_view = SignalsView(hub, ctx.settings if ctx is not None else None, now)
         self.plot = PlotView(hub, now, ctx)
         self.signals_view.plot_toggled.connect(self.plot.set_plotted)
@@ -50,14 +63,16 @@ class ScopeView(QWidget):
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.addWidget(self.signals_view)
         self.splitter.addWidget(self.plot)
-        # Either side may be dragged shut, and neither imposes a width of its
+        # Either side may be dragged shut, and neither imposes a size of its
         # own, so the splitter shrinks rather than the pane growing scrollbars.
         self.splitter.setChildrenCollapsible(True)
         self.splitter.setHandleWidth(6)
-        for i, widget in enumerate((self.signals_view, self.plot)):
-            widget.setMinimumWidth(0)
-            self.splitter.setStretchFactor(i, i)  # the plot takes the extra room
-        self.splitter.setSizes([LIST_WIDTH, 2 * LIST_WIDTH])
+        for widget in (self.signals_view, self.plot):
+            widget.setMinimumSize(0, 0)
+        self._arrange(below=False)
+        self.signals_view.below_wanted.connect(self.set_list_below)
+        self._add_place_choice()
+        self.plot.cursors_changed.connect(self.signals_view.set_cursors)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -93,6 +108,8 @@ class ScopeView(QWidget):
         """
         self._settings = ctx.settings
         self._key = key
+        if ctx.settings.get(f"{key}.list_below", False) is True:
+            self._arrange(below=True)
         self._wanted = _saved_keys(ctx.settings.get(f"{key}.plotted"))
         # Settings from before there was a right axis have no list, and so
         # put everything on the left, which is where it was.
@@ -150,10 +167,73 @@ class ScopeView(QWidget):
         right = [signal for signal in self._wanted if signal in self._wanted_right]
         self._settings.set(f"{self._key}.right_axis", right)
 
+    # --- the list beside the plot, or below it ------------------------------------
+    @property
+    def list_below(self) -> bool:
+        return self.signals_view.below
+
+    @Slot(bool)
+    def set_list_below(self, on: bool) -> None:
+        """Put the list below the plot, or back beside it, and keep the choice."""
+        if on != self.list_below:
+            self._arrange(below=on)
+        if self._settings is not None:
+            self._settings.set(f"{self._key}.list_below", on)
+
+    def _add_place_choice(self) -> None:
+        """The list's place, at the top of the plot's View menu."""
+        menu = self.plot.view_menu
+        first = menu.actions()[0]
+        menu.insertSection(first, "Signal list")
+        self.place_actions = QActionGroup(self)
+        for below, text in ((False, BESIDE_TEXT), (True, BELOW_TEXT)):
+            action = self.place_actions.addAction(text)
+            action.setCheckable(True)
+            action.setData(below)
+            action.setToolTip(PLACE_TIP)
+            menu.insertAction(first, action)
+        self.place_actions.triggered.connect(lambda a: self.set_list_below(a.data()))
+        menu.aboutToShow.connect(self._show_place)
+
+    def _show_place(self) -> None:
+        for action in self.place_actions.actions():
+            action.setChecked(action.data() == self.list_below)
+
+    def _arrange(self, below: bool) -> None:
+        """Lay the two out: the list on the left, or the plot above the list.
+
+        The plot comes first below, as a page reads: what is drawn, then the
+        numbers for it. Whichever way, the plot takes the room left over.
+        """
+        self.signals_view.below = below
+        first, second = (self.plot, self.signals_view) if below else (self.signals_view, self.plot)
+        self.splitter.setOrientation(Qt.Vertical if below else Qt.Horizontal)
+        self.splitter.insertWidget(0, first)
+        self.splitter.insertWidget(1, second)
+        self.splitter.setStretchFactor(0, 1 if below else 0)
+        self.splitter.setStretchFactor(1, 0 if below else 1)
+        if below:
+            room = max(self.splitter.height(), 3 * LIST_WIDTH // 2)
+            self.splitter.setSizes(
+                [round(room * (1 - LIST_SHARE_BELOW)), round(room * LIST_SHARE_BELOW)]
+            )
+        else:
+            self.splitter.setSizes([LIST_WIDTH, 2 * LIST_WIDTH])
+
     # --- layout, saved with the rest of the window state ---------------------
     def save_state(self):
         return self.splitter.saveState()
 
     def restore_state(self, state) -> None:
-        if state is not None:
-            self.splitter.restoreState(state)
+        """Where the divide was, unless it was saved the other way round.
+
+        A splitter's saved state carries its orientation, and would turn a
+        list chosen to be below back beside the plot -- with the sizes meant
+        for the other order. The choice wins; the sizes only where they fit.
+        """
+        if state is None:
+            return
+        below = self.list_below
+        self.splitter.restoreState(state)
+        if (self.splitter.orientation() == Qt.Vertical) != below:
+            self._arrange(below)

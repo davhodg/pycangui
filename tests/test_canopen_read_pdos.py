@@ -113,3 +113,43 @@ def test_the_setting_is_kept_and_on_unless_turned_off(tmp_path, monkeypatch):
     manager = Manager()
     canopen_settings.apply(manager, canopen_settings.load(ctx))
     assert manager.read_pdos_when_found is False
+
+
+def test_two_reads_queued_say_the_configuration_changed_once_both_are_done(bus_and_manager):
+    """Found in CI: the first read's word arrived while the second was still
+    rewriting the RPDO maps on the worker, and CAN Transmit rebuilt its rows
+    from a mapping half read."""
+    load_eds(bus_and_manager)
+    manager = bus_and_manager
+    said, queued = [], []
+    manager.rpdos_read.connect(lambda node: said.append(len(queued)))
+    manager.read_pdo_config(NODE)
+    manager.read_pdo_config(NODE)  # a boot-up arriving while the first is read
+    manager.background(lambda: None, lambda _r, _e: queued.append(True))
+    wait_until(lambda: queued)
+    QCoreApplication.processEvents()
+    assert said == [0], "once, and before the job queued after both"
+
+
+def test_a_last_read_that_fails_still_says_an_earlier_one_changed_it(bus_and_manager, monkeypatch):
+    load_eds(bus_and_manager)
+    manager = bus_and_manager
+    said = []
+    manager.rpdos_read.connect(said.append)
+    node = manager.node(NODE)
+    real = node.tpdo.read
+    calls = []
+
+    def second_fails(*args, **kwargs):
+        calls.append(1)
+        if len(calls) > 1:
+            raise OSError("no answer")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(node.tpdo, "read", second_fails)
+    manager.read_pdo_config(NODE)
+    manager.read_pdo_config(NODE)
+    settle(manager)
+    assert len(calls) == 2
+    QCoreApplication.processEvents()
+    assert said == [NODE]

@@ -143,6 +143,32 @@ def test_closing_a_transmit_pane_stops_what_it_was_sending(app, connected):
     assert view.cyclic_count() == 0
 
 
+def test_closing_a_transmit_pane_for_good_stops_what_it_was_sending(app, connected):
+    """Its cyclic messages went on with no row left anywhere to untick, and
+    Stop all cyclic could not reach them."""
+    import time
+
+    import can
+
+    window = connected
+    name = window.panes.add("tx")
+    window.panes.show(name)
+    settle(app)
+    sending(app, window.panes.view(name), "321")
+    listener = can.Bus(interface="virtual", channel="vcan_tx_panes")
+    try:
+        window._remove_pane(name)
+        settle(app)
+        time.sleep(0.1)
+        while listener.recv(timeout=0) is not None:
+            pass  # what was already on its way
+        time.sleep(0.3)
+        assert listener.recv(timeout=0) is None, "nothing still being sent"
+    finally:
+        listener.shutdown()
+    assert "stopped" in window.log.toPlainText()
+
+
 def test_bringing_it_back_does_not_start_sending_again(app, connected):
     """Beginning to transmit onto a bus is not something to do unasked."""
     window = connected

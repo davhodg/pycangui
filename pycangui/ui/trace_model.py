@@ -44,6 +44,20 @@ class TraceModel(QAbstractTableModel):
         super().__init__()
         self._rows: list[Frame] = []
 
+    def frames_since(self, timestamp: float) -> list:
+        """The frames captured at or after ``timestamp``, oldest first.
+
+        From the newest backwards, stopping at the first older one, so a long
+        capture costs only what is asked for.
+        """
+        found = []
+        for frame in reversed(self._rows):
+            if frame.timestamp < timestamp:
+                break
+            found.append(frame)
+        found.reverse()
+        return found
+
     # --- required overrides (Qt naming, hence camelCase) ----------------------
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self._rows)

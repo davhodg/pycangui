@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from collections import deque
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, QUrl, Signal, Slot
@@ -46,12 +48,13 @@ from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.detect import DEMO_CHANNEL, summarise
-from pycangui.core.events import PROBLEMS, EventLog, with_level
+from pycangui.core.events import PROBLEMS, EventLog, with_level, with_time
 from pycangui.core.excepthook import ExceptionLogger
 from pycangui.core.export import write_csv
 from pycangui.core.hooks import Hooks
 from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
+from pycangui.core.pause import described
 from pycangui.core.plugins import Plugins
 from pycangui.core.signals import BYTES_PER_SAMPLE, LIMITS, SignalHub, stored_text
 from pycangui.core.simnodes import SimulatedNodes
@@ -76,9 +79,11 @@ from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.custom_pane_view import CustomPaneView
 from pycangui.ui.database_view import DatabaseView
+from pycangui.ui.diagnostics import RECENT_PROBLEMS
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
 from pycangui.ui.panes import PaneKind, Panes
+from pycangui.ui.pause_status import PauseStatus
 from pycangui.ui.plugin_app import PluginApp
 from pycangui.ui.plugin_manager import (
     BEHIND,
@@ -169,6 +174,16 @@ UDP_NETWORK_TIP = (
     "the group hears it -- and can send into it. For this computer, not a\n"
     "workspace; a channel already connected follows it when it connects again."
 )
+#: In QSettings, like the theme: how somebody likes to read the log, not
+#: something about a workspace.
+LOG_TIMES_KEY = "event_log/times"
+LOG_TIMES_TIP = (
+    "The time of day each Event Log line was written, to the second, in front\n"
+    "of it: 14:03:27 Warning: ... From the next line on; kept when lines are\n"
+    "copied."
+)
+#: Who holds the pause while a UDS download or upload runs.
+UDS_TRANSFER = "UDS transfer"
 HISTORY_KEY = "signals.history"
 HISTORY_TIP = (
     "How many samples of each decoded signal are kept, for the plot and for\n"
@@ -246,6 +261,9 @@ class MainWindow(QMainWindow):
         #: the only thing that writes to the pane. Warnings and errors open it
         #: if it has been closed; notes do not.
         self.events = EventLog()
+        #: The last warnings and errors, for Help > Diagnostics: (time, level, text).
+        self.recent_problems: deque[tuple[str, str, str]] = deque(maxlen=RECENT_PROBLEMS)
+        self._log_times = QSettings().value(LOG_TIMES_KEY, False, type=bool)
         self._surfacing = False
         self.events.posted.connect(self._on_event)
 
@@ -316,6 +334,16 @@ class MainWindow(QMainWindow):
         self.ctx.uds = self.uds
         self.ctx.j1939 = self.j1939
         self.ctx.xcp = self.xcp
+        # pycangui's own traffic: a pause holds back what it sends by itself
+        # and Stop all ends everything that repeats (core/pause.py). The
+        # panes, the XCP manager, simulated nodes and plugins hear it from
+        # ctx.pause themselves; these are what has no ctx to hear it from.
+        pause = self.ctx.pause
+        pause.changed.connect(self.canopen.set_paused)
+        pause.changed.connect(self._say_paused)
+        pause.stop_all_requested.connect(self._stop_all_transmits)
+        pause.stop_all_requested.connect(self._say_stopped_all)
+        self.uds.transferring.connect(self._uds_transferring)
         self.recorder = Recorder(self.channels)  # every connected channel
 
         # --- panes -----------------------------------------------------------
@@ -381,6 +409,8 @@ class MainWindow(QMainWindow):
         self.setStatusBar(QStatusBar())
         self.bus_status = BusStatus(self.channels, ctx=self.ctx)
         self.statusBar().addWidget(self.bus_status, 1)
+        self.pause_status = PauseStatus(self.ctx.pause)
+        self.statusBar().addPermanentWidget(self.pause_status)
         self._frame_count = 0
         self._status_timer = QTimer(self, interval=500, timeout=self._update_status)
         self._status_timer.start()
@@ -535,6 +565,11 @@ class MainWindow(QMainWindow):
             "The Python files the simulated nodes are made from, one per\n"
             "kind of device. Kept in the workspace, beside the hooks."
         )
+        # Also on the status bar's right-click, where what they do is shown;
+        # here for the keyboard.
+        tools_menu.addSeparator()
+        tools_menu.addAction(self.pause_status.pause_action)
+        tools_menu.addAction(self.pause_status.stop_action)
         tools_menu.addSeparator()
         # Together, because "put something back the way it was" is one thing
         # to go looking for, and entries scattered down a menu are
@@ -583,6 +618,11 @@ class MainWindow(QMainWindow):
         verbose.setCheckable(True)
         verbose.setToolTip("Relay the CAN libraries' info messages to the event log too")
         verbose.toggled.connect(self._set_verbose_logging)
+        self.log_times = settings_menu.addAction("Time on Event Log lines")
+        self.log_times.setCheckable(True)
+        self.log_times.setChecked(self._log_times)
+        self.log_times.setToolTip(LOG_TIMES_TIP)
+        self.log_times.toggled.connect(self._set_log_times)
         self.strict_dbc = settings_menu.addAction("Strict DBC checks")
         self.strict_dbc.setCheckable(True)
         self.strict_dbc.setChecked(bool(self.ctx.settings.get("dbc.strict", True)))
@@ -634,12 +674,13 @@ class MainWindow(QMainWindow):
         self.file_types_action = None
         if file_types.command() is not None:
             self.file_types_action = settings_menu.addAction(
-                "Open .dcf and .eds files with pycangui", self._register_file_types
+                "Open .dcf, .eds and .dbc files with pycangui", self._register_file_types
             )
             self.file_types_action.setToolTip(
-                "Offer this pycangui in Open with for CANopen DCF and EDS files, so\n"
-                "double-clicking one opens it in the CANopen pane. For you only, and\n"
-                "not made the default: another tool that has them keeps them."
+                "Offer this pycangui in Open with for CANopen DCF and EDS files and\n"
+                "CAN databases, so double-clicking one opens it in the CANopen pane\n"
+                "or loads it. For you only, and not made the default: another tool\n"
+                "that has them keeps them."
             )
 
         #: A menu of its own rather than a corner of Tools: a plugin adds
@@ -717,17 +758,24 @@ class MainWindow(QMainWindow):
     def open_files(self, files: list[Path]) -> None:
         """Files from the command line, or double-clicked while this was open.
 
-        A DCF or EDS goes to the CANopen pane as a row of its own, and the
-        window comes forward: somebody double-clicked it to look at it.
+        A DCF or EDS goes to the CANopen pane as a row of its own; a database
+        is loaded as File > Load DBC loads one, and the Database pane shown.
+        The window comes forward: somebody double-clicked it to look at it.
         """
-        opened = False
+        opened = loaded = False
         for path in files:
-            if path.suffix.lower() in cli.OPENS:
+            if path.suffix.lower() in cli.CANOPEN_FILES:
                 opened = self.canopen_view.open_file(path) is not None or opened
+            elif path.suffix.lower() in cli.DATABASES:
+                loaded = self.load_dbc_file(str(path)) or loaded
             else:
-                self.events.warning(f"{path.name}: pycangui opens a DCF or an EDS, not this")
+                self.events.warning(
+                    f"{path.name}: pycangui opens a DCF, an EDS or a CAN database, not this"
+                )
         if opened:
             self.panes.show(self._canopen_pane)
+        if loaded:
+            self.panes.show("database")
         self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
         self.raise_()
         self.activateWindow()
@@ -883,6 +931,7 @@ class MainWindow(QMainWindow):
                 Qt.BottomDockWidgetArea,
                 self._new_transmit,
                 several=True,
+                shutdown=self._close_transmit,
             ),
             PaneKind(
                 "scope",
@@ -915,7 +964,9 @@ class MainWindow(QMainWindow):
                 "canopen",
                 "CANopen",
                 Qt.RightDockWidgetArea,
-                lambda _name: CanopenView(self.canopen, self.hooks, self.ctx),
+                lambda _name: CanopenView(
+                    self.canopen, self.hooks, self.ctx, signals=self.signals, now=self.bus.now
+                ),
                 detached_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),
@@ -1258,6 +1309,46 @@ class MainWindow(QMainWindow):
         title = self.panes.docks[name].windowTitle() if name in self.panes.docks else name
         self.events.information(
             f"{title} was closed with {stopped} cyclic message(s) sending, so they were stopped."
+        )
+
+    @Slot(bool)
+    def _uds_transferring(self, on: bool) -> None:
+        """A UDS download or upload holds pycangui's other traffic back while it runs."""
+        if on:
+            self.ctx.pause.hold(UDS_TRANSFER)
+        else:
+            self.ctx.pause.release(UDS_TRANSFER)
+
+    @Slot(bool)
+    def _say_paused(self, on: bool) -> None:
+        if on:
+            self.events.information(
+                f"Automatic traffic paused ({described(self.ctx.pause.holders)}): polling, "
+                "CANopen SYNC and TIME, and CANopen's unasked reads wait. What is done by "
+                "hand still goes out, as do UDS Tester Present and the J1939 DM13 hold."
+            )
+        else:
+            self.events.information("Automatic traffic going again.")
+
+    def _say_stopped_all(self) -> None:
+        self.events.information(
+            "Stopped all repeating traffic: cyclic messages, polling, CANopen SYNC and TIME, "
+            "and what plugins keep doing. Each starts again only when asked."
+        )
+
+    def _close_transmit(self, view) -> None:
+        """A transmit pane closed for good takes its cyclic messages with it.
+
+        Put away, it stops them in _on_pane_shown; closed for good, it had
+        already been forgotten as a transmit pane by the time it was hidden,
+        and its messages went on with no row left anywhere to untick.
+        """
+        if not isinstance(view, TxView) or not (stopped := view.cyclic_count()):
+            return
+        view.stop_all()
+        self.events.information(
+            f"A CAN Transmit pane was closed with {stopped} cyclic message(s) sending, "
+            "so they were stopped."
         )
 
     def _stop_all_transmits(self) -> None:
@@ -1729,7 +1820,10 @@ class MainWindow(QMainWindow):
             shape.setForeground(colour)
         if event_colours.bold_for(level):
             shape.setFontWeight(QFont.Bold)
-        cursor.insertText(with_level(message, level), shape)
+        line = with_level(message, level)
+        if self._log_times:
+            line = with_time(line, datetime.now())
+        cursor.insertText(line, shape)
         # Painted again as a whole. Written through a cursor, a line could be
         # drawn before its colour was laid out, and stayed in the plain text
         # colour until scrolling redrew it -- an error that did not look like one.
@@ -1737,6 +1831,7 @@ class MainWindow(QMainWindow):
         if at_end:
             bar.setValue(bar.maximum())
         if level in PROBLEMS:
+            self.recent_problems.append((f"{datetime.now():%H:%M:%S}", level, message))
             self._surface_log()
 
     def log_menu(self):
@@ -1970,6 +2065,16 @@ class MainWindow(QMainWindow):
                 "connected again."
             )
 
+    @Slot(bool)
+    def _set_log_times(self, on: bool) -> None:
+        QSettings().setValue(LOG_TIMES_KEY, on)
+        self._log_times = on
+        self.events.information(
+            "Event Log lines are written with the time of day."
+            if on
+            else "Event Log lines are written without the time."
+        )
+
     def _set_strict_dbc(self, on: bool) -> None:
         self.ctx.settings.set("dbc.strict", on)
         self.events.information(
@@ -2022,13 +2127,13 @@ class MainWindow(QMainWindow):
         )
 
     def _register_file_types(self) -> None:
-        """Tools > Settings > Open .dcf and .eds files with pycangui."""
+        """Tools > Settings > Open .dcf, .eds and .dbc files with pycangui."""
         try:
             where = file_types.register()
         except OSError as exc:
-            self.events.error(f"Could not register .dcf and .eds files: {exc}")
+            self.events.error(f"Could not register .dcf, .eds and .dbc files: {exc}")
             return
-        self.events.good(f"pycangui added to Open with for .dcf and .eds files, in {where}")
+        self.events.good(f"pycangui added to Open with for .dcf, .eds and .dbc files, in {where}")
 
     def _ask_again(self) -> None:
         """Put back every question somebody has told pycangui to stop asking.
@@ -2452,14 +2557,22 @@ class MainWindow(QMainWindow):
             "CAN databases (*.dbc *.kcd *.sym *.arxml)",
             self.ctx.user_dir,
         )
-        if not path:
-            return
+        if path:
+            self.load_dbc_file(path)
+
+    def load_dbc_file(self, path: str) -> bool:
+        """Load a database somebody chose, and remember it with the workspace.
+
+        File > Load DBC, and a database double-clicked or given on the command
+        line: each is kept for next time and listed under File > Remove DBC,
+        and one from outside the workspace is offered a copy in it. Returns
+        whether it loaded.
+        """
         workspace = self.ctx.workspace_dir
         paths = list(self.ctx.settings.get("dbc.paths", []))
         chosen = Path(path).resolve()
         if any(workspace_files.resolve(p, workspace).resolve() == chosen for p in paths):
-            self._load_dbc(path, offer_relaxing=True)  # remembered already
-            return
+            return self._load_dbc(path, offer_relaxing=True)  # remembered already
         value = keep_file.offer_and_load(
             self,
             self.ctx,
@@ -2467,8 +2580,10 @@ class MainWindow(QMainWindow):
             workspace_files.DBC,
             lambda used: self._load_dbc(used, offer_relaxing=True),
         )
-        if value is not None:
-            self.ctx.settings.set("dbc.paths", [*paths, value])
+        if value is None:
+            return False
+        self.ctx.settings.set("dbc.paths", [*paths, value])
+        return True
 
     def _load_dbc(self, path: str, offer_relaxing: bool = False) -> bool:
         """Load a database, strictly unless told otherwise.
@@ -2642,22 +2757,23 @@ class MainWindow(QMainWindow):
 
     @Slot(int, str, dict)
     def _on_pdo_update(self, node_id: int, pdo_name: str, values: dict) -> None:
-        """A TPDO's values into Signals and Plot -- unless a database decodes it.
+        """A PDO's values into Signals and Plot -- unless a database decodes it.
 
-        A DBC written for a CANopen device describes its TPDOs as messages,
+        Either direction: a TPDO the node sends, or an RPDO sent to it.
+        A DBC written for a CANopen device describes its PDOs as messages,
         with names and scaling; the PDO decode has the EDS's names and raw
         values. Both at once put the same frame in the list twice with
         numbers that disagree, 12.345 km beside 12345. The database was
         loaded on purpose to say what the frame means, so it wins.
         """
-        cob_id = self.canopen.tpdo_cob_id(node_id, pdo_name)
+        cob_id = self.canopen.pdo_cob_id(node_id, pdo_name)
         if cob_id is not None and self.dbc.describes(cob_id):
             return
         group = f"CANopen node {node_id} {pdo_name}"
         first = self._is_new_to_signals(group, values)
         self.signals.push_many(group, self.bus.now(), values)
         if first:
-            self._name_values(group, self.canopen.tpdo_choices(node_id, pdo_name))
+            self._name_values(group, self.canopen.pdo_choices(node_id, pdo_name))
 
     def _is_new_to_signals(self, group: str, values: dict) -> bool:
         """Whether this is the first of a message's values to reach the signal list."""
@@ -2669,7 +2785,7 @@ class MainWindow(QMainWindow):
             self.signals.set_choices(f"{group}/{name}", table)
 
     def _drop_pdos_a_database_decodes(self) -> None:
-        """Take out TPDOs listed before a database describing them was loaded.
+        """Take out PDOs listed before a database describing them was loaded.
 
         From then on the database decodes them and the PDO decode stands
         aside; without this the PDO's rows would stay, stuck at their last
@@ -2680,7 +2796,7 @@ class MainWindow(QMainWindow):
             f"CANopen node {node_id} {config.name}"
             for node_id in (list(network.nodes) if network is not None else [])
             for config in self.canopen.pdo_configs(node_id)
-            if config.direction == "TPDO" and self.dbc.describes(config.cob_id)
+            if self.dbc.describes(config.cob_id)
         ]
         self.signals.forget_groups(groups)
 
