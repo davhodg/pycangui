@@ -87,7 +87,13 @@ class DbcDecoder:
         return found
 
     def unload(self, path: str | Path) -> None:
-        self.databases.pop(str(path), None)
+        """Remove a database, however its path is spelled: a file dialog gives
+        forward slashes, and a ``Path`` turned back into text gives backslashes."""
+        key = str(path)
+        if key not in self.databases:
+            wanted = Path(path).resolve()
+            key = next((k for k in self.databases if Path(k).resolve() == wanted), key)
+        self.databases.pop(key, None)
         self._rebuild()
 
     def _rebuild(self) -> None:

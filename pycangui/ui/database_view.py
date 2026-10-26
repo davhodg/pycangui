@@ -504,7 +504,7 @@ class DatabaseView(QWidget):
         self.undo_btn = QPushButton("Undo")
         self.undo_btn.clicked.connect(self.undo)
         self.save_btn = QPushButton("Save as...")
-        self.save_btn.clicked.connect(self.save_as)
+        self.save_btn.clicked.connect(lambda: self.save_as())  # not given clicked's checked
         self.discard_btn = QPushButton("Discard changes")
         self.discard_btn.clicked.connect(self.discard)
         edits.addWidget(self.edit_label, 1)

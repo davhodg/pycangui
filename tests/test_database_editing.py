@@ -567,3 +567,24 @@ def test_nodes_attributes_and_groups_are_changed_from_the_pane(window, tmp_path,
     assert "Attribute1" in [d.name for d in edit.definitions()]
     assert {r.name: r.value for r in edit.attributes(())}["ProtocolVersion"] == 4
     assert len(edit.changes) == 4 and view.edit_bar.isVisibleTo(view)
+
+
+def test_the_save_button_offers_the_new_file_with_paths_as_a_dialog_gives_them(
+    window, tmp_path, monkeypatch
+):
+    path = tmp_path / "network.dbc"
+    shutil.copy(FILES / "tables_and_comments.dbc", path)
+    assert window._load_dbc(path.as_posix())
+    view = window.database_view
+    assert view.select_message("GearboxData")
+    answering(monkeypatch, MessageDialog, lambda d: d.cycle.setValue(25))
+    view.edit_message()
+    target = tmp_path / "changed.dbc"
+    monkeypatch.setattr(folders, "save_file", lambda *a, **k: target.as_posix())
+    asked = []
+    monkeypatch.setattr(messages, "question", lambda *a, **k: asked.append(a) or QMessageBox.Yes)
+    view.save_btn.click()
+
+    assert asked, "the new file is offered"
+    assert list(window.dbc.databases) == [target.as_posix()], "and only it is loaded"
+    assert window.dbc.message_by_name("GearboxData").cycle_time == 25
