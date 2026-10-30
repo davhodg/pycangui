@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen: an EDS or DCF is checked as it is loaded -- mandatory objects, counts, PDO mappings,
+  limits and COB-IDs -- and what is wrong is said once in the Event Log.
 - CANopen: *Settings... > Wait after boot-up* holds pycangui's own reads of a node for a while
   after its boot-up, for devices that answer late.
 - CANopen: *Add / Open > Scan for nodes...* finds nodes that send no heartbeat, by reading 0x1000
