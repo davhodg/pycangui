@@ -41,9 +41,11 @@ COUNT, RATE, MINIMUM, MAXIMUM = 5, 6, 7, 8
 #: What the cursors read, for the plotted signals.
 AT_A, AT_B, CHANGE, LOWEST, HIGHEST, MEAN = 9, 10, 11, 12, 13, 14
 CURSOR_COLUMNS = (AT_A, AT_B, CHANGE, LOWEST, HIGHEST, MEAN)
+#: Sent on to pyscopegui: shown only while sending is switched on.
+SEND = 15
 HEADERS = [
     "Signal", "Value", "Unit", "Plot Y1", "Plot Y2", "Count", "Rate", "Min", "Max",
-    "At A", "At B", "Change", "Lowest", "Highest", "Mean",
+    "At A", "At B", "Change", "Lowest", "Highest", "Mean", "UDP out",
 ]  # fmt: skip
 UNIT = 2
 #: Left to right as they are shown: Min and Max sit beside the value they are
@@ -51,7 +53,7 @@ UNIT = 2
 #: order on screen rather than renumbered, so a column is still the number
 #: everything else knows it by. The cursors' columns come after the two
 #: checkboxes, so turning the cursors on moves nothing already there.
-SHOWN_ORDER = (0, 1, MINIMUM, MAXIMUM, UNIT, PLOT, RIGHT, *CURSOR_COLUMNS, COUNT, RATE)
+SHOWN_ORDER = (0, 1, MINIMUM, MAXIMUM, UNIT, PLOT, RIGHT, SEND, *CURSOR_COLUMNS, COUNT, RATE)
 #: The columns that can be hidden, in the order the menu offers them. Unit is
 #: one of them, and the only one showing until somebody chooses otherwise.
 OPTIONAL = {"Min": MINIMUM, "Max": MAXIMUM, "Unit": UNIT, "Count": COUNT, "Rate": RATE}
@@ -108,10 +110,17 @@ Y2_TIP = (
     "Plot the signal against a second Y axis, on the right of the plot, with a\n"
     "scale of its own. A signal is on one axis at a time."
 )
+SEND_TIP = (
+    "Send the signal's values to pyscopegui over UDP multicast, to show beside\n"
+    "its instruments or to trigger on. Shown while Tools > Settings > Send\n"
+    "ticked signals over UDP multicast is on; kept with the workspace."
+)
 
 
 class SignalsView(QWidget):
     plot_toggled = Signal(str, bool)  # key, on
+    #: UDP out was ticked or unticked by hand.
+    send_toggled = Signal(str, bool)
     axis_toggled = Signal(str, bool)  # key, on the right hand axis
     #: *Unplot all* was pressed: whatever remembers what was plotted forgets
     #: the lot, including signals that have no row yet to untick.
@@ -153,6 +162,10 @@ class SignalsView(QWidget):
             self.tree.setColumnHidden(column, name not in DEFAULT_COLUMNS)
         for column in CURSOR_COLUMNS:
             self.tree.setColumnHidden(column, True)
+        self.tree.setColumnHidden(SEND, True)
+        self.tree.headerItem().setToolTip(SEND, SEND_TIP)
+        #: Whether a signal is ticked to send, for a row as it appears.
+        self.is_sent = lambda _key: False
         self.tree.setFont(fonts.mono())
         self.widths = ColumnWidths(self.tree, settings, "signals")
         self.tree.itemChanged.connect(self._on_item_changed)
@@ -201,6 +214,7 @@ class SignalsView(QWidget):
         item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
         item.setCheckState(PLOT, Qt.Unchecked)
         item.setCheckState(RIGHT, Qt.Unchecked)
+        item.setCheckState(SEND, Qt.Checked if self.is_sent(key) else Qt.Unchecked)
         group.addChild(item)
         self._items[key] = item
         self._updating = False
@@ -330,10 +344,13 @@ class SignalsView(QWidget):
         self.columns_changed.emit(self.columns())
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
-        if self._updating or column not in (PLOT, RIGHT):
+        if self._updating or column not in (PLOT, RIGHT, SEND):
             return
         key = item.data(0, ROLE_KEY)
         if not key:
+            return
+        if column == SEND:
+            self.send_toggled.emit(key, item.checkState(SEND) == Qt.Checked)
             return
         if self._cursors is not None and (s := self.hub.get(key)) is not None:
             self._show_cursors(key, item, s)
@@ -363,6 +380,15 @@ class SignalsView(QWidget):
         self._updating = True
         item.setCheckState(column, Qt.Checked if on else Qt.Unchecked)
         self._updating = False
+
+    def show_send(self, on: bool) -> None:
+        """Show the UDP out column, while sending is switched on."""
+        self.tree.setColumnHidden(SEND, not on)
+
+    def set_sent(self, key: str, on: bool) -> None:
+        """Tick or untick UDP out without it counting as somebody doing it."""
+        if (item := self._items.get(key)) is not None:
+            self._tick(item, SEND, on)
 
     def set_plotted(self, key: str, on: bool) -> None:
         item = self._items.get(key)
