@@ -161,6 +161,11 @@ workspace. *OK* writes what it changed to the Event Log, and only that:
   goes out that you did not ask for, which is what watching somebody else's
   live machine wants -- at the cost that a new node stays `Node <id>` with no
   EDS until *Identify* or *Load EDS* is pressed.
+- **Wait after boot-up** is how long pycangui holds back its own reads of a
+  node after its boot-up: *Identify*, and reading the PDO configuration again.
+  *No wait* to begin with, as CANopen allows SDO from the boot-up on; some
+  devices send it before they answer, and their first reads then time out.
+  What you ask for by hand goes straight out.
 - **Node ids** are those whose heartbeats make a node: `1-127`, every one, to
   begin with, or fewer as `1-20` or `1-10, 32`. Narrowed, heartbeat
   identifiers outside them are left alone -- not listed, not identified, not
