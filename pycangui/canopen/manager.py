@@ -100,6 +100,10 @@ NOT_CONNECTED = "the selected CAN channel is not connected; connect it first"
 PDO_OBJECTS = range(0x1400, 0x1C00)
 DEFAULT_SDO_TIMEOUT_S = 0.3
 DEFAULT_SDO_RETRIES = 0
+#: How long pycangui's own reads of a node wait after its boot-up: none, as
+#: CiA 301 allows SDO from then on. Some devices need longer: see Settings.
+DEFAULT_BOOT_SETTLE_MS = 0
+MAX_BOOT_SETTLE_MS = 10_000
 #: The SDO channel CiA 301 predefines: requests to 0x600 + node, answers on
 #: 0x580 + node. A node configured otherwise is given its own pair.
 #: The largest 11-bit identifier. A PDO configured for 29-bit frames has
@@ -353,6 +357,11 @@ class CanopenManager(QObject):
         #: node is stopped or pycangui's traffic is paused, and done when
         #: neither is so any more: node -> which.
         self._held: dict[int, set[str]] = {}
+        #: How long after a boot-up that work waits, for a device that says
+        #: it has booted before its application answers SDO. 0 for not at all.
+        self.boot_settle_ms = DEFAULT_BOOT_SETTLE_MS
+        #: The nodes still inside that wait: node -> its timer.
+        self._settling: dict[int, QTimer] = {}
         # Queued: a boot-up is heard on the bus's thread.
         self.node_seen.connect(self._on_state)
         bus.connected.connect(self._on_bus_connected)
@@ -679,6 +688,7 @@ class CanopenManager(QObject):
         self._mapping_read.discard(node_id)
         self._rpdo_read.discard(node_id)
         self._held.pop(node_id, None)
+        self._stop_settling(node_id)
         self._by_hand.discard(node_id)
         node = self.node(node_id)
         if node is not None:
@@ -708,6 +718,7 @@ class CanopenManager(QObject):
         self._mapping_read.clear()
         self._rpdo_read.clear()
         self._held.clear()
+        self._stop_settling()
         self._by_hand.clear()
 
     # --- a node added by hand ----------------------------------------------------
@@ -1274,7 +1285,33 @@ class CanopenManager(QObject):
 
     def _holding(self, node_id: int) -> bool:
         """Whether what pycangui reads unasked waits, for now, for this node."""
-        return self._paused or self.is_stopped(node_id)
+        return self._paused or self.is_stopped(node_id) or node_id in self._settling
+
+    def _settle(self, node_id: int) -> None:
+        """Start, or start again, the wait after this node's boot-up."""
+        if self.boot_settle_ms <= 0:
+            return
+        timer = self._settling.get(node_id)
+        if timer is None:
+            timer = self._settling[node_id] = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: self._settled(node_id))
+        timer.start(int(self.boot_settle_ms))
+
+    def _settled(self, node_id: int) -> None:
+        """The wait is over: what it held goes now, unless something else holds it."""
+        timer = self._settling.pop(node_id, None)
+        if timer is not None:
+            timer.deleteLater()
+        if not self._holding(node_id):
+            self._unasked(node_id, self._held.pop(node_id, set()))
+
+    def _stop_settling(self, node_id: int | None = None) -> None:
+        for key in [node_id] if node_id is not None else list(self._settling):
+            timer = self._settling.pop(key, None)
+            if timer is not None:
+                timer.stop()
+                timer.deleteLater()
 
     def _unasked(self, node_id: int, what: set[str]) -> None:
         """Do this unasked work now, or keep it for when nothing holds it back."""
@@ -1317,7 +1354,7 @@ class CanopenManager(QObject):
             self._time_timer.start()
         self._sync_after_pause, self._time_after_pause = None, False
         for node_id in list(self._held):
-            if not self.is_stopped(node_id):
+            if not self._holding(node_id):
                 self._unasked(node_id, self._held.pop(node_id))
 
     def identify(self, node_id: int) -> None:
@@ -1653,8 +1690,10 @@ class CanopenManager(QObject):
             return
         held = self._held.pop(node_id, set())
         node = self.node(node_id)
-        if state == BOOT_UP and node is not None and len(node.object_dictionary):
-            held.add("pdos")
+        if state == BOOT_UP:
+            self._settle(node_id)
+            if node is not None and len(node.object_dictionary):
+                held.add("pdos")
         self._unasked(node_id, held)
 
     def read_from_node(self, node_id: int) -> tuple[bool, bool]:

@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen: *Settings... > Wait after boot-up* holds pycangui's own reads of a node for a while
+  after its boot-up, for devices that answer late.
 - CANopen: *Add / Open > Scan for nodes...* finds nodes that send no heartbeat, by reading 0x1000
   from each node id, with a bar and Stop.
 - UDS: *Tester present on* as a step of a flash sequence, after the extended session, turned

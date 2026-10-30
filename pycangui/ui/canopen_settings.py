@@ -38,15 +38,17 @@ from PySide6.QtWidgets import (
 
 from pycangui.canopen import node_ids
 from pycangui.canopen.manager import (
+    DEFAULT_BOOT_SETTLE_MS,
     DEFAULT_SDO_RETRIES,
     DEFAULT_SDO_TIMEOUT_S,
+    MAX_BOOT_SETTLE_MS,
     MAX_SYNC_OVERFLOW,
     MIN_SYNC_OVERFLOW,
     SDO_REQUEST_BASE,
     SDO_RESPONSE_BASE,
 )
 from pycangui.core.context import Context
-from pycangui.ui import messages
+from pycangui.ui import fonts, messages
 
 TIMEOUT_KEY = "canopen.sdo_timeout_ms"
 RETRIES_KEY = "canopen.sdo_retries"
@@ -55,6 +57,7 @@ HEARTBEATS_KEY = "canopen.heartbeat_timeouts"
 SYNC_KEY = "canopen.sync_period_ms"
 SYNC_COUNTER_KEY = "canopen.sync_counter_overflow"
 IDENTIFY_KEY = "canopen.identify_automatically"
+BOOT_SETTLE_KEY = "canopen.boot_settle_ms"
 DOMAINS_KEY = "canopen.read_domain_objects"
 READ_PDOS_KEY = "canopen.read_pdo_config"
 TIME_PERIOD_KEY = "canopen.time_period_s"
@@ -113,6 +116,15 @@ NODE_IDS_TIP = (
     "CANopen reserves for heartbeats (0x701 to 0x77F): its frames are then\n"
     "not taken for nodes, listed, identified or named in the trace. A node\n"
     "added by hand is heard whatever this says."
+)
+BOOT_SETTLE_TIP = (
+    "How long after a node's boot-up pycangui waits before its own reads\n"
+    "of that node: Identify, and reading the PDO configuration again.\n"
+    "\n"
+    "CiA 301 allows SDO as soon as the boot-up is sent, so the default is\n"
+    "not to wait. Some devices send it before their application answers,\n"
+    "and the first reads then time out. What you ask for by hand is never\n"
+    "held back."
 )
 READ_PDOS_TIP = (
     "Read each node's PDO configuration from it once its EDS is loaded: both\n"
@@ -179,6 +191,8 @@ class CanopenSettings:
     #: Whether a node is asked who it is as soon as it is heard. On, because
     #: an EDS is matched from the answer and nothing else would match one.
     identify: bool = True
+    #: How long pycangui's own reads of a node wait after its boot-up.
+    boot_settle_ms: float = DEFAULT_BOOT_SETTLE_MS
     #: Whether Read all and Save DCF read DOMAIN objects with the rest.
     read_domains: bool = True
     #: Whether a node's PDO configuration is read from it without asking.
@@ -261,6 +275,8 @@ def load(ctx: Context) -> CanopenSettings:
     if (overflow := _integer(ctx.settings.get(SYNC_COUNTER_KEY))) is not None:
         out.sync_counter_overflow = sync_overflow(overflow)
     out.identify = bool(ctx.settings.get(IDENTIFY_KEY, True))
+    if (settle := _milliseconds(ctx.settings.get(BOOT_SETTLE_KEY))) is not None:
+        out.boot_settle_ms = min(max(settle, 0), MAX_BOOT_SETTLE_MS)
     out.read_domains = bool(ctx.settings.get(DOMAINS_KEY, True))
     out.read_pdos = bool(ctx.settings.get(READ_PDOS_KEY, True))
     if (period := _milliseconds(ctx.settings.get(TIME_PERIOD_KEY))) is not None:
@@ -296,6 +312,7 @@ def save(ctx: Context, settings: CanopenSettings) -> None:
     ctx.settings.set(SYNC_KEY, settings.sync_period_ms)
     ctx.settings.set(SYNC_COUNTER_KEY, settings.sync_counter_overflow)
     ctx.settings.set(IDENTIFY_KEY, settings.identify)
+    ctx.settings.set(BOOT_SETTLE_KEY, settings.boot_settle_ms)
     ctx.settings.set(DOMAINS_KEY, settings.read_domains)
     ctx.settings.set(READ_PDOS_KEY, settings.read_pdos)
     ctx.settings.set(TIME_PERIOD_KEY, settings.time_period_s)
@@ -342,6 +359,7 @@ _SHOWN = (
     ("sync_period_ms", "SYNC period", lambda v: f"{v:g} ms"),
     ("sync_counter_overflow", "SYNC counter", _counter),
     ("identify", "identify new nodes", _on_off),
+    ("boot_settle_ms", "wait after boot-up", lambda v: f"{v:g} ms"),
     ("node_ids", "node ids", node_ids.text),
     ("read_domains", "read DOMAIN objects", _on_off),
     ("read_pdos", "read the PDO configuration", _on_off),
@@ -383,6 +401,7 @@ def apply(manager, settings: CanopenSettings) -> None:
     manager.set_node_ids(settings.node_ids)
     manager.read_domains = settings.read_domains
     manager.read_pdos_when_found = settings.read_pdos
+    manager.boot_settle_ms = settings.boot_settle_ms
     manager.set_sdo_timing(settings.timeout_ms / 1000, settings.retries)
     manager.set_sdo_channels(settings.channels)
     manager.set_heartbeat_timeouts(
@@ -437,6 +456,14 @@ class CanopenSettingsDialog(QDialog):
         self.identify = QCheckBox("Identify a node when it is first heard")
         self.identify.setChecked(settings.identify)
         self.identify.setToolTip(IDENTIFY_TIP)
+        self.boot_settle = QSpinBox()
+        self.boot_settle.setRange(0, MAX_BOOT_SETTLE_MS)
+        self.boot_settle.setSingleStep(50)
+        self.boot_settle.setSuffix(" ms")
+        self.boot_settle.setSpecialValueText("no wait")
+        self.boot_settle.setValue(int(settings.boot_settle_ms))
+        self.boot_settle.setToolTip(BOOT_SETTLE_TIP)
+        self.boot_settle.setMinimumWidth(fonts.width_with_arrows(self.boot_settle, "10000 ms"))
         self.node_ids = QLineEdit(node_ids.text(settings.node_ids))
         self.node_ids.setPlaceholderText("1-127")
         self.node_ids.setToolTip(NODE_IDS_TIP)
@@ -468,6 +495,7 @@ class CanopenSettingsDialog(QDialog):
         form.addRow("SYNC period:", self.sync_period)
         form.addRow("SYNC counter:", self.sync_counter)
         form.addRow("", self.identify)
+        form.addRow("Wait after boot-up:", self.boot_settle)
         form.addRow("Node ids:", self.node_ids)
         form.addRow("", self.read_pdos)
         form.addRow("", self.read_domains)
@@ -612,6 +640,7 @@ class CanopenSettingsDialog(QDialog):
             sync_period_ms=self.sync_period.value(),
             sync_counter_overflow=sync_overflow(self.sync_counter.value()),
             identify=self.identify.isChecked(),
+            boot_settle_ms=self.boot_settle.value(),
             read_domains=self.read_domains.isChecked(),
             read_pdos=self.read_pdos.isChecked(),
             time_period_s=self.time_period.value(),
