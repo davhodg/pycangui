@@ -236,3 +236,31 @@ the file that were never on the bus. A signal that finishes early leaves its
 cells empty for the same reason. The blank column between pairs is also what
 stops a spreadsheet reading two signals as one series when you select a block
 and ask it for a chart.
+
+## Sending signals to pyscopegui
+
+**Tools > Settings > Send ticked signals over UDP multicast** sends chosen signals
+over UDP multicast, for pyscopegui to show beside its instruments and to start
+a capture on -- a fault bit setting, a state changing -- which no probe can see.
+Turning it on shows a **UDP out** column in Signals and Plot; tick the signals to
+send. Nothing goes until something is ticked. The setting is kept for this
+computer, and which signals for the workspace; a signal ticked before it has
+arrived goes as soon as it does.
+
+The messages stay on this computer unless *Share UDP multicast on the local
+network* is on, as frames do. They are JSON, on group `239.74.163.20`, port
+43113, and each carries `v` (the format, 1), `k` (what it is), `run` (an id
+for this run of pycangui) and `gen` (the description's count):
+
+- `"k": "description"`, every second and whenever a tick changes: `signals`,
+  each with `n` (its number in the values), `group`, `name`, and `unit`, `min`,
+  `max` and `names` (value names) where there are any; `clock`, this
+  computer's monotonic clock and its wall clock read together; and `part` of
+  `parts`, as a long list is split to keep each message under 1400 bytes.
+- `"k": "values"`, as they arrive: `frames`, each `[time, [[n, value], ...]]`.
+  The signals decoded from one frame share its time, which is on the
+  monotonic clock pyscopegui lines its instruments up on.
+
+A receiver reads values only against the description with the same `run` and
+`gen`, so a restart or a tick changed never puts one signal's values on
+another's channel.

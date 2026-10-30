@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- Signals and Plot: *Tools > Settings > Send ticked signals over UDP multicast* sends the
+  signals ticked in a new *UDP out* column, for pyscopegui to show and trigger on.
 - CANopen: *Add / Open > Scan for nodes...* finds nodes that send no heartbeat, by reading 0x1000
   from each node id, with a bar and Stop.
 - UDS: *Tester present on* as a step of a flash sequence, after the extended session, turned

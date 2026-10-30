@@ -42,7 +42,7 @@ from pycangui.core import (
     workspace_files,
     workspaces,
 )
-from pycangui.core.bus import share_udp_on_network
+from pycangui.core.bus import share_udp_on_network, udp_hop_limit
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
@@ -56,6 +56,7 @@ from pycangui.core.logbridge import LogBridge
 from pycangui.core.logging import WRITE_FILTER, Recorder
 from pycangui.core.pause import described
 from pycangui.core.plugins import Plugins
+from pycangui.core.signal_share import SignalSender
 from pycangui.core.signals import BYTES_PER_SAMPLE, LIMITS, SignalHub, stored_text
 from pycangui.core.simnodes import SimulatedNodes
 from pycangui.custom_panes import model as custom_model
@@ -167,6 +168,16 @@ AT_END = 4
 SHORTCUT_TOLD_KEY = "shortcut/told"
 #: In QSettings: whether udp_multicast channels reach the local network.
 UDP_NETWORK_KEY = "udp/local_network"
+#: In QSettings: whether ticked signals are sent to pyscopegui.
+SEND_SIGNALS_KEY = "udp/send_signals"
+#: In the workspace: which signals are ticked to send.
+SENT_KEY = "signals.sent"
+SEND_SIGNALS_TIP = (
+    "Send the signals ticked UDP out in Signals and Plot over UDP multicast, for\n"
+    "pyscopegui to show beside its instruments and to trigger on. Turning it on\n"
+    "shows the UDP out column. Goes as far as Share UDP multicast on the local\n"
+    "network says. For this computer; which signals is kept with the workspace."
+)
 UDP_NETWORK_TIP = (
     "Off, a udp_multicast channel stays on this computer: other programs on it\n"
     "share its frames, and nothing goes out on a network. On, it reaches the\n"
@@ -324,6 +335,13 @@ class MainWindow(QMainWindow):
         self.j1939 = J1939Manager(self.bus, self.hooks)
         self.signals = SignalHub()
         self.dbc = DbcDecoder()
+        # Before the panes, so each Signals and Plot list can show what is sent.
+        self.sender = SignalSender(self.signals, self.bus.now, self._signal_limits, self)
+        self.sender.set_all_sent(self.ctx.settings.get(SENT_KEY, []) or [])
+        self.sender.sent_changed.connect(self._on_sent_changed)
+        self.sender.said.connect(
+            lambda text, warn: (self.events.warning if warn else self.events.information)(text)
+        )
         self.xcp = XcpManager(self.bus, self.hooks, self.signals, self.ctx)
         # What the hook files' examples reach for, and what the Python
         # Console has under the same names. A hook is handed ctx and
@@ -641,6 +659,16 @@ class MainWindow(QMainWindow):
         share_udp_on_network(shared)
         self.udp_network.setToolTip(UDP_NETWORK_TIP)
         self.udp_network.toggled.connect(self._set_udp_network)
+        # In QSettings too: whether this computer sends signals out is about
+        # the machine, as sharing frames is; which signals is the workspace's.
+        self.send_signals = settings_menu.addAction("Send ticked signals over UDP multicast")
+        self.send_signals.setCheckable(True)
+        self.send_signals.setToolTip(SEND_SIGNALS_TIP)
+        self.sender.set_hop_limit(udp_hop_limit())
+        if QSettings().value(SEND_SIGNALS_KEY, False, type=bool):
+            self.send_signals.setChecked(True)
+            self._set_send_signals(True, quietly=True)
+        self.send_signals.toggled.connect(self._set_send_signals)
         self.theme_menu = theme.menu(self)
         settings_menu.insertMenu(verbose, self.theme_menu)
         self.history_menu = self._history_menu()
@@ -2011,7 +2039,40 @@ class MainWindow(QMainWindow):
         """A Signals and Plot pane, with its Export button wired to File > Export signals."""
         scope = ScopeView(self.signals, self.bus.now, self.ctx, key=name)
         scope.export_requested.connect(self._export_signals)
+        listed = scope.signals_view
+        listed.is_sent = lambda key: key in self.sender.sent
+        for key in self.sender.sent:
+            listed.set_sent(key, True)
+        listed.show_send(self.sender.enabled)
+        listed.send_toggled.connect(self.sender.set_sent)
         return scope
+
+    def _scope_lists(self) -> list:
+        return [self.panes.view(name).signals_view for name in self.panes.instances("scope")]
+
+    def _on_sent_changed(self, key: str, on: bool) -> None:
+        """Every list shows the tick, and the workspace keeps it."""
+        for listed in self._scope_lists():
+            listed.set_sent(key, on)
+        self.ctx.settings.set(SENT_KEY, list(self.sender.sent))
+
+    def _set_send_signals(self, on: bool, quietly: bool = False) -> None:
+        if not quietly:
+            QSettings().setValue(SEND_SIGNALS_KEY, on)
+        self.sender.set_enabled(on)
+        for listed in self._scope_lists():
+            listed.show_send(on)
+
+    def _signal_limits(self, key: str) -> tuple[float, float] | None:
+        """A DBC signal's minimum and maximum, where its database gives them."""
+        group, _, name = key.partition("/")
+        if not group.startswith("DBC "):
+            return None
+        msg = self.dbc.message_by_name(group[4:])
+        signal = None if msg is None else next((s for s in msg.signals if s.name == name), None)
+        if signal is None or signal.minimum is None or signal.maximum is None:
+            return None
+        return float(signal.minimum), float(signal.maximum)
 
     def _export_signals(self) -> None:
         """Write the captured signal values where a spreadsheet can read them."""
@@ -2046,6 +2107,7 @@ class MainWindow(QMainWindow):
     def _set_udp_network(self, on: bool) -> None:
         QSettings().setValue(UDP_NETWORK_KEY, on)
         share_udp_on_network(on)
+        self.sender.set_hop_limit(udp_hop_limit())
         self.events.information(
             (
                 "UDP multicast channels will reach the local network: every computer on it "

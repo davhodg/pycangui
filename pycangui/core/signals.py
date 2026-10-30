@@ -183,6 +183,9 @@ class SignalHub(QObject):
         self._series: dict[str, SignalSeries] = {}
         #: How many samples of each signal are kept. See ``set_limit``.
         self.limit = MAX_SAMPLES
+        #: Called with (key, time, value) for each live sample: for what sends
+        #: them on. Plain callables, as a Qt signal per sample would cost more.
+        self.taps: list = []
 
     def push(self, group: str, name: str, t: float, value: float, unit: str = "") -> None:
         key = f"{group}/{name}"
@@ -195,6 +198,8 @@ class SignalHub(QObject):
         s.times.append(t)
         s.values.append(float(value))
         s.note(s.values[-1])
+        for tap in self.taps:
+            tap(key, t, s.values[-1])
         # Trimmed back to the limit from half as much again, rather than one
         # sample at a time: taking the front off is a copy of all the rest.
         if len(s.times) > self.limit * 1.5:
