@@ -867,6 +867,7 @@ class CanopenView(QWidget):
                 self.ctx.warn(f"{Path(key).name}: not a DCF or EDS pycangui can read")
                 return None
             self._files[key] = source
+            self.manager.check_file(key)
             item = QTreeWidgetItem(["File", source.label, "", Path(key).name])
             item.setData(0, ROLE_FILE, key)
             item.setToolTip(3, key)

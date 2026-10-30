@@ -338,6 +338,18 @@ once in the Event Log, with the numbers -- *expected 64 bits, received 48 bits*
 -- as an error if the mapping was read from the node, since the node is then
 sending it short.
 
+**An EDS or DCF is checked as it is loaded**, for a node or with *Open DCF/EDS...*,
+and what is wrong is said once in the Event Log, object by object. The file is
+loaded either way, since a device is often worked with in spite of its file. Checked:
+the mandatory objects (0x1000, 0x1001, 0x1018); the object lists' counts and
+entries, and *[DeviceInfo]*'s PDO counts, against what the file describes; each
+PDO mapping's objects -- there, marked mappable, readable for a TPDO and
+writable for an RPDO, no longer than their type, and 64 bits at most in all;
+limits the right way round, and defaults inside them and their type; PDO and
+emergency COB-IDs that a frame can carry, `$NODEID` included. Not checked: the
+rest of CiA 306, and anything a device profile adds -- a dedicated EDS checker
+does that.
+
 **A mapped size that is not the size of the object's type is flagged.** A
 mapping entry carries a length and the EDS a data type; where they differ --
 an object the EDS types INTEGER16 mapped as 8 bits, say -- the Event Log warns

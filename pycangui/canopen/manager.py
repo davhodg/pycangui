@@ -34,6 +34,7 @@ from pycangui.canopen import (
     NodeIdentity,
     PdoConfig,
     PdoEntry,
+    eds_check,
     eds_extras,
     eds_identity,
     eds_text,
@@ -106,6 +107,8 @@ DEFAULT_SDO_RETRIES = 0
 #: bit 29 set in its stored word, which the library leaves in the id: such
 #: an id cannot name an 11-bit frame, so it is left out of this map.
 MAX_11_BIT = 0x7FF
+#: How many of an EDS's findings the Event Log lists before saying how many more.
+EDS_FINDINGS_SAID = 10
 
 SDO_REQUEST_BASE = 0x600
 SDO_RESPONSE_BASE = 0x580
@@ -252,6 +255,8 @@ class CanopenManager(QObject):
         #: node -> the EDS it was loaded from, so a DCF can be written
         #: through it rather than rebuilt from the parsed dictionary.
         self._eds_path: dict[int, str] = {}
+        #: The files whose findings have been said this run, so each is said once.
+        self._eds_checked: set[str] = set()
         #: What each node said it was when it was asked (0x1018), for the
         #: display hook: one hooks file serves every product it knows.
         self._identities: dict[int, NodeIdentity] = {}
@@ -1356,17 +1361,19 @@ class CanopenManager(QObject):
         if self.network is None:
             return
 
-        def job() -> tuple[canopen.RemoteNode, dict]:
+        def job() -> tuple[canopen.RemoteNode, dict, list]:
             # The extras are read from the same file in the same breath: what
             # the parser kept and what it threw away describe one object each,
             # and letting them arrive separately is how they get out of step.
-            return canopen.RemoteNode(node_id, load_od(path, node_id)), eds_extras(path)
+            node = canopen.RemoteNode(node_id, load_od(path, node_id))
+            return node, eds_extras(path), self._check_eds(path)
 
         def done(loaded: tuple | None, error: str | None) -> None:
             if error or self.network is None:
                 self.message.emit(f"Node {node_id}: EDS load failed ({error})", WARNING)
                 return
-            node, extras = loaded
+            node, extras, findings = loaded
+            self._say_eds_findings(f"Node {node_id}", path, findings)
             self._extras[node_id] = extras
             self._eds_path[node_id] = path
             self._adopt(node_id, node)
@@ -1381,6 +1388,36 @@ class CanopenManager(QObject):
             self.refresh_pdo_config(node_id)
 
         self._worker.submit(job, done)
+
+    def _check_eds(self, path: str) -> list[eds_check.Finding]:
+        """The file's findings, on the worker; [] for one said already this run."""
+        if Path(path).suffix.lower() not in (".eds", ".dcf"):
+            return []
+        key = str(Path(path).resolve())
+        return [] if key in self._eds_checked else eds_check.check(path)
+
+    def check_file(self, path: str) -> None:
+        """Check a DCF or EDS opened with no node, and say what is wrong once.
+
+        On the caller's thread: the file has just been read whole there, and
+        checking it costs less than that did.
+        """
+        self._say_eds_findings("CANopen", path, self._check_eds(path))
+
+    def _say_eds_findings(self, who: str, path: str, findings: list) -> None:
+        """Once per file and run, in one entry: the file is loaded either way."""
+        self._eds_checked.add(str(Path(path).resolve()))
+        if not findings:
+            return
+        listed = [str(f) for f in findings[:EDS_FINDINGS_SAID]]
+        if len(findings) > EDS_FINDINGS_SAID:
+            listed.append(f"and {len(findings) - EDS_FINDINGS_SAID} more")
+        count = len(findings)
+        self.message.emit(
+            f"{who}: {Path(path).name} has {count} thing{'s' if count != 1 else ''} "
+            "to check; loaded as it is:" + "".join(f"\n  {line}" for line in listed),
+            WARNING,
+        )
 
     # --- how an object is shown ------------------------------------------------
     def identity(self, node_id: int) -> NodeIdentity | None:

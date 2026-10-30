@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CANopen: an EDS or DCF is checked as it is loaded -- mandatory objects, counts, PDO mappings,
+  limits and COB-IDs -- and what is wrong is said once in the Event Log.
 - CANopen: *Add / Open > Scan for nodes...* finds nodes that send no heartbeat, by reading 0x1000
   from each node id, with a bar and Stop.
 - UDS: *Tester present on* as a step of a flash sequence, after the extended session, turned
