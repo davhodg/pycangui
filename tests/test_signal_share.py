@@ -215,3 +215,14 @@ def test_the_setting_shows_the_send_column_and_a_tick_is_kept(window):
     window.send_signals.setChecked(False)
     assert listed.tree.isColumnHidden(SEND) and not window.sender.enabled
     assert window.sender.sent == ["DBC Motor/Speed"], "the ticks stay for next time"
+
+
+def test_the_signals_have_a_port_of_their_own():
+    """On Linux a python-can udp_multicast bus gets every group joined on its
+    port, and fails on a message that is not a frame."""
+    import inspect
+
+    from can.interfaces.udp_multicast import UdpMulticastBus
+
+    frames_port = inspect.signature(UdpMulticastBus.__init__).parameters["port"].default
+    assert PORT != frames_port
