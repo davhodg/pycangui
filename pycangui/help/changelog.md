@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- The Qt style in use, greyed out in *Tools > Settings > Theme* and in *Help > Diagnostics*
+  with the theme; the manual says which style each system gets.
 - CANopen: *Add / Open > Scan for nodes...* finds nodes that send no heartbeat, by reading 0x1000
   from each node id, with a bar and Stop.
 - UDS: *Tester present on* as a step of a flash sequence, after the extended session, turned

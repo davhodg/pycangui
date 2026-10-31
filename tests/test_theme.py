@@ -150,7 +150,7 @@ def test_a_value_it_does_not_know_is_the_system(settings):
 def test_the_menu_offers_three_with_the_current_one_ticked(app, settings):
     settings.setValue(theme.SETTING, theme.LIGHT)
     menu = theme.menu(None, settings)
-    actions = menu.actions()
+    actions = [a for a in menu.actions() if a.isCheckable()]
     assert [a.data() for a in actions] == [theme.SYSTEM, theme.LIGHT, theme.DARK]
     assert all(a.isCheckable() for a in actions)
     assert [a.isChecked() for a in actions] == [False, True, False]
@@ -165,6 +165,49 @@ def test_picking_one_applies_and_remembers_it(app, settings, monkeypatch):
     assert applied == [theme.DARK]
     assert theme.chosen(settings) == theme.DARK
     assert dark.isChecked() and sum(a.isChecked() for a in menu.actions()) == 1
+
+
+# --- the style in use ---------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("native", "shown"),
+    [("windows11", "Windows 11"), ("windowsvista", "Fusion"), ("macos", "macOS")],
+)
+def test_the_style_in_use_is_named(native, shown):
+    """Windows 10's native style is replaced, so it is Fusion that is named."""
+    app = App(style=native)
+    theme.apply(theme.SYSTEM, app)
+    assert theme.style_name(app) == shown
+
+
+def test_a_style_it_does_not_know_is_named_as_qt_names_it():
+    app = App(style="breeze")
+    theme.apply(theme.SYSTEM, app)
+    assert theme.style_name(app) == "breeze"
+
+
+def test_the_style_is_the_one_noted_once_a_style_sheet_is_set():
+    """With a style sheet set the application's style is no longer the one to ask."""
+    app = App(style="windowsvista", system=Qt.ColorScheme.Dark)
+    theme.apply(theme.DARK, app)
+    assert app.styleSheet()
+    app._style = Style("stylesheetstyle")
+    assert theme.style_name(app) == "Fusion"
+
+
+def test_matching_the_system_says_what_the_system_gave(settings):
+    dark, light = App(system=Qt.ColorScheme.Dark), App(system=Qt.ColorScheme.Light)
+    assert theme.describe(settings, dark) != theme.describe(settings, light)
+    settings.setValue(theme.SETTING, theme.DARK)
+    assert theme.describe(settings, dark) == theme.describe(settings, light)
+
+
+def test_the_menu_shows_the_style_greyed_out_below_the_choices(app, settings):
+    menu = theme.menu(None, settings)
+    style = menu.style_action
+    assert menu.actions()[-1] is style
+    assert not style.isEnabled() and not style.isCheckable()
+    assert theme.style_name() in style.text()
+    assert theme.style_name() in menu.menuAction().toolTip(), "reachable without a mouse"
 
 
 def test_it_is_under_tools_settings(app, tmp_path, monkeypatch):

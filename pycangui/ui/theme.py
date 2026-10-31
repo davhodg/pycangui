@@ -36,6 +36,19 @@ CHOICES = ((SYSTEM, "Match the system"), (LIGHT, "Light"), (DARK, "Dark"))
 LIGHT_ONLY = {"windowsvista", "windows"}
 #: Qt's own style, which draws dark as well as light on every platform.
 FUSION = "Fusion"
+#: Qt's names for its styles, as the menu and the diagnostics say them.
+STYLE_NAMES = {
+    "windows11": "Windows 11",
+    "windowsvista": "Windows Vista",  # Qt's native one up to Windows 10
+    "windows": "Windows",
+    "fusion": "Fusion",
+    "macos": "macOS",
+}
+STYLE_TIP = (
+    "The look Qt draws pycangui in. Windows 11 and macOS have their own, light and dark. "
+    "Qt's style for Windows 10 and earlier has no dark version, so Fusion is used there "
+    "for both. On Linux it is Fusion, or the desktop's own Qt style where it sets one."
+)
 #: An outline for a tick box in a list or on a group box, for Fusion in the
 #: dark. There an unticked one is drawn a shade darker than what is behind
 #: it, which is all but nothing: a column of boxes to tick was a blank
@@ -51,6 +64,8 @@ TICK_BOX_OUTLINE = (
 #: Whether the style in use is Fusion, noted before a style sheet is set:
 #: with one set, the application's style is no longer the one to ask.
 _fusion = False
+#: The style's own name, noted at the same moment and for the same reason.
+_style = ""
 #: The applications whose colour scheme is already being followed.
 _followed: set[int] = set()
 #: The editor factory in use, kept here: Qt holds it, and Python must too.
@@ -71,11 +86,12 @@ def apply(choice: str, app: QApplication | None = None) -> None:
     app = app or QApplication.instance()
     if app is None:
         return
-    global _fusion
+    global _fusion, _style
     if not app.styleSheet():  # see _fusion
         if app.style().name().lower() in LIGHT_ONLY:
             app.setStyle(FUSION)
-        _fusion = app.style().name().lower() == FUSION.lower()
+        _style = app.style().name()
+        _fusion = _style.lower() == FUSION.lower()
     hints = app.styleHints()
     if choice == LIGHT:
         hints.setColorScheme(Qt.ColorScheme.Light)
@@ -89,6 +105,27 @@ def apply(choice: str, app: QApplication | None = None) -> None:
         # Matching the system, the scheme changes when the system's does.
         _followed.add(id(app))
         hints.colorSchemeChanged.connect(lambda _scheme: outline_tick_boxes(app))
+
+
+def style_name(app: QApplication | None = None) -> str:
+    """The style pycangui is drawn in, as a person would say it."""
+    app = app or QApplication.instance()
+    if app is None:
+        return ""
+    name = _style if (_style and app.styleSheet()) else app.style().name()  # see _fusion
+    return STYLE_NAMES.get(name.lower(), name)
+
+
+def describe(settings: QSettings | None = None, app: QApplication | None = None) -> str:
+    """The choice, and for *Match the system* what the system gave."""
+    choice = chosen(settings)
+    label = dict(CHOICES)[choice]
+    app = app or QApplication.instance()
+    if choice != SYSTEM or app is None:
+        return label
+    scheme = app.styleHints().colorScheme()
+    got = {Qt.ColorScheme.Dark: "dark", Qt.ColorScheme.Light: "light"}.get(scheme)
+    return f"{label} ({got})" if got else label
 
 
 def outline_tick_boxes(app: QApplication) -> None:
@@ -132,10 +169,14 @@ def choose(choice: str, settings: QSettings | None = None, app: QApplication | N
 
 
 def menu(parent: QWidget, settings: QSettings | None = None) -> QMenu:
-    """*Tools > Settings > Theme*: the three choices, the current one ticked."""
+    """*Tools > Settings > Theme*: the three choices, the current one ticked,
+    and the style in use greyed out below them.
+
+    A greyed entry is skipped by the keyboard and by most screen readers, so
+    the menu's own tooltip says the style as well.
+    """
     out = QMenu(TITLE, parent)
     out.setToolTipsVisible(True)
-    out.menuAction().setToolTip(TIP)
     group = QActionGroup(out)
     group.setExclusive(True)
     current = chosen(settings)
@@ -146,4 +187,17 @@ def menu(parent: QWidget, settings: QSettings | None = None) -> QMenu:
         action.triggered.connect(lambda _=False, v=value: choose(v, settings))
         group.addAction(action)
         out.addAction(action)
+    out.addSeparator()
+    style = QAction(out, enabled=False)
+    style.setToolTip(STYLE_TIP)
+    out.addAction(style)
+    out.style_action = style
+
+    def show_style() -> None:
+        name = style_name()
+        style.setText(f"Style: {name}")
+        out.menuAction().setToolTip(f"{TIP} Drawn in Qt's {name} style." if name else TIP)
+
+    show_style()
+    out.aboutToShow.connect(show_style)
     return out
