@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
 from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
 from pycangui.ui import plot_colours

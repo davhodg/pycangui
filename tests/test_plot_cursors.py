@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """The plot's two cursors, and what the signal list reads at and between them."""
 
-import re
 import time
 
 import pytest
