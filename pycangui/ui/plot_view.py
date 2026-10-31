@@ -26,7 +26,7 @@ from bisect import bisect_left, bisect_right
 
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QActionGroup
+from PySide6.QtGui import QAction, QActionGroup, QFontMetrics
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -305,6 +305,8 @@ class PlotView(QWidget):
         clear.clicked.connect(hub.clear)
         # A tick, worded: turned on and off often, so on the bar.
         self.cursors = QCheckBox(CURSORS_TEXT)
+        self.cursors.installEventFilter(self)
+        self._update_cursor_indicator()
         self.cursors.setToolTip(CURSORS_TIP)
         self.cursors.setAccessibleName("Cursors on the plot")
         self.cursors.toggled.connect(self._on_cursors)
@@ -516,9 +518,20 @@ class PlotView(QWidget):
             line.setPen(pg.mkPen(self._scheme.cursor, width=width, style=style))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self.cursors and event.type() in (
+            QEvent.FontChange,
+            QEvent.ApplicationFontChange,
+        ):
+            self._update_cursor_indicator()
         if watched is self.plot and event.type() == QEvent.KeyPress and self._lines:
             return self._cursor_key(event)
         return super().eventFilter(watched, event)
+
+    def _update_cursor_indicator(self) -> None:
+        indicator = QFontMetrics(self.cursors.font()).height()
+        self.cursors.setStyleSheet(
+            f"QCheckBox::indicator {{ width: {indicator}px; height: {indicator}px; }}"
+        )
 
     def _cursor_key(self, event) -> bool:
         """Pick or move a cursor; False for a key that is not about them."""

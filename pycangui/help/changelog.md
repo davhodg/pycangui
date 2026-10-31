@@ -9,6 +9,10 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Fixed
+
+- The plot's *Cursors* checkbox indicator grows with the text size.
+
 ### Added
 
 - CANopen: *Add / Open > Scan for nodes...* finds nodes that send no heartbeat, by reading 0x1000
