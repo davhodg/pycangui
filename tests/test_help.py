@@ -132,6 +132,14 @@ def test_about_shows_the_version(app, window):
     dialog.deleteLater()
 
 
+def test_the_report_gives_the_style_and_theme(app):
+    from pycangui.ui import theme
+
+    report = environment_report()
+    assert theme.style_name() in report
+    assert theme.describe() in report
+
+
 def test_about_fits_its_longest_line_rather_than_wrapping_it(app, window, monkeypatch):
     """Reported: the paths About shows wrapped under the column of names."""
     from pycangui.core import installation

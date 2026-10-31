@@ -51,7 +51,7 @@ from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
 from pycangui.help import manual_text
 from pycangui.ui import diagnostics as diagnostics_report
-from pycangui.ui import fonts, messages
+from pycangui.ui import fonts, messages, theme
 from pycangui.ui.diagnostics import DiagnosticsDialog
 
 
@@ -403,7 +403,7 @@ class AboutDialog(QDialog):
 
 
 def _label_width(names) -> int:
-    return max(len(name) for name in ("Python", "Platform", *names)) + 2
+    return max(len(name) for name in ("Python", "Platform", "Qt style", "Theme", *names)) + 2
 
 
 def environment_report() -> str:
@@ -419,6 +419,10 @@ def environment_report() -> str:
             found = "not installed" + (" (optional)" if requirement.extra else "")
         lines.append(f"{requirement.name:{width}}{found}")
     lines.append(f"{'Platform':{width}}{platform.platform()}")
+    # How it looks, for a report about how something looks.
+    if style := theme.style_name():
+        lines.append(f"{'Qt style':{width}}{style}")
+        lines.append(f"{'Theme':{width}}{theme.describe()}")
     # Only a checkout has one, and only a checkout needs one: between two
     # releases every build calls itself the same version, which is no help
     # when the question is whether somebody had pulled.

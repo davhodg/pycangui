@@ -11,6 +11,8 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- The Qt style in use, greyed out in *Tools > Settings > Theme* and in *Help > Diagnostics*
+  with the theme; the manual says which style each system gets.
 - Signals and Plot: *Tools > Settings > Send ticked signals over UDP multicast* sends the
   signals ticked in a new *UDP out* column, for pyscopegui to show and trigger on.
 - CANopen: an EDS or DCF is checked as it is loaded -- mandatory objects, counts, PDO mappings,

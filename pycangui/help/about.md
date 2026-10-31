@@ -12,8 +12,8 @@ The report names the version, and -- when pycangui is being run from a source ch
 clipboard as it opens -- ready to paste into a bug report. **Refresh** makes it again,
 **Copy** copies it again and **Save...** writes it to a file. It gives:
 
-- the versions, each channel's adapter, state, load and error count, and any panes out on
-  their own;
+- the versions, the Qt style and the theme, each channel's adapter, state, load and error
+  count, and any panes out on their own;
 - **what is being sent**: every cyclic message on each channel, with its identifier, bytes
   and period, whose it is -- a CAN Transmit row, CANopen's SYNC, or one started on the bus
   directly from the console or a script -- and whether pycangui or the adapter keeps its
