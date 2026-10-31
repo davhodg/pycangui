@@ -37,8 +37,11 @@ from pycangui.core.signals import SignalHub
 
 #: Where the signals go: a group of their own, clear of the CAN groups below it.
 GROUP = "239.74.163.20"
-#: python-can's udp_multicast port, which the CAN groups use too.
-PORT = 43113
+#: A port of its own, kept clear of python-can's udp_multicast port 43113: on
+#: Linux a socket bound to that port gets every group joined on the computer,
+#: so the CAN buses there would receive these JSON messages and fail to unpack
+#: them.
+PORT = 43114
 #: The message format. A receiver ignores a version it does not know.
 VERSION = 1
 #: How often the description goes out while nothing changes.

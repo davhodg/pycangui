@@ -248,9 +248,11 @@ computer, and which signals for the workspace; a signal ticked before it has
 arrived goes as soon as it does.
 
 The messages stay on this computer unless *Share UDP multicast on the local
-network* is on, as frames do. They are JSON, on group `239.74.163.20`, port
-43113, and each carries `v` (the format, 1), `k` (what it is), `run` (an id
-for this run of pycangui) and `gen` (the description's count):
+network* is on, as frames do; a firewall on a computer receiving them needs
+UDP port 43114 let in. They are JSON, on group `239.74.163.20`, port 43114 --
+not the frames' 43113, whose sockets would get them too on Linux -- and each
+carries `v` (the format, 1), `k` (what it is), `run` (an id for this run of
+pycangui) and `gen` (the description's count):
 
 - `"k": "description"`, every second and whenever a tick changes: `signals`,
   each with `n` (its number in the values), `group`, `name`, and `unit`, `min`,
