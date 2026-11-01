@@ -5,6 +5,7 @@
 import json
 import socket
 import struct
+import sys
 import time
 
 import pytest
@@ -163,7 +164,10 @@ def test_it_arrives_on_the_group_over_loopback(hub, app):
     receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     try:
         receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        receiver.bind(("", PORT))
+        # Bound to the group, the socket gets that group alone; Windows will
+        # not bind to a group address, so there it takes the port on every
+        # interface, as a multicast receiver must.
+        receiver.bind(("" if sys.platform == "win32" else GROUP, PORT))
         membership = struct.pack("4s4s", socket.inet_aton(GROUP), socket.inet_aton("0.0.0.0"))
         receiver.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
         receiver.settimeout(2.0)
