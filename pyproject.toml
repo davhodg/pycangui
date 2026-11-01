@@ -109,7 +109,7 @@ all = ["asammdf>=8"]
 test = [
     "pytest",
     "pytest-xdist",
-    "ruff==0.16.*",
+    "ruff==0.17.*",
     "pdoc>=16",
     "trove-classifiers",
 ]
