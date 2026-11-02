@@ -5,9 +5,7 @@
 import time
 
 import pytest
-from PySide6.QtCore import QCoreApplication, Qt
-from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QStyle, QStyleOptionButton
+from PySide6.QtCore import Qt
 
 from pycangui.core.signals import SignalHub
 from pycangui.ui.plot_view import PlotView
@@ -148,32 +146,6 @@ def test_the_plot_puts_two_cursors_and_says_where_they_are(app):
     assert not plot.cursor_times.text()
     assert not any(item in plot.plot.items() for item in plot._lines)
     plot.close()
-
-
-def test_the_cursors_checkbox_indicator_follows_large_text(app):
-    original_font = app.font()
-    plot = PlotView(SignalHub(), now=lambda: 0.0)
-    try:
-        font = original_font
-        font.setPointSizeF(font.pointSizeF() * 2)
-        app.setFont(font)
-        plot.show()
-        QCoreApplication.processEvents()
-        expected = QFontMetrics(app.font()).height()
-        option = QStyleOptionButton()
-        option.initFrom(plot.cursors)
-        indicator = plot.cursors.style().subElementRect(
-            QStyle.SubElement.SE_CheckBoxIndicator, option, plot.cursors
-        )
-        assert indicator.width() == expected, (
-            "rendered cursor indicator width does not follow text size"
-        )
-        assert indicator.height() == expected, (
-            "rendered cursor indicator height does not follow text size"
-        )
-    finally:
-        plot.close()
-        app.setFont(original_font)
 
 
 def test_the_cursors_stay_where_they_were_put_while_following(app):

@@ -11,7 +11,7 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
-- The plot's *Cursors* checkbox indicator grows with the text size.
+- All tick box indicators grow with the text size.
 
 ### Added
 
