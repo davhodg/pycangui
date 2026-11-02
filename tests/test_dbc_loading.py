@@ -188,15 +188,19 @@ def test_type_a_value_opens_the_box_to_type_into(app, choices_row, monkeypatch):
     assert box is not None and box.isEditable()
 
 
-def test_the_box_hides_the_value_it_is_over(app, choices_row):
+@pytest.mark.parametrize("sheet", ["", "QCheckBox::indicator { width: 30px; height: 30px; }"])
+def test_the_box_hides_the_value_it_is_over(
+    app, choices_row, windows_11_style, hides_the_cell, sheet
+):
     """The Windows 11 style paints no background for it, and the cell's old
-    value showed through under the new one."""
+    value showed through under the new one -- with an application style
+    sheet too, which turns off the background it was asked to paint."""
     window, _row, item = choices_row
+    app.setStyleSheet(sheet)
+    window.show()
     tree = window.tx.tree
-    tree.edit(tree.indexFromItem(item.child(0), COL_DATA))
-    app.processEvents()
-    box = tree.findChild(QComboBox)
-    assert box.autoFillBackground() and box.lineEdit().autoFillBackground()
+    tree.expandItem(item)
+    assert hides_the_cell(tree, tree.indexFromItem(item.child(0), COL_DATA))
 
 
 def _wait(app, seconds):

@@ -136,12 +136,29 @@ def outline_tick_boxes(app: QApplication) -> None:
         app.setStyleSheet(wanted)
 
 
-class _OpaqueEditors(QItemEditorFactory):
-    """Qt's own cell editors, each painting its own background.
+#: A cell editor's background, for when the application has a style sheet:
+#: Qt then draws what a sheet describes and turns off the background the
+#: editor was asked to paint for itself.
+OWN_BACKGROUND = "QLineEdit, QAbstractSpinBox { background: palette(base); }"
 
-    The Windows 11 style paints none behind the box typed into over a cell,
-    so the cell's old value showed through under the new one.
+
+def paint_own_background(editor: QWidget) -> None:
+    """Have a cell's editor hide the value it is over, style sheet or none.
+
+    The Windows 11 style paints no background behind the box typed into
+    over a cell, so the cell's old value showed through under the new one.
+    The sheet is the editor's own and names only the box typed into, so
+    it reaches the one inside a drop-down and leaves the rest of the
+    drop-down to the style.
     """
+    editor.setAutoFillBackground(True)
+    for part in editor.findChildren(QWidget):
+        part.setAutoFillBackground(True)
+    editor.setStyleSheet(OWN_BACKGROUND)
+
+
+class _OpaqueEditors(QItemEditorFactory):
+    """Qt's own cell editors, each painting its own background."""
 
     def __init__(self, qt_own: QItemEditorFactory) -> None:
         super().__init__()
@@ -150,7 +167,7 @@ class _OpaqueEditors(QItemEditorFactory):
     def createEditor(self, user_type, parent):
         editor = self._qt_own.createEditor(user_type, parent)
         if editor is not None:
-            editor.setAutoFillBackground(True)
+            paint_own_background(editor)
         return editor
 
 

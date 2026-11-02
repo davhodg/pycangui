@@ -223,32 +223,35 @@ def test_it_is_under_tools_settings(app, tmp_path, monkeypatch):
 
 
 # --- cells typed into ---------------------------------------------------------------------
-@pytest.mark.parametrize("view", ["tree", "table"])
-def test_a_cell_typed_into_hides_the_value_it_is_over(app, view):
-    """Reported: in the Windows 11 style the old value showed through under
-    the new one, since the box typed into painted no background of its own."""
-    from PySide6.QtWidgets import (
-        QLineEdit,
-        QTableWidget,
-        QTableWidgetItem,
-        QTreeWidget,
-        QTreeWidgetItem,
-    )
+#: A style sheet of the kind the theme may set for the whole application.
+SOME_APP_SHEET = "QCheckBox::indicator { width: 30px; height: 30px; }"
 
-    theme.apply(theme.SYSTEM, App())
+
+@pytest.mark.parametrize("sheet", ["", SOME_APP_SHEET], ids=["no app sheet", "an app sheet"])
+@pytest.mark.parametrize("view", ["tree", "table"])
+def test_a_cell_typed_into_hides_the_value_it_is_over(
+    app, windows_11_style, hides_the_cell, view, sheet
+):
+    """Reported: in the Windows 11 style the old value showed through under
+    the new one, since the box typed into painted no background of its own.
+    Then again once the application had a style sheet, which turns off the
+    background the editor was asked to paint."""
+    from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem
+
+    theme.opaque_cell_editors()
+    app.setStyleSheet(sheet)
     if view == "tree":
         widget = QTreeWidget()
-        item = QTreeWidgetItem(["old value"])
+        widget.setHeaderHidden(True)
+        item = QTreeWidgetItem(["WWWWWWWWWWWW"])
         item.setFlags(item.flags() | Qt.ItemIsEditable)
         widget.addTopLevelItem(item)
-        widget.show()
-        widget.editItem(item, 0)
+        index = widget.indexFromItem(item, 0)
     else:
         widget = QTableWidget(1, 1)
-        item = QTableWidgetItem("old value")
-        widget.setItem(0, 0, item)
-        widget.show()
-        widget.editItem(item)
-    editor = widget.findChild(QLineEdit)
-    assert editor is not None and editor.autoFillBackground()
+        widget.setItem(0, 0, QTableWidgetItem("WWWWWWWWWWWW"))
+        index = widget.model().index(0, 0)
+    widget.resize(300, 120)
+    widget.show()
+    assert hides_the_cell(widget, index)
     widget.close()

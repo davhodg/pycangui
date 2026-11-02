@@ -321,3 +321,62 @@ def demo_device(tmp_path_factory):
     yield start
     for nodes in started:
         nodes.stop_all()
+
+
+# --- a cell typed into ---------------------------------------------------------
+@pytest.fixture
+def windows_11_style(app):
+    """The style in which a cell's editor showed the old value through: for
+    the test, and the application's own style and sheet back afterwards."""
+    from PySide6.QtWidgets import QStyleFactory
+
+    if "windows11" not in [key.lower() for key in QStyleFactory.keys()]:
+        pytest.skip("the Windows 11 style is only on Windows")
+    style, sheet = app.style().name(), app.styleSheet()
+    app.setStyle("windows11")
+    yield
+    app.setStyleSheet(sheet)
+    app.setStyle(style)
+
+
+@pytest.fixture
+def hides_the_cell(app):
+    """Whether a cell's editor, opened and emptied, hides the value under it.
+
+    The cell is looked at with its value there and again with the value
+    taken away underneath -- quietly, so the pane does not react to it --
+    and the editor hides it if the two look the same. The caret is kept
+    from blinking between the two looks.
+    """
+    from PySide6.QtWidgets import QLineEdit
+
+    flash = app.cursorFlashTime()
+    app.setCursorFlashTime(0)
+
+    def check(view, index) -> bool:
+        view.scrollTo(index)
+        assert not view.visualRect(index).isEmpty(), "a cell on screen to look at"
+        view.edit(index)
+        app.processEvents()
+        view.findChild(QLineEdit).clear()
+        app.processEvents()
+        rect = view.visualRect(index).adjusted(4, 2, -4, -2)
+
+        def look():
+            return view.viewport().grab().toImage().copy(rect)
+
+        model = view.model()
+        old = model.data(index)
+        over_the_value = look()
+        model.blockSignals(True)
+        model.setData(index, "")
+        model.blockSignals(False)
+        over_nothing = look()
+        model.blockSignals(True)
+        model.setData(index, old)
+        model.blockSignals(False)
+        assert over_the_value is not None and old, "a value to hide"
+        return over_the_value == over_nothing
+
+    yield check
+    app.setCursorFlashTime(flash)

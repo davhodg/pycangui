@@ -59,7 +59,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.named_values import named, number_in, with_its_name
 from pycangui.core.tx_fields import Checksum, Counter
-from pycangui.ui import fonts
+from pycangui.ui import fonts, theme
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.tx_fields_dialog import TxFieldsDialog
@@ -200,10 +200,7 @@ class _OnlyWhatIsTheRows(QStyledItemDelegate):
         box.setEditable(True)
         box.setInsertPolicy(QComboBox.NoInsert)
         box.addItems([named(number, name) for number, name in choices])
-        # Its own background: the Windows 11 style paints none, and the
-        # cell's old value showed through under the new one.
-        box.setAutoFillBackground(True)
-        box.lineEdit().setAutoFillBackground(True)
+        theme.paint_own_background(box)
         # Picking one is the whole edit, so it is taken at once rather than
         # waiting for Return. The list is not opened for you: this box is
         # for typing (F2, or Type a value...); a double-click offers a menu.
