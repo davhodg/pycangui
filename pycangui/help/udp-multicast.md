@@ -21,7 +21,7 @@ hears, and can send to.
 
 | Choice | Channels | Signals to pyscopegui |
 |---|---|---|
-| **Off** | Do not connect; one connected is disconnected | Not sent; *Send ticked signals to pyscopegui* is greyed |
+| **Off** | Do not connect; one connected is disconnected | Not sent; *Signals for pyscopegui* is greyed |
 | **This computer only** (the first time) | Frames go to programs on this computer only, and frames from other computers are dropped | Sent to programs on this computer only |
 | **Local network** | Frames reach the other computers on the same network segment, and theirs are received | Sent to the same network segment |
 
@@ -37,7 +37,7 @@ hears, and can send to.
 - It is a setting for the computer, not the workspace. A channel already
   connected is connected again when it changes, so it follows at once; the
   signals follow at once too.
-- *Send ticked signals to pyscopegui* is below the three choices in the same
+- *Signals for pyscopegui* is below the three choices in the same
   menu. While UDP multicast is off it is greyed and nothing is sent; choosing
   *This computer only* or *Local network* again puts it back as it was.
 

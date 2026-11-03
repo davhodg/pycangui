@@ -112,8 +112,8 @@ Y2_TIP = (
 )
 SEND_TIP = (
     "Send the signal's values to pyscopegui over UDP multicast, to show beside\n"
-    "its instruments or to trigger on. Shown while Tools > Settings > Send\n"
-    "ticked signals over UDP multicast is on; kept with the workspace."
+    "its instruments or to trigger on. Shown while Tools > Settings > UDP\n"
+    "multicast > Signals for pyscopegui is on; kept with the workspace."
 )
 
 

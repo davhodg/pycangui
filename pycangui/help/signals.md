@@ -239,13 +239,15 @@ and ask it for a chart.
 
 ## Sending signals to pyscopegui
 
-**Tools > Settings > UDP multicast > Send ticked signals to pyscopegui** sends chosen signals
-over UDP multicast, for pyscopegui to show beside its instruments and to start
+**Tools > Settings > UDP multicast > Signals for pyscopegui** lets chosen signals
+go over UDP multicast, for pyscopegui to show beside its instruments and to start
 a capture on -- a fault bit setting, a state changing -- which no probe can see.
-Turning it on shows a **UDP out** column in Signals and Plot; tick the signals to
-send. Nothing goes until something is ticked. The setting is kept for this
-computer, and which signals for the workspace; a signal ticked before it has
-arrived goes as soon as it does.
+It is off unless you turn it on. Turning it on shows a **UDP out** column in
+Signals and Plot; tick the signals to send there. Until one is ticked no values
+go, only a short description listing no signals, once a second, so pyscopegui
+can see pycangui is there. The setting is kept for this computer, and which
+signals for the workspace; a signal ticked before it has arrived goes as soon
+as it does.
 
 They go as far as *Tools > Settings > UDP multicast* says, as frames do: not at
 all while it is off, when the setting is greyed, on this computer only, or on

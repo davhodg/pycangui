@@ -22,8 +22,8 @@ since the last version, and comes out in the next one.
 
 - The Qt style in use, greyed out in *Tools > Settings > Theme* and in *Help > Diagnostics*
   with the theme; the manual says which style each system gets.
-- Signals and Plot: *Tools > Settings > UDP multicast > Send ticked signals to pyscopegui*
-  sends the signals ticked in a new *UDP out* column, for pyscopegui to show and trigger on.
+- Signals and Plot: *Tools > Settings > UDP multicast > Signals for pyscopegui* sends
+  the signals ticked in a new *UDP out* column, for pyscopegui to show and trigger on.
 - CANopen: an EDS or DCF is checked as it is loaded -- mandatory objects, counts, PDO mappings,
   limits and COB-IDs -- and what is wrong is said once in the Event Log.
 - CANopen: *Settings... > Wait after boot-up* holds pycangui's own reads of a node for a while

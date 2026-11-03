@@ -170,7 +170,7 @@ SHORTCUT_TOLD_KEY = "shortcut/told"
 UDP_REACH_KEY = "udp/reach"
 #: Before there were three choices: whether it reached the local network.
 OLD_UDP_NETWORK_KEY = "udp/local_network"
-#: In QSettings: whether ticked signals are sent to pyscopegui.
+#: In QSettings: Signals for pyscopegui, whether signals may be sent to it.
 SEND_SIGNALS_KEY = "udp/send_signals"
 #: In the workspace: which signals are ticked to send.
 SENT_KEY = "signals.sent"
@@ -209,10 +209,11 @@ UDP_SAID = {
     "that has joined a group hears it, and can send frames into a udp_multicast channel.",
 }
 SEND_SIGNALS_TIP = (
-    "Send the signals ticked UDP out in Signals and Plot to pyscopegui, to show\n"
-    "beside its instruments and to trigger on. Turning it on shows the UDP out\n"
-    "column. Greyed while UDP multicast is off. For this computer; which signals\n"
-    "is kept with the workspace."
+    "Shows a UDP out column in Signals and Plot: the signals ticked there are sent\n"
+    "to pyscopegui, to show beside its instruments and to trigger on. Until one is\n"
+    "ticked, only a short note that pycangui is there goes, once a second. Greyed\n"
+    "while UDP multicast is off. For this computer; which signals is kept with\n"
+    "the workspace."
 )
 #: In QSettings, like the theme: how somebody likes to read the log, not
 #: something about a workspace.
@@ -2152,7 +2153,7 @@ class MainWindow(QMainWindow):
         menu.addSeparator()
         # In QSettings too: whether this computer sends signals out is about
         # the machine, as sharing frames is; which signals is the workspace's.
-        self.send_signals = menu.addAction("Send ticked signals to pyscopegui")
+        self.send_signals = menu.addAction("Signals for pyscopegui")
         self.send_signals.setCheckable(True)
         self.send_signals.setToolTip(SEND_SIGNALS_TIP)
         self._allow_sending(quietly=True)
