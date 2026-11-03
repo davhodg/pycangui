@@ -23,7 +23,7 @@ the whole window would reflow; with one style, light and dark are colours only.
 from __future__ import annotations
 
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtGui import QAction, QActionGroup
+from PySide6.QtGui import QAction, QActionGroup, QFontMetrics
 from PySide6.QtWidgets import QApplication, QItemEditorFactory, QMenu, QWidget
 
 from pycangui import resources
@@ -105,6 +105,7 @@ def apply(choice: str, app: QApplication | None = None) -> None:
         # Matching the system, the scheme changes when the system's does.
         _followed.add(id(app))
         hints.colorSchemeChanged.connect(lambda _scheme: outline_tick_boxes(app))
+        app.fontChanged.connect(lambda _font: outline_tick_boxes(app))
 
 
 def style_name(app: QApplication | None = None) -> str:
@@ -129,9 +130,14 @@ def describe(settings: QSettings | None = None, app: QApplication | None = None)
 
 
 def outline_tick_boxes(app: QApplication) -> None:
-    """Give unticked boxes an outline where the style draws them invisibly."""
+    """Size every tick box with the text and outline where the style hides them."""
     dark = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
-    wanted = TICK_BOX_OUTLINE if (dark and _fusion) else ""
+    indicator = QFontMetrics(app.font()).height()
+    size = (
+        "QCheckBox::indicator, QAbstractItemView::indicator, QGroupBox::indicator "
+        f"{{ width: {indicator}px; height: {indicator}px; }}"
+    )
+    wanted = f"{TICK_BOX_OUTLINE} {size}" if (dark and _fusion) else size
     if app.styleSheet() != wanted:
         app.setStyleSheet(wanted)
 

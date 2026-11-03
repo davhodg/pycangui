@@ -3,7 +3,9 @@
 """Tools > Settings > Theme: light, dark, or whatever the system is set to."""
 
 import pytest
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QCoreApplication, QSettings, Qt
+from PySide6.QtGui import QFont, QFontMetrics
+from PySide6.QtWidgets import QCheckBox, QStyle, QStyleOptionButton
 
 from pycangui.ui import theme
 
@@ -52,6 +54,7 @@ class App:
 
     def __init__(self, style="windows11", system=Qt.ColorScheme.Light):
         self.hints = Hints(system)
+        self.fontChanged = Hints(system)
         self._style = Style(style)
         self._sheet = ""
 
@@ -70,6 +73,11 @@ class App:
     def setStyle(self, name):
         self._style = Style(name.lower())
 
+    def font(self):
+        from PySide6.QtWidgets import QApplication
+
+        return QApplication.font()
+
 
 @pytest.mark.parametrize(
     ("choice", "asked"),
@@ -79,7 +87,7 @@ class App:
         (theme.SYSTEM, "system"),
     ],
 )
-def test_each_choice_asks_qt_for_its_scheme(choice, asked):
+def test_each_choice_asks_qt_for_its_scheme(choice, asked, app):
     app = App()
     theme.apply(choice, app)
     assert app.hints.asked == [asked]
@@ -89,14 +97,14 @@ def test_nothing_chosen_is_the_system(settings):
     assert theme.chosen(settings) == theme.SYSTEM
 
 
-def test_a_choice_is_remembered(settings):
+def test_a_choice_is_remembered(settings, app):
     theme.choose(theme.DARK, settings, App())
     assert theme.chosen(settings) == theme.DARK
 
 
 # --- a native style that cannot draw dark --------------------------------------------------
 @pytest.mark.parametrize("choice", [theme.SYSTEM, theme.LIGHT, theme.DARK])
-def test_windows_10_uses_fusion_whatever_is_chosen(choice):
+def test_windows_10_uses_fusion_whatever_is_chosen(choice, app):
     """Reported: on Windows 10 Qt's native style stays light whatever is asked
     for, so choosing Dark did nothing. Fusion for light as well as dark, so that
     switching changes colours and never the controls' shapes."""
@@ -105,7 +113,7 @@ def test_windows_10_uses_fusion_whatever_is_chosen(choice):
     assert app.style().name() == "fusion"
 
 
-def test_switching_on_windows_10_changes_colours_not_the_style():
+def test_switching_on_windows_10_changes_colours_not_the_style(app):
     app = App(style="windowsvista")
     theme.apply(theme.DARK, app)
     theme.apply(theme.LIGHT, app)
@@ -113,33 +121,69 @@ def test_switching_on_windows_10_changes_colours_not_the_style():
     assert app.hints.asked[-1] == Qt.ColorScheme.Light
 
 
-def test_unticked_boxes_are_outlined_where_the_dark_style_hides_them():
+def test_unticked_boxes_are_outlined_where_the_dark_style_hides_them(app):
     """Reported on Windows 10 in the dark: a tick box in a list could not be
     seen until it was ticked. Fusion draws it a shade darker than what is
     behind it."""
     app = App(style="windowsvista")
     theme.apply(theme.DARK, app)
-    assert app.styleSheet() == theme.TICK_BOX_OUTLINE
+    assert theme.TICK_BOX_OUTLINE in app.styleSheet()
+    assert "QCheckBox::indicator" in app.styleSheet()
 
     theme.apply(theme.LIGHT, app)
-    assert app.styleSheet() == "", "in the light it is drawn well enough"
+    assert theme.TICK_BOX_OUTLINE not in app.styleSheet(), "in the light it is drawn well enough"
+    assert "QCheckBox::indicator" in app.styleSheet()
     assert app.style().name() == "fusion", "and the style is still the one it was"
 
     theme.apply(theme.DARK, app)
-    assert app.styleSheet() == theme.TICK_BOX_OUTLINE
+    assert theme.TICK_BOX_OUTLINE in app.styleSheet()
 
 
-def test_a_style_that_draws_them_itself_is_left_alone():
+def test_a_style_that_draws_them_itself_is_left_alone(app):
     app = App(style="windows11", system=Qt.ColorScheme.Dark)
     theme.apply(theme.DARK, app)
-    assert app.styleSheet() == ""
+    assert theme.TICK_BOX_OUTLINE not in app.styleSheet()
+    assert "QCheckBox::indicator" in app.styleSheet()
 
 
 @pytest.mark.parametrize("choice", [theme.SYSTEM, theme.LIGHT, theme.DARK])
-def test_a_native_style_that_can_be_dark_is_kept(choice):
+def test_a_native_style_that_can_be_dark_is_kept(choice, app):
     app = App(style="windows11")
     theme.apply(choice, app)
     assert app.style().name() == "windows11"
+
+
+def test_all_tick_box_indicators_follow_application_font(app, monkeypatch):
+    """The application-wide rule tracks font changes for every kind of tick box."""
+    monkeypatch.setattr(theme, "opaque_cell_editors", lambda: None)
+    original_font = QFont(app.font())
+    original_sheet = app.styleSheet()
+    try:
+        theme.apply(theme.SYSTEM, app)
+        checkbox = QCheckBox()
+        for scale in (1, 2):
+            font = QFont(original_font)
+            font.setPointSizeF(original_font.pointSizeF() * scale)
+            app.setFont(font)
+            QCoreApplication.processEvents()
+
+            size = QFontMetrics(app.font()).height()
+            option = QStyleOptionButton()
+            option.initFrom(checkbox)
+            indicator = checkbox.style().subElementRect(
+                QStyle.SubElement.SE_CheckBoxIndicator, option, checkbox
+            )
+            assert (indicator.width(), indicator.height()) == (size, size)
+            for selector in (
+                "QCheckBox::indicator",
+                "QAbstractItemView::indicator",
+                "QGroupBox::indicator",
+            ):
+                assert selector in app.styleSheet()
+            assert f"width: {size}px; height: {size}px" in app.styleSheet()
+    finally:
+        app.setFont(original_font)
+        app.setStyleSheet(original_sheet)
 
 
 def test_a_value_it_does_not_know_is_the_system(settings):

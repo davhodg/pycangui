@@ -9,6 +9,10 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Fixed
+
+- All tick box indicators grow with the text size.
+
 ### Added
 
 - The Qt style in use, greyed out in *Tools > Settings > Theme* and in *Help > Diagnostics*
