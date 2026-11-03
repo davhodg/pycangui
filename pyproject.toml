@@ -97,7 +97,9 @@ Changelog = "https://github.com/davhodg/pycangui/blob/master/pycangui/help/chang
 # offer there, and a dead end in the menu costs more than the megabytes.
 # asammdf is LGPL-3.0, the same terms as Qt and python-can, and ships on the
 # same basis: separately replaceable, and named in THIRD-PARTY-NOTICES.txt.
-all = ["asammdf>=8"]
+# isal (asammdf's) 1.9.0 has no Windows wheel for Python 3.14 and will not build
+# without tools most machines lack; 1.8 has one. Drop the pin once 1.9 does.
+all = ["asammdf>=8", "isal<1.9"]
 # Pinned ruff: a new one must not break the build. all is pulled in so that
 # CI actually exercises the reader -- a reader nobody tests is a reader that
 # breaks -- and so that the build environment has what the bundle needs.
