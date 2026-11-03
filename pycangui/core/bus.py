@@ -27,7 +27,7 @@ from dataclasses import dataclass
 import can
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
-from pycangui.core import bus_health
+from pycangui.core import bus_health, udp_reach
 from pycangui.core.detect import coerce_channel, summarise, takes_data_bitrate, takes_fd
 from pycangui.core.filters import Rule, as_can_filters, describe
 
@@ -80,23 +80,6 @@ class Frame:
 NO_ECHO = frozenset({"udp_multicast"})
 #: How long a frame sent waits to come back before it is no longer looked for.
 ECHO_WAIT_S = 2.0
-#: How far a udp_multicast frame goes: 0 keeps it on this computer, 1 lets it
-#: out onto the local network (and no further, past a router). python-can's
-#: own default is 1; pycangui's is 0, and the local network is a choice made
-#: in Tools > Settings -- anything on that network could otherwise hear the
-#: bus, and send into it.
-LOCAL_ONLY, LOCAL_NETWORK = 0, 1
-_udp_hop_limit = LOCAL_ONLY
-
-
-def share_udp_on_network(on: bool) -> None:
-    """Whether udp_multicast channels opened from now on reach the local network."""
-    global _udp_hop_limit
-    _udp_hop_limit = LOCAL_NETWORK if on else LOCAL_ONLY
-
-
-def udp_hop_limit() -> int:
-    return _udp_hop_limit
 
 
 #: Who keeps a cyclic message's time, by the kind of task python-can made.
@@ -320,7 +303,14 @@ class BusManager(QObject):
         if interface not in NO_ECHO:
             kwargs["receive_own_messages"] = True
         if interface == "udp_multicast":
-            kwargs["hop_limit"] = _udp_hop_limit
+            # Tools > Settings > UDP multicast: off, this computer, or the network.
+            if udp_reach.reach() == udp_reach.OFF:
+                self.error.emit(
+                    f"Connect failed: {self.channel_name}: UDP multicast is off in "
+                    "Tools > Settings > UDP multicast"
+                )
+                return
+            kwargs["hop_limit"] = udp_reach.hop_limit()
         if interface != "virtual":
             kwargs["bitrate"] = bitrate
             # Only what the backend declares. Handing fd=True to one that does
@@ -352,6 +342,16 @@ class BusManager(QObject):
         except Exception as exc:  # python-can raises a zoo of exception types
             self.error.emit(f"Connect failed: {exc}")
             return
+        if interface == "udp_multicast" and udp_reach.reach() == udp_reach.COMPUTER:
+            try:
+                udp_reach.keep_to_this_computer(self.bus, self._dropped_from)
+            except RuntimeError as exc:
+                self.bus.shutdown()
+                self.bus = None
+                self.error.emit(
+                    f"Connect failed: {self.channel_name} cannot keep to this computer: {exc}"
+                )
+                return
         if not self._shared_clock:
             self._t0 = time.monotonic()
         self._collector = _Collector(self.channel_name, self._t0)
@@ -474,6 +474,19 @@ class BusManager(QObject):
         multicast, which has no bitrate at all.
         """
         return self.interface not in ("socketcan", "socketcand", "udp_multicast")
+
+    def reopen(self) -> bool:
+        """Close the channel and open it again exactly as before."""
+        if self.bus is None:
+            return False
+        return self.reconnect_at(self._opened_with["bitrate"])
+
+    def _dropped_from(self, host: str) -> None:
+        # From python-can's receive thread: a signal crosses to the GUI thread.
+        self.note.emit(
+            f"{self.channel_name}: frames from {host}, another computer, are dropped: "
+            "UDP multicast is set to this computer only"
+        )
 
     def reconnect_at(self, bitrate: int) -> bool:
         """Close the channel and open it again as before, at another bitrate.

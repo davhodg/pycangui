@@ -36,6 +36,10 @@ What **is** worth reporting:
 - pycangui going online when you did not ask it to. It is designed to go
   online only for *Help > Check for updates*, for a GitHub page you chose to
   open, and to install the optional MDF reader from PyPI after you agreed to it;
+- UDP multicast reaching further than *Tools > Settings > UDP multicast* says:
+  frames or signals leaving this computer, or frames from another computer
+  being received, while it is set to *This computer only* -- or anything at
+  all while it is *Off*;
 - transmitting onto a real bus without asking first -- unless you told it to
   stop asking -- or after you declined. It is designed to ask, but those
   questions are a reminder rather than a safeguard, and pycangui is provided

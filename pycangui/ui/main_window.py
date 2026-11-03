@@ -8,7 +8,7 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QEventLoop, QSettings, Qt, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import QEventLoop, QSettings, QSignalBlocker, Qt, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -39,10 +39,10 @@ from pycangui.core import (
     shortcut,
     timing,
     tx_fields,
+    udp_reach,
     workspace_files,
     workspaces,
 )
-from pycangui.core.bus import share_udp_on_network, udp_hop_limit
 from pycangui.core.channels import ActiveBus, Channels
 from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
@@ -166,24 +166,53 @@ AT_END = 4
 #: In QSettings, not the workspace: whether this person has been told, on
 #: this machine, where a shortcut is made.
 SHORTCUT_TOLD_KEY = "shortcut/told"
-#: In QSettings: whether udp_multicast channels reach the local network.
-UDP_NETWORK_KEY = "udp/local_network"
+#: In QSettings: how far UDP multicast goes -- one of udp_reach.CHOICES.
+UDP_REACH_KEY = "udp/reach"
+#: Before there were three choices: whether it reached the local network.
+OLD_UDP_NETWORK_KEY = "udp/local_network"
 #: In QSettings: whether ticked signals are sent to pyscopegui.
 SEND_SIGNALS_KEY = "udp/send_signals"
 #: In the workspace: which signals are ticked to send.
 SENT_KEY = "signals.sent"
-SEND_SIGNALS_TIP = (
-    "Send the signals ticked UDP out in Signals and Plot over UDP multicast, for\n"
-    "pyscopegui to show beside its instruments and to trigger on. Turning it on\n"
-    "shows the UDP out column. Goes as far as Share UDP multicast on the local\n"
-    "network says. For this computer; which signals is kept with the workspace."
+UDP_TIP = (
+    "How far pycangui's UDP multicast goes, sent and received alike: udp_multicast\n"
+    "channels, and the signals sent to pyscopegui. For this computer, not a\n"
+    "workspace; a channel already connected is connected again to follow it."
 )
-UDP_NETWORK_TIP = (
-    "Off, a udp_multicast channel stays on this computer: other programs on it\n"
-    "share its frames, and nothing goes out on a network. On, it reaches the\n"
-    "local network too, and no further: every computer on it that has joined\n"
-    "the group hears it -- and can send into it. For this computer, not a\n"
-    "workspace; a channel already connected follows it when it connects again."
+UDP_CHOICES = (
+    (
+        udp_reach.OFF,
+        "Off",
+        "No UDP multicast at all: a udp_multicast channel does not connect, one\n"
+        "already connected is disconnected, and no signals are sent.",
+    ),
+    (
+        udp_reach.COMPUTER,
+        "This computer only",
+        "Between programs on this computer. Nothing pycangui sends leaves it, and\n"
+        "what another computer sends is dropped.",
+    ),
+    (
+        udp_reach.NETWORK,
+        "Local network",
+        "This computer and the local network, and no further: every computer on it\n"
+        "that has joined a group hears pycangui -- and can send frames into a\n"
+        "udp_multicast channel. Use it on a network you trust.",
+    ),
+)
+UDP_SAID = {
+    udp_reach.OFF: "UDP multicast is off: udp_multicast channels do not connect, and no "
+    "signals are sent.",
+    udp_reach.COMPUTER: "UDP multicast stays on this computer: nothing is sent beyond it, "
+    "and frames from other computers are dropped.",
+    udp_reach.NETWORK: "UDP multicast reaches the local network: every computer on it "
+    "that has joined a group hears it, and can send frames into a udp_multicast channel.",
+}
+SEND_SIGNALS_TIP = (
+    "Send the signals ticked UDP out in Signals and Plot to pyscopegui, to show\n"
+    "beside its instruments and to trigger on. Turning it on shows the UDP out\n"
+    "column. Greyed while UDP multicast is off. For this computer; which signals\n"
+    "is kept with the workspace."
 )
 #: In QSettings, like the theme: how somebody likes to read the log, not
 #: something about a workspace.
@@ -228,6 +257,18 @@ RESET_EVERYTHING = (
     "questions you have told pycangui not to ask again, and the back ends "
     "folder. Both have their own entries in this menu."
 )
+
+
+def saved_udp_reach() -> str:
+    """Tools > Settings > UDP multicast as last chosen on this computer."""
+    settings = QSettings()
+    saved = settings.value(UDP_REACH_KEY, "", type=str)
+    if saved in udp_reach.CHOICES:
+        return saved
+    # Before there were three choices, the network was on or off.
+    if settings.value(OLD_UDP_NETWORK_KEY, False, type=bool):
+        return udp_reach.NETWORK
+    return udp_reach.COMPUTER
 
 
 class MainWindow(QMainWindow):
@@ -652,23 +693,8 @@ class MainWindow(QMainWindow):
         self.strict_dbc.toggled.connect(self._set_strict_dbc)
         # In QSettings, with this computer: whether its frames may leave it is
         # about the machine and the network it is on, not about a workspace.
-        self.udp_network = settings_menu.addAction("Share UDP multicast on the local network")
-        self.udp_network.setCheckable(True)
-        shared = QSettings().value(UDP_NETWORK_KEY, False, type=bool)
-        self.udp_network.setChecked(shared)
-        share_udp_on_network(shared)
-        self.udp_network.setToolTip(UDP_NETWORK_TIP)
-        self.udp_network.toggled.connect(self._set_udp_network)
-        # In QSettings too: whether this computer sends signals out is about
-        # the machine, as sharing frames is; which signals is the workspace's.
-        self.send_signals = settings_menu.addAction("Send ticked signals over UDP multicast")
-        self.send_signals.setCheckable(True)
-        self.send_signals.setToolTip(SEND_SIGNALS_TIP)
-        self.sender.set_hop_limit(udp_hop_limit())
-        if QSettings().value(SEND_SIGNALS_KEY, False, type=bool):
-            self.send_signals.setChecked(True)
-            self._set_send_signals(True, quietly=True)
-        self.send_signals.toggled.connect(self._set_send_signals)
+        self.udp_menu = self._udp_menu()
+        settings_menu.addMenu(self.udp_menu)
         self.theme_menu = theme.menu(self)
         settings_menu.insertMenu(verbose, self.theme_menu)
         self.history_menu = self._history_menu()
@@ -2103,29 +2129,64 @@ class MainWindow(QMainWindow):
             return
         self.events.information(f"Exported {count} signal(s), {rows} row(s) to {path}")
 
-    @Slot(bool)
-    def _set_udp_network(self, on: bool) -> None:
-        QSettings().setValue(UDP_NETWORK_KEY, on)
-        share_udp_on_network(on)
-        self.sender.set_hop_limit(udp_hop_limit())
-        self.events.information(
-            (
-                "UDP multicast channels will reach the local network: every computer on it "
-                "that has joined the group hears them, and can send to them."
-            )
-            if on
-            else "UDP multicast channels will stay on this computer."
-        )
-        if any(
-            (bus := self.channels.get(name)) is not None
-            and bus.is_connected
-            and bus.interface == "udp_multicast"
-            for name in self.channels.names()
-        ):
-            self.events.information(
-                "A UDP multicast channel already connected goes on as it was until it is "
-                "connected again."
-            )
+    def _udp_menu(self) -> QMenu:
+        """Tools > Settings > UDP multicast: how far it goes, and sending signals."""
+        menu = QMenu("UDP multicast", self)
+        menu.setToolTipsVisible(True)
+        menu.menuAction().setToolTip(UDP_TIP)
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+        current = saved_udp_reach()
+        udp_reach.set_reach(current)
+        self.sender.set_hop_limit(udp_reach.hop_limit())
+        self.udp_choices: dict[str, QAction] = {}
+        for value, label, tip in UDP_CHOICES:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(value == current)
+            action.setData(value)
+            action.setToolTip(tip)
+            action.triggered.connect(lambda _=False, v=value: self._set_udp_reach(v))
+            group.addAction(action)
+            self.udp_choices[value] = action
+        menu.addSeparator()
+        # In QSettings too: whether this computer sends signals out is about
+        # the machine, as sharing frames is; which signals is the workspace's.
+        self.send_signals = menu.addAction("Send ticked signals to pyscopegui")
+        self.send_signals.setCheckable(True)
+        self.send_signals.setToolTip(SEND_SIGNALS_TIP)
+        self._allow_sending(quietly=True)
+        self.send_signals.toggled.connect(self._set_send_signals)
+        return menu
+
+    def _allow_sending(self, quietly: bool = False) -> None:
+        """Signals go only while UDP multicast is on, ticked as they were left."""
+        allowed = udp_reach.reach() != udp_reach.OFF
+        wanted = allowed and QSettings().value(SEND_SIGNALS_KEY, False, type=bool)
+        self.send_signals.setEnabled(allowed)
+        with QSignalBlocker(self.send_signals):
+            self.send_signals.setChecked(wanted)
+        if wanted or self.sender.enabled:
+            self._set_send_signals(wanted, quietly=True)
+
+    def _set_udp_reach(self, value: str) -> None:
+        if value == udp_reach.reach():
+            return
+        QSettings().setValue(UDP_REACH_KEY, value)
+        udp_reach.set_reach(value)
+        self.sender.set_hop_limit(udp_reach.hop_limit())
+        self._allow_sending()
+        self.events.information(UDP_SAID[value])
+        # Sent and received alike, from now on: a channel left open as it was
+        # would go on reaching wherever it reached before.
+        for name in self.channels.names():
+            bus = self.channels.get(name)
+            if bus is None or not bus.is_connected or bus.interface != "udp_multicast":
+                continue
+            if value == udp_reach.OFF:
+                bus.disconnect_bus()
+            else:
+                bus.reopen()
 
     @Slot(bool)
     def _set_log_times(self, on: bool) -> None:

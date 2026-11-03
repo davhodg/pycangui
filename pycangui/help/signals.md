@@ -239,7 +239,7 @@ and ask it for a chart.
 
 ## Sending signals to pyscopegui
 
-**Tools > Settings > Send ticked signals over UDP multicast** sends chosen signals
+**Tools > Settings > UDP multicast > Send ticked signals to pyscopegui** sends chosen signals
 over UDP multicast, for pyscopegui to show beside its instruments and to start
 a capture on -- a fault bit setting, a state changing -- which no probe can see.
 Turning it on shows a **UDP out** column in Signals and Plot; tick the signals to
@@ -247,9 +247,10 @@ send. Nothing goes until something is ticked. The setting is kept for this
 computer, and which signals for the workspace; a signal ticked before it has
 arrived goes as soon as it does.
 
-The messages stay on this computer unless *Share UDP multicast on the local
-network* is on, as frames do; a firewall on a computer receiving them needs
-UDP port 43114 let in. They are JSON, on group `239.74.163.20`, port 43114 --
+They go as far as *Tools > Settings > UDP multicast* says, as frames do: not at
+all while it is off, when the setting is greyed, on this computer only, or on
+the local network ([UDP multicast](udp-multicast.md)); a firewall on a computer
+receiving them needs UDP port 43114 let in. They are JSON, on group `239.74.163.20`, port 43114 --
 not the frames' 43113, whose sockets would get them too on Linux -- and each
 carries `v` (the format, 1), `k` (what it is), `run` (an id for this run of
 pycangui) and `gen` (the description's count):

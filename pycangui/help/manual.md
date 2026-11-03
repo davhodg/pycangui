@@ -26,6 +26,7 @@
 ## CAN bus
 
 - [CAN adapters and channels](channels.md) --- picking an adapter, bitrates and CAN FD, recording and replay
+- [UDP multicast](udp-multicast.md) --- sharing frames with other programs, and how far they go
 - [Virtual buses, simulated nodes and gateways](virtual.md) --- trying everything with no adapter plugged in, or testing a connected node
 
 ## Customise

@@ -59,6 +59,7 @@ PAGES = (
     "custom-panes.md",
     "console.md",
     "channels.md",
+    "udp-multicast.md",
     "virtual.md",
     "hooks.md",
     "plugins.md",
