@@ -9,14 +9,7 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
-### Changed
-
-- *Tools > Settings > UDP multicast*: off, this computer only, or the local network, for
-  udp_multicast channels and signals alike, sent and received; a page of its own in the manual.
-
-### Fixed
-
-- All tick box indicators grow with the text size.
+## [0.5.0] - 2026-11-03
 
 ### Added
 
@@ -64,6 +57,8 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- *Tools > Settings > UDP multicast*: off, this computer only, or the local network, for
+  udp_multicast channels and signals alike, sent and received; a page of its own in the manual.
 - CANopen: the object dictionary's *Watch* column is now *Bookmark*, and its button
   *Bookmarked*: it marks objects to find again, and reads nothing.
 - *Help > Diagnostics...* opens in a window of its own, with Refresh, Copy and Save, and says
@@ -78,6 +73,7 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- All tick box indicators grow with the text size.
 - Accessibility: the channel's + and - buttons have names a screen reader can say, Pin and
   Detach are reached with Tab, and the plot's legend and time box grow with large text.
 - CANopen: two PDO configuration reads of one node queued together -- a boot-up during an EDS
@@ -338,7 +334,8 @@ The first release, on PyPI (`pip install pycangui`) and as a Windows installer.
 - **Simulated nodes** on a virtual bus or a real adapter, and gateways between channels.
 - **Workspaces**, one per product, exported and imported as one zip.
 
-[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/davhodg/pycangui/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/davhodg/pycangui/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/davhodg/pycangui/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/davhodg/pycangui/compare/v0.2.0...v0.3.0
