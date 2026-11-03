@@ -2,6 +2,8 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """Polling objects ticked in the CANopen object dictionary, into Signals and Plot."""
 
+import time
+
 import pytest
 from PySide6.QtCore import QObject, Qt, Signal
 
@@ -91,8 +93,12 @@ def test_a_round_answered_starts_the_next_and_the_values_go_to_signals(made, app
     answer_all(poll, manager, value=1500)
     series = hub.get("Node 5/Object 606C")
     assert series is not None and series.latest == 1500 and series.unit == "rpm"
-    QTest.qWait(60)  # the next round, no sooner than the rate allows
-    assert manager.reads == [(5, 0x606C, 0)]
+    assert manager.reads == [], "no sooner than the rate allows"
+    # Waited for rather than timed: a slow runner fires the timer late.
+    deadline = time.monotonic() + 2
+    while not manager.reads and time.monotonic() < deadline:
+        QTest.qWait(10)
+    assert manager.reads == [(5, 0x606C, 0)], "the next round"
 
 
 def test_a_read_by_hand_is_not_taken_for_polling(made):
