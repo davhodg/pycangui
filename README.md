@@ -108,7 +108,7 @@ Without it pycangui stops as it starts, with a message about the *xcb* platform 
 
 ## Supported systems
 
-**Windows and Linux**, on **Python 3.12 or newer**. Both are tested on every push: Windows on Python 3.14 and 3.15, and Linux on every version from 3.12 to 3.15.
+**Windows and Linux**, on **Python 3.12 or newer**. Both are tested on every push: Windows on Python 3.14 and 3.15 (and 3.14 on Windows Server 2022, the closest GitHub has to Windows 10), and Linux on every version from 3.12 to 3.15.
 
 **macOS** passes the same tests on Apple silicon and Intel Macs, run for each release, but has not yet been tested on real CAN hardware.
 

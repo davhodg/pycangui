@@ -32,10 +32,16 @@ jobs:
       matrix:
         include:
           - { os: windows-latest, python: "3.14" }
-          # The newest Python, without the optional MDF reader: asammdf needs
-          # isal, which has no wheels for 3.15 yet and will not build without
+          # The closest to Windows 10: GitHub has no Windows 10 runners, but
+          # Server 2022 is built on it (build 20348, below the 22000 Qt takes for
+          # Windows 11), so a real window there should get windowsvista and then
+          # Fusion, as on a Windows 10 desktop -- the Qt style step says which.
+          # The tests themselves run offscreen, where Qt starts in Fusion anyway.
+          - { os: windows-2022, python: "3.14" }
+          # The newest Python, without the optional MDF reader: asammdf limits
+          # isal to 1.8.0, which has no wheels for 3.15 and will not build without
           # tools the runners lack. Back to the dev extra, and the MDF tests
-          # with it, once isal publishes them -- checked before each release.
+          # with it, once asammdf allows a newer isal -- checked before each release.
           - { os: windows-latest, python: "3.15", extras: test }
           - { os: ubuntu-latest, python: "3.15", extras: test }
           - { os: ubuntu-latest, python: "3.14" }
@@ -56,6 +62,14 @@ jobs:
         run: |
           python -m ruff check pycangui tests build/check_build.py build/notices.py
           python -m ruff format --check pycangui tests
+
+      # Which Qt style pycangui draws in on this runner: on windows-2022 it
+      # should be Fusion, as on Windows 10 (see the matrix).
+      - name: Qt style
+        if: runner.os == 'Windows'
+        run: python -c "from PySide6.QtWidgets import QApplication; from pycangui.ui import theme; app = QApplication([]); theme.apply(theme.SYSTEM, app); print('Qt style:', theme.style_name(app))"
+        env:
+          QT_QPA_PLATFORM: windows
 
       # Qt needs a display. The tests already ask for the offscreen platform,
       # but Linux runners also lack the X libraries Qt links against.
