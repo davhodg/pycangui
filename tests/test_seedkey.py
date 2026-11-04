@@ -145,15 +145,68 @@ def test_a_module_that_can_run_anywhere_imports_nothing_of_ours():
 
 # --- where it sits in the order ----------------------------------------------------------
 @needs_windows
-def test_no_dll_and_no_interpreter_says_all_three_ways_out():
-    """The message has to carry the whole answer: this is read by somebody
-    who has just been told their DLL cannot be loaded."""
+def test_a_dll_of_the_other_bitness_with_no_interpreter_for_it_is_refused(monkeypatch):
+    """Whatever this machine has installed: one with a Python of the other
+    bitness would find it and go on, which is not what is tested here."""
     theirs = X86 if seedkey.host_bits() == 64 else X64
-    with pytest.raises(seedkey.SeedKeyError) as raised:
+    looked_for = []
+    monkeypatch.setattr(seedkey, "find_python", lambda bits: looked_for.append(bits) or "")
+    monkeypatch.setattr(
+        seedkey, "compute_key_elsewhere", lambda *a, **k: pytest.fail("went out of process")
+    )
+    with pytest.raises(seedkey.SeedKeyError):
         seedkey.key_for(theirs, 1, b"\x01", other_python="")
-    said = str(raised.value)
-    # Install one, name one, or rebuild the DLL.
-    assert "Install" in said and "name one" in said and "rebuild" in said, said
+    assert looked_for == [32 if seedkey.host_bits() == 64 else 64], "the other bitness"
+
+
+@pytest.fixture(scope="module")
+def other_python():
+    """A Python of the other bitness on this machine, found as pycangui finds
+    one. Most machines have none; a CI runner with one runs these for real."""
+    if not WINDOWS:
+        pytest.skip("a DLL is a Windows thing")
+    found = seedkey.find_python(32 if seedkey.host_bits() == 64 else 64)
+    if not found:
+        pytest.skip("no Python of the other bitness installed")
+    return found
+
+
+def test_a_dll_of_the_other_bitness_loads_in_an_interpreter_of_that_bitness(other_python):
+    """What cannot be done here can be done there, by the file that runs there."""
+    import subprocess
+
+    theirs = X86 if seedkey.host_bits() == 64 else X64
+    with pytest.raises(seedkey.SeedKeyError):
+        seedkey._open(theirs)
+    loads = (
+        "import importlib.util, sys;"
+        "spec = importlib.util.spec_from_file_location('seedkey', sys.argv[1]);"
+        "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module);"
+        "module._open(sys.argv[2])"
+    )
+    done = subprocess.run(
+        [other_python, "-c", loads, seedkey.__file__, str(theirs)],
+        capture_output=True,
+        timeout=20,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+
+
+def test_a_dll_of_the_other_bitness_goes_to_the_interpreter_found_for_it(other_python, monkeypatch):
+    theirs = X86 if seedkey.host_bits() == 64 else X64
+    went_to = []
+    real = seedkey.compute_key_elsewhere
+
+    def spy(python, *args, **kwargs):
+        went_to.append(python)
+        return real(python, *args, **kwargs)
+
+    monkeypatch.setattr(seedkey, "compute_key_elsewhere", spy)
+    with pytest.raises(seedkey.SeedKeyError):  # kernel32 exports none of it
+        seedkey.key_for(theirs, 1, b"\x01")
+    assert went_to == [other_python]
+    assert seedkey.bits_of(other_python) == (32 if seedkey.host_bits() == 64 else 64)
 
 
 @needs_windows
