@@ -42,8 +42,9 @@ python-can and the protocol libraries -- canopen, python-can-j1939, udsoncan and
 can-isotp -- report through Python's logging, and a backend often says nothing
 about a bus error any other way. Their warnings and errors come here as well.
 A line a library says over and over -- failing on every frame of something a
-device keeps sending -- is shown once, then *(the line above, n more times)* at
-most every ten seconds while it goes on.
+device keeps sending -- is shown once, then again with how many more times it came
+*(n more times in 10 s)*, at most every ten seconds while it goes on. The count
+comes with the line itself, since the first one may have scrolled out of sight.
 
 A CANopen line carrying an **SDO abort code** gets its meaning put beside it:
 the library logs `Transfer aborted by client with code 0x05040000` and stops

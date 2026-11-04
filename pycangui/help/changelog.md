@@ -9,6 +9,10 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Changed
+
+- A line repeated in the Event Log is said again with its count, not as "the line above".
+
 ## [0.5.0] - 2026-11-03
 
 ### Added

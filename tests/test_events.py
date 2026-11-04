@@ -350,6 +350,9 @@ def test_a_line_said_over_and_over_is_said_once_and_then_counted(app, monkeypatc
         bridge.detach()
     assert len(said) == 4, "the rest counted before the next line"
     assert "1" in said[2][1] and said[3][1].endswith("something else")
+    # Each count carries the line it counts: the first may have scrolled away.
+    assert said[1][1].startswith(said[0][1]) and said[2][1].startswith(said[0][1])
+    assert said[1][0] == said[2][0] == said[0][0], "at the line's own level"
 
 
 def test_the_event_log_keeps_everything_until_cleared(app, window):

@@ -89,22 +89,33 @@ class _Bridge(logging.Handler):
             pass
 
     def _what_to_say(self, line: str, level: str) -> list[tuple[str, str]]:
-        """This line, or nothing while it repeats -- with how many times, now and then."""
+        """This line, or nothing while it repeats -- with how many times, now and then.
+
+        The count is said with the line itself, not as "the line above": by the
+        time it is said the line may have scrolled out of sight, or out of the
+        diagnostics report's last few problems.
+        """
         now = time.monotonic()
         with self._lock:
             if (line, level) == self._last:
                 self._repeats += 1
                 if now - self._repeats_said < REPEATS_SAID_EVERY_S:
                     return []
-                count, self._repeats, self._repeats_said = self._repeats, 0, now
-                return [(repeated(count), level)]
-            out = [(repeated(self._repeats), self._last[1])] if self._repeats else []
+                said = repeated(line, self._repeats, now - self._repeats_said)
+                self._repeats, self._repeats_said = 0, now
+                return [(said, level)]
+            out = []
+            if self._repeats and self._last is not None:
+                was, was_level = self._last
+                out.append((repeated(was, self._repeats, now - self._repeats_said), was_level))
             self._last, self._repeats, self._repeats_said = (line, level), 0, now
             return [*out, (line, level)]
 
 
-def repeated(count: int) -> str:
-    return f"    (the line above, {count} more time{'s' if count != 1 else ''})"
+def repeated(line: str, count: int, seconds: float) -> str:
+    """The line again, with how many more times it came and over how long."""
+    times = f"{count} more time{'s' if count != 1 else ''}"
+    return f"{line} ({times} in {max(seconds, 1):.0f} s)"
 
 
 class LogBridge:
