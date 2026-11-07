@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 davhodg
 """Clear on the right-click of a text pane, under the usual Copy and Select All."""
 
 from __future__ import annotations
