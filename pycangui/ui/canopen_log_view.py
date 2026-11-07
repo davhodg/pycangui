@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.canopen.sdo_log import SdoRecord
-from pycangui.ui import folders, fonts
+from pycangui.ui import folders, fonts, icons
 
 SDO, NMT, STATE, EMCY, LSS = "SDO", "NMT", "State", "EMCY", "LSS"
 #: Each kind, and what its tick says it covers.
@@ -107,9 +107,9 @@ class CanopenLogView(QWidget):
         self.only_selected.toggled.connect(self._filters_changed)
         bar.addWidget(self.only_selected)
         bar.addStretch()
-        clear = QPushButton("Clear")
+        clear = icons.beside(QPushButton("Clear"), icons.CLEAR)
         clear.clicked.connect(self.clear)
-        save = QPushButton("Save...")
+        save = icons.beside(QPushButton("Save..."), icons.SAVE_AS)
         save.setToolTip("Write the lines shown to a text file.")
         save.clicked.connect(self._save)
         bar.addWidget(clear)

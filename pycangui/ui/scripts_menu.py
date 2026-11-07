@@ -22,7 +22,7 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QMenu, QWidget
 
 from pycangui.core import workspace_files
-from pycangui.ui import folders, messages
+from pycangui.ui import folders, icons, messages
 
 if TYPE_CHECKING:
     from pycangui.core.context import Context
@@ -55,7 +55,7 @@ class ScriptsMenu(QObject):
         self.recent_menu.aboutToShow.connect(self._build_recent)
 
     def install(self, file_menu: QMenu) -> None:
-        run = file_menu.addAction("Run script...", self.run_dialog)
+        run = icons.beside(file_menu.addAction("Run script...", self.run_dialog), icons.START)
         run.setToolTip(RUN_TIP)
         recent = file_menu.addMenu(self.recent_menu)
         recent.setToolTip(RECENT_TIP)

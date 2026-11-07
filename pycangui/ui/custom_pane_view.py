@@ -53,7 +53,7 @@ from pycangui.custom_panes import model
 from pycangui.custom_panes.model import CustomPane, Field
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
 from pycangui.custom_panes.source import FileSource, NodeSource, Source
-from pycangui.ui import field_widgets, folders, fonts, messages
+from pycangui.ui import field_widgets, folders, fonts, icons, messages
 from pycangui.ui.persist import remember
 
 #: How many unanswered reads of one object to keep track of. Past this,
@@ -142,13 +142,13 @@ class CustomPaneView(QWidget):
         self.sources.setToolTip(SOURCE_TIP)
         self.sources.activated.connect(self._on_source_chosen)
 
-        read_all = QPushButton("Read all")
+        read_all = icons.beside(QPushButton("Read all"), icons.READ)
         read_all.setToolTip(READ_TIP)
         read_all.clicked.connect(self.read_all)
-        self.write_all_button = QPushButton("Write all")
+        self.write_all_button = icons.beside(QPushButton("Write all"), icons.WRITE)
         self.write_all_button.setToolTip(WRITE_TIP)
         self.write_all_button.clicked.connect(self.write_all)
-        edit = QPushButton("Edit...")
+        edit = icons.beside(QPushButton("Edit..."), icons.EDIT)
         edit.setToolTip(EDIT_TIP)
         edit.clicked.connect(self._edit)
 
@@ -188,9 +188,9 @@ class CustomPaneView(QWidget):
 
         # Only for a file: a node has nothing to save, because every write
         # has already gone to it.
-        self.save_button = QPushButton("Save")
+        self.save_button = icons.beside(QPushButton("Save"), icons.SAVE)
         self.save_button.clicked.connect(self.save)
-        self.save_as_button = QPushButton("Save as...")
+        self.save_as_button = icons.beside(QPushButton("Save as..."), icons.SAVE_AS)
         self.save_as_button.setToolTip(SAVE_AS_TIP)
         self.save_as_button.clicked.connect(self.save_as)
         self.unsaved_note = QLabel(UNSAVED)
@@ -637,24 +637,24 @@ class CustomPaneEditor(QDialog):
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table.verticalHeader().setVisible(False)
 
-        add = QPushButton("Add...")
+        add = icons.beside(QPushButton("Add..."), icons.ADD)
         add.setToolTip(
             "Add objects to this pane. Pick them from whatever it is bound\n"
             "to -- a node's dictionary or an EDS -- or type an index."
         )
         add.clicked.connect(self._add)
-        up = QPushButton("Move up")
+        up = icons.beside(QPushButton("Move up"), icons.UP)
         up.clicked.connect(lambda: self._move(-1))
-        down = QPushButton("Move down")
+        down = icons.beside(QPushButton("Move down"), icons.DOWN)
         down.clicked.connect(lambda: self._move(1))
-        remove = QPushButton("Remove")
+        remove = icons.beside(QPushButton("Remove"), icons.REMOVE)
         remove.clicked.connect(self._remove)
         buttons = QHBoxLayout()
         for button in (add, up, down, remove):
             buttons.addWidget(button)
         buttons.addStretch()
 
-        closer = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        closer = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         closer.accepted.connect(self._accept)
         closer.rejected.connect(self.reject)
 
@@ -783,7 +783,7 @@ class AddObjects(QDialog):
         typed.addWidget(QLabel("sub:"))
         typed.addWidget(self.sub)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 

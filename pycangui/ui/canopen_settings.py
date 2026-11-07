@@ -48,7 +48,7 @@ from pycangui.canopen.manager import (
     SDO_RESPONSE_BASE,
 )
 from pycangui.core.context import Context
-from pycangui.ui import fonts, messages
+from pycangui.ui import fonts, icons, messages
 
 TIMEOUT_KEY = "canopen.sdo_timeout_ms"
 RETRIES_KEY = "canopen.sdo_retries"
@@ -512,13 +512,13 @@ class CanopenSettingsDialog(QDialog):
         for node_id in sorted({*settings.channels, *settings.heartbeat_timeouts}):
             request, response = settings.channels.get(node_id, predefined(node_id))
             self._add_row(node_id, request, response, settings.heartbeat_timeouts.get(node_id))
-        add = QPushButton("Add")
+        add = icons.beside(QPushButton("Add"), icons.ADD)
         add.setToolTip(
             "A row for the selected node, or the first node not listed, with nothing\n"
             "changed yet: its predefined SDO channel and its heartbeat timeout worked out."
         )
         add.clicked.connect(self._add)
-        remove = QPushButton("Remove")
+        remove = icons.beside(QPushButton("Remove"), icons.REMOVE)
         remove.setToolTip("Put this node back on what pycangui works out for itself.")
         remove.clicked.connect(self._remove)
         row = QHBoxLayout()
@@ -533,7 +533,7 @@ class CanopenSettingsDialog(QDialog):
         inside.addWidget(self.table)
         inside.addLayout(row)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
 

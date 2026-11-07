@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core import seedkey
 from pycangui.core.context import Context
+from pycangui.ui import icons
 
 TITLE = "Seed and key DLL"
 
@@ -92,9 +93,9 @@ class SeedKeyDialog(QDialog):
         self.dll.setPlaceholderText("none: the hooks decide on their own")
         self.dll.setToolTip(DLL_TIP)
         self.dll.textChanged.connect(lambda _t: self._look())
-        browse = QPushButton("Browse...")
+        browse = icons.beside(QPushButton("Browse..."), icons.BROWSE)
         browse.clicked.connect(self._browse)
-        clear = QPushButton("Clear")
+        clear = icons.beside(QPushButton("Clear"), icons.CLEAR)
         clear.clicked.connect(self.dll.clear)
         dll_row = QHBoxLayout()
         dll_row.addWidget(self.dll, 1)
@@ -105,7 +106,7 @@ class SeedKeyDialog(QDialog):
         self.python.setPlaceholderText("found automatically")
         self.python.setToolTip(PYTHON_TIP)
         self.python.textChanged.connect(lambda _t: self._look())
-        find = QPushButton("Browse...")
+        find = icons.beside(QPushButton("Browse..."), icons.BROWSE)
         find.clicked.connect(self._browse_python)
         python_row = QHBoxLayout()
         python_row.addWidget(self.python, 1)
@@ -123,7 +124,7 @@ class SeedKeyDialog(QDialog):
         self.privileges.setWordWrap(True)
         self.privileges.setEnabled(False)
 
-        test = QPushButton("Check the DLL")
+        test = icons.beside(QPushButton("Check the DLL"), icons.CHECK)
         test.setToolTip(
             "Load it and see what it exports. XCP_ComputeKeyFromSeed is the\n"
             "one that matters, being what answers a seed;\n"
@@ -132,7 +133,7 @@ class SeedKeyDialog(QDialog):
         )
         test.clicked.connect(self._test)
 
-        box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        box = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         box.accepted.connect(self.accept)
         box.rejected.connect(self.reject)
 

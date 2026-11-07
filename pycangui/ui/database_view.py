@@ -48,7 +48,7 @@ from pycangui.core.dbc_edit import (
     RemoveSignal,
 )
 from pycangui.core.named_values import shown
-from pycangui.ui import folders, fonts, messages
+from pycangui.ui import folders, fonts, icons, messages
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.database_edit import (
     AttributesDialog,
@@ -486,7 +486,7 @@ class DatabaseView(QWidget):
         self.file.setToolTip(FILE_TIP)
         self.file.setAccessibleName("File")
         self.file.currentIndexChanged.connect(self._fill_messages)
-        self.load_btn = QPushButton("Load...")
+        self.load_btn = icons.beside(QPushButton("Load..."), icons.OPEN)
         self.load_btn.setToolTip(LOAD_TIP)
         self.load_btn.clicked.connect(self.load_wanted)
         bar = QHBoxLayout()
@@ -501,11 +501,11 @@ class DatabaseView(QWidget):
         edits = QHBoxLayout(self.edit_bar)
         edits.setContentsMargins(0, 0, 0, 0)
         self.edit_label = QLabel()
-        self.undo_btn = QPushButton("Undo")
+        self.undo_btn = icons.beside(QPushButton("Undo"), icons.UNDO)
         self.undo_btn.clicked.connect(self.undo)
-        self.save_btn = QPushButton("Save as...")
+        self.save_btn = icons.beside(QPushButton("Save as..."), icons.SAVE_AS)
         self.save_btn.clicked.connect(lambda: self.save_as())  # not given clicked's checked
-        self.discard_btn = QPushButton("Discard changes")
+        self.discard_btn = icons.beside(QPushButton("Discard changes"), icons.DISCARD)
         self.discard_btn.clicked.connect(self.discard)
         edits.addWidget(self.edit_label, 1)
         edits.addWidget(self.undo_btn)
@@ -543,10 +543,10 @@ class DatabaseView(QWidget):
         self.comment.setWordWrap(True)
         self.comment.setTextInteractionFlags(Qt.TextSelectableByMouse)
         inside.addWidget(self.comment)
-        self.transmit_btn = QPushButton("Add to Transmit")
+        self.transmit_btn = icons.beside(QPushButton("Add to Transmit"), icons.ADD)
         self.transmit_btn.setToolTip(TRANSMIT_TIP)
         self.transmit_btn.clicked.connect(lambda: self.transmit_wanted.emit(self._message.name))
-        self.trace_btn = QPushButton("Show in Trace")
+        self.trace_btn = icons.beside(QPushButton("Show in Trace"), icons.FILTER)
         self.trace_btn.setToolTip(TRACE_TIP)
         self.trace_btn.clicked.connect(lambda: self.trace_wanted.emit(self._message.name))
         buttons = QHBoxLayout()
@@ -584,7 +584,7 @@ class DatabaseView(QWidget):
 
         frame, inside, top = framed("Signals")
         top.addStretch()
-        self.plot_btn = QPushButton("Plot")
+        self.plot_btn = icons.beside(QPushButton("Plot"), icons.PLOT)
         self.plot_btn.setToolTip(PLOT_TIP)
         self.plot_btn.clicked.connect(self._plot)
         top.addWidget(self.plot_btn)
@@ -997,15 +997,23 @@ class DatabaseView(QWidget):
         menu = QMenu(self.messages)
         on_message = item is not None
         on_signal = on_message and bool(item.data(0, ROLE_SIGNAL))
-        menu.addAction("Add message...", lambda: self.add_message(self._path))
+        icons.beside(
+            menu.addAction("Add message...", lambda: self.add_message(self._path)), icons.ADD
+        )
         menu.addAction("Change message...", self.edit_message).setEnabled(on_message)
-        menu.addAction("Remove message", self.remove_message).setEnabled(on_message)
+        icons.beside(
+            menu.addAction("Remove message", self.remove_message), icons.REMOVE
+        ).setEnabled(on_message)
         menu.addSeparator()
-        menu.addAction("Add signal...", self.add_signal).setEnabled(on_message)
+        icons.beside(menu.addAction("Add signal...", self.add_signal), icons.ADD).setEnabled(
+            on_message
+        )
         menu.addAction(
             "Change signal...", lambda: self.edit_signal(item.data(0, ROLE_SIGNAL))
         ).setEnabled(on_signal)
-        menu.addAction("Remove signal", self.remove_signal).setEnabled(on_signal)
+        icons.beside(menu.addAction("Remove signal", self.remove_signal), icons.REMOVE).setEnabled(
+            on_signal
+        )
         menu.addAction("Signal groups...", self.edit_signal_groups).setEnabled(on_message)
         menu.addSeparator()
         # The whole database's, not the message's.
@@ -1020,11 +1028,15 @@ class DatabaseView(QWidget):
         if item is not None:
             self.signals.setCurrentItem(item)
         menu = QMenu(self.signals)
-        menu.addAction("Add signal...", self.add_signal).setEnabled(self._message is not None)
+        icons.beside(menu.addAction("Add signal...", self.add_signal), icons.ADD).setEnabled(
+            self._message is not None
+        )
         menu.addAction(
             "Change signal...", lambda: self.edit_signal(self.signal_chosen())
         ).setEnabled(item is not None)
-        menu.addAction("Remove signal", self.remove_signal).setEnabled(item is not None)
+        icons.beside(menu.addAction("Remove signal", self.remove_signal), icons.REMOVE).setEnabled(
+            item is not None
+        )
         menu.exec(self.signals.viewport().mapToGlobal(at))
 
     def undo(self) -> None:

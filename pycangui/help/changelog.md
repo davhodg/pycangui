@@ -9,8 +9,16 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Added
+
+- *Report a bug...* in *Help > Diagnostics*: copies the report and opens GitHub's bug form.
+- Standard icons beside the words on common buttons and menu items: Clear, Copy, Save, Add, Remove, Send, Stop and more. *Tools > Settings > Show icons* turns them off.
+  The CiA 402 (1.9) and firmware (1.3) plugins have them too: *Update...* in *Plugins > Manage plugins...*.
+
 ### Changed
 
+- *Stop all cyclic* in CAN Transmit is now *Stop all*, to save room.
+- *Tools > Pause automatic traffic* reads *Resume automatic traffic* while paused, rather than showing a tick.
 - A line repeated in the Event Log is said again with its count, not as "the line above".
 
 ## [0.5.0] - 2026-11-03

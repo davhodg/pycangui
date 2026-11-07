@@ -17,7 +17,7 @@ something cycling unnoticed):
 The list is saved in settings.json ("tx.messages") and restored on start.
 There can be more than one transmit pane -- a list of background traffic left
 running and a scratch list to fiddle with is the case -- and each keeps its own
-messages. What is *not* per pane is Stop all cyclic: the button says all, and
+messages. What is *not* per pane is Stop all: the button says all, and
 a big red stop that stopped half of what was going onto a live bus would be the
 worst kind of wrong.
 """
@@ -59,7 +59,7 @@ from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.named_values import named, number_in, with_its_name
 from pycangui.core.tx_fields import Checksum, Counter
-from pycangui.ui import fonts, theme
+from pycangui.ui import fonts, icons, theme
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations, is_real
 from pycangui.ui.tx_fields_dialog import TxFieldsDialog
@@ -370,7 +370,7 @@ class MessagePicker(QDialog):
             self.list.addItem("File > Load DBC... to load one, then try again.")
             self.list.setEnabled(False)
             self.search.setEnabled(False)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
@@ -412,7 +412,7 @@ class RpdoPicker(QDialog):
             self.list.addItem("Select the node in the CANopen pane and load its EDS;")
             self.list.addItem("use 'Read PDO config' there if the node was remapped.")
             self.list.setEnabled(False)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
@@ -426,7 +426,7 @@ class RpdoPicker(QDialog):
 
 
 class TxView(QWidget):
-    #: Stop all cyclic was pressed here. Emitted rather than acted on across
+    #: Stop all was pressed here. Emitted rather than acted on across
     #: panes, because a transmit list has no business knowing that there are
     #: other transmit lists -- the window does.
     stop_all_requested = Signal()
@@ -491,14 +491,14 @@ class TxView(QWidget):
 
         # Send and Stop all are the two buttons that put something on the bus
         # or take it off again; the rest only edit the list, so they follow.
-        send = QPushButton("Send selected")
+        send = icons.beside(QPushButton("Send selected"), icons.SEND)
         send.clicked.connect(self.send_selected)
-        stop_all = QPushButton("Stop all cyclic")
+        stop_all = icons.beside(QPushButton("Stop all"), icons.STOP)
         stop_all.setToolTip("Stop every repeating transmission at once, in every transmit pane.")
         stop_all.clicked.connect(self._on_stop_all_pressed)
         # Three buttons that differed only in where the message came from are
         # one button and a menu: the choice is which source, not which button.
-        add = QPushButton("Add")
+        add = icons.beside(QPushButton("Add"), icons.ADD)
         add.setToolTip("Add a message: raw bytes, one from the DBC, or a CANopen RPDO")
         self.add_menu = QMenu(add)
         self.add_menu.setToolTipsVisible(True)
@@ -522,7 +522,7 @@ class TxView(QWidget):
             "Without them a receiver that checks either one rejects the lot."
         )
         fields.clicked.connect(self.edit_fields_selected)
-        remove = QPushButton("Remove selected")
+        remove = icons.beside(QPushButton("Remove selected"), icons.REMOVE)
         remove.clicked.connect(self.remove_selected)
         bar = QHBoxLayout()
         for b in (send, stop_all, add, fields, remove):

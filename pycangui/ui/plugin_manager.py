@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 from pycangui.core import plugin_package
 from pycangui.core.context import Context
 from pycangui.core.plugins import NO_VERSION, Plugins, supplied
-from pycangui.ui import folders, messages
+from pycangui.ui import folders, icons, messages
 
 #: Said before every install, and not remembered. Each one is a different
 #: file from a different person, so "you agreed last time" is not an answer.
@@ -418,16 +418,16 @@ class ManagePlugins(QDialog):
         self.installed.itemChanged.connect(self._toggled)
         self.installed.currentItemChanged.connect(lambda *_a: self._enable_buttons())
 
-        install_file = QPushButton("Install from file...")
+        install_file = icons.beside(QPushButton("Install from file..."), icons.DOWNLOAD)
         install_file.setToolTip("A plugin package: a zip with a plugin.py in it.")
         install_file.clicked.connect(self._install_file)
-        self.export_button = QPushButton("Export...")
+        self.export_button = icons.beside(QPushButton("Export..."), icons.EXPORT)
         self.export_button.setToolTip("Write this one out as a package, to send or to keep.")
         self.export_button.clicked.connect(self._export)
-        self.remove_button = QPushButton("Remove...")
+        self.remove_button = icons.beside(QPushButton("Remove..."), icons.REMOVE)
         self.remove_button.setToolTip("Delete it from this workspace, edits and all.")
         self.remove_button.clicked.connect(self._uninstall)
-        self.update_button = QPushButton("Update...")
+        self.update_button = icons.beside(QPushButton("Update..."), icons.RELOAD)
         self.update_button.setToolTip(UPDATE_TIP)
         self.update_button.clicked.connect(self._update)
 
@@ -442,7 +442,7 @@ class ManagePlugins(QDialog):
         self.offered.setSelectionMode(QAbstractItemView.SingleSelection)
         self.offered.currentItemChanged.connect(lambda *_a: self._enable_buttons())
         self.offered.itemDoubleClicked.connect(lambda _i: self._install_supplied())
-        self.add_button = QPushButton("Install")
+        self.add_button = icons.beside(QPushButton("Install"), icons.DOWNLOAD)
         self.add_button.clicked.connect(self._install_supplied)
 
         theirs = QHBoxLayout()
@@ -453,7 +453,7 @@ class ManagePlugins(QDialog):
         note.setWordWrap(True)
         note.setEnabled(False)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Close))
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)

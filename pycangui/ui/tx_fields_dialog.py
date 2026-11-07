@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core import tx_fields as tx
-from pycangui.ui import fonts, messages
+from pycangui.ui import fonts, icons, messages
 
 TITLE = "Counter and checksum"
 
@@ -226,7 +226,7 @@ class TxFieldsDialog(QDialog):
         timing.setWordWrap(True)
         timing.setVisible(not receiving)  # about sending, which is not what this is
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self._ok)
         buttons.rejected.connect(self.reject)
 

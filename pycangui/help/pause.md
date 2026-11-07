@@ -28,9 +28,9 @@ session open and a network quiet, which is what a flash needs.
 **A flash pauses it by itself**, for as long as it runs: a UDS download or upload,
 and a program downloaded by the [CANopen firmware](firmware.md) plugin. A pause
 can also be held **by hand**, from the status bar's right-click or *Tools > Pause
-automatic traffic*, for anything else. While a flash holds it, pausing by hand
-is greyed: the flash gives it back when it is done. A flash ending does not lift
-a pause somebody set by hand.
+automatic traffic*, for anything else; it then reads *Resume automatic traffic*.
+While a flash holds it, pausing by hand is greyed: the flash gives it back when
+it is done. A flash ending does not lift a pause somebody set by hand.
 
 The CiA 402 motor pane puts its drive in the same safe state as when the pane
 closes -- halted, a speed or torque demand zeroed -- since nothing is watching
@@ -43,7 +43,7 @@ menu, is for good: cyclic messages in every [transmit](transmit.md) pane,
 polling of every kind, SYNC and TIME, and whatever a plugin keeps doing -- the
 CiA 402 pane halts its drive. Nothing starts again until it is asked for. UDS
 Tester Present and the J1939 DM13 hold go on here too, and are stopped in their
-own panes. *Stop all cyclic* in CAN Transmit still stops the cyclic messages
+own panes. *Stop all* in CAN Transmit still stops the cyclic messages
 alone.
 
 ## Simulated nodes and plugins

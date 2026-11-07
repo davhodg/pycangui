@@ -28,6 +28,7 @@ RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 PROJECT_PAGE = f"https://github.com/{REPO}"
 README_PAGE = f"{PROJECT_PAGE}#readme"
 COMMITS_PAGE = f"{PROJECT_PAGE}/commits"
+BUG_REPORT_PAGE = f"{PROJECT_PAGE}/issues/new?template=bug_report.yml"
 PYPI_API = "https://pypi.org/pypi/pycangui/json"
 PYPI_PAGE = "https://pypi.org/project/pycangui/"
 #: What a checkout on a branch GitHub has never heard of is compared against.

@@ -33,7 +33,7 @@ from pycangui.canopen import PdoConfig, PdoEntry, pdo_file
 from pycangui.canopen.manager import CanopenManager, mappable, mapped_bits, od_entries
 from pycangui.core.classify import predefined_meaning
 from pycangui.core.context import Context
-from pycangui.ui import fonts, messages
+from pycangui.ui import fonts, icons, messages
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.edit_columns import EditColumns
 
@@ -121,7 +121,7 @@ class ObjectPicker(QDialog):
                 bits = mapped_bits(var)
                 self.entries.append(PdoEntry(index, sub or 0, bits, name))
                 self.list.addItem(f"{index:04X}:{(sub or 0):02X}  {name}  ({bits} bits)")
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
@@ -173,23 +173,23 @@ class PdoConfigView(QWidget):
         )
         self.tree.itemChanged.connect(self._on_item_changed)
 
-        self.read_btn = read = QPushButton()
+        self.read_btn = read = icons.beside(QPushButton(), icons.READ)
         read.clicked.connect(self._read)
-        add = QPushButton("Map object...")
+        add = icons.beside(QPushButton("Map object..."), icons.ADD)
         add.setToolTip(
             "Add an object from the dictionary to this PDO: after the selected\n"
             "mapped object, or at the end with the PDO itself selected."
         )
         add.clicked.connect(self._add_entry)
-        remove = QPushButton("Unmap object")
+        remove = icons.beside(QPushButton("Unmap object"), icons.REMOVE)
         remove.setToolTip("Take the selected object out of this PDO")
         remove.clicked.connect(self._remove_entry)
         # The order is the layout of the frame: the first object mapped is
         # the first bits sent.
-        up = QPushButton("Move up")
+        up = icons.beside(QPushButton("Move up"), icons.UP)
         up.setToolTip("Move the selected object earlier in the PDO: lower bits of the frame")
         up.clicked.connect(lambda: self._move_entry(-1))
-        down = QPushButton("Move down")
+        down = icons.beside(QPushButton("Move down"), icons.DOWN)
         down.setToolTip("Move the selected object later in the PDO: higher bits of the frame")
         down.clicked.connect(lambda: self._move_entry(1))
         self.write_btn = write = QPushButton()
@@ -234,6 +234,7 @@ class PdoConfigView(QWidget):
                 "rather than what its EDS says it was built with."
             )
             self.write_btn.setText("Write to node")
+            icons.beside(self.write_btn, icons.WRITE)
             self.write_btn.setToolTip(
                 "Write the selected PDO's communication and mapping parameters"
             )
@@ -248,6 +249,7 @@ class PdoConfigView(QWidget):
             # before Save was a step to forget, and closing the file then lost
             # the change without a word.
             self.write_btn.setText("Save file")
+            icons.beside(self.write_btn, icons.SAVE)
             self.write_btn.setToolTip(
                 "Write the file to disk, with every change in it -- the PDOs here\n"
                 "and the values in the object dictionary. The same as Save under\n"

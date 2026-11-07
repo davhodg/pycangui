@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.uds import images
-from pycangui.ui import folders
+from pycangui.ui import folders, icons
 from pycangui.ui.persist import remember
 
 # Relative, so that the copy of program.py sitting beside *this* file is
@@ -45,7 +45,7 @@ from .program import Device
 
 API_VERSION = 1
 NAME = "CANopen firmware (CiA 302-3)"
-VERSION = "1.2"
+VERSION = "1.3"
 #: What the pause is held for while a program is downloaded.
 FLASHING = "CANopen firmware download"
 DESCRIPTION = "Download firmware to a CANopen node (CiA 302-3)."
@@ -169,7 +169,7 @@ class FirmwareView(QWidget):
         self.path = QLineEdit()
         self.path.setPlaceholderText("Intel HEX, S-record or binary...")
         self.path.editingFinished.connect(self._reload_image)
-        browse = QPushButton("Browse...")
+        browse = icons.beside(QPushButton("Browse..."), icons.BROWSE)
         browse.clicked.connect(self._choose)
         self.summary = QLabel("")
         self.summary.setWordWrap(True)
@@ -200,7 +200,7 @@ class FirmwareView(QWidget):
         where.addWidget(self.patience, 1, 3)
         where.setColumnStretch(6, 1)
 
-        self.download = QPushButton("Download")
+        self.download = icons.beside(QPushButton("Download"), icons.DOWNLOAD)
         self.download.setToolTip(
             "Stop the program, clear it, write the image and start it again.\n\n" + WARNING
         )
@@ -221,7 +221,7 @@ class FirmwareView(QWidget):
         self.leave.clicked.connect(
             lambda: self._one("Leaving the bootloader", program.exit_bootloader)
         )
-        self.version = QPushButton("Read version")
+        self.version = icons.beside(QPushButton("Read version"), icons.READ)
         self.version.setToolTip(
             "Read the manufacturer software version (0x100A), and the software\n"
             "identification (0x1F56) and flash status (0x1F57) where the device keeps them."

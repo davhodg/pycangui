@@ -43,7 +43,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.ui import fonts, messages
+from pycangui.ui import fonts, icons, messages
 
 #: How many lines a stream keeps. A device printing steadily will run to
 #: megabytes over an afternoon, and none of it is worth the memory.
@@ -197,10 +197,10 @@ class AsciiView(QWidget):
         # cannot: a device that has been reset has stopped, with the button
         # still saying otherwise, and the only way to ask again was to press
         # it twice.
-        self.send_enable = QPushButton("Send enable")
+        self.send_enable = icons.beside(QPushButton("Send enable"), icons.SEND)
         self.send_enable.setToolTip(ENABLE_TIP)
         self.send_enable.clicked.connect(lambda: self.send(True))
-        self.send_disable = QPushButton("Send disable")
+        self.send_disable = icons.beside(QPushButton("Send disable"), icons.SEND)
         self.send_disable.setToolTip(DISABLE_TIP)
         self.send_disable.clicked.connect(lambda: self.send(False))
         self.name_edit = QLineEdit()
@@ -212,7 +212,7 @@ class AsciiView(QWidget):
         self.skip.setToolTip(SKIP_TIP)
         self.skip.valueChanged.connect(lambda _v: self._on_changed())
 
-        clear = QPushButton("Clear")
+        clear = icons.beside(QPushButton("Clear"), icons.CLEAR)
         clear.setToolTip("Throw away the text so far. The id goes on being read.")
         clear.clicked.connect(lambda: self.text.clear())
 

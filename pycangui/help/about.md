@@ -10,7 +10,8 @@ The report names the version, and -- when pycangui is being run from a source ch
 
 **Help > Diagnostics...** opens a report in a window of its own, and copies it to the
 clipboard as it opens -- ready to paste into a bug report. **Refresh** makes it again,
-**Copy** copies it again and **Save...** writes it to a file. It gives:
+**Copy** copies it again and **Save...** writes it to a file. **Report a bug...** copies
+it and opens a new bug report on GitHub in the browser, to paste it into. It gives:
 
 - the versions, the Qt style and the theme, each channel's adapter, state, load and error
   count, and any panes out on their own;

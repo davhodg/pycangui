@@ -145,7 +145,7 @@ def test_an_edit_to_a_running_counted_message_goes_out(app, view, listening):
 
 
 def test_both_kinds_count_as_cyclic_and_both_stop(app, view):
-    """Stop all cyclic says all. A big red stop that stopped half of what
+    """Stop all says all. A big red stop that stopped half of what
     was going onto a live bus would be the worst kind of wrong."""
     plain = a_row(view)
     counted = a_row(view, counter=COUNTER)

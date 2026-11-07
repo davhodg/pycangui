@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QMessageBox, QWidget
 
+from pycangui.ui import icons
+
 Button = QMessageBox.StandardButton
 
 
@@ -35,7 +37,7 @@ def show(
     box.setInformativeText(text)
     if default != QMessageBox.NoButton:
         box.setDefaultButton(default)
-    return Button(box.exec())
+    return Button(icons.on_buttons(box).exec())
 
 
 def information(

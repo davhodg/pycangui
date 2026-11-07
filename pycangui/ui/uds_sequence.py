@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from pycangui.uds.manager import COMM_CONTROLS, COMM_MESSAGES, LINK_BITRATES, RESETS
 from pycangui.uds.sequence import Values
 from pycangui.uds.standard import MAX_SECURITY_LEVEL
-from pycangui.ui import fonts
+from pycangui.ui import fonts, icons
 
 STEPS_KEY = "uds.sequence.steps"
 VALUES_KEY = "uds.sequence.values"
@@ -132,7 +132,7 @@ class ValuesDialog(QDialog):
         form.addRow("Check routine:", self.check_routine)
         form.addRow("Reset type:", self.reset_type)
         form.addRow("Wait after the reset:", self.reset_wait)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)

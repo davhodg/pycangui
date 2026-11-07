@@ -10,7 +10,7 @@ and it says so in the Event Log. Bringing it back does not start them again.
 Tabbing a transmit pane behind another, or detaching it into a window of its
 own, are not putting it away: it is still on screen and still sending.
 
-*Stop all cyclic* means all of them, in every transmit pane, however many are
+*Stop all* means all of them, in every transmit pane, however many are
 open. Disconnecting the channel, or selecting another one in the toolbar, stops
 them too and takes their ticks off: the channel left behind stays open, and
 would otherwise go on carrying them.

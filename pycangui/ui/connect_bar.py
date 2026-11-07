@@ -9,7 +9,7 @@ trace, the recorder and the decoders always see every connected channel.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QPushButton,
+    QStyle,
     QToolBar,
 )
 
@@ -31,7 +32,7 @@ from pycangui.core.detect import (
 )
 from pycangui.core.filters import describe
 from pycangui.core.worker import Worker
-from pycangui.ui import fonts, message_filter
+from pycangui.ui import fonts, icons, message_filter
 from pycangui.ui.message_filter import (
     FILTER_LABEL,
     FILTER_TIP,
@@ -99,6 +100,12 @@ class ConnectBar(QToolBar):
         super().__init__("Connection")
         self.setObjectName("connect_bar")  # needed for saveState/restoreState
         self.setMovable(False)
+        # A toolbar shows an action with an icon as the icon alone; the word stays.
+        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        # And as small as a button's: a toolbar's own size made Record and
+        # Replay larger than Connect beside them.
+        small = self.style().pixelMetric(QStyle.PM_SmallIconSize)
+        self.setIconSize(QSize(small, small))
         self.channels = channels
         self.ctx = ctx
         self._loading = False
@@ -163,14 +170,14 @@ class ConnectBar(QToolBar):
             "error."
         )
         self.fd.toggled.connect(self._on_fd_toggled)
-        self.button = QPushButton("Connect")
+        self.button = icons.beside(QPushButton("Connect"), icons.CONNECT)
         self.button.setCheckable(True)
         self.button.toggled.connect(self._on_toggled)
         # Beside Connect, because it belongs to the channel this bar is
         # configuring rather than to any one pane, and because the status
         # bar is at the other end of the window from where a channel is
         # set up.
-        self.filter_button = QPushButton(FILTER_LABEL)
+        self.filter_button = icons.beside(QPushButton(FILTER_LABEL), icons.FILTER)
         self.filter_button.setToolTip(FILTER_TIP)
         self.filter_button.clicked.connect(self._filter)
 
@@ -551,6 +558,7 @@ class ConnectBar(QToolBar):
         self._loading = True
         self.button.setChecked(connected)
         self.button.setText("Disconnect" if connected else "Connect")
+        icons.beside(self.button, icons.DISCONNECT if connected else icons.CONNECT)
         self._show_running_rate(connected)
         for w in (self.interface, self.channel, self.bitrate, self.fd, self.data_bitrate):
             w.setEnabled(not connected)

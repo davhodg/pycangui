@@ -27,7 +27,7 @@ from pycangui.core import bus_health
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.filters import describe
-from pycangui.ui import message_filter
+from pycangui.ui import icons, message_filter
 from pycangui.ui.message_filter import (
     BLINK_MS,
     FILTER_TIP,
@@ -91,9 +91,13 @@ class ChannelIndicator(QToolButton):
         self.setStyleSheet("QToolButton::menu-indicator { image: none; }")
         menu = QMenu(self)
         menu.setToolTipsVisible(True)
-        self.recover_action = menu.addAction("Recover from bus off", self._recover)
+        self.recover_action = icons.beside(
+            menu.addAction("Recover from bus off", self._recover), icons.RECOVER
+        )
         self.recover_action.setToolTip(RECOVER_TIP)
-        self.filter_action = menu.addAction("Message filter...", self._filter)
+        self.filter_action = icons.beside(
+            menu.addAction("Message filter...", self._filter), icons.FILTER
+        )
         self.filter_action.setToolTip(FILTER_TIP)
         self.filter_action.setEnabled(ctx is not None)
         self.setMenu(menu)

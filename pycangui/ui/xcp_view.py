@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 from pycangui.core import workspace_files
 from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
-from pycangui.ui import folders, fonts, keep_file, messages, seedkey_view
+from pycangui.ui import folders, fonts, icons, keep_file, messages, seedkey_view
 from pycangui.ui.buttons import SplitButton
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.xcp import RESOURCE_CAL
@@ -303,7 +303,7 @@ class XcpView(QWidget):
         self.from_a2l.setToolTip(FROM_A2L_TIP)
         self.from_a2l.setChecked(bool(cfg.get("from_a2l", False)))
         self.from_a2l.toggled.connect(lambda _on: self._whose_ids())
-        self.connect_btn = QPushButton("Connect")
+        self.connect_btn = icons.beside(QPushButton("Connect"), icons.CONNECT)
         self.connect_btn.setCheckable(True)
         self.connect_btn.toggled.connect(self._toggle_connect)
         # Unlocking, and where the key for it comes from, in one button with
@@ -313,8 +313,12 @@ class XcpView(QWidget):
         self.unlock_btn = SplitButton(
             "Unlock CAL", UNLOCK_TIP, lambda: self.manager.unlock(RESOURCE_CAL)
         )
-        self.unlock_btn.add(
-            "Seed and key DLL...", SEED_KEY_TIP, lambda: seedkey_view.ask(self.ctx, self)
+        icons.beside(self.unlock_btn, icons.UNLOCK)
+        icons.beside(
+            self.unlock_btn.add(
+                "Seed and key DLL...", SEED_KEY_TIP, lambda: seedkey_view.ask(self.ctx, self)
+            ),
+            icons.LOGIN,
         )
         self.engine_box = QComboBox()
         self.engine_box.setToolTip(ENGINE_TIP)
@@ -356,7 +360,7 @@ class XcpView(QWidget):
         self._last: dict[str, str] = {}
         self._updating = False
 
-        read_btn = QPushButton("Read selected")
+        read_btn = icons.beside(QPushButton("Read selected"), icons.READ)
         read_btn.setToolTip(
             "Read the selected measurements once. Tick Plot to keep reading\n"
             "them into the signal hub, where they can be plotted."
@@ -374,7 +378,7 @@ class XcpView(QWidget):
             "the rest back."
         )
         self.search.textChanged.connect(lambda _t: self._apply_filter())
-        self.plotted_only = QPushButton("Plotted")
+        self.plotted_only = icons.beside(QPushButton("Plotted"), icons.PLOT)
         self.plotted_only.setCheckable(True)
         self.plotted_only.setToolTip(
             "Show only the parameters ticked for the plot, which is what a\n"
@@ -392,13 +396,13 @@ class XcpView(QWidget):
         self.a2l_btn.setToolTip(A2L_MENU_TIP)
         a2l_menu = QMenu(self.a2l_btn)
         a2l_menu.setToolTipsVisible(True)
-        load = a2l_menu.addAction("Load...")
+        load = icons.beside(a2l_menu.addAction("Load..."), icons.OPEN)
         load.setToolTip(
             "Read the measurements and characteristics out of an A2L, so they\n"
             "can be used by name and in physical units rather than by address."
         )
         load.triggered.connect(lambda _checked=False: self._load_a2l())
-        self.remove_a2l_action = a2l_menu.addAction("Remove")
+        self.remove_a2l_action = icons.beside(a2l_menu.addAction("Remove"), icons.REMOVE)
         self.remove_a2l_action.setToolTip(
             "Forget this A2L. The parameters go with it; the connection and\n"
             "the identifiers stay as they are."
@@ -541,6 +545,7 @@ class XcpView(QWidget):
         self.connect_btn.blockSignals(True)
         self.connect_btn.setChecked(on)
         self.connect_btn.setText("Disconnect" if on else "Connect")
+        icons.beside(self.connect_btn, icons.DISCONNECT if on else icons.CONNECT)
         self.connect_btn.blockSignals(False)
 
     def _load_a2l(self) -> None:

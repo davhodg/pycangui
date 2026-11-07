@@ -44,7 +44,7 @@ from pycangui.core import workspace_files, workspace_package, workspaces
 from pycangui.core.context import Context
 from pycangui.core.plugin_package import PackageError
 from pycangui.core.settings import Settings
-from pycangui.ui import folders, messages
+from pycangui.ui import folders, icons, messages
 
 NEW_TIP = (
     "Start a workspace with nothing in it: the panes as they first open, no\n"
@@ -119,12 +119,12 @@ class WorkspaceMenu(QObject):
     def _build(self) -> None:
         """Rebuilt each time it opens, so a workspace made elsewhere is in it."""
         self.menu.clear()
-        self.new_action = self.menu.addAction("New...", self.new_empty)
+        self.new_action = icons.beside(self.menu.addAction("New...", self.new_empty), icons.NEW)
         self.new_action.setToolTip(NEW_TIP)
-        save_as = self.menu.addAction("Save as...", self._save_as)
+        save_as = icons.beside(self.menu.addAction("Save as...", self._save_as), icons.SAVE_AS)
         save_as.setToolTip(SAVE_AS_TIP)
 
-        switch = self.menu.addMenu("Switch to")
+        switch = icons.beside(self.menu.addMenu("Switch to"), icons.SWITCH)
         switch.setToolTipsVisible(True)
         switch.setToolTip(SWITCH_TIP)
         for name in workspaces.names():
@@ -134,13 +134,15 @@ class WorkspaceMenu(QObject):
             if name == self.ctx.workspace:
                 action.setToolTip("The one you are in.")
 
-        manage = self.menu.addAction("Manage...", self._manage)
+        manage = icons.beside(self.menu.addAction("Manage...", self._manage), icons.MANAGE)
         manage.setToolTip(MANAGE_TIP)
 
         self.menu.addSeparator()
-        export = self.menu.addAction("Export...", lambda: self.export())
+        export = icons.beside(self.menu.addAction("Export...", lambda: self.export()), icons.EXPORT)
         export.setToolTip(EXPORT_TIP)
-        imported = self.menu.addAction("Import...", lambda: self.import_file())
+        imported = icons.beside(
+            self.menu.addAction("Import...", lambda: self.import_file()), icons.OPEN
+        )
         imported.setToolTip(IMPORT_TIP)
 
     def install(self, file_menu: QMenu) -> None:
@@ -400,11 +402,11 @@ class ManageWorkspaces(QDialog):
         self.list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.list.currentRowChanged.connect(lambda _row: self._update_buttons())
 
-        self.rename = QPushButton("Rename...")
+        self.rename = icons.beside(QPushButton("Rename..."), icons.EDIT)
         self.rename.clicked.connect(self._rename)
-        self.delete = QPushButton("Delete...")
+        self.delete = icons.beside(QPushButton("Delete..."), icons.DELETE)
         self.delete.clicked.connect(self._delete)
-        self.export = QPushButton("Export...")
+        self.export = icons.beside(QPushButton("Export..."), icons.EXPORT)
         self.export.setToolTip("Write this one out as a zip file, to share or to keep.")
         self.export.clicked.connect(self._export_selected)
 
@@ -414,7 +416,7 @@ class ManageWorkspaces(QDialog):
         buttons.addStretch()
         buttons.addWidget(self.export)
 
-        closer = QDialogButtonBox(QDialogButtonBox.Close)
+        closer = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Close))
         closer.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)

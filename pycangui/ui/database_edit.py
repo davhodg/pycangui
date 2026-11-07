@@ -65,7 +65,7 @@ from pycangui.core.dbc_edit import (
     parse_values,
     values_text,
 )
-from pycangui.ui import fonts
+from pycangui.ui import fonts, icons
 
 INTEL, MOTOROLA = "little_endian", "big_endian"
 BYTE_ORDERS = (("Intel (little-endian)", INTEL), ("Motorola (big-endian)", MOTOROLA))
@@ -210,9 +210,9 @@ def parse_rows(rows: list[tuple[str, str]], where: str = "") -> dict[int, str]:
 
 
 def _value_buttons(table: QTableWidget) -> QHBoxLayout:
-    add = QPushButton("Add")
+    add = icons.beside(QPushButton("Add"), icons.ADD)
     add.clicked.connect(lambda: add_value_row(table, None, ""))
-    remove = QPushButton("Remove")
+    remove = icons.beside(QPushButton("Remove"), icons.REMOVE)
     remove.clicked.connect(lambda: remove_value_rows(table))
     row = QHBoxLayout()
     row.addWidget(add)
@@ -394,8 +394,8 @@ def _check_names(names: list[str], what: str) -> None:
 
 def _list_buttons(add, remove) -> QHBoxLayout:
     row = QHBoxLayout()
-    for text, slot in (("Add", add), ("Remove", remove)):
-        button = QPushButton(text)
+    for text, slot, icon in (("Add", add, icons.ADD), ("Remove", remove, icons.REMOVE)):
+        button = icons.beside(QPushButton(text), icon)
         button.clicked.connect(slot)
         row.addWidget(button)
     row.addStretch()
@@ -419,7 +419,9 @@ class _EditDialog(QDialog):
         self.problem = QLabel()
         self.problem.setWordWrap(True)
         self.problem.hide()
-        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons = icons.on_buttons(
+            QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        )
         self.buttons.accepted.connect(self._accept)
         self.buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
@@ -786,9 +788,9 @@ class ValueTablesDialog(_EditDialog):
         for name, _rows in self._entries:
             self._add_item(name)
         self.list.currentRowChanged.connect(self._show)
-        add = QPushButton("Add")
+        add = icons.beside(QPushButton("Add"), icons.ADD)
         add.clicked.connect(self.add_table)
-        remove = QPushButton("Remove")
+        remove = icons.beside(QPushButton("Remove"), icons.REMOVE)
         remove.clicked.connect(self.remove_table)
         list_buttons = QHBoxLayout()
         list_buttons.addWidget(add)

@@ -13,10 +13,10 @@ it the native frame along with the move, resize and close that come with it.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QToolButton, QWidget
 
-from pycangui.ui import fonts
+from pycangui.ui import fonts, icons
 
 #: Above and below the words on the strip's buttons.
 BAR_PADDING = 6
@@ -39,6 +39,10 @@ def _button(text: str, tip: str, checkable: bool = False) -> QToolButton:
     button.setToolTip(tip)
     button.setCheckable(checkable)
     button.setAutoRaise(True)  # flat until the mouse is over it
+    # The word beside the icon, never the icon alone, and no taller than the word.
+    button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+    size = min(16, fonts.text_height())
+    button.setIconSize(QSize(size, size))
     # Reached with Tab, and Space or Enter presses it, but a click does not
     # take the focus from whatever in the pane had it. NoFocus left the two
     # out of reach of anybody not using a mouse.
@@ -58,12 +62,12 @@ class PaneBar(QWidget):
         # As tall as its words need, which is not a number of pixels.
         self.setFixedHeight(fonts.text_height() + BAR_PADDING)
 
-        # Words rather than a glyph: there is no icon anybody recognises for
-        # either of these, and a mystery button is worse than a small label.
+        # Words first: the icons beside them are Windows' own pin and new
+        # window, and a desktop without that font shows the words alone.
         self.pin = _button("Pin", PIN_TIP, checkable=True)
         self.pin.toggled.connect(self._on_pinned)
 
-        self.move_button = _button("Detach", DETACH_TIP)
+        self.move_button = icons.beside(_button("Detach", DETACH_TIP), icons.DETACH)
         self.move_button.clicked.connect(self._on_move)
 
         layout = QHBoxLayout(self)
@@ -78,7 +82,7 @@ class PaneBar(QWidget):
 
     # --- state ------------------------------------------------------------------------
     def _on_pinned(self, on: bool) -> None:
-        self.pin.setText("Unpin" if on else "Pin")
+        self._show_pinned(on)
         self.pinned.emit(on)
 
     def _on_move(self) -> None:
@@ -86,10 +90,16 @@ class PaneBar(QWidget):
 
     def set_pinned(self, on: bool) -> None:
         self.pin.setChecked(on)
+        self._show_pinned(on)
+
+    def _show_pinned(self, on: bool) -> None:
+        """A filled pin while pinned, beside the word for what pressing does."""
         self.pin.setText("Unpin" if on else "Pin")
+        icons.beside(self.pin, icons.PINNED if on else icons.PIN)
 
     def set_detached(self, detached: bool) -> None:
         """Detach when it is not, Attach when it is: one button, one meaning."""
         self._detached = detached
         self.move_button.setText("Attach" if detached else "Detach")
+        icons.beside(self.move_button, icons.ATTACH if detached else icons.DETACH)
         self.move_button.setToolTip(ATTACH_TIP if detached else DETACH_TIP)

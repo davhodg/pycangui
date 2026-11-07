@@ -17,8 +17,10 @@ from PySide6.QtGui import QAction, QFont
 from PySide6.QtWidgets import QLabel, QMenu, QWidget
 
 from pycangui.core.pause import BY_HAND, TrafficPause, described
+from pycangui.ui import icons
 
 PAUSE_TEXT = "Pause automatic traffic"
+RESUME_TEXT = "Resume automatic traffic"
 STOP_TEXT = "Stop all repeating traffic"
 PAUSE_TIP = (
     "Hold back what pycangui sends by itself: polling in custom panes, plugins\n"
@@ -47,10 +49,11 @@ class PauseStatus(QLabel):
         self.setAccessibleName("Automatic traffic")
         self.setContextMenuPolicy(Qt.CustomContextMenu)
         self.customContextMenuRequested.connect(self._menu)
+        # Its word and icon say which way it goes, rather than a tick: a tick
+        # in a menu of icons makes Windows leave a column of room for it.
         self.pause_action = QAction(PAUSE_TEXT, self)
-        self.pause_action.setCheckable(True)
-        self.pause_action.toggled.connect(pause.set_by_hand)
-        self.stop_action = QAction(STOP_TEXT, self)
+        self.pause_action.triggered.connect(lambda: pause.set_by_hand(not pause.by_hand))
+        self.stop_action = icons.beside(QAction(STOP_TEXT, self), icons.STOP)
         self.stop_action.setToolTip(STOP_TIP)
         self.stop_action.triggered.connect(pause.stop_all)
         pause.holders_changed.connect(self._show)
@@ -69,9 +72,9 @@ class PauseStatus(QLabel):
             else "Automatic traffic running"
         )
         self.setToolTip(LABEL_TIP)
-        self.pause_action.blockSignals(True)
-        self.pause_action.setChecked(self._pause.by_hand)
-        self.pause_action.blockSignals(False)
+        by_hand = self._pause.by_hand
+        self.pause_action.setText(RESUME_TEXT if by_hand else PAUSE_TEXT)
+        icons.beside(self.pause_action, icons.START if by_hand else icons.PAUSE)
         # Not somebody's to lift while a flash holds it: the flash gives it
         # back when it is done, and lifting it half way through is what the
         # pause is there to prevent.

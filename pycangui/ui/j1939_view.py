@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 from pycangui.core.context import Context
 from pycangui.j1939 import CLEARING, GLOBAL, REQUESTABLE, Dm1, Name, pgn_label
 from pycangui.j1939.manager import J1939Manager
-from pycangui.ui import fonts
+from pycangui.ui import fonts, icons
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.persist import remember
@@ -83,7 +83,7 @@ class J1939View(QWidget):
         )
         self.claim_btn.setCheckable(True)
         self.claim_btn.toggled.connect(self._toggle_claim)
-        claims = QPushButton("Request address claims")
+        claims = icons.beside(QPushButton("Request address claims"), icons.SEND)
         claims.setToolTip(
             "Ask every node to say who it is. They answer with their NAME,\n"
             "which fills the node list without waiting for them to speak."
@@ -106,7 +106,7 @@ class J1939View(QWidget):
             fonts.width_with_arrows(self.req_dest.lineEdit(), self.req_dest.itemText(0))
         )
         self.req_dest.setToolTip("Who to ask: every node, or one of those seen")
-        req_btn = QPushButton("Request")
+        req_btn = icons.beside(QPushButton("Request"), icons.SEND)
         req_btn.setToolTip("Ask for the PGN on the left (a Request, PGN 59904)")
         req_btn.clicked.connect(self._request)
 
@@ -128,7 +128,7 @@ class J1939View(QWidget):
         self.send_data.setMinimumWidth(fonts.width_for(self.send_data, "FF FF FF FF FF FF FF FF"))
         self.address.setMinimumWidth(fonts.width_with_arrows(self.address, "0xFD"))
         self.send_prio.setMinimumWidth(fonts.width_with_arrows(self.send_prio, "7"))
-        send_btn = QPushButton("Send PGN")
+        send_btn = icons.beside(QPushButton("Send PGN"), icons.SEND)
         send_btn.clicked.connect(self._send)
 
         # DM13: held for as long as it is ticked, since nodes start

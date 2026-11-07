@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
+from pycangui.ui import icons
 
 # Relative, so that the copy of drive.py sitting beside *this* file is the
 # one that runs. Named absolutely, an installed plugin would reach back
@@ -64,7 +65,7 @@ def _fixed_pitch() -> QFont:
 
 
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.8"
+VERSION = "1.9"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -259,7 +260,7 @@ class MotorView(QWidget):
         self.disable.clicked.connect(
             lambda: self._command(lambda: cia402.steps_to_disable(self.statusword))
         )
-        self.quick_stop = QPushButton("Quick stop")
+        self.quick_stop = icons.beside(QPushButton("Quick stop"), icons.STOP)
         self.quick_stop.setToolTip(
             "Stop it the way the drive was configured to stop, which is not the\n"
             "same as removing power and is not a safety function."
@@ -267,7 +268,7 @@ class MotorView(QWidget):
         self.quick_stop.clicked.connect(
             lambda: self._command(lambda: cia402.steps_to_quick_stop(self.statusword))
         )
-        self.reset = QPushButton("Reset fault")
+        self.reset = icons.beside(QPushButton("Reset fault"), icons.RESET)
         self.reset.setToolTip(
             "Two writes, because the drive acts on the rising edge of bit 7\n"
             "rather than on its value."
@@ -294,7 +295,7 @@ class MotorView(QWidget):
         self.target.setGroupSeparatorShown(True)
         self.set_target = QPushButton("Set target")
         self.set_target.clicked.connect(self._write_target)
-        self.apply_target = QPushButton("Go")
+        self.apply_target = icons.beside(QPushButton("Go"), icons.START)
         self.apply_target.setToolTip(
             "Profile position only: the drive takes the target on the rising\n"
             "edge of bit 4 and ignores it until then."
@@ -328,10 +329,10 @@ class MotorView(QWidget):
             limits_grid.addWidget(unit, row, 2)
         limits_grid.setColumnStretch(3, 1)
 
-        self.read_limits_btn = QPushButton("Read limits")
+        self.read_limits_btn = icons.beside(QPushButton("Read limits"), icons.READ)
         self.read_limits_btn.setToolTip("Read all three from the drive.")
         self.read_limits_btn.clicked.connect(self._read_limits)
-        self.write_limits_btn = QPushButton("Write limits")
+        self.write_limits_btn = icons.beside(QPushButton("Write limits"), icons.WRITE)
         self.write_limits_btn.setToolTip(WRITE_LIMITS_TIP)
         self.write_limits_btn.clicked.connect(self._write_limits)
         limits_buttons = QHBoxLayout()

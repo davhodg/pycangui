@@ -127,3 +127,8 @@ menu's tooltip, and *Help > Diagnostics...* gives it with the theme.
 The change is immediate, and the choice is kept for you on this computer rather
 than in the workspace, so a workspace you give somebody does not change their
 colours.
+
+*Tools > Settings > Show icons* puts a standard icon beside the word on
+common buttons and menu items -- Clear, Save, Stop, Copy and the like -- to find
+them at a glance. It is on to start with; untick it for the words alone. The words
+are there either way, and the choice is kept for you on this computer.

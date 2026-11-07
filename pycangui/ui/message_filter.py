@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.filters import Rule, accepts, from_saved, full_mask, to_saved
+from pycangui.ui import icons
 
 COLUMNS = ("ID", "Mask", "29-bit")
 
@@ -163,11 +164,11 @@ class MessageFilterDialog(QDialog):
         # every cell, and the answer would be recomputed three times a row.
         self.table.itemChanged.connect(self._on_item_changed)
 
-        add = QPushButton("Add")
+        add = icons.beside(QPushButton("Add"), icons.ADD)
         add.clicked.connect(self._add_clicked)
-        remove = QPushButton("Remove")
+        remove = icons.beside(QPushButton("Remove"), icons.REMOVE)
         remove.clicked.connect(self._remove)
-        clear = QPushButton("Accept everything")
+        clear = icons.beside(QPushButton("Accept everything"), icons.CLEAR)
         clear.setToolTip("Take the filter off: every frame on this channel arrives again.")
         clear.clicked.connect(self._clear)
         buttons = QHBoxLayout()
@@ -189,7 +190,7 @@ class MessageFilterDialog(QDialog):
         self.summary.setWordWrap(True)
         self.summary.setEnabled(False)
 
-        box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        box = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         box.accepted.connect(self.accept)
         box.rejected.connect(self.reject)
 

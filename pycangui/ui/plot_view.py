@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.context import Context
 from pycangui.core.signals import SignalHub
-from pycangui.ui import fonts, plot_colours
+from pycangui.ui import fonts, icons, plot_colours
 from pycangui.ui.persist import remember
 from pycangui.ui.refresh import FAST_MS, SLOW_MS, display_choice
 from pycangui.ui.refresh import LABEL as SLOW_LABEL
@@ -294,13 +294,13 @@ class PlotView(QWidget):
         self.display = display_choice(self.pause, self.slow, DISPLAY_TIP, DISPLAY_ITEM_TIPS)
         # The two things done to the samples held, side by side: out to a
         # file, or thrown away. Export is for every signal, plotted or not.
-        self.export = QPushButton("Export...")
+        self.export = icons.beside(QPushButton("Export..."), icons.EXPORT)
         self.export.setToolTip(
             "Write the samples held for every decoded signal -- plotted or not --\n"
             "to a file a spreadsheet can read. The same as File > Export signals."
         )
         self.export.clicked.connect(self.export_requested)
-        clear = QPushButton("Clear history")
+        clear = icons.beside(QPushButton("Clear history"), icons.CLEAR)
         clear.setToolTip("Throw away the samples collected so far, for every signal")
         clear.clicked.connect(hub.clear)
         # A tick, worded: turned on and off often, so on the bar.
@@ -326,6 +326,8 @@ class PlotView(QWidget):
         self.colour_actions.triggered.connect(lambda a: plot_colours.choose(a.data()))
         self.view_button = QToolButton()
         self.view_button.setText(VIEW_TEXT)
+        self.view_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        icons.beside(self.view_button, icons.VIEW)
         self.view_button.setToolTip(VIEW_TIP)
         self.view_button.setAccessibleName("View choices")
         self.view_button.setPopupMode(QToolButton.InstantPopup)

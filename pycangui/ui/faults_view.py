@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 from pycangui.canopen import faults
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.context import Context
-from pycangui.ui import fonts
+from pycangui.ui import fonts, icons
 from pycangui.ui.column_widths import ColumnWidths
 
 NOTHING_READ = "Nothing read yet -- press Read."
@@ -84,10 +84,10 @@ class FaultsView(QWidget):
         self.ctx = ctx
         self._node: int | None = None
 
-        self.read_btn = QPushButton("Read")
+        self.read_btn = icons.beside(QPushButton("Read"), icons.READ)
         self.read_btn.setToolTip(READ_TIP)
         self.read_btn.clicked.connect(self._read)
-        self.clear_btn = QPushButton("Clear stored errors")
+        self.clear_btn = icons.beside(QPushButton("Clear stored errors"), icons.CLEAR)
         self.clear_btn.setToolTip(CLEAR_TIP)
         self.clear_btn.clicked.connect(self._clear)
 

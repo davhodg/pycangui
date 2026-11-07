@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMenu, QPushButton, QToolButton
 
@@ -25,6 +26,8 @@ class SplitButton(QToolButton):
         self.setText(text)
         self.setToolTip(tip)
         self.setPopupMode(QToolButton.MenuButtonPopup)
+        # A tool button shows an icon alone once it has one; the word stays.
+        self.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.clicked.connect(lambda _checked=False: pressed())
         menu = QMenu(self)
         menu.setToolTipsVisible(True)

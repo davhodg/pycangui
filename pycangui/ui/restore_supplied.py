@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.supplied import Supplied
+from pycangui.ui import icons
 
 EXPLANATION = (
     "Replace files in your workspace with the ones this pycangui ships.\n\n"
@@ -82,7 +83,7 @@ class RestoreSupplied(QDialog):
             already.setWordWrap(True)
             layout.addWidget(already)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.button(QDialogButtonBox.Ok).setText("Restore")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)

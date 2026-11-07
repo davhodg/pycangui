@@ -67,6 +67,7 @@ from pycangui.ui import (
     column_widths,
     event_colours,
     folders,
+    icons,
     keep_file,
     message_filter,
     messages,
@@ -366,7 +367,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.connect_bar)
         self.connect_bar.connect_requested.connect(self._connect_active)
         self.connect_bar.disconnect_requested.connect(self._disconnect_active)
-        self.record_action = self.connect_bar.addAction("Record")
+        self.record_action = icons.beside(self.connect_bar.addAction("Record"), icons.RECORD)
         self.record_action.setCheckable(True)
         self.record_action.setToolTip("Record every connected channel to a log file")
         self.record_action.toggled.connect(self._toggle_record)
@@ -502,23 +503,27 @@ class MainWindow(QMainWindow):
         timing.mark("panes built")
         # --- menus & layout persistence --------------------------------------
         file_menu = self.menuBar().addMenu("&File")
-        file_menu.addAction("Load DBC...", self._load_dbc_dialog)
+        icons.beside(file_menu.addAction("Load DBC...", self._load_dbc_dialog), icons.OPEN)
         # Built as it opens: which databases are loaded changes while the
         # window is up, and a list made once at startup would name the wrong
         # files. Remove all is the last item rather than the only one, so a
         # database that has moved can be dropped without losing the others.
-        self.dbc_menu = file_menu.addMenu("Remove DBC")
+        self.dbc_menu = icons.beside(file_menu.addMenu("Remove DBC"), icons.CLOSE)
         self.dbc_menu.setToolTipsVisible(True)
         self.dbc_menu.aboutToShow.connect(self._build_dbc_menu)
         file_menu.addSeparator()
-        imported = file_menu.addAction("Import signals...", self._import_signals)
+        imported = icons.beside(
+            file_menu.addAction("Import signals...", self._import_signals), icons.OPEN
+        )
         imported.setToolTip(
             "Read the signals out of a measurement file -- MDF or MF4 -- and\n"
             "put them on the plot beside the live ones. A CAN log holds\n"
             "frames and is replayed instead; this holds signals somebody has\n"
             "already decoded."
         )
-        export = file_menu.addAction("Export signals...", self._export_signals)
+        export = icons.beside(
+            file_menu.addAction("Export signals...", self._export_signals), icons.EXPORT
+        )
         export.setToolTip(
             "Write every decoded signal to a CSV: DBC signals, CANopen PDO\n"
             "values and XCP measurements alike. Recording writes raw CAN,\n"
@@ -536,7 +541,7 @@ class MainWindow(QMainWindow):
         self.workspace_menu.switch_requested.connect(self._switch_workspace)
         self.workspace_menu.arrangement_wanted.connect(self.save_arrangement)
         file_menu.addSeparator()
-        quit_action = file_menu.addAction("Exit", self.close)
+        quit_action = icons.beside(file_menu.addAction("Exit", self.close), icons.EXIT)
         quit_action.setMenuRole(QAction.QuitRole)  # the Apple menu, where there is one
         quit_action.setShortcut(QKeySequence.Quit)
         # Resolved against the workspace: a file kept in it is remembered
@@ -592,22 +597,31 @@ class MainWindow(QMainWindow):
         tools_menu.setToolTipsVisible(True)
         # Each section is the thing itself first and its folder second, in
         # every menu, so the folder is always found in the same place.
-        reload_hooks = tools_menu.addAction("Reload hooks", self._reload_hooks)
+        reload_hooks = icons.beside(
+            tools_menu.addAction("Reload hooks", self._reload_hooks), icons.RELOAD
+        )
         reload_hooks.setToolTip(
             "Read the hook files again, so that an edit takes effect without\n"
             "restarting. Nothing on disk is changed."
         )
-        tools_menu.addAction("Open hooks folder", self._open_hooks_folder)
+        icons.beside(
+            tools_menu.addAction("Open hooks folder", self._open_hooks_folder), icons.FOLDER
+        )
         # Components are the other user folder, and nothing to do with hooks:
         # a separate section so the two are not read as one list.
         tools_menu.addSeparator()
-        listed = tools_menu.addAction("List components", self._list_components)
+        listed = icons.beside(
+            tools_menu.addAction("List components", self._list_components), icons.LIST
+        )
         listed.setToolTip(
             "Print to the Event Log every component pycangui is using or could\n"
             "use -- CAN interfaces you have added, ISO-TP transports, XCP and\n"
             "CCP engines -- with where each came from and which is in use."
         )
-        folder = tools_menu.addAction("Open custom components folder", self._open_components_folder)
+        folder = icons.beside(
+            tools_menu.addAction("Open custom components folder", self._open_components_folder),
+            icons.FOLDER,
+        )
         folder.setToolTip(
             "Where a component of your own goes: a Python file here adds one,\n"
             "or replaces a built-in one by registering the same name. The\n"
@@ -615,12 +629,16 @@ class MainWindow(QMainWindow):
             "it is empty until you put something in it. Read at startup."
         )
         tools_menu.addSeparator()
-        simulated = tools_menu.addAction("Simulated nodes...", self._simulated_nodes)
+        simulated = icons.beside(
+            tools_menu.addAction("Simulated nodes...", self._simulated_nodes), icons.MANAGE
+        )
         simulated.setToolTip(
             "Devices pycangui pretends to be, so a real one has something\n"
             "to talk to. Each is a Python file in the workspace you can edit."
         )
-        nodes = tools_menu.addAction("Open nodes folder", self._open_nodes_folder)
+        nodes = icons.beside(
+            tools_menu.addAction("Open nodes folder", self._open_nodes_folder), icons.FOLDER
+        )
         nodes.setToolTip(
             "The Python files the simulated nodes are made from, one per\n"
             "kind of device. Kept in the workspace, beside the hooks."
@@ -634,7 +652,7 @@ class MainWindow(QMainWindow):
         # Together, because "put something back the way it was" is one thing
         # to go looking for, and entries scattered down a menu are
         # names to remember instead of one.
-        self.reset_menu = tools_menu.addMenu("Reset")
+        self.reset_menu = icons.beside(tools_menu.addMenu("Reset"), icons.RESET)
         self.reset_menu.setToolTipsVisible(True)
         self.reset_menu.addAction(self.reset_layout_action)
         forget = self.reset_menu.addAction("Forget remembered folders", self._forget_folders)
@@ -671,7 +689,9 @@ class MainWindow(QMainWindow):
         # bar, because most of pycangui's settings live where they are used
         # -- a channel's on the connect bar, CANopen's in its pane -- and a
         # menu called Settings would look like the place for all of them.
-        self.settings_menu = settings_menu = QMenu("Settings", tools_menu)
+        self.settings_menu = settings_menu = icons.beside(
+            QMenu("Settings", tools_menu), icons.SETTINGS
+        )
         settings_menu.setToolTipsVisible(True)
         tools_menu.insertMenu(self.reset_menu.menuAction(), settings_menu)
         verbose = settings_menu.addAction("Verbose CAN logging")
@@ -698,6 +718,12 @@ class MainWindow(QMainWindow):
         settings_menu.addMenu(self.udp_menu)
         self.theme_menu = theme.menu(self)
         settings_menu.insertMenu(verbose, self.theme_menu)
+        self.icons_action = QAction(icons.TITLE, settings_menu)
+        self.icons_action.setCheckable(True)
+        self.icons_action.setChecked(icons.shown())
+        self.icons_action.setToolTip(icons.TIP)
+        self.icons_action.toggled.connect(icons.set_shown)
+        settings_menu.insertAction(verbose, self.icons_action)
         self.history_menu = self._history_menu()
         settings_menu.addMenu(self.history_menu)
         self.widths_menu = self._widths_menu()
@@ -1407,7 +1433,7 @@ class MainWindow(QMainWindow):
         )
 
     def _stop_all_transmits(self) -> None:
-        """What Stop all cyclic promises: every list, not just the one pressed."""
+        """What Stop all promises: every list, not just the one pressed."""
         for view in self._transmit_panes():
             view.stop_all()
 
@@ -1528,7 +1554,9 @@ class MainWindow(QMainWindow):
             action.setToolTip("Open this custom pane, as a dock like any other.")
         if custom_model.names():
             custom_menu.addSeparator()
-        made = custom_menu.addAction("New custom pane...", self._new_custom_pane_dialog)
+        made = icons.beside(
+            custom_menu.addAction("New custom pane...", self._new_custom_pane_dialog), icons.NEW
+        )
         made.setToolTip(
             "A named group of objects laid out as a form. Objects are added\n"
             "from the CANopen pane: select them in the object dictionary and\n"
@@ -1787,9 +1815,11 @@ class MainWindow(QMainWindow):
         answer.setWindowTitle("Reset everything")
         answer.setIcon(QMessageBox.Information)
         answer.setText(RESET_EVERYTHING)
-        fresh = answer.addButton("New workspace...", QMessageBox.AcceptRole)
+        fresh = icons.beside(
+            answer.addButton("New workspace...", QMessageBox.AcceptRole), icons.NEW
+        )
         answer.addButton(QMessageBox.Cancel)
-        answer.exec()
+        icons.on_buttons(answer).exec()
         if answer.clickedButton() is fresh:
             self.workspace_menu.new_empty()
 
@@ -1893,7 +1923,7 @@ class MainWindow(QMainWindow):
         """Copy and Select All as usual, and Clear. Built apart from being shown."""
         menu = self.log.createStandardContextMenu()
         menu.addSeparator()
-        menu.addAction("Clear", self.log.clear)
+        icons.beside(menu.addAction("Clear", self.log.clear), icons.CLEAR)
         return menu
 
     def _log_menu(self, at) -> None:
@@ -2345,7 +2375,9 @@ class MainWindow(QMainWindow):
             none.setToolTip("Install one below, or see the manual for writing your own.")
 
         self.plugins_menu.addSeparator()
-        install = self.plugins_menu.addAction("Install plugin...", self._install_plugin)
+        install = icons.beside(
+            self.plugins_menu.addAction("Install plugin...", self._install_plugin), icons.DOWNLOAD
+        )
         install.setToolTip(
             "A plugin package: a zip with a plugin.py in it. It is unpacked into\n"
             "this workspace, and you are told what is in it before it is."
@@ -2358,18 +2390,25 @@ class MainWindow(QMainWindow):
                     entry.label, lambda _=False, n=entry.name: self._install_supplied(n)
                 )
                 action.setToolTip(entry.info.description or f"Install the {entry.label} plugin.")
-        manage = self.plugins_menu.addAction("Manage plugins...", self._manage_plugins)
+        manage = icons.beside(
+            self.plugins_menu.addAction("Manage plugins...", self._manage_plugins), icons.MANAGE
+        )
         manage.setToolTip("Switch one off, remove one, or write one out as a package to send.")
 
         # Reload first and the folder second, as in the Tools menu.
         self.plugins_menu.addSeparator()
-        reload_action = self.plugins_menu.addAction("Reload plugins", self._reload_plugins)
+        reload_action = icons.beside(
+            self.plugins_menu.addAction("Reload plugins", self._reload_plugins), icons.RELOAD
+        )
         reload_action.setToolTip(
             "Load the plugin files again. Whatever a plugin added last time is\n"
             "taken away first, so editing one and reloading is how it gets\n"
             "written -- there is no need to restart."
         )
-        folder = self.plugins_menu.addAction("Open plugins folder", self._open_plugins_folder)
+        folder = icons.beside(
+            self.plugins_menu.addAction("Open plugins folder", self._open_plugins_folder),
+            icons.FOLDER,
+        )
         folder.setToolTip("Where this workspace's plugins live.")
 
     # --- installing and switching them off ------------------------------------------------
@@ -2648,7 +2687,7 @@ class MainWindow(QMainWindow):
             nothing.setEnabled(False)
             return
         self.dbc_menu.addSeparator()
-        self.dbc_menu.addAction("Remove all", self._unload_dbcs)
+        icons.beside(self.dbc_menu.addAction("Remove all", self._unload_dbcs), icons.REMOVE)
 
     def _remove_dbc(self, remembered: str, resolved: str) -> None:
         """Drop one database, from what is loaded and from what is remembered."""

@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.simnodes import NodeError, SimulatedNodes
-from pycangui.ui import messages
+from pycangui.ui import icons, messages
 
 TITLE = "Simulated nodes"
 
@@ -94,7 +94,7 @@ class SimulatedNodeDialog(QDialog):
         self.rate.setSuffix(" Hz")
         self.rate.setToolTip("How often the node's poll() runs. Its own rate, to start with.")
 
-        self.start = QPushButton("Start")
+        self.start = icons.beside(QPushButton("Start"), icons.START)
         self.start.clicked.connect(self._start)
 
         where = QHBoxLayout()
@@ -115,7 +115,7 @@ class SimulatedNodeDialog(QDialog):
         self.active.setHeaderLabels(["Running", "Channel", "Rate"])
         self.active.setRootIsDecorated(False)
         self.active.header().resizeSection(0, 190)
-        self.stop = QPushButton("Stop")
+        self.stop = icons.beside(QPushButton("Stop"), icons.STOP)
         self.stop.clicked.connect(self._stop)
         self.active.currentItemChanged.connect(
             lambda current, _prev: self.stop.setEnabled(current is not None)
@@ -129,9 +129,9 @@ class SimulatedNodeDialog(QDialog):
         stop_row.addWidget(self.stop)
         beside.addLayout(stop_row)
 
-        folder = QPushButton("Open nodes folder")
+        folder = icons.beside(QPushButton("Open nodes folder"), icons.FOLDER)
         folder.clicked.connect(self._open_folder)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Close))
         buttons.rejected.connect(self.reject)
         buttons.addButton(folder, QDialogButtonBox.ActionRole)
 

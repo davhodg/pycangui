@@ -24,13 +24,15 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QPlainTextEdit, QVBoxLayout, QWidget
 
 from pycangui.canopen import node_ids
 from pycangui.core.filters import describe as filters_described
 from pycangui.core.pause import described
-from pycangui.ui import folders, fonts
+from pycangui.core.updates import BUG_REPORT_PAGE
+from pycangui.ui import folders, fonts, icons
 
 #: How far back "sent and received lately" looks in the trace.
 RECENT_S = 5.0
@@ -297,14 +299,25 @@ class DiagnosticsDialog(QDialog):
         self.text.setFont(fonts.mono())
         self.text.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.text.setAccessibleName("Diagnostics report")
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
-        refresh = buttons.addButton("Refresh", QDialogButtonBox.ActionRole)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Close))
+        icons.beside(buttons.button(QDialogButtonBox.Close), icons.CLOSE)
+        report = icons.beside(
+            buttons.addButton("Report a bug...", QDialogButtonBox.ActionRole), icons.BUG
+        )
+        report.setToolTip(
+            "Copy the report and open a new bug report on GitHub, in the browser,\n"
+            "to paste it into. Nothing is sent until you submit it there."
+        )
+        report.clicked.connect(self.report_a_bug)
+        refresh = icons.beside(
+            buttons.addButton("Refresh", QDialogButtonBox.ActionRole), icons.RELOAD
+        )
         refresh.setToolTip("Make the report again, as things are now.")
         refresh.clicked.connect(self.refresh)
-        copy = buttons.addButton("Copy", QDialogButtonBox.ActionRole)
+        copy = icons.beside(buttons.addButton("Copy", QDialogButtonBox.ActionRole), icons.COPY)
         copy.setToolTip("Put the whole report on the clipboard, for a bug report.")
         copy.clicked.connect(self.copy_to_clipboard)
-        save = buttons.addButton("Save...", QDialogButtonBox.ActionRole)
+        save = icons.beside(buttons.addButton("Save...", QDialogButtonBox.ActionRole), icons.SAVE)
         save.setToolTip("Write the report to a text file.")
         save.clicked.connect(self.save)
         buttons.rejected.connect(self.reject)
@@ -321,6 +334,16 @@ class DiagnosticsDialog(QDialog):
 
     def copy_to_clipboard(self) -> None:
         QGuiApplication.clipboard().setText(self.report())
+
+    def report_a_bug(self) -> None:
+        """The report on the clipboard, and GitHub's bug form open to paste it into.
+
+        Not put in the address: it is too long for one, and it is the user's
+        to read through before it goes anywhere.
+        """
+        self.copy_to_clipboard()
+        QDesktopServices.openUrl(QUrl(BUG_REPORT_PAGE))
+        self._ctx.log("Diagnostics copied: paste them into the bug report's Diagnostics box.")
 
     def save(self) -> None:
         path = folders.save_file(

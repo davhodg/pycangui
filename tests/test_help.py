@@ -667,3 +667,21 @@ def test_a_pip_installation_finds_the_licence_in_its_metadata(tmp_path, monkeypa
 
     assert help_menu._find("LICENSE") == kept[0].locate()
     assert help_menu._find("NOTICE") is None  # only what the wheel calls a licence file
+
+
+def test_report_a_bug_copies_the_report_and_opens_the_bug_form(app, window, monkeypatch):
+    from PySide6.QtGui import QDesktopServices, QGuiApplication
+
+    from pycangui.core.updates import BUG_REPORT_PAGE
+
+    opened = []
+    monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
+    window.help_menu._show_diagnostics()
+    dialog = window.help_menu.diagnostics
+    QGuiApplication.clipboard().clear()
+
+    dialog.report_a_bug()
+
+    assert opened == [BUG_REPORT_PAGE]
+    assert QGuiApplication.clipboard().text() == dialog.report()
+    dialog.close()

@@ -1,10 +1,10 @@
 {
   "cia402": {
-    "version": "1.8",
-    "code": "9b7614e6a39f8c0596ffed12b5ef1913a63306a5132221ba8b9b975d236bfd23"
+    "version": "1.9",
+    "code": "34daccea886d0ce5af1ef722b37e88f47d429c9656e540b5c7a8b7c3d7cefd8b"
   },
   "firmware": {
-    "version": "1.2",
-    "code": "44a58881dfeaf3b448374d2785bae87182a06f0136a55ead2099fd6cdfb36878"
+    "version": "1.3",
+    "code": "44fa078ae69d78efb01f754cf10af2a393e8a5676faa7904c4787bd5ba1ba0c3"
   }
 }

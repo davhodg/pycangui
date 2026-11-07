@@ -45,6 +45,8 @@ from collections.abc import Callable
 from PySide6.QtCore import QEventLoop, QSettings, QTimer
 from PySide6.QtWidgets import QApplication, QCheckBox, QMessageBox, QProgressDialog, QWidget
 
+from pycangui.ui import icons
+
 #: Kept outside every workspace, deliberately. See the module docstring.
 AGREED_SETTING = "confirmations/agreed"
 USER_SETTING = "confirmations/user"
@@ -153,8 +155,8 @@ def accept_notice(
         parent,
     )
     box.setInformativeText(NOTICE)  # see Confirmations.ask for why not the title alone
-    box.button(QMessageBox.Ok).setText("Continue")
-    box.button(QMessageBox.Cancel).setText("Quit")
+    icons.beside(box.button(QMessageBox.Ok), icons.START).setText("Continue")
+    icons.beside(box.button(QMessageBox.Cancel), icons.EXIT).setText("Quit")
     box.setDefaultButton(QMessageBox.Ok)
     if while_shown is None:
         return box.exec() == QMessageBox.Ok
@@ -282,7 +284,7 @@ class Confirmations:
             again = QCheckBox(REMEMBER_LABEL)
             again.setToolTip(REMEMBER_TIP)
             box.setCheckBox(again)
-        if box.exec() != QMessageBox.Yes:
+        if icons.on_buttons(box).exec() != QMessageBox.Yes:
             return False
         self._agreed.add(key)
         if again is not None and again.isChecked():

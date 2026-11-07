@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.ui import icons
+
 LEVEL_KEY = "canopen.login_level"
 MAX_LEVEL = 255
 
@@ -60,7 +62,7 @@ class LoginDialog(QDialog):
         form.addRow("Password:", self.password)
         note = QLabel(NOTE)
         note.setWordWrap(True)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 

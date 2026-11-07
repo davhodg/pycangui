@@ -38,7 +38,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.classify import ERROR_GROUP, GROUPS, group_of
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.ui import fonts
+from pycangui.ui import fonts, icons
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.latest_model import COLUMNS as LATEST_COLUMNS
 from pycangui.ui.latest_model import (
@@ -260,6 +260,8 @@ class TraceView(QWidget):
         # Filter menu: one checkable action per group, all shown by default
         self.filter_button = QToolButton()
         self.filter_button.setText("Filter")
+        self.filter_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        icons.beside(self.filter_button, icons.FILTER)
         self.filter_button.setToolTip(
             "Hide whole protocol groups or channels. Nothing is discarded:\n"
             "the count reads shown of captured, and unhiding brings it back."
@@ -303,7 +305,7 @@ class TraceView(QWidget):
         # Restoring it ticked has to start the timer, which _on_slow does.
         remember(ctx, f"{key}.slow", self.slow)
 
-        clear = QPushButton("Clear")
+        clear = icons.beside(QPushButton("Clear"), icons.CLEAR)
         clear.clicked.connect(self.clear)
 
         bar = QHBoxLayout()
@@ -328,7 +330,7 @@ class TraceView(QWidget):
 
         for mode, table in enumerate((self.table, self.latest_table)):
             table.setSelectionBehavior(QAbstractItemView.SelectRows)
-            copy = QAction("Copy", table)
+            copy = icons.beside(QAction("Copy", table), icons.COPY)
             copy.setShortcut(QKeySequence.Copy)
             copy.setShortcutContext(Qt.WidgetShortcut)
             copy.triggered.connect(self.copy_selection)

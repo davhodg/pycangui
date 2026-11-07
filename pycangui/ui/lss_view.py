@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.canopen.manager import LSS_BIT_TIMINGS, CanopenManager
 from pycangui.core.context import Context
-from pycangui.ui import fonts
+from pycangui.ui import fonts, icons
 
 WARNING = (
     "LSS talks to nodes that have no node-ID yet. 'All nodes' is only safe "
@@ -137,7 +137,7 @@ class LssView(QWidget):
         # --- 3: finish -------------------------------------------------------
         finish = QGroupBox("3. Store and finish")
         row3 = QHBoxLayout(finish)
-        store = QPushButton("Store configuration")
+        store = icons.beside(QPushButton("Store configuration"), icons.SAVE)
         store.setToolTip("Make the node-ID and bit rate survive a power cycle")
         store.clicked.connect(manager.lss_store)
         done = QPushButton("Back to waiting state")

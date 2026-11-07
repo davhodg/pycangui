@@ -79,6 +79,7 @@ from pycangui.ui import (
     canopen_settings,
     folders,
     fonts,
+    icons,
     keep_file,
     messages,
 )
@@ -282,6 +283,19 @@ def _framed(name: str) -> tuple[QGroupBox, QHBoxLayout]:
     return frame, inside
 
 
+#: The node right-click's items that have a standard icon.
+NODE_MENU_ICONS = {
+    "Read PDO config": icons.READ,
+    "Store": icons.SAVE,
+    "Restore defaults": icons.RESET,
+    "Login...": icons.LOGIN,
+    "Read access level": icons.READ,
+    "Load EDS...": icons.OPEN,
+    "Read EDS from node": icons.READ,
+    "Save DCF...": icons.SAVE_AS,
+}
+
+
 class _MenuButton(QPushButton):
     """A button that opens a short menu of things about one subject."""
 
@@ -383,19 +397,23 @@ class CanopenView(QWidget):
         # The two ways a row gets into the list, under one button: a node
         # that has not been heard from, or a file with no node at all.
         self.add_menu_btn = _MenuButton("Add / Open", ADD_MENU_TIP)
-        self.add_menu_btn.add(
+        added = self.add_menu_btn.add(
             "Add node...",
             "Put a node in the list that has not been heard from: heartbeat off,\n"
             "held in pre-operational, or sitting in its bootloader. It is\n"
             "identified straight away.",
             self._add_node,
         )
-        self.add_menu_btn.add("Scan for nodes...", SCAN_TIP, self.scan_for_nodes)
-        self.add_menu_btn.add("Open DCF/EDS...", OPEN_FILE_TIP, self._open_file_dialog)
+        icons.beside(added, icons.ADD)
+        icons.beside(
+            self.add_menu_btn.add("Scan for nodes...", SCAN_TIP, self.scan_for_nodes), icons.SEARCH
+        )
+        opened = self.add_menu_btn.add("Open DCF/EDS...", OPEN_FILE_TIP, self._open_file_dialog)
+        icons.beside(opened, icons.OPEN)
         # A node or a file, whichever is selected: either way the row goes
         # from the list, so it is one button with one word on it, and its
         # tooltip says which of the two it will do.
-        self.remove_btn = QPushButton("Remove")
+        self.remove_btn = icons.beside(QPushButton("Remove"), icons.REMOVE)
         self.remove_btn.setToolTip(REMOVE_NODE_TIP)
         self.remove_btn.clicked.connect(self._remove_selected)
         # Under the list, each about the node highlighted in it. What is done
@@ -421,6 +439,8 @@ class CanopenView(QWidget):
             self._login,
         )
         read_level = self.access_menu_btn.add("Read access level", READ_LEVEL_TIP, self._read_level)
+        icons.beside(login, icons.LOGIN)
+        icons.beside(read_level, icons.READ)
         self.eds_menu_btn = _MenuButton("EDS", EDS_MENU_TIP)
         load_eds = self.eds_menu_btn.add(
             "Load EDS...",
@@ -430,6 +450,10 @@ class CanopenView(QWidget):
             self._load_eds_clicked,
         )
         read_eds = self.eds_menu_btn.add("Read EDS from node", READ_EDS_TIP, self._read_stored_eds)
+        icons.beside(load_eds, icons.OPEN)
+        icons.beside(read_eds, icons.READ)
+        icons.beside(store, icons.SAVE)
+        icons.beside(restore, icons.RESET)
         self.dcf_menu_btn = _MenuButton("DCF", DCF_MENU_TIP)
         # A new DCF of whichever is selected: what a node's parameters are, or
         # what a file in the list holds -- the file's Save as, in one entry.
@@ -440,6 +464,8 @@ class CanopenView(QWidget):
         self.save_file_action = self.dcf_menu_btn.add(
             "Save file", SAVE_FILE_TIP, lambda: self.save_file(self.selected_file())
         )
+        icons.beside(self.save_dcf_action, icons.SAVE_AS)
+        icons.beside(self.save_file_action, icons.SAVE)
         self.apply_dcf_action = apply_dcf = self.dcf_menu_btn.add(
             "Apply DCF...",
             "Write the parameter values from a .dcf file into the node",
@@ -460,6 +486,8 @@ class CanopenView(QWidget):
         self.network_dbc_action = self.dbc_menu_btn.add(
             "Save network as DBC...", NETWORK_DBC_TIP, self.save_network_dbc
         )
+        icons.beside(self.selected_dbc_action, icons.EXPORT)
+        icons.beside(self.network_dbc_action, icons.EXPORT)
         self._menu_buttons = [
             self.node_menu_btn,
             self.access_menu_btn,
@@ -467,7 +495,7 @@ class CanopenView(QWidget):
             self.dcf_menu_btn,
             self.dbc_menu_btn,
         ]
-        self.read_pdos_btn = QPushButton("Read PDO config")
+        self.read_pdos_btn = icons.beside(QPushButton("Read PDO config"), icons.READ)
         self.read_pdos_btn.setToolTip(
             "Read the selected node's PDO mapping, both directions, from the\n"
             "node itself. The EDS says how a node ships; this is how it is set\n"
@@ -522,7 +550,7 @@ class CanopenView(QWidget):
         # doing, and a reset sent to every node is not the same thing as one
         # sent to one of them. It was "Send NMT to all nodes", a fifth of
         # the width of the pane.
-        self.send_nmt = QPushButton()
+        self.send_nmt = icons.beside(QPushButton(), icons.SEND)
         self.send_nmt.setToolTip(NMT_TARGET_TIP)
         self.send_nmt.clicked.connect(self._send_nmt)
         nmt_in.addWidget(self.send_nmt)
@@ -545,7 +573,7 @@ class CanopenView(QWidget):
         self.time_btn.setToolTip(TIME_PRODUCER_TIP)
         self.time_btn.toggled.connect(self._toggle_time)
         producers_in.addWidget(self.time_btn)
-        self.send_time_btn = QPushButton("Send TIME")
+        self.send_time_btn = icons.beside(QPushButton("Send TIME"), icons.SEND)
         self.send_time_btn.setToolTip(SEND_TIME_TIP)
         self.send_time_btn.clicked.connect(self._send_time)
         producers_in.addWidget(self.send_time_btn)
@@ -557,7 +585,7 @@ class CanopenView(QWidget):
         nmt_bar.addStretch()
         # What is set once rather than done lives on a dialog of its own: the
         # bar is for commands, and every setting beside them hid them further.
-        settings_btn = QPushButton("Settings...")
+        settings_btn = icons.beside(QPushButton("Settings..."), icons.SETTINGS)
         settings_btn.setToolTip(
             "SDO timeout and retries for every node; and, per node, an SDO channel\n"
             "off the predefined one or a heartbeat timeout of its own."
@@ -608,6 +636,12 @@ class CanopenView(QWidget):
             "kind opens with the objects you were using on the last one."
         )
         self.bookmarked_only.toggled.connect(lambda _on: self._apply_od_filter())
+        self.bookmarked_only.toggled.connect(
+            lambda on: icons.beside(
+                self.bookmarked_only, icons.BOOKMARKED if on else icons.BOOKMARK
+            )
+        )
+        icons.beside(self.bookmarked_only, icons.BOOKMARK)
 
         od_bar = QHBoxLayout()
         od_bar.addWidget(QLabel("Object dictionary"))
@@ -648,7 +682,7 @@ class CanopenView(QWidget):
         #: Objects whose polled reads are failing, so it is said once and not
         #: a few times a second: (node, index, sub).
         self._poll_failing: set[tuple[int, int, int]] = set()
-        read_all = QPushButton("Read all")
+        read_all = icons.beside(QPushButton("Read all"), icons.READ)
         read_all.setToolTip(
             "Read every readable entry in the dictionary, one SDO at a time.\n"
             "It can take a while on a large node."
@@ -662,7 +696,7 @@ class CanopenView(QWidget):
         self.read_bar = QProgressBar()
         self.read_bar.setFormat("%v of %m")
         self.read_bar.setMaximumWidth(220)
-        self.stop_read_btn = QPushButton("Stop")
+        self.stop_read_btn = icons.beside(QPushButton("Stop"), icons.STOP)
         self.stop_read_btn.setToolTip("Stop reading after the object in hand")
         self.stop_read_btn.clicked.connect(manager.stop_batch)
         for running in (self.read_bar, self.stop_read_btn):
@@ -710,7 +744,7 @@ class CanopenView(QWidget):
         self._pdo_rate_timer.start()
         pdo_bar = QHBoxLayout()
         pdo_bar.addStretch()
-        clear_pdos = QPushButton("Clear")
+        clear_pdos = icons.beside(QPushButton("Clear"), icons.CLEAR)
         clear_pdos.setToolTip("Forget the counts and rates collected so far")
         clear_pdos.clicked.connect(self.clear_live_pdos)
         pdo_bar.addWidget(clear_pdos)
@@ -740,14 +774,14 @@ class CanopenView(QWidget):
         )
         emcy_bar = QHBoxLayout()
         emcy_bar.addStretch()
-        save_emcy = QPushButton("Save...")
+        save_emcy = icons.beside(QPushButton("Save..."), icons.SAVE_AS)
         save_emcy.setToolTip(
             "Write what has arrived to a CSV file, each emergency with what it\n"
             "is now: active, or cleared by a later reset from the same node."
         )
         save_emcy.clicked.connect(self._save_emergencies)
         emcy_bar.addWidget(save_emcy)
-        clear_emcy = QPushButton("Clear")
+        clear_emcy = icons.beside(QPushButton("Clear"), icons.CLEAR)
         clear_emcy.setToolTip(
             "Empty this list. It is pycangui's record of what it heard, so this\n"
             "does not touch what the nodes themselves kept -- see the Faults tab."
@@ -1033,25 +1067,28 @@ class CanopenView(QWidget):
 
     def file_menu(self, source: FileSource) -> QMenu:
         menu = QMenu(self.nodes)
-        menu.addAction("Save", lambda: self.save_file(source)).setEnabled(source.unsaved)
-        menu.addAction("Save as...", lambda: self.save_file_as(source))
+        icons.beside(menu.addAction("Save", lambda: self.save_file(source)), icons.SAVE).setEnabled(
+            source.unsaved
+        )
+        icons.beside(menu.addAction("Save as...", lambda: self.save_file_as(source)), icons.SAVE_AS)
         # A DCF only: an EDS says what a device can do, not how a node is set up.
-        as_dbc = menu.addAction(
-            "Save as DBC...", lambda: canopen_dbc.save(self, [], [source], False)
+        as_dbc = icons.beside(
+            menu.addAction("Save as DBC...", lambda: canopen_dbc.save(self, [], [source], False)),
+            icons.EXPORT,
         )
         as_dbc.setEnabled(canopen_dbc.is_configuration(source))
         menu.addSeparator()
-        menu.addAction("Close file", lambda: self.close_file(source))
+        icons.beside(menu.addAction("Close file", lambda: self.close_file(source)), icons.CLOSE)
         return menu
 
     def node_menu(self, node_id: int | None) -> QMenu:
         """Built apart from being shown, so what it offers can be looked at."""
         menu = QMenu(self.nodes)
-        menu.addAction("Add node...", self._add_node)
-        menu.addAction("Scan for nodes...", self.scan_for_nodes)
-        menu.addAction("Remove node", lambda: self.remove_node(node_id)).setEnabled(
-            node_id is not None
-        )
+        icons.beside(menu.addAction("Add node...", self._add_node), icons.ADD)
+        icons.beside(menu.addAction("Scan for nodes...", self.scan_for_nodes), icons.SEARCH)
+        icons.beside(
+            menu.addAction("Remove node", lambda: self.remove_node(node_id)), icons.REMOVE
+        ).setEnabled(node_id is not None)
         on_a_node = self._can_act_on(node_id)
         for group in (
             (("Read PDO config", self._read_pdos),),
@@ -1078,10 +1115,14 @@ class CanopenView(QWidget):
                 usable = (
                     self._can_give_eds(node_id) if slot == self._load_eds_clicked else on_a_node
                 )
-                menu.addAction(text, slot).setEnabled(usable)
+                action = menu.addAction(text, slot)
+                action.setEnabled(usable)
+                if text in NODE_MENU_ICONS:
+                    icons.beside(action, NODE_MENU_ICONS[text])
         # Not asked of the node, so there whether or not it answers.
-        menu.addAction(
-            "Save as DBC...", lambda: canopen_dbc.save(self, [node_id], [], False)
+        icons.beside(
+            menu.addAction("Save as DBC...", lambda: canopen_dbc.save(self, [node_id], [], False)),
+            icons.EXPORT,
         ).setEnabled(node_id is not None)
         return menu
 
@@ -2158,7 +2199,10 @@ class CanopenView(QWidget):
             add.addAction(name, lambda n=name: self.add_to_custom_pane.emit(n, chosen))
         if custom_names():
             add.addSeparator()
-        add.addAction("New custom pane...", lambda: self.add_to_custom_pane.emit("", chosen))
+        icons.beside(
+            add.addAction("New custom pane...", lambda: self.add_to_custom_pane.emit("", chosen)),
+            icons.NEW,
+        )
         menu.exec(self.od.viewport().mapToGlobal(at))
 
     def _picked_fields(self) -> list[PaneField]:

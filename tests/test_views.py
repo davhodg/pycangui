@@ -373,7 +373,7 @@ def test_the_transmit_buttons_are_grouped_by_what_they_do(app, tmp_path, monkeyp
     ]
     assert buttons == [
         "Send selected",
-        "Stop all cyclic",
+        "Stop all",
         "Add",
         "Counter / checksum...",
         "Remove selected",

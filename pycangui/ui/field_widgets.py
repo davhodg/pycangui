@@ -55,7 +55,7 @@ from pycangui.canopen.display import (
 )
 from pycangui.canopen.display import text as value_text
 from pycangui.custom_panes.model import Field, display_for
-from pycangui.ui import plot_colours
+from pycangui.ui import icons, plot_colours
 
 #: A value that was refused, and one that has not been read yet.
 REFUSED = QColor(200, 40, 40)
@@ -684,7 +684,7 @@ class MapWidget(FieldWidget):
         plot_colours.Follower(self, self.repaint_colours)
         self.repaint_colours()
 
-        self.reread = QPushButton("Read")
+        self.reread = icons.beside(QPushButton("Read"), icons.READ)
         self.reread.setToolTip("Read every point of the map again.")
         self.reread.clicked.connect(self.refresh)
 

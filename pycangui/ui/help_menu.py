@@ -51,7 +51,7 @@ from pycangui.core.updates import is_newer as version_is_newer
 from pycangui.core.worker import Worker
 from pycangui.help import manual_text
 from pycangui.ui import diagnostics as diagnostics_report
-from pycangui.ui import fonts, messages, theme
+from pycangui.ui import fonts, icons, messages, theme
 from pycangui.ui.diagnostics import DiagnosticsDialog
 
 
@@ -219,12 +219,12 @@ class ManualDialog(QDialog):
         self.view.setOpenLinks(False)  # every link is ours to resolve first
         self.view.anchorClicked.connect(self._follow)
 
-        self.back_button = QPushButton("Back")
+        self.back_button = icons.beside(QPushButton("Back"), icons.BACK)
         self.back_button.clicked.connect(self.back)
-        self.contents_button = QPushButton("Contents")
+        self.contents_button = icons.beside(QPushButton("Contents"), icons.HOME)
         self.contents_button.clicked.connect(lambda: self.show_page(help_pages.MANUAL))
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Close))
         buttons.rejected.connect(self.reject)
         buttons.addButton(self.back_button, QDialogButtonBox.ActionRole)
         buttons.addButton(self.contents_button, QDialogButtonBox.ActionRole)
@@ -287,7 +287,7 @@ class LicenceDialog(QDialog):
             view.setFont(fonts.mono())
             view.setLineWrapMode(QPlainTextEdit.NoWrap)
             tabs.addTab(view, entry.title)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Close))
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         layout = QVBoxLayout(self)
@@ -336,12 +336,12 @@ class KnownIdsDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.entries = entries
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Close))
         # Tab separated, which is what a spreadsheet and an email both want.
         # The columns line up on screen and would not survive being pasted
         # anywhere else, so the list is only useful outside this window if
         # something offers it in a shape that travels.
-        copy = buttons.addButton("Copy", QDialogButtonBox.ActionRole)
+        copy = icons.beside(buttons.addButton("Copy", QDialogButtonBox.ActionRole), icons.COPY)
         copy.setToolTip("Put the whole list on the clipboard, one row per line.")
         copy.clicked.connect(self.copy_to_clipboard)
         buttons.rejected.connect(self.reject)
@@ -395,7 +395,7 @@ class AboutDialog(QDialog):
             f'<p>Apache License 2.0 &middot; <a href="{PROJECT_PAGE}">{PROJECT_PAGE}</a></p>'
         )
         link.setOpenExternalLinks(True)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Close))
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
         for widget in (heading, details, link, buttons):
@@ -528,18 +528,22 @@ class HelpMenu(QObject):
         self.diagnostics: DiagnosticsDialog | None = None
 
         menu = window.menuBar().addMenu("&Help")
-        menu.addAction("Documentation", self._open_docs)
-        menu.addAction("Diagnostics...", self._show_diagnostics)
-        ids = menu.addAction("Known CAN ids...", self._show_known_ids)
+        icons.beside(menu.addAction("Documentation", self._open_docs), icons.HELP)
+        icons.beside(menu.addAction("Diagnostics...", self._show_diagnostics), icons.DIAGNOSTICS)
+        ids = icons.beside(
+            menu.addAction("Known CAN ids...", self._show_known_ids), icons.KNOWN_IDS
+        )
         ids.setToolTip(
             "Every identifier pycangui would put a name to, and where the\n"
             "name comes from: the databases loaded, the CANopen nodes known,\n"
             "and the addresses in the UDS and XCP panes."
         )
         menu.addSeparator()
-        self.check_action = menu.addAction("Check for updates...", self._check_for_updates)
-        menu.addAction("Licences...", self._show_licences)
-        menu.addAction(f"About {APP_NAME}", self._show_about)
+        self.check_action = icons.beside(
+            menu.addAction("Check for updates...", self._check_for_updates), icons.UPDATES
+        )
+        icons.beside(menu.addAction("Licences...", self._show_licences), icons.LICENCE)
+        icons.beside(menu.addAction(f"About {APP_NAME}", self._show_about), icons.INFO)
         self.menu = menu
 
     def shutdown(self) -> None:

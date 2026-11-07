@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core import mdf
-from pycangui.ui import messages, pip_install
+from pycangui.ui import icons, messages, pip_install
 
 #: Past this, reading everything at once is a wait with no warning attached.
 #: The number is not a limit -- it is when the question gets asked.
@@ -100,9 +100,9 @@ class ChannelPicker(QDialog):
         self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.tree.header().resizeSection(0, 420)
 
-        all_button = QPushButton("Select all shown")
+        all_button = icons.beside(QPushButton("Select all shown"), icons.SELECT_ALL)
         all_button.clicked.connect(lambda: self._tick(True))
-        none_button = QPushButton("Select none")
+        none_button = icons.beside(QPushButton("Select none"), icons.CLEAR)
         none_button.clicked.connect(lambda: self._tick(False))
         self.count = QLabel("")
 
@@ -112,7 +112,7 @@ class ChannelPicker(QDialog):
         buttons.addStretch()
         buttons.addWidget(self.count)
 
-        box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        box = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         box.button(QDialogButtonBox.Ok).setText("Import")
         box.accepted.connect(self.accept)
         box.rejected.connect(self.reject)

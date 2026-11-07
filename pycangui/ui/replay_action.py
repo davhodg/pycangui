@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Slot
+from PySide6.QtCore import QObject, Qt, Slot
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox, QToolBar, QToolButton
 
@@ -24,7 +24,7 @@ from pycangui.core.bus import BusManager
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.logging import READ_FILTER, Player
-from pycangui.ui import folders, messages
+from pycangui.ui import folders, icons, messages
 from pycangui.ui.confirm import Confirmations, is_real
 
 SPEEDS = (0.1, 0.5, 1.0, 2.0, 5.0, 20.0)
@@ -51,7 +51,7 @@ class ReplayAction(QObject):
         #: while it runs cannot redirect the frames onto another bus.
         self._playing_on = ""
 
-        self.action = QAction("Replay", self)
+        self.action = icons.beside(QAction("Replay", self), icons.START)
         self.action.setCheckable(True)
         self.action.toggled.connect(self._toggle)
 
@@ -75,6 +75,9 @@ class ReplayAction(QObject):
         self.button.setDefaultAction(self.action)
         self.button.setMenu(self.menu)
         self.button.setPopupMode(QToolButton.MenuButtonPopup)
+        # Added as a widget, so the toolbar's own style does not reach it.
+        self.button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.button.setIconSize(toolbar.iconSize())
         toolbar.addWidget(self.button)
 
         self._recent = [p for p in ctx.settings.get("replay.recent", []) if Path(p).is_file()]

@@ -7,7 +7,7 @@ go to the pane's own log, shared by every tab."""
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, Slot
-from PySide6.QtGui import QAction, QTextCursor
+from PySide6.QtGui import QAction, QIcon, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -71,7 +71,7 @@ from pycangui.uds.manager import (
     parse_bytes,
 )
 from pycangui.uds.standard import MAX_SECURITY_LEVEL, security_pair, seed_subfunction
-from pycangui.ui import folders, fonts, seedkey_view, uds_sequence
+from pycangui.ui import folders, fonts, icons, seedkey_view, uds_sequence
 from pycangui.ui.buttons import SplitButton
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.field_widgets import PENDING
@@ -516,7 +516,7 @@ class UdsView(QWidget):
         )
         for code, name in sorted(manager.sessions().items()):
             self.session.addItem(f"0x{code:02X}  {name.capitalize()}", code)
-        change = QPushButton("Change")
+        change = icons.beside(QPushButton("Change"), icons.SWITCH)
         change.setToolTip("Move the ECU into the session on the left")
         change.clicked.connect(lambda: self.manager.change_session(self.session.currentData()))
         h.addWidget(QLabel("Session"))
@@ -555,8 +555,12 @@ class UdsView(QWidget):
             "the seed and key DLL chosen under the arrow.",
             lambda: self.manager.unlock(self.level.value()),
         )
-        self.unlock_btn.add(
-            "Seed and key DLL...", SEED_KEY_TIP, lambda: seedkey_view.ask(self.ctx, self)
+        icons.beside(self.unlock_btn, icons.UNLOCK)
+        icons.beside(
+            self.unlock_btn.add(
+                "Seed and key DLL...", SEED_KEY_TIP, lambda: seedkey_view.ask(self.ctx, self)
+            ),
+            icons.LOGIN,
         )
         h.addWidget(self.unlock_btn)
         self.tp = QCheckBox("Tester present")
@@ -592,7 +596,7 @@ class UdsView(QWidget):
         self.reset_type = QComboBox()
         for code, name in RESETS.items():
             self.reset_type.addItem(name.capitalize(), code)
-        reset = QPushButton("Reset")
+        reset = icons.beside(QPushButton("Reset"), icons.RESTART)
         reset.setToolTip(
             "ECUReset (0x11). The ECU restarts, so the session and any\n"
             "security unlock are lost with it."
@@ -614,7 +618,7 @@ class UdsView(QWidget):
         for code, name in COMM_MESSAGES.items():
             self.comm_messages.addItem(name.capitalize(), code)
         self.comm_messages.setToolTip("Which messages it applies to")
-        comm = QPushButton("Send")
+        comm = icons.beside(QPushButton("Send"), icons.SEND)
         comm.setToolTip("Send CommunicationControl with the choices on the left")
         comm.clicked.connect(self._communication_control)
         comm_box = QGroupBox("CommunicationControl (0x28)")
@@ -633,7 +637,7 @@ class UdsView(QWidget):
             "session it was set in, which is what the button that appears\n"
             "beside Change uses to take everything back."
         )
-        check_rate = QPushButton("Check")
+        check_rate = icons.beside(QPushButton("Check"), icons.CHECK)
         check_rate.setToolTip(
             "Ask whether the ECU can move to the bitrate on the left, and stop\n"
             "there: the first half of a change, with nothing changed. Every ECU\n"
@@ -642,12 +646,12 @@ class UdsView(QWidget):
         check_rate.clicked.connect(
             lambda: self.manager.check_bitrate(self.link_bitrate.currentData())
         )
-        change_rate = QPushButton("Change")
+        change_rate = icons.beside(QPushButton("Change"), icons.SWITCH)
         change_rate.setToolTip("Ask the ECU to move to the bitrate on the left")
         change_rate.clicked.connect(self._change_bitrate)
         # Only while the channel is away from its own rate: there is no
         # request to undo LinkControl, but ending the session does it.
-        self.rate_back = QPushButton()
+        self.rate_back = icons.beside(QPushButton(), icons.BACK)
         self.rate_back.setToolTip(
             "Return to the default session, which takes the ECUs back to their\n"
             "own bitrate, and reopen this channel at the rate it had before."
@@ -678,10 +682,10 @@ class UdsView(QWidget):
         self.did.setCurrentText("F190")
         self.did_value = QLineEdit()
         self.did_value.setFont(fonts.mono())
-        read_did = QPushButton("Read")
+        read_did = icons.beside(QPushButton("Read"), icons.READ)
         read_did.setToolTip("ReadDataByIdentifier (0x22)")
         read_did.clicked.connect(lambda: self.manager.read_did(_picked(self.did)))
-        write_did = QPushButton("Write")
+        write_did = icons.beside(QPushButton("Write"), icons.WRITE)
         write_did.setToolTip(
             "WriteDataByIdentifier (0x2E). What you type is turned into bytes\n"
             "by hooks/uds.py::did_encode -- hex by default."
@@ -709,6 +713,7 @@ class UdsView(QWidget):
         rbox = QHBoxLayout()
         for label, control in (("Start", 1), ("Stop", 2), ("Result", 3)):
             b = QPushButton(label)
+            icons.beside(b, {"Start": icons.START, "Stop": icons.STOP, "Result": icons.READ}[label])
             b.setToolTip(
                 f"RoutineControl (0x31), sub-function {control}: {label.lower()} the routine\n"
                 "whose identifier is on the left."
@@ -735,7 +740,7 @@ class UdsView(QWidget):
         self.raw = QLineEdit("22 F1 90")
         self.raw.setFont(fonts.mono())
         self.raw.returnPressed.connect(self._send_raw)
-        raw_btn = QPushButton("Send raw")
+        raw_btn = icons.beside(QPushButton("Send raw"), icons.SEND)
         raw_btn.setToolTip(
             "Send these bytes as a request, with no help: the first byte is the\n"
             "service id and the rest is whatever that service expects."
@@ -768,8 +773,8 @@ class UdsView(QWidget):
         _narrow(self.report, 30)  # the report names are long
         # Pressed, it sends the report chosen: the everyday one. Read all, and
         # whether that includes every DTC the ECU supports, are under its arrow.
-        self.read_dtc_btn = SplitButton(
-            "Read", "Send the report chosen on the left", self._read_dtcs
+        self.read_dtc_btn = icons.beside(
+            SplitButton("Read", "Send the report chosen on the left", self._read_dtcs), icons.READ
         )
         self.read_all_action = self.read_dtc_btn.add(
             "Read all",
@@ -783,6 +788,7 @@ class UdsView(QWidget):
             "decoded like any other DID.",
             self._read_all_dtcs,
         )
+        icons.beside(self.read_all_action, icons.READ)
         self.read_all_supported = QCheckBox("Supported DTCs too")
         self.read_all_supported.setToolTip(
             "Add every DTC the ECU supports, with its status (report 0x0A). It\n"
@@ -875,7 +881,7 @@ class UdsView(QWidget):
             "Which faults to erase. FFFFFF is all of them; a group such as\n"
             "FFFF33 is emissions related only."
         )
-        clear_dtc = QPushButton("Clear")
+        clear_dtc = icons.beside(QPushButton("Clear"), icons.CLEAR)
         clear_dtc.setToolTip(
             "ClearDiagnosticInformation (0x14). The ECU's stored faults are\n"
             "erased, along with the freeze frames that go with them."
@@ -959,7 +965,7 @@ class UdsView(QWidget):
         self.local = QLineEdit()
         self.local.setPlaceholderText("Intel HEX, S-record or raw binary")
         self.local.editingFinished.connect(self._reload_image)
-        browse = QPushButton("Browse...")
+        browse = icons.beside(QPushButton("Browse..."), icons.BROWSE)
         browse.setToolTip("Choose the file on this computer")
         browse.clicked.connect(self._browse)
 
@@ -1046,11 +1052,11 @@ class UdsView(QWidget):
         self.values_btn.clicked.connect(self._edit_sequence_values)
         self._show_steps()
 
-        self.start = QPushButton("Download")
+        self.start = icons.beside(QPushButton("Download"), icons.DOWNLOAD)
         self.start.clicked.connect(self._start)
         self.bar = QProgressBar()
         self.bar.setTextVisible(True)
-        self.stop = QPushButton("Cancel")
+        self.stop = icons.beside(QPushButton("Cancel"), icons.CANCEL)
         self.stop.setToolTip(
             "Stop after the block being sent now. The ECU is waiting for a\n"
             "TransferData it has already been promised, so stopping part way\n"
@@ -1506,6 +1512,10 @@ class UdsView(QWidget):
             control.setEnabled(op == "download")
         labels = {"download": "Download", "upload": "Upload"}
         self.start.setText(labels.get(op) or FILE_MODES[op].capitalize())
+        if op in labels:
+            icons.beside(self.start, icons.DOWNLOAD if op == "download" else icons.UPLOAD)
+        else:
+            self.start.setIcon(QIcon())  # the file modes have no standard picture
         self.start.setToolTip(
             {
                 "download": "RequestDownload (0x34), then a TransferData for every block,\n"

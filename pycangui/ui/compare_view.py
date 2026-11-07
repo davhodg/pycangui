@@ -56,7 +56,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.canopen import compare as comparison
-from pycangui.ui import folders, fonts, messages
+from pycangui.ui import folders, fonts, icons, messages
 
 #: What a side can be. Kept as text because it is what the combo box holds
 #: and what gets written into the settings.
@@ -112,7 +112,7 @@ class Side(QWidget):
 
         self.path = QLineEdit()
         self.path.setPlaceholderText("a .dcf or .eds file...")
-        self.browse = QPushButton("Browse...")
+        self.browse = icons.beside(QPushButton("Browse..."), icons.BROWSE)
         self.browse.clicked.connect(self._choose)
 
         self.node = QComboBox()
@@ -248,7 +248,7 @@ class CompareView(QWidget):
             self.access.addItem(label, writable_only)
         self.access.setToolTip(ACCESS_TIP)
         self.access.currentIndexChanged.connect(lambda _i: self._show_rows())
-        copy = QPushButton("Copy")
+        copy = icons.beside(QPushButton("Copy"), icons.COPY)
         copy.setToolTip("The comparison as text, for a note or a build record.")
         copy.clicked.connect(self._copy)
 
