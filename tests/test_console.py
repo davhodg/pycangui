@@ -44,3 +44,16 @@ def test_a_syntax_error_is_shown_here_too(console):
 def test_what_is_typed_still_runs(console):
     assert "2" in type_in(console, "1 + 1")
     assert "object" in type_in(console, "window")
+
+
+def test_the_right_click_clears_the_output(console):
+    from PySide6.QtCore import Qt
+
+    from pycangui.ui import clear_menu, icons
+
+    type_in(console, "print('hello')")
+    assert console.output.toPlainText()
+    assert console.output.contextMenuPolicy() == Qt.CustomContextMenu
+    menu = clear_menu.menu(console.output)
+    next(a for a in menu.actions() if a.property(icons.PROPERTY) == icons.CLEAR).trigger()
+    assert console.output.document().isEmpty()

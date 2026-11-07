@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from pycangui.core.context import Context
-from pycangui.ui import folders, fonts, icons
+from pycangui.ui import clear_menu, folders, fonts, icons
 
 BANNER = """pycangui console -- Python {ver}
   ctx       settings, log(), eds_dir ... bus       connect/send/send_periodic
@@ -111,7 +111,7 @@ class ConsoleView(QWidget):
         self.console = _Console(namespace)
         mono = fonts.mono()
 
-        self.output = QPlainTextEdit()
+        self.output = clear_menu.add(QPlainTextEdit())
         self.output.setReadOnly(True)
         self.output.setFont(mono)
         self.output.setMaximumBlockCount(5000)

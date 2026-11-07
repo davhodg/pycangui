@@ -323,3 +323,16 @@ def test_enable_and_disable_each_send_through_the_hook(app, tmp_path, monkeypatc
 
     asked = [line for line in said if line.startswith("asked")]
     assert asked == ["asked True 300", "asked True 300", "asked False 300"]
+
+
+def test_the_right_click_clears_the_text(view):
+    from PySide6.QtCore import Qt
+
+    from pycangui.ui import clear_menu, icons
+
+    view.feed(b"hello\n")
+    assert view.text.toPlainText()
+    assert view.text.contextMenuPolicy() == Qt.CustomContextMenu
+    menu = clear_menu.menu(view.text)
+    next(a for a in menu.actions() if a.property(icons.PROPERTY) == icons.CLEAR).trigger()
+    assert view.text.document().isEmpty()

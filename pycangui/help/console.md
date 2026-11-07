@@ -23,6 +23,8 @@ the workspace, by either, newest first: one click runs one again. A script kept
 in the workspace is remembered relative to it, and found wherever the workspace
 is taken.
 
+**Clear**, on the button or the output's right-click, empties the output.
+
 `wait` rather than `time.sleep`, because the console runs on the window's
 thread: `time.sleep` stops the window, and the frames, answers and timers a
 script is waiting for stop arriving with it.

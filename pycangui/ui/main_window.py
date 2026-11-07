@@ -64,6 +64,7 @@ from pycangui.j1939.manager import J1939Manager
 from pycangui.nodes import DEMO, DEMO_NAME
 from pycangui.uds.manager import UdsManager
 from pycangui.ui import (
+    clear_menu,
     column_widths,
     event_colours,
     folders,
@@ -309,8 +310,7 @@ class MainWindow(QMainWindow):
         # is often the first of a thousand, and a log that drops its oldest
         # lines drops exactly that one. Clear, on the right-click, empties it.
         self.log.setMaximumBlockCount(0)
-        self.log.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.log.customContextMenuRequested.connect(self._log_menu)
+        clear_menu.add(self.log)
         #: Every line said to the user arrives here with a level, and this is
         #: the only thing that writes to the pane. Warnings and errors open it
         #: if it has been closed; notes do not.
@@ -1921,15 +1921,7 @@ class MainWindow(QMainWindow):
 
     def log_menu(self):
         """Copy and Select All as usual, and Clear. Built apart from being shown."""
-        menu = self.log.createStandardContextMenu()
-        menu.addSeparator()
-        icons.beside(menu.addAction("Clear", self.log.clear), icons.CLEAR)
-        return menu
-
-    def _log_menu(self, at) -> None:
-        menu = self.log_menu()
-        menu.exec(self.log.viewport().mapToGlobal(at))
-        menu.deleteLater()
+        return clear_menu.menu(self.log)
 
     def _dark_log(self) -> bool:
         """Which set of colours reads on the Event Log's own background."""

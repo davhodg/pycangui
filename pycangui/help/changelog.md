@@ -11,6 +11,7 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- *Clear* on the right-click of the Python Console and ASCII Log, as on the Event Log.
 - *Report a bug...* in *Help > Diagnostics*: copies the report and opens GitHub's bug form.
 - Standard icons beside the words on common buttons and menu items: Clear, Copy, Save, Add, Remove, Send, Stop and more. *Tools > Settings > Show icons* turns them off.
   The CiA 402 (1.9) and firmware (1.3) plugins have them too: *Update...* in *Plugins > Manage plugins...*.

@@ -11,8 +11,8 @@ Type the ID in hex. Whether it is 11-bit or 29-bit is read off what you type:
 anything above `7FF` can only be 29-bit, and a small one written out in full --
 `00000185` rather than `185` -- says 29-bit too, which is the only case the
 number alone cannot settle. **Skip** ignores up
-to 63 bytes at the start of each frame, and **Clear** throws away the text so
-far while the ID goes on being read.
+to 63 bytes at the start of each frame, and **Clear**, on the button or the
+text's right-click, throws away the text so far while the ID goes on being read.
 
 **Send enable** asks the device to start printing, and **Send disable** to
 stop. Two buttons that each send, rather than one that stays down: a device

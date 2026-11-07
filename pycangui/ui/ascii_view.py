@@ -43,7 +43,7 @@ from pycangui.core.bus import Frame
 from pycangui.core.channels import Channels
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
-from pycangui.ui import fonts, icons, messages
+from pycangui.ui import clear_menu, fonts, icons, messages
 
 #: How many lines a stream keeps. A device printing steadily will run to
 #: megabytes over an afternoon, and none of it is worth the memory.
@@ -227,7 +227,7 @@ class AsciiView(QWidget):
         bar.addWidget(self.send_disable)
         bar.addWidget(clear)
 
-        self.text = QPlainTextEdit()
+        self.text = clear_menu.add(QPlainTextEdit())
         self.text.setReadOnly(True)
         self.text.setFont(fonts.mono())
         self.text.setMaximumBlockCount(MAX_LINES)
