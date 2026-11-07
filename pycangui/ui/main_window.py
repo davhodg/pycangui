@@ -1769,6 +1769,13 @@ class MainWindow(QMainWindow):
         inside a window somebody had dragged to a third of the screen is not
         the layout they were promised, and the proportions this reaches for
         assume something like the size it opens at.
+
+        It moves panes and nothing else. A pane somebody added stays, and so
+        does a name somebody gave one: those are kept apart from the dock
+        arrangement, and a layout reset that deleted them would be a different
+        promise. The window's size has no reset of its own -- the case for one
+        is a window stranded on a monitor that has gone, and the menu that
+        would put it back is on that window, out of reach.
         """
         self._reset_geometry()
         self._arrange_default()

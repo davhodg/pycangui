@@ -14,6 +14,13 @@ is trying to read. A window over arrivals has no such floor: it answers for a
 message as slow as one every hundred seconds, and is steadier than the old one
 for a fast message, since it averages over gaps rather than over a boundary.
 
+Rate and Period describe now; the statistics columns (Period min, avg, max,
+Jitter) span everything since the id appeared, which is what catches a
+message that stalled once. Neither is smoothed: the variation is the
+measurement, which is why Jitter is a column, and averaging Rate would leave
+two slow averages and no way to see a rate change. There is no separate
+reset for the statistics; Clear starts the rows again.
+
 Bytes that changed since the previous frame are marked so the eye is drawn to
 activity.
 """
