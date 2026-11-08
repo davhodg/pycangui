@@ -9,6 +9,8 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-08
+
 ### Added
 
 - *Clear* on the right-click of the Python Console and ASCII Log, as on the Event Log.
@@ -347,7 +349,8 @@ The first release, on PyPI (`pip install pycangui`) and as a Windows installer.
 - **Simulated nodes** on a virtual bus or a real adapter, and gateways between channels.
 - **Workspaces**, one per product, exported and imported as one zip.
 
-[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/davhodg/pycangui/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/davhodg/pycangui/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/davhodg/pycangui/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/davhodg/pycangui/compare/v0.3.0...v0.4.0
