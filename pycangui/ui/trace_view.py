@@ -280,7 +280,7 @@ class TraceView(QWidget):
         self._channel_menu = menu.addMenu("Channels")
         self._channel_actions: dict[str, QAction] = {}
         menu.addSeparator()
-        icons.beside(menu.addAction("Show all", self._show_all), icons.SELECT_ALL)
+        menu.addAction("Show all", self._show_all)  # no icon: the groups above are ticks
         self.filter_button.setMenu(menu)
         self._apply_filter(save=False)
 
@@ -338,7 +338,7 @@ class TraceView(QWidget):
             columns = QAction("Columns", table)
             columns.setMenu(self._column_menus[mode])
             table.addAction(columns)
-            check = QAction("Check counter / checksum...", table)
+            check = icons.beside(QAction("Check counter / checksum...", table), icons.CALCULATE)
             check.setToolTip(CHECK_TIP)
             check.triggered.connect(self._ask_to_check)
             table.addAction(check)

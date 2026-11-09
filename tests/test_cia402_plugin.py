@@ -160,6 +160,7 @@ def test_the_modes_are_named():
 
 def test_each_mode_uses_the_target_it_uses():
     assert cia402.TARGET_FOR[1] is cia402.TARGET_POSITION
+    assert cia402.TARGET_FOR[2] is cia402.VL_TARGET_VELOCITY, "velocity mode has its own"
     assert cia402.TARGET_FOR[3] is cia402.TARGET_VELOCITY
     assert cia402.TARGET_FOR[4] is cia402.TARGET_TORQUE
 
@@ -415,6 +416,13 @@ def test_stopping_halts_first_and_then_zeroes_a_rate_demand():
     assert writes == [
         (cia402.CONTROLWORD, cia402.ENABLE_OPERATION | cia402.HALT),
         (cia402.TARGET_VELOCITY, 0),
+    ]
+
+
+def test_velocity_mode_halts_with_its_ramp_on_and_zeroes_its_own_target():
+    assert cia402.stop_writes(2, ENABLED) == [
+        (cia402.CONTROLWORD, cia402.ENABLE_OPERATION | cia402.HALT | cia402.VL_RAMP),
+        (cia402.VL_TARGET_VELOCITY, 0),
     ]
 
 
@@ -870,3 +878,180 @@ def test_a_pause_or_stop_all_puts_the_drive_in_its_safe_state(app, window, view,
 
     window.ctx.pause.stop_all()
     assert halted[-1] == plugin.STOPPING_ALL and not view.poll.isChecked()
+
+
+# --- velocity mode (2) ---------------------------------------------------------------------
+def test_only_velocity_mode_holds_the_ramp_bits():
+    """Bits 4 to 6 are profile position's new set-point and more in other modes."""
+    assert {mode: cia402.operation_bits(mode) for mode in (1, 2, 3, 4)} == {
+        1: 0,
+        2: cia402.VL_RAMP,
+        3: 0,
+        4: 0,
+    }
+
+
+def test_enabled_in_velocity_mode_every_controlword_has_the_ramp_on(app, view, monkeypatch):
+    """With bits 4 to 6 clear, the ramp holds a velocity mode drive at zero
+    whatever its target: enabled, and still not moving."""
+    drive = wired(view, monkeypatch, SWITCH_ON_DISABLED)
+    view._took(cia402.MODE_DISPLAY, 2)
+    view._command(lambda: cia402.steps_to_enable(view.statusword))
+    assert [value for _index, value in drive.written] == [0x76, 0x77, 0x7F]
+
+
+def test_a_velocity_target_goes_to_0x6042_and_turns_the_ramp_on(app, view, monkeypatch):
+    """A drive enabled before the mode was chosen has the ramp off: setting
+    the target also writes the enable controlword with it on."""
+    drive = wired(view, monkeypatch, ENABLED)
+    view._took(cia402.MODE_DISPLAY, 2)
+    view._took(cia402.STATUSWORD, ENABLED)
+    view.target.setValue(1500)
+    view._write_target()
+    assert drive.written == [
+        (cia402.VL_TARGET_VELOCITY.index, 1500),
+        (cia402.CONTROLWORD.index, cia402.ENABLE_OPERATION | cia402.VL_RAMP),
+    ]
+
+
+def test_a_velocity_target_too_big_for_sixteen_bits_is_refused(app, window, view, monkeypatch):
+    drive = wired(view, monkeypatch, ENABLED)
+    view._took(cia402.MODE_DISPLAY, 2)
+    view.target.setValue(40000)
+    view._write_target()
+    assert drive.written == []
+
+
+def test_profile_velocity_is_left_as_it_was(app, view, monkeypatch):
+    drive = wired(view, monkeypatch, ENABLED)
+    view._took(cia402.MODE_DISPLAY, 3)
+    view._took(cia402.STATUSWORD, ENABLED)
+    view.target.setValue(1500)
+    view._write_target()
+    assert drive.written == [(cia402.TARGET_VELOCITY.index, 1500)]
+
+
+def test_go_says_why_it_is_greyed_in_a_mode_that_moves_at_once(app, view):
+    """In velocity and torque, Set target alone starts the drive; Go greyed
+    with nothing beside it left people looking for what it did."""
+    for mode, said in ((2, True), (3, True), (4, True), (1, False), (9, False)):
+        view._took(cia402.MODE_DISPLAY, mode)
+        assert bool(view.go_note.text()) is said, mode
+
+
+def test_in_velocity_mode_the_speed_shown_is_its_own_in_rpm(app, view):
+    """A drive in velocity mode keeps its speed in 0x6044, in the rpm its
+    target is set in; 0x606C may not be there at all."""
+    assert [o.where for o in cia402.watched(2)] == [
+        cia402.VL_VELOCITY_ACTUAL.where if o.where == cia402.VELOCITY_ACTUAL.where else o.where
+        for o in cia402.WATCHED
+    ]
+    assert cia402.watched(3) == cia402.WATCHED
+
+    view._took(cia402.MODE_DISPLAY, 2)
+    view._took(cia402.VL_VELOCITY_ACTUAL, 1200)
+    _name, value, unit = view._velocity_row
+    assert (value.text(), unit.text()) == ("1,200", "rpm")
+    assert "0x6044" in value.toolTip()
+
+    view._took(cia402.MODE_DISPLAY, 3)
+    assert unit.text() == cia402.VELOCITY_ACTUAL.unit and "0x606C" in value.toolTip()
+
+
+# --- the node's NMT state -----------------------------------------------------------------
+def test_the_nodes_nmt_state_is_shown_from_its_heartbeat(app, window, view):
+    manager = window.canopen
+    view.node.addItem("Node 5", 5)
+    view.node.setCurrentIndex(view.node.findData(5))
+    assert view._nmt_state is None and view.nmt.text(), "no heartbeat says so"
+
+    manager.nmt_states[5] = "OPERATIONAL"
+    manager.node_seen.emit(5, "OPERATIONAL")
+    assert view._nmt_state == "OPERATIONAL"
+
+    manager.nmt_states[5] = "PRE-OPERATIONAL"
+    manager.node_seen.emit(5, "PRE-OPERATIONAL")
+    assert view._nmt_state == "PRE-OPERATIONAL"
+
+    shown = view.nmt.text()
+    manager.lost_nodes.add(5)
+    manager.node_lost.emit(5)
+    assert view.nmt.text() != shown, "a lost node is not shown as still in its state"
+
+
+def test_another_nodes_heartbeat_leaves_it_alone(app, window, view):
+    manager = window.canopen
+    view.node.addItem("Node 5", 5)
+    view.node.setCurrentIndex(view.node.findData(5))
+    manager.nmt_states[6] = "OPERATIONAL"
+    manager.node_seen.emit(6, "OPERATIONAL")
+    assert view._nmt_state is None
+
+
+# --- an RPDO carrying what the pane writes ---------------------------------------------------
+def rpdo(number, *objects, enabled=True):
+    from pycangui.canopen import PdoConfig, PdoEntry
+
+    return PdoConfig(
+        5,
+        "RPDO",
+        number,
+        f"RPDO{number}",
+        0x200 + 5,
+        enabled,
+        255,
+        entries=[PdoEntry(obj.index, obj.sub, 16, obj.name) for obj in objects],
+    )
+
+
+def test_an_rpdo_carrying_the_controlword_or_the_modes_target_is_found():
+    configs = [
+        rpdo(1, cia402.CONTROLWORD, cia402.TARGET_VELOCITY),
+        rpdo(2, cia402.TARGET_POSITION),
+        rpdo(3, cia402.CONTROLWORD, enabled=False),
+    ]
+    in_profile_velocity = cia402.rpdo_conflicts(configs, 3)
+    assert [line.split()[0] for line in in_profile_velocity] == ["RPDO1", "RPDO1"]
+    in_profile_position = cia402.rpdo_conflicts(configs, 1)
+    assert [line.split()[0] for line in in_profile_position] == ["RPDO1", "RPDO2"]
+    assert cia402.rpdo_conflicts([rpdo(4, cia402.STATUSWORD)], 3) == []
+
+
+def test_the_pane_warns_of_an_rpdo_and_follows_the_mode(app, window, view, monkeypatch):
+    manager = window.canopen
+    monkeypatch.setattr(
+        manager, "pdo_configs", lambda n: [rpdo(1, cia402.TARGET_POSITION)] if n == 5 else []
+    )
+    view.node.addItem("Node 5", 5)
+    view.node.setCurrentIndex(view.node.findData(5))
+    view._took(cia402.MODE_DISPLAY, 3)
+    assert view.rpdo_warning.isHidden(), "profile velocity does not write 0x607A"
+    view._took(cia402.MODE_DISPLAY, 1)
+    assert not view.rpdo_warning.isHidden()
+
+    monkeypatch.setattr(manager, "pdo_configs", lambda n: [])
+    manager.pdo_config.emit(5)
+    assert view.rpdo_warning.isHidden(), "gone once the mapping no longer has it"
+
+
+# --- setting the node's NMT state ------------------------------------------------------------
+@pytest.mark.parametrize(("agreed", "sent"), [(True, [(5, "OPERATIONAL")]), (False, [])])
+def test_start_asks_first_and_pre_operational_does_not(
+    app, window, view, monkeypatch, agreed, sent
+):
+    sent_now = []
+    asked = []
+    monkeypatch.setattr(window.canopen, "nmt", lambda n, c: sent_now.append((n, c)))
+    monkeypatch.setattr(window.confirm, "ask", lambda _p, key, _t, _x: asked.append(key) or agreed)
+    view.node.addItem("Node 5", 5)
+    view.node.setCurrentIndex(view.node.findData(5))
+
+    view.start_btn.click()
+    assert (asked, sent_now) == (["cia402.start.5"], sent)
+    view.pre_op_btn.click()
+    assert sent_now[-1] == (5, "PRE-OPERATIONAL") and asked == ["cia402.start.5"]
+
+
+def test_with_no_node_the_nmt_buttons_are_off(app, view):
+    view._forget()
+    assert not view.start_btn.isEnabled() and not view.pre_op_btn.isEnabled()

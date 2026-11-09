@@ -11,6 +11,7 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CiA 402 plugin (1.11): the selected node's NMT state beside it, with Pre-operational and Start; a warning when an enabled RPDO carries the controlword, the mode or the target.
 - Icons on the controls that had none: LSS, Identify, Apply DCF, Compare, UDS Open and Values, J1939 Claim, Counter / checksum, and the CiA 402 (1.10) and firmware (1.4) plugins' buttons.
 
 ### Changed
@@ -19,7 +20,12 @@ since the last version, and comes out in the next one.
 - CANopen *Apply DCF* writes each PDO switched off, mapped, then switched on, as CiA 301 asks, and offers Pre-operational first to an Operational node.
 - A CANopen node with no heartbeat says its NMT state is not known, and why.
 - The demo CANopen device refuses a PDO change made in the wrong order, as a real one may.
+- The right-click menu of every text box uses pycangui's icons for Undo, Cut, Copy, Paste and Select All, not the system's.
 - Icons are now Microsoft's Fluent UI System Icons, shipped with pycangui: the same on Windows, Linux and macOS, where Linux had only some.
+
+### Fixed
+
+- CiA 402 plugin (1.11): Velocity mode (2) sets its own target, 0x6042, turns on the ramp bits it needs to move, and shows its own speed, 0x6044, in rpm.
 
 ## [0.5.1] - 2026-11-08
 

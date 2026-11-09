@@ -788,7 +788,6 @@ class UdsView(QWidget):
             "decoded like any other DID.",
             self._read_all_dtcs,
         )
-        icons.beside(self.read_all_action, icons.READ)
         self.read_all_supported = QCheckBox("Supported DTCs too")
         self.read_all_supported.setToolTip(
             "Add every DTC the ECU supports, with its status (report 0x0A). It\n"

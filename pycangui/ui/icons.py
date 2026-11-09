@@ -21,7 +21,7 @@ theme, dark mode and high contrast like the word beside it.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QRectF, QSettings, QSize, Qt
+from PySide6.QtCore import QEvent, QObject, QRect, QRectF, QSettings, QSize, Qt
 from PySide6.QtGui import (
     QGuiApplication,
     QIcon,
@@ -32,7 +32,7 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox
+from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMenu, QMessageBox
 
 from pycangui import resources
 
@@ -53,6 +53,7 @@ CLOSE = "close"
 CONNECT = "connect"
 COMPARE = "compare"
 COPY = "copy"
+CUT = "cut"
 DELETE = "delete"
 DETACH = "detach"
 DIAGNOSTICS = "diagnostics"
@@ -81,6 +82,7 @@ LIST = "list"
 LOGIN = "login"
 NUMBER = "number"
 OPEN = "open"
+PASTE = "paste"
 PAUSE = "pause"
 PICK = "pick"
 PIN = "pin"
@@ -89,6 +91,7 @@ PLOT = "plot"
 READ = "read"
 RECORD = "record"
 RECOVER = "recover"
+REDO = "redo"
 RESET = "reset"
 RESTART = "restart"
 SEARCH = "search"
@@ -133,6 +136,7 @@ FILE: dict[str, str] = {
     CONNECT: "plug_connected_20_regular",
     COMPARE: "column_double_compare_20_regular",  # two columns, side by side
     COPY: "copy_20_regular",
+    CUT: "cut_20_regular",
     DELETE: "delete_20_regular",
     DETACH: "window_new_20_regular",  # the arrow out to a window of its own
     DIAGNOSTICS: "pulse_20_regular",
@@ -161,6 +165,7 @@ FILE: dict[str, str] = {
     LOGIN: "key_20_regular",
     NUMBER: "number_symbol_20_regular",
     OPEN: "folder_open_20_regular",
+    PASTE: "clipboard_paste_20_regular",
     PAUSE: "pause_20_regular",
     PICK: "target_arrow_20_regular",  # exactly this one
     PIN: "pin_20_regular",  # outlined: not pinned yet
@@ -169,6 +174,7 @@ FILE: dict[str, str] = {
     READ: "book_open_20_regular",
     RECORD: "record_20_regular",
     RECOVER: "arrow_clockwise_20_regular",  # a controller back on the bus
+    REDO: "arrow_redo_20_regular",
     RESET: "arrow_counterclockwise_20_regular",  # the other way from Recover
     RESTART: "power_20_regular",  # a device starting again
     SEARCH: "search_20_regular",
@@ -258,6 +264,46 @@ def _draw(thing, name: str) -> None:
     thing.setIcon(icon(name))
 
 
+#: The entries Qt puts in the right-click menu of every text box and number
+#: box, by the object name Qt gives each. Qt draws them from the system's own
+#: icons -- not these, and not the same on any two systems -- and ignores the
+#: icon theme being changed, so they are swapped as each such menu opens.
+STANDARD_MENU: dict[str, str] = {
+    "edit-undo": UNDO,
+    "edit-redo": REDO,
+    "edit-cut": CUT,
+    "edit-copy": COPY,
+    "edit-paste": PASTE,
+    "edit-delete": DELETE,
+    "select-all": SELECT_ALL,
+}
+
+
+class _StandardMenus(QObject):
+    """Puts these icons on Qt's own text menus as they open, or none when off."""
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Show and isinstance(watched, QMenu):
+            for action in watched.actions():
+                name = STANDARD_MENU.get(action.objectName())
+                if name is not None:
+                    beside(action, name)
+                    if not shown():
+                        action.setIcon(QIcon())  # not Qt's, either
+        return False
+
+
+_standard_menus: _StandardMenus | None = None
+
+
+def on_standard_menus(app: QApplication) -> None:
+    """Watch for Qt's own right-click menus, once for the application."""
+    global _standard_menus
+    if _standard_menus is None:
+        _standard_menus = _StandardMenus(app)
+        app.installEventFilter(_standard_menus)
+
+
 _Box = QDialogButtonBox.StandardButton
 
 #: The buttons Qt names itself, in every dialog and message box. A message
@@ -306,10 +352,20 @@ _RENDERERS: dict[str, QSvgRenderer] = {}
 #: an icon is still drawing with.
 _ENGINES: list[QIconEngine] = []
 
+#: One icon per picture, made the first time it is asked for. A QIcon is
+#: shared, not copied, so every button can have the same one; and it is drawn
+#: in the palette's colour when painted, so sharing it changes nothing on
+#: screen. A new one each time kept a new engine alive for good -- hundreds a
+#: window -- and a test run, which makes a window a test, piled them up until
+#: each garbage collection took a quarter of a second.
+_ICONS: dict[str, QIcon] = {}
+
 
 def icon(name: str) -> QIcon:
     """The icon for one of the names above, drawn in the text colour."""
-    return QIcon(_kept(_Engine(name)))
+    if name not in _ICONS:
+        _ICONS[name] = QIcon(_kept(_Engine(name)))
+    return _ICONS[name]
 
 
 def _renderer(name: str) -> QSvgRenderer:

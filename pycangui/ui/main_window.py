@@ -576,7 +576,9 @@ class MainWindow(QMainWindow):
             "Nothing else is touched."
         )
         self.reset_layout_action.triggered.connect(self._reset_layout)
-        icons.beside(self.reset_layout_action, icons.RESET)
+        # No icon: it is in the View menu, whose panes are ticks, and Qt gives
+        # a menu with both a column for each -- and in Tools > Reset it would
+        # be the only entry with one.
         self.view_menu = self.menuBar().addMenu("&View")
         #: Pane name -> its entry in the View menu. See ``_pane_action``.
         self._view_actions: dict[str, QAction] = {}
@@ -724,6 +726,7 @@ class MainWindow(QMainWindow):
         self.icons_action.setChecked(icons.shown())
         self.icons_action.setToolTip(icons.TIP)
         self.icons_action.toggled.connect(icons.set_shown)
+        icons.on_standard_menus(QApplication.instance())  # Qt's own text menus too
         settings_menu.insertAction(verbose, self.icons_action)
         self.history_menu = self._history_menu()
         settings_menu.addMenu(self.history_menu)
@@ -1589,7 +1592,9 @@ class MainWindow(QMainWindow):
                 "to dock it, or onto another pane to tab the two together."
             )
 
-        rename = icons.beside(self.view_menu.addMenu("Rename pane"), icons.RENAME)
+        # No icons in this menu: the panes above are ticks, and a menu with
+        # both gets a column for each.
+        rename = self.view_menu.addMenu("Rename pane")
         rename.setToolTipsVisible(True)
         rename.setToolTip("Call a pane something that says what you are using it for.")
         for name in self.panes.names():
@@ -1599,7 +1604,7 @@ class MainWindow(QMainWindow):
             action.setToolTip("Two traces are much clearer as Drive bus and Errors.")
 
         extras = self.panes.extras()
-        remove = icons.beside(self.view_menu.addMenu("Remove pane"), icons.REMOVE)
+        remove = self.view_menu.addMenu("Remove pane")
         remove.setEnabled(bool(extras))
         remove.setToolTipsVisible(True)
         for name in extras:
@@ -1609,7 +1614,7 @@ class MainWindow(QMainWindow):
             action.setToolTip("Close this pane for good. Closing its window only puts it away.")
 
         self.view_menu.addSeparator()
-        icons.beside(self.view_menu.addAction("Dock all panes", self.panes.dock_all), icons.ATTACH)
+        self.view_menu.addAction("Dock all panes", self.panes.dock_all)
         self.view_menu.addAction(self.reset_layout_action)
 
     def _arrange_default(self) -> None:

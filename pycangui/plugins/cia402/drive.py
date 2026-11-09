@@ -70,6 +70,14 @@ TORQUE_ACTUAL = Object(0x6077, 0, "Torque", "<h", "per mille of rated")
 
 TARGET_POSITION = Object(0x607A, 0, "Target position", "<i", "counts")
 TARGET_VELOCITY = Object(0x60FF, 0, "Target velocity", "<i", "counts/s")
+#: Velocity mode's own target, which is not 0x60FF: mode 2 ("vl") is the
+#: frequency-inverter mode, with 16-bit objects of its own and a speed in
+#: rpm unless the drive's vl dimension factor (0x604C) scales it otherwise.
+#: Writing 0x60FF to a drive in this mode sets a target it is not using.
+VL_TARGET_VELOCITY = Object(0x6042, 0, "vl target velocity", "<h", "rpm")
+#: And its own actual speed, in the same units: a drive in velocity mode may
+#: not have 0x606C at all, or keep it in counts per second beside this.
+VL_VELOCITY_ACTUAL = Object(0x6044, 0, "vl velocity actual value", "<h", "rpm")
 TARGET_TORQUE = Object(0x6071, 0, "Target torque", "<h", "per mille of rated")
 PROFILE_VELOCITY = Object(0x6081, 0, "Profile velocity", "<I", "counts/s")
 
@@ -104,6 +112,17 @@ def modes_in(supported: int) -> set[int]:
 #: object, and a screen that reads twenty things at 1 Hz is worse than one that
 #: reads six at 5 Hz.
 WATCHED = (STATUSWORD, MODE_DISPLAY, POSITION_ACTUAL, VELOCITY_ACTUAL, TORQUE_ACTUAL)
+
+
+def watched(mode: int) -> tuple[Object, ...]:
+    """What to read each round in this mode: velocity mode's own speed in place
+    of 0x606C, so the speed shown is in the units its target is set in."""
+    if mode != 2:
+        return WATCHED
+    return tuple(
+        VL_VELOCITY_ACTUAL if obj.where == VELOCITY_ACTUAL.where else obj for obj in WATCHED
+    )
+
 
 #: Written rather than watched: read once when a drive is chosen, and
 #: again only when somebody asks.
@@ -159,7 +178,7 @@ MODES = {
 #: can be set over SDO, which is a thing to say rather than a box to offer.
 TARGET_FOR = {
     1: TARGET_POSITION,
-    2: TARGET_VELOCITY,
+    2: VL_TARGET_VELOCITY,
     3: TARGET_VELOCITY,
     4: TARGET_TORQUE,
     8: TARGET_POSITION,
@@ -212,6 +231,14 @@ FAULT_RESET = 0x0080
 #: on the rising edge of this and not before.
 NEW_SETPOINT = 0x0010
 
+#: Bits 4, 5 and 6 in velocity mode: enable the ramp, unlock it, and use the
+#: reference. Each is a brake on the speed when clear -- the ramp output held
+#: at zero, frozen, or fed zero -- so a drive enabled in this mode with them
+#: clear sits still whatever target it is given. In the other modes these
+#: bits mean other things (bit 4 is profile position's new set-point), which
+#: is why they go out in velocity mode only.
+VL_RAMP = 0x0070
+
 #: Bit 8, and the one that matters most here. Halt is defined in every profiled
 #: mode as "come to a standstill, the way 0x605D says to", which is what makes
 #: it the one command that stops a drive without needing to know what mode it is
@@ -225,7 +252,7 @@ HALT = 0x0100
 #: position zero, which on a machine part way through a move is the opposite of
 #: stopping and may be the longest move it has been asked for all day.
 RATE_TARGETS = {
-    2: TARGET_VELOCITY,
+    2: VL_TARGET_VELOCITY,
     3: TARGET_VELOCITY,
     4: TARGET_TORQUE,
     9: TARGET_VELOCITY,
@@ -433,6 +460,17 @@ def steps_to_apply_target(mode: int, statusword: int) -> list[Step]:
     ]
 
 
+def operation_bits(mode: int) -> int:
+    """The controlword bits a mode needs held in every controlword to move.
+
+    Velocity mode's ramp bits, and nothing for any other mode. Held in every
+    word rather than added to one: the state commands below Operation enabled
+    ignore bits 4 to 6, and a word written without them -- a halt, or a fault
+    reset -- would otherwise put the ramp back to holding the drive still.
+    """
+    return VL_RAMP if mode == 2 else 0
+
+
 def can_set_target(mode: int) -> tuple[bool, str]:
     """Whether a target can usefully be written over SDO in this mode, and why not."""
     if mode in CYCLIC:
@@ -444,6 +482,33 @@ def can_set_target(mode: int) -> tuple[bool, str]:
     if mode not in TARGET_FOR:
         return False, f"{mode_name(mode)} has no target to set."
     return True, ""
+
+
+def written_by_pane(mode: int) -> tuple[Object, ...]:
+    """What this pane writes over SDO in a mode: the controlword, the mode, and
+    the mode's target if it has one."""
+    target = TARGET_FOR.get(mode)
+    return (CONTROLWORD, MODE) + ((target,) if target is not None else ())
+
+
+def rpdo_conflicts(configs, mode: int) -> list[str]:
+    """Each enabled RPDO that carries an object this pane writes, a line each.
+
+    An RPDO is the drive being written to by whoever sends it, once a cycle or
+    on every change. While the node is Operational the next one overwrites an
+    SDO write from here -- the pane appears to do nothing, or its value flicks
+    back. ``configs`` is the node's PDO configuration, as the CANopen manager
+    holds it: anything with direction, number, enabled and entries.
+    """
+    wanted = {obj.where: obj for obj in written_by_pane(mode)}
+    out = []
+    for config in configs:
+        if config.direction != "RPDO" or not config.enabled:
+            continue
+        for entry in config.entries:
+            if (obj := wanted.get((entry.index, entry.subindex))) is not None:
+                out.append(f"RPDO{config.number} carries {obj.name} (0x{obj.index:04X})")
+    return out
 
 
 def stop_writes(mode: int, statusword: int, disable: bool = False) -> list[tuple[Object, int]]:
@@ -466,7 +531,7 @@ def stop_writes(mode: int, statusword: int, disable: bool = False) -> list[tuple
     """
     if not is_enabled(statusword):
         return []  # not driving anything, so there is nothing to take back
-    writes = [(CONTROLWORD, ENABLE_OPERATION | HALT)]
+    writes = [(CONTROLWORD, ENABLE_OPERATION | HALT | operation_bits(mode))]
     # After the halt, so that switching it back on later does not start from
     # the demand it was left with.
     if (target := RATE_TARGETS.get(mode)) is not None:

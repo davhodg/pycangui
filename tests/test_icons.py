@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import pytest
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QPalette
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QPushButton
@@ -66,3 +67,47 @@ def test_a_new_palette_recolours_an_icon_already_made(app, monkeypatch):
     palette.setColor(QPalette.Active, QPalette.ButtonText, QColor("#00ff00"))
     monkeypatch.setattr(QGuiApplication, "palette", staticmethod(lambda: palette))
     assert drawn_colours(made) == {"#00ff00"}
+
+
+def test_no_menu_has_both_ticks_and_icons(app, tmp_path, monkeypatch):
+    """Qt gives a menu with tick items a column for the ticks, and one with
+    icons a column for those: a menu with both has two, side by side, with
+    most rows empty in one of them. A menu of ticks gets no icons."""
+    from PySide6.QtWidgets import QMenu
+
+    from pycangui.ui.main_window import MainWindow
+
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    monkeypatch.setattr(icons, "_shown", True)
+    window = MainWindow()
+    try:
+        for _ in range(2):  # a menu filled as it opens can add submenus
+            for menu in window.findChildren(QMenu):
+                menu.aboutToShow.emit()
+        mixed = []
+        for menu in window.findChildren(QMenu):
+            shown = [a for a in menu.actions() if not a.isSeparator() and a.isVisible()]
+            if any(a.isCheckable() for a in shown) and any(not a.icon().isNull() for a in shown):
+                mixed.append(menu.title() or type(menu.parent()).__name__)
+        assert mixed == []
+    finally:
+        window.close()
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_qts_own_text_menu_has_these_icons_or_none(app, monkeypatch, on):
+    """Qt draws Undo, Cut, Copy, Paste, Delete and Select All from the
+    system's icons, which matched nothing else here."""
+    from PySide6.QtWidgets import QLineEdit
+
+    monkeypatch.setattr(icons, "_shown", on)
+    icons.on_standard_menus(app)
+    box = QLineEdit("text")
+    menu = box.createStandardContextMenu()
+    menu.show()
+    standard = [a for a in menu.actions() if a.objectName() in icons.STANDARD_MENU]
+    assert len(standard) == len(icons.STANDARD_MENU)
+    for action in standard:
+        assert action.property(icons.PROPERTY) == icons.STANDARD_MENU[action.objectName()]
+        assert action.icon().isNull() is not on
+    menu.close()

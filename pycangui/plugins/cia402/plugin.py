@@ -65,7 +65,7 @@ def _fixed_pitch() -> QFont:
 
 
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.10"
+VERSION = "1.11"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -118,7 +118,8 @@ BUS_GONE = (
 UNITS_NOTE = (
     "Counts, counts per second and per mille of rated torque, which is what the "
     "profile defines. Turning those into millimetres or amps needs the gearing "
-    "and the motor rating, which are the drive's business and not pycangui's."
+    "and the motor rating, which are the drive's business and not pycangui's. "
+    "Velocity mode's own objects are in rpm."
 )
 
 
@@ -176,6 +177,42 @@ def maker_bits(bits) -> str:
     return f"statusword bit {said}" if len(bits) == 1 else f"statusword bits {said}"
 
 
+#: Beside Go in a mode that acts on its target as soon as it is written.
+GO_ELSEWHERE = "(Profile position only)"
+
+#: Beside the node: its NMT state, which is not the drive's CiA 402 state.
+NMT_TIP = (
+    "The node's NMT state, from its heartbeat -- the CANopen state, not the\n"
+    "drive's. SDO, which is all this pane writes, works in Pre-operational and\n"
+    "Operational; PDOs only flow in Operational, so a controlword or target\n"
+    "mapped in an RPDO only arrives that way while it is."
+)
+#: Under the node, when an RPDO carries something this pane writes.
+RPDO_CONFLICT = (
+    "{lines}. Whatever sends {which} overrides what this pane writes {when}: a "
+    "write from here can appear to do nothing, or flick back."
+)
+RPDO_CONFLICT_TIP = (
+    "From the node's PDO configuration as pycangui holds it: from the EDS, or\n"
+    "from the node itself after Read PDO config in the CANopen pane. An RPDO\n"
+    "is the drive being written to by whoever sends it -- CAN Transmit here,\n"
+    "or another master -- and it only arrives while the node is Operational."
+)
+RPDO_WARNING_STYLE = "color: #e07000; font-weight: bold;"
+START_TITLE = "Start the node?"
+START_TEXT = (
+    "Node {node} is about to be made Operational. Its PDOs then flow both ways: "
+    "an RPDO that carries the controlword or a target is acted on the moment it "
+    "arrives, from whoever sends it.\n\n"
+    "Start node {node}?"
+)
+NMT_UNKNOWN_TIP = (
+    "This node sends no heartbeat, so its NMT state cannot be seen: pycangui\n"
+    "knows a node's state only from its heartbeat. Nothing is changed on the\n"
+    "node to find out."
+)
+
+
 class NodeDrive(Drive):
     """A live node, read and written by index rather than through its EDS.
 
@@ -217,6 +254,29 @@ class MotorView(QWidget):
         self.node = QComboBox()
         self.node.setToolTip("Which drive.")
         self.node.currentIndexChanged.connect(lambda _i: self._forget())
+        #: The node's NMT state, from its heartbeat: None when it sends none.
+        self.nmt = QLabel("")
+        self._nmt_state: str | None = None
+        #: The selected node's NMT state, set from here: the two a drive is
+        #: worked in. Start is asked about first, as Enable is.
+        self.pre_op_btn = icons.beside(QPushButton("Pre-operational"), icons.PAUSE)
+        self.pre_op_btn.setToolTip(
+            "Put the selected node in Pre-operational (NMT): SDO goes on working,\n"
+            "and its PDOs stop -- an RPDO no longer overrides this pane."
+        )
+        self.pre_op_btn.clicked.connect(lambda: self._nmt("PRE-OPERATIONAL"))
+        self.start_btn = icons.beside(QPushButton("Start"), icons.START)
+        self.start_btn.setToolTip(
+            "Make the selected node Operational (NMT): its PDOs flow. Asked first,\n"
+            "once per node, since an RPDO it is then sent may move it."
+        )
+        self.start_btn.clicked.connect(lambda: self._nmt("OPERATIONAL"))
+        #: Said when an RPDO carries the controlword, the mode or the target.
+        self.rpdo_warning = QLabel("")
+        self.rpdo_warning.setWordWrap(True)
+        self.rpdo_warning.setStyleSheet(RPDO_WARNING_STYLE)
+        self.rpdo_warning.setToolTip(RPDO_CONFLICT_TIP)
+        self.rpdo_warning.hide()
 
         self.state = QLabel("Not polling")
         font = self.state.font()
@@ -303,6 +363,10 @@ class MotorView(QWidget):
         self.apply_target.clicked.connect(
             lambda: self._command(lambda: cia402.steps_to_apply_target(self.mode, self.statusword))
         )
+        #: Beside Go, in a mode that moves as soon as its target is written:
+        #: a greyed button alone left people looking for what it was for.
+        self.go_note = QLabel("")
+        self.go_note.setEnabled(False)
         self.target_note = QLabel("")
         self.target_note.setWordWrap(True)
         self.target_note.setEnabled(False)
@@ -349,7 +413,8 @@ class MotorView(QWidget):
         settings.addWidget(self.target, 1, 1)
         settings.addWidget(self.set_target, 1, 2)
         settings.addWidget(self.apply_target, 1, 3)
-        settings.setColumnStretch(4, 1)
+        settings.addWidget(self.go_note, 1, 4)
+        settings.setColumnStretch(5, 1)
 
         # --- what it is doing -----------------------------------------------------------
         self.actuals: dict[tuple[int, int], QLabel] = {}
@@ -367,6 +432,9 @@ class MotorView(QWidget):
             unit = QLabel(obj.unit)
             for widget in (name, value, unit):
                 widget.setToolTip(about(obj))
+            if obj.where == cia402.VELOCITY_ACTUAL.where:
+                #: Relabelled in velocity mode, which reads 0x6044 in its place.
+                self._velocity_row = (name, value, unit)
             watched.addWidget(name, row, 0)
             watched.addWidget(value, row, 1)
             watched.addWidget(unit, row, 2)
@@ -405,6 +473,9 @@ class MotorView(QWidget):
         where = QHBoxLayout()
         where.addWidget(QLabel("Node:"))
         where.addWidget(self.node)
+        where.addWidget(self.nmt)
+        where.addWidget(self.pre_op_btn)
+        where.addWidget(self.start_btn)
         where.addStretch()
 
         status_box = QGroupBox("State")
@@ -438,6 +509,7 @@ class MotorView(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addLayout(where)
+        layout.addWidget(self.rpdo_warning)
         layout.addWidget(status_box)
         layout.addWidget(run_box)
         layout.addWidget(limits_box)
@@ -462,13 +534,89 @@ class MotorView(QWidget):
         # box whose C++ half had already gone.
         app.canopen.node_seen.connect(self._on_node_seen)
         app.canopen.eds_loaded.connect(self._on_eds_loaded)
+        app.canopen.node_lost.connect(self._on_node_lost)
+        app.canopen.pdo_config.connect(self._on_pdo_config)
         app.bus.disconnected.connect(self._on_bus_lost)
         self._show_state()
         self._show_target()
 
     # --- which drive ---------------------------------------------------------------------
-    def _on_node_seen(self, _node_id: int, _state: str) -> None:
+    def _on_node_seen(self, node_id: int, _state: str) -> None:
         self._fill_nodes()
+        if node_id == self.node.currentData():
+            self._show_nmt()
+
+    def _on_node_lost(self, node_id: int) -> None:
+        if node_id == self.node.currentData():
+            self._show_nmt()
+
+    def _nmt(self, command: str) -> None:
+        """Send the selected node an NMT command; its heartbeat says what came of it."""
+        node_id = self.node.currentData()
+        if node_id is None:
+            self.app.warn("No drive selected, or it is not on the bus.")
+            return
+        if command == "OPERATIONAL" and not self.app.confirm.ask(
+            self, f"cia402.start.{node_id}", START_TITLE, START_TEXT.format(node=node_id)
+        ):
+            return
+        self.app.canopen.nmt(node_id, command)
+        self.app.log(f"Node {node_id}: NMT {command.lower()} sent")
+
+    def _on_pdo_config(self, node_id: int) -> None:
+        if node_id == self.node.currentData():
+            self._show_rpdo_conflicts()
+
+    def _show_rpdo_conflicts(self) -> None:
+        """Warn when an enabled RPDO carries what this pane writes.
+
+        Only said, never acted on: which of the two should win -- the RPDO's
+        sender or this pane -- is a decision about the machine.
+        """
+        node_id = self.node.currentData()
+        configs = [] if node_id is None else self.app.canopen.pdo_configs(node_id)
+        lines = cia402.rpdo_conflicts(configs, self.mode)
+        if not lines:
+            self.rpdo_warning.hide()
+            return
+        numbers = sorted({line.split()[0] for line in lines})
+        operational = self._nmt_state == "OPERATIONAL"
+        self.rpdo_warning.setText(
+            RPDO_CONFLICT.format(
+                lines="; ".join(lines),
+                which=" and ".join(numbers),
+                when="now, while the node is Operational"
+                if operational
+                else "whenever the node is Operational",
+            )
+        )
+        self.rpdo_warning.show()
+
+    def _show_nmt(self) -> None:
+        """The selected node's NMT state, as its heartbeat last gave it.
+
+        From the CANopen manager, which hears every heartbeat: nothing is
+        sent to find it out. A node with no heartbeat says so, rather than
+        showing a state somebody might take for the drive's.
+        """
+        node_id = self.node.currentData()
+        manager = self.app.canopen
+        state = None if node_id is None else manager.nmt_states.get(node_id)
+        self._nmt_state = state
+        for button in (self.pre_op_btn, self.start_btn):
+            button.setEnabled(node_id is not None)
+        if node_id is None:
+            self.nmt.setText("")
+            self.nmt.setToolTip("")
+        elif state is None:
+            self.nmt.setText("NMT: not known (no heartbeat)")
+            self.nmt.setToolTip(NMT_UNKNOWN_TIP)
+        else:
+            lost = node_id in getattr(manager, "lost_nodes", ())
+            said = state.capitalize()
+            self.nmt.setText(f"NMT: lost (was {said})" if lost else f"NMT: {said}")
+            self.nmt.setToolTip(NMT_TIP)
+        self._show_rpdo_conflicts()
 
     def _fill_nodes(self) -> None:
         """Rebuild the list, but only when the list has actually changed.
@@ -516,6 +664,8 @@ class MotorView(QWidget):
         self.mode_now.setText("")
         for value in self.actuals.values():
             value.setText("--")
+        self._show_velocity_row()
+        self._show_nmt()
         self._show_state()
         self._show_target()
         # What this drive has is this drive's business: its EDS says which
@@ -560,7 +710,7 @@ class MotorView(QWidget):
             # the one time the pane stopped saying what it was writing to.
             box.setToolTip(about(obj) if has else f"{about(obj)}\n{MISSING_TIP}")
         for where, label in self.actuals.items():
-            if not self._has(next(o for o in cia402.WATCHED if o.where == where)):
+            if not self._has(self._shown_in(where)):
                 label.setText("not in the EDS")
             elif label.text() == "not in the EDS":
                 label.setText("--")  # a different drive, or an EDS since loaded
@@ -661,7 +811,7 @@ class MotorView(QWidget):
             self.poll.setChecked(False)
             return
         if on:
-            self.poller.set_objects(obj.where for obj in cia402.WATCHED)
+            self.poller.set_objects(obj.where for obj in cia402.watched(self.mode))
             self.poller.start(self.hz.value())
         else:
             self.poller.stop()
@@ -669,7 +819,7 @@ class MotorView(QWidget):
 
     def _read_one(self, index: int, sub: int) -> None:
         drive = self._quietly()
-        obj = next((o for o in cia402.WATCHED if o.where == (index, sub)), None)
+        obj = next((o for o in cia402.watched(self.mode) if o.where == (index, sub)), None)
         # An object this drive's EDS does not list is not asked for: the
         # answer would be an abort code, many times a second, and the line
         # on screen already says the file has no such object.
@@ -739,11 +889,40 @@ class MotorView(QWidget):
             self.statusword = int(value)
             self._show_state()
         elif obj.where == cia402.MODE_DISPLAY.where:
-            self.mode = int(value)
+            was, self.mode = self.mode, int(value)
             self.mode_now.setText(f"in {cia402.mode_name(self.mode)}")
             self._show_target()
+            if (was == 2) != (self.mode == 2):
+                self._show_velocity_row()
+            if was != self.mode:
+                self._show_rpdo_conflicts()  # the target it writes changed
+        elif obj.where == cia402.VL_VELOCITY_ACTUAL.where:
+            self._velocity_row[1].setText(f"{int(value):,}")
         elif (label := self.actuals.get(obj.where)) is not None:
             label.setText(f"{int(value):,}")
+
+    def _shown_in(self, where: tuple[int, int]) -> Object:
+        """The object a row of actual values shows in the present mode."""
+        if where == cia402.VELOCITY_ACTUAL.where and self.mode == 2:
+            return cia402.VL_VELOCITY_ACTUAL
+        return next(obj for obj in cia402.WATCHED if obj.where == where)
+
+    def _show_velocity_row(self) -> None:
+        """Velocity mode's own speed (0x6044, rpm) in velocity mode, 0x606C otherwise.
+
+        Shown in the units the target is set in, from the object a drive in
+        that mode keeps: one may not have 0x606C at all.
+        """
+        obj = self._shown_in(cia402.VELOCITY_ACTUAL.where)
+        name, value, unit = self._velocity_row
+        name.setText(f"{obj.name}:")
+        unit.setText(obj.unit)
+        for widget in (name, value, unit):
+            widget.setToolTip(about(obj))
+        value.setText("--" if self._has(obj) else "not in the EDS")
+        poller = getattr(self, "poller", None)  # not yet, while the pane is being built
+        if poller is not None and poller.running:
+            poller.set_objects(o.where for o in cia402.watched(self.mode))
 
     def _on_rate(self, requested: float, achieved: float) -> None:
         # Polling starting or stopping changes what the banner is entitled to
@@ -805,6 +984,8 @@ class MotorView(QWidget):
             self.target_note.setText(f"{obj.name} (0x{obj.index:04X}), in {obj.unit}.")
         else:
             self.target_note.setText(why)
+        acts_at_once = allowed and self.mode != 1
+        self.go_note.setText(GO_ELSEWHERE if acts_at_once else "")
 
     # --- doing something to it -----------------------------------------------------------------
     def _enable(self) -> None:
@@ -873,7 +1054,7 @@ class MotorView(QWidget):
         if drive is None or self._busy or not steps:
             return
 
-        held = self._maker_bits()
+        held = self._maker_bits() | cia402.operation_bits(self.mode)
 
         def job():
             for step in steps:
@@ -915,7 +1096,20 @@ class MotorView(QWidget):
         if obj is None:
             self.app.warn(cia402.can_set_target(self.mode)[1])
             return
-        self._write(obj, self.target.value())
+        bits = cia402.operation_bits(self.mode)
+        if not (bits and cia402.is_enabled(self.statusword)):
+            self._write(obj, self.target.value())
+            return
+        # A drive enabled before velocity mode was chosen was enabled without
+        # the ramp bits, and sits still whatever its target. The enable
+        # controlword again, with them, is what lets it move -- and it is
+        # already enabled, so this enables nothing.
+        word = cia402.ENABLE_OPERATION | bits | self._maker_bits()
+
+        def ramp_on() -> None:
+            self._write(cia402.CONTROLWORD, word, then=self._read_statusword)
+
+        self._write(obj, self.target.value(), then=ramp_on)
 
     def _write(self, obj: Object, value: int, then=None) -> None:
         """One write, and whatever has to be read back afterwards.
