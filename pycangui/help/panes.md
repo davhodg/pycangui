@@ -131,4 +131,6 @@ colours.
 *Tools > Settings > Show icons* puts a standard icon beside the word on
 common buttons and menu items -- Clear, Save, Stop, Copy and the like -- to find
 them at a glance. It is on to start with; untick it for the words alone. The words
-are there either way, and the choice is kept for you on this computer.
+are there either way, and the choice is kept for you on this computer. The icons
+are Microsoft's Fluent UI System Icons, shipped with pycangui, so they are the same
+on Windows, Linux and macOS, drawn in the theme's text colour.

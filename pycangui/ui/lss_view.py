@@ -74,19 +74,19 @@ class LssView(QWidget):
         ):
             grid.addWidget(QLabel(label), 0, column * 2)
             grid.addWidget(edit, 0, column * 2 + 1)
-        fastscan = QPushButton("Fastscan")
+        fastscan = icons.beside(QPushButton("Fastscan"), icons.SEARCH)
         fastscan.setToolTip(
             "Discover an unconfigured node's identity by binary search and\n"
             "leave it in configuration state"
         )
         fastscan.clicked.connect(manager.lss_fast_scan)
-        select_btn = QPushButton("Select by address")
+        select_btn = icons.beside(QPushButton("Select by address"), icons.PICK)
         select_btn.setToolTip("Put the node with exactly this identity into configuration state")
         select_btn.clicked.connect(self._select)
-        all_btn = QPushButton("All nodes")
+        all_btn = icons.beside(QPushButton("All nodes"), icons.SELECT_ALL)
         all_btn.setToolTip("Put every node into configuration state (single device only)")
         all_btn.clicked.connect(lambda: manager.lss_switch_global(True))
-        inquire = QPushButton("Inquire")
+        inquire = icons.beside(QPushButton("Inquire"), icons.IDENTIFY)
         inquire.setToolTip("Read back the identity and node-ID of the selected node")
         inquire.clicked.connect(manager.lss_inquire)
         buttons = QHBoxLayout()
@@ -103,7 +103,7 @@ class LssView(QWidget):
         self.node_id.setRange(1, 127)
         self.node_id.setValue(1)
         row.addWidget(self.node_id)
-        set_id = QPushButton("Set node-ID")
+        set_id = icons.beside(QPushButton("Set node-ID"), icons.NUMBER)
         set_id.setToolTip(
             "Give the selected node a new node-ID. It does not take effect\n"
             "until the node is reset, and is only kept if you store it."
@@ -117,7 +117,7 @@ class LssView(QWidget):
             self.bit_rate.addItem(f"{rate // 1000} kbit/s", index)
         self.bit_rate.setCurrentIndex(2)  # 500 kbit/s
         row.addWidget(self.bit_rate)
-        set_rate = QPushButton("Set bit rate")
+        set_rate = icons.beside(QPushButton("Set bit rate"), icons.SPEED)
         set_rate.setToolTip(
             "Change the node's bit rate. It keeps the old one until Activate,\n"
             "and every node on the bus has to be changed together or the ones\n"
@@ -125,7 +125,7 @@ class LssView(QWidget):
         )
         set_rate.clicked.connect(lambda: manager.lss_set_bit_timing(self.bit_rate.currentData()))
         row.addWidget(set_rate)
-        activate = QPushButton("Activate")
+        activate = icons.beside(QPushButton("Activate"), icons.SWITCH)
         activate.setToolTip(
             "Every node switches to the new bit rate after the delay.\n"
             "Reconnect this tool at the new rate afterwards."
@@ -140,7 +140,7 @@ class LssView(QWidget):
         store = icons.beside(QPushButton("Store configuration"), icons.SAVE)
         store.setToolTip("Make the node-ID and bit rate survive a power cycle")
         store.clicked.connect(manager.lss_store)
-        done = QPushButton("Back to waiting state")
+        done = icons.beside(QPushButton("Back to waiting state"), icons.LEAVE)
         done.setToolTip("Leave configuration state; a node-ID change applies after a reset")
         done.clicked.connect(lambda: manager.lss_switch_global(False))
         row3.addWidget(store)

@@ -508,7 +508,7 @@ class MainWindow(QMainWindow):
         # window is up, and a list made once at startup would name the wrong
         # files. Remove all is the last item rather than the only one, so a
         # database that has moved can be dropped without losing the others.
-        self.dbc_menu = icons.beside(file_menu.addMenu("Remove DBC"), icons.CLOSE)
+        self.dbc_menu = icons.beside(file_menu.addMenu("Remove DBC"), icons.REMOVE)
         self.dbc_menu.setToolTipsVisible(True)
         self.dbc_menu.aboutToShow.connect(self._build_dbc_menu)
         file_menu.addSeparator()
@@ -576,6 +576,7 @@ class MainWindow(QMainWindow):
             "Nothing else is touched."
         )
         self.reset_layout_action.triggered.connect(self._reset_layout)
+        icons.beside(self.reset_layout_action, icons.RESET)
         self.view_menu = self.menuBar().addMenu("&View")
         #: Pane name -> its entry in the View menu. See ``_pane_action``.
         self._view_actions: dict[str, QAction] = {}
@@ -1588,7 +1589,7 @@ class MainWindow(QMainWindow):
                 "to dock it, or onto another pane to tab the two together."
             )
 
-        rename = self.view_menu.addMenu("Rename pane")
+        rename = icons.beside(self.view_menu.addMenu("Rename pane"), icons.RENAME)
         rename.setToolTipsVisible(True)
         rename.setToolTip("Call a pane something that says what you are using it for.")
         for name in self.panes.names():
@@ -1598,7 +1599,7 @@ class MainWindow(QMainWindow):
             action.setToolTip("Two traces are much clearer as Drive bus and Errors.")
 
         extras = self.panes.extras()
-        remove = self.view_menu.addMenu("Remove pane")
+        remove = icons.beside(self.view_menu.addMenu("Remove pane"), icons.REMOVE)
         remove.setEnabled(bool(extras))
         remove.setToolTipsVisible(True)
         for name in extras:
@@ -1608,7 +1609,7 @@ class MainWindow(QMainWindow):
             action.setToolTip("Close this pane for good. Closing its window only puts it away.")
 
         self.view_menu.addSeparator()
-        self.view_menu.addAction("Dock all panes", self.panes.dock_all)
+        icons.beside(self.view_menu.addAction("Dock all panes", self.panes.dock_all), icons.ATTACH)
         self.view_menu.addAction(self.reset_layout_action)
 
     def _arrange_default(self) -> None:

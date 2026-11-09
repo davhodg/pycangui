@@ -9,6 +9,14 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Added
+
+- Icons on the controls that had none: LSS, Identify, Apply DCF, Compare, UDS Open and Values, J1939 Claim, Counter / checksum, and the CiA 402 (1.10) and firmware (1.4) plugins' buttons.
+
+### Changed
+
+- Icons are now Microsoft's Fluent UI System Icons, shipped with pycangui: the same on Windows, Linux and macOS, where Linux had only some.
+
 ## [0.5.1] - 2026-11-08
 
 ### Added

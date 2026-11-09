@@ -48,6 +48,8 @@ REQUIRED_FILES = (
     "pycangui/hooks/trace.py",
     "LICENSE",
     "LICENSES/MIT-0.txt",
+    "LICENSES/MIT.txt",
+    "pycangui/resources/icons/filter_20_regular.svg",
     "NOTICE",
     "THIRD-PARTY-NOTICES.txt",
 )

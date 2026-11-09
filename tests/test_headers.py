@@ -118,10 +118,14 @@ def test_templates_are_mit0_and_claim_nothing():
 
 
 def test_every_licence_named_is_shipped_and_declared():
+    """Apache-2.0 in LICENSE; MIT-0 for the templates and MIT for the icons in LICENSES."""
     assert (ROOT / "LICENSE").is_file()
-    assert (ROOT / "LICENSES" / "MIT-0.txt").is_file()
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert pyproject["project"]["license"] == "Apache-2.0 AND MIT-0"
+    named = pyproject["project"]["license"].split(" AND ")
+    assert named[0] == "Apache-2.0"
+    assert {"MIT-0", "MIT"} <= set(named)
+    for licence in named[1:]:
+        assert (ROOT / "LICENSES" / f"{licence}.txt").is_file(), licence
 
 
 def test_a_template_copied_into_a_workspace_keeps_its_header(tmp_path, monkeypatch):

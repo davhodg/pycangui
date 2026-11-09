@@ -292,7 +292,7 @@ def test_it_installs_and_loads(app, window):
 def test_it_says_which_version_it_is(app, window):
     """A plugin travels, and the copy in a workspace is the user's own: the
     only way to know which of ours it started as is for it to say."""
-    assert window.plugins.loaded["firmware"].version == "1.3"
+    assert window.plugins.loaded["firmware"].version == "1.4"
 
 
 def test_it_brings_a_pane(app, window):

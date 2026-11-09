@@ -76,14 +76,14 @@ class J1939View(QWidget):
         # Which address this tester claims is a decision about the network,
         # not about this session.
         remember(ctx, "j1939.address", self.address)
-        self.claim_btn = QPushButton("Claim address")
+        self.claim_btn = icons.beside(QPushButton("Claim address"), icons.CLAIM)
         self.claim_btn.setToolTip(
             "Take this address on the bus (J1939-81). Needed before pycangui\n"
             "can be sent messages of its own or send multi-packet ones."
         )
         self.claim_btn.setCheckable(True)
         self.claim_btn.toggled.connect(self._toggle_claim)
-        claims = icons.beside(QPushButton("Request address claims"), icons.SEND)
+        claims = icons.beside(QPushButton("Request address claims"), icons.IDENTIFY)
         claims.setToolTip(
             "Ask every node to say who it is. They answer with their NAME,\n"
             "which fills the node list without waiting for them to speak."
@@ -244,6 +244,7 @@ class J1939View(QWidget):
         self.claim_btn.blockSignals(True)
         self.claim_btn.setChecked(address != 0xFE)
         self.claim_btn.setText(f"Release 0x{address:02X}" if address != 0xFE else "Claim address")
+        icons.beside(self.claim_btn, icons.RELEASE if address != 0xFE else icons.CLAIM)
         self.claim_btn.blockSignals(False)
 
     def _request(self) -> None:

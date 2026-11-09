@@ -65,7 +65,7 @@ def _fixed_pitch() -> QFont:
 
 
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.9"
+VERSION = "1.10"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -249,13 +249,13 @@ class MotorView(QWidget):
         maker_row.addWidget(self.maker_status)
         maker_row.addStretch()
 
-        self.enable = QPushButton("Enable")
+        self.enable = icons.beside(QPushButton("Enable"), icons.ENABLE)
         self.enable.setToolTip(
             "Walk the drive to Operation enabled: shutdown, switch on, enable.\n"
             "Asks first -- this is the state in which a motor turns."
         )
         self.enable.clicked.connect(self._enable)
-        self.disable = QPushButton("Disable")
+        self.disable = icons.beside(QPushButton("Disable"), icons.DISABLE)
         self.disable.setToolTip("Back to Switch on disabled. The motor is no longer driven.")
         self.disable.clicked.connect(
             lambda: self._command(lambda: cia402.steps_to_disable(self.statusword))
@@ -285,7 +285,7 @@ class MotorView(QWidget):
         for number, name in sorted(cia402.MODES.items()):
             self.mode_box.addItem(f"{number}  {name}", number)
         self.mode_box.setToolTip(MODE_TIP)
-        set_mode = QPushButton("Set mode")
+        set_mode = icons.beside(QPushButton("Set mode"), icons.SWITCH)
         set_mode.clicked.connect(self._set_mode)
         self.mode_now = QLabel("")
 
@@ -293,7 +293,7 @@ class MotorView(QWidget):
         self.target = QSpinBox()
         self.target.setRange(-2_000_000_000, 2_000_000_000)
         self.target.setGroupSeparatorShown(True)
-        self.set_target = QPushButton("Set target")
+        self.set_target = icons.beside(QPushButton("Set target"), icons.PICK)
         self.set_target.clicked.connect(self._write_target)
         self.apply_target = icons.beside(QPushButton("Go"), icons.START)
         self.apply_target.setToolTip(

@@ -45,7 +45,7 @@ from .program import Device
 
 API_VERSION = 1
 NAME = "CANopen firmware (CiA 302-3)"
-VERSION = "1.3"
+VERSION = "1.4"
 #: What the pause is held for while a program is downloaded.
 FLASHING = "CANopen firmware download"
 DESCRIPTION = "Download firmware to a CANopen node (CiA 302-3)."
@@ -205,7 +205,7 @@ class FirmwareView(QWidget):
             "Stop the program, clear it, write the image and start it again.\n\n" + WARNING
         )
         self.download.clicked.connect(self._download)
-        self.enter = QPushButton("Enter bootloader")
+        self.enter = icons.beside(QPushButton("Enter bootloader"), icons.ENTER)
         self.enter.setToolTip(
             "Stop the program (0x1F51), which is how a CiA 302-3 device goes into its\n"
             "loader. A device with a way of its own is enter_bootloader in program.py."
@@ -213,7 +213,7 @@ class FirmwareView(QWidget):
         self.enter.clicked.connect(
             lambda: self._one("Requesting the bootloader", program.enter_bootloader, ask=True)
         )
-        self.leave = QPushButton("Exit bootloader")
+        self.leave = icons.beside(QPushButton("Exit bootloader"), icons.LEAVE)
         self.leave.setToolTip(
             "Start the program again (0x1F51), which is how the loader is left.\n"
             "A device with a way of its own is exit_bootloader in program.py."

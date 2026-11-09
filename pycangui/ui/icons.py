@@ -7,71 +7,82 @@ little English find Clear, Save or Stop at a glance. Only actions whose
 meaning is the standard one get an icon. A picture made up for "Scan for
 nodes" would have to be learnt, which is the opposite of the point.
 
-The icons are the system's own, the set Qt already draws on Copy and Select
-All in a text box's right-click menu: Windows' icon font, the desktop's icon
-theme on Linux. pycangui ships none. Where the system has no icon for one,
-the item is the word alone, as it always was.
+The icons are Microsoft's Fluent UI System Icons (MIT; LICENSES/MIT.txt),
+shipped in ``pycangui/resources/icons`` under their own file names, so the
+same picture is shown on Windows 10, Windows 11, Linux and macOS. The
+system's own were used at first: Windows' icon font matched, but on Linux
+each desktop theme names its icons differently and lacked a different third
+of them, and Qt, not finding a name, tries a shorter one, which showed a
+blank page for Edit.
 
-A few that Qt has no name for -- a pin, a pane going to a window of its own
--- are drawn straight from Windows' icon font, in the text colour of the
-moment, so they follow a change of theme like the words beside them. Stop
-is drawn from the font too, solid, and falls back to the theme's own where
-the font is missing.
+Each is drawn in the text colour of the moment, so it follows a change of
+theme, dark mode and high contrast like the word beside it.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QSettings, QSize, Qt
+from PySide6.QtCore import QRect, QRectF, QSettings, QSize, Qt
 from PySide6.QtGui import (
-    QFont,
-    QFontDatabase,
     QGuiApplication,
     QIcon,
     QIconEngine,
+    QImage,
     QPainter,
     QPalette,
     QPixmap,
 )
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox
 
-_Theme = QIcon.ThemeIcon
+from pycangui import resources
 
 ADD = "add"
+APPLY = "apply"
 ATTACH = "attach"
 BACK = "back"
 BOOKMARK = "bookmark"
 BOOKMARKED = "bookmarked"
 BROWSE = "browse"
 BUG = "bug"
+CALCULATE = "calculate"
 CANCEL = "cancel"
 CHECK = "check"
+CLAIM = "claim"
 CLEAR = "clear"
 CLOSE = "close"
 CONNECT = "connect"
+COMPARE = "compare"
 COPY = "copy"
 DELETE = "delete"
 DETACH = "detach"
 DIAGNOSTICS = "diagnostics"
+DISABLE = "disable"
 DISCARD = "discard"
 DISCONNECT = "disconnect"
 DOWN = "down"
 DOWNLOAD = "download"
 EDIT = "edit"
+ENABLE = "enable"
+ENTER = "enter"
 EXIT = "exit"
 EXPORT = "export"
 FILTER = "filter"
 FOLDER = "folder"
 HELP = "help"
 HOME = "home"
+IDENTIFY = "identify"
 INFO = "info"
 KNOWN_IDS = "known ids"
+LEAVE = "leave"
 LICENCE = "licence"
 MANAGE = "manage"
 NEW = "new"
 LIST = "list"
 LOGIN = "login"
+NUMBER = "number"
 OPEN = "open"
 PAUSE = "pause"
+PICK = "pick"
 PIN = "pin"
 PINNED = "pinned"
 PLOT = "plot"
@@ -81,13 +92,16 @@ RECOVER = "recover"
 RESET = "reset"
 RESTART = "restart"
 SEARCH = "search"
+RELEASE = "release"
 RELOAD = "reload"
 REMOVE = "remove"
+RENAME = "rename"
 SAVE = "save"
 SAVE_AS = "save as"
 SELECT_ALL = "select all"
 SEND = "send"
 SETTINGS = "settings"
+SPEED = "speed"
 START = "start"
 STOP = "stop"
 SWITCH = "switch"
@@ -99,93 +113,93 @@ UPLOAD = "upload"
 VIEW = "view"
 WRITE = "write"
 
-#: Each of pycangui's names for an action, and the system icon for it.
-THEME: dict[str, QIcon.ThemeIcon] = {
-    ADD: _Theme.ListAdd,
-    BACK: _Theme.GoPrevious,
-    BROWSE: _Theme.FolderOpen,
-    CANCEL: _Theme.ProcessStop,
-    CLEAR: _Theme.EditClear,
-    CLOSE: _Theme.WindowClose,  # where the font below is missing
-    CONNECT: _Theme.NetworkWired,
-    COPY: _Theme.EditCopy,
-    DELETE: _Theme.EditDelete,
-    DISCARD: _Theme.DocumentRevert,
-    DISCONNECT: _Theme.NetworkOffline,
-    DOWN: _Theme.GoDown,
-    EXIT: _Theme.ApplicationExit,  # where the font below is missing
-    EXPORT: _Theme.DocumentSave,  # it is saving; DocumentSend is drawn as Send's paper plane
-    FOLDER: _Theme.FolderOpen,
-    HOME: _Theme.GoHome,
-    NEW: _Theme.DocumentNew,
-    OPEN: _Theme.DocumentOpen,
-    PAUSE: _Theme.MediaPlaybackPause,
-    RECORD: _Theme.MediaRecord,
-    RECOVER: _Theme.SystemReboot,
-    RELOAD: _Theme.ViewRefresh,
-    REMOVE: _Theme.ListRemove,
-    SAVE: _Theme.DocumentSave,
-    SAVE_AS: _Theme.DocumentSaveAs,
-    SELECT_ALL: _Theme.EditSelectAll,
-    SEND: _Theme.MailSend,
-    START: _Theme.MediaPlaybackStart,
-    STOP: _Theme.MediaPlaybackStop,  # where the font below is missing
-    UNDO: _Theme.EditUndo,
-    UP: _Theme.GoUp,
+#: Each of pycangui's names for an action, and the file in
+#: ``resources/icons`` drawn for it: Fluent's name, at its 20 px size.
+FILE: dict[str, str] = {
+    ADD: "add_20_regular",
+    APPLY: "document_arrow_right_20_regular",  # a file going out into the device
+    ATTACH: "window_new_rotate_180_20_regular",  # the arrow back into the window
+    BACK: "arrow_left_20_regular",
+    BOOKMARK: "star_20_regular",  # outlined: showing everything
+    BOOKMARKED: "star_20_filled",  # filled in: showing only the bookmarked
+    BROWSE: "folder_open_20_regular",
+    BUG: "bug_20_regular",
+    CALCULATE: "calculator_20_regular",  # worked out for every frame
+    CANCEL: "dismiss_circle_20_regular",
+    CHECK: "checkmark_20_regular",
+    CLAIM: "flag_20_regular",  # this address is mine
+    CLEAR: "eraser_20_regular",  # not a cross: Close and Cancel have those
+    CLOSE: "dismiss_20_regular",
+    CONNECT: "plug_connected_20_regular",
+    COMPARE: "column_double_compare_20_regular",  # two columns, side by side
+    COPY: "copy_20_regular",
+    DELETE: "delete_20_regular",
+    DETACH: "window_new_20_regular",  # the arrow out to a window of its own
+    DIAGNOSTICS: "pulse_20_regular",
+    DISABLE: "toggle_left_20_regular",  # switched off
+    DISCARD: "arrow_undo_20_regular",
+    DISCONNECT: "plug_disconnected_20_regular",
+    DOWN: "arrow_down_20_regular",
+    DOWNLOAD: "arrow_download_20_regular",
+    EDIT: "edit_20_regular",
+    ENABLE: "toggle_right_20_regular",  # switched on
+    ENTER: "arrow_enter_20_regular",  # going in: Leave is the way out
+    EXIT: "door_arrow_right_20_regular",
+    EXPORT: "save_20_regular",
+    FILTER: "filter_20_regular",
+    FOLDER: "folder_open_20_regular",
+    HELP: "question_circle_20_regular",
+    HOME: "home_20_regular",
+    IDENTIFY: "contact_card_20_regular",  # who a node is
+    INFO: "info_20_regular",
+    KNOWN_IDS: "tag_20_regular",  # the name each id goes by
+    LEAVE: "arrow_exit_20_regular",  # let go: Back is the plain arrow
+    LICENCE: "certificate_20_regular",
+    MANAGE: "wrench_20_regular",  # the gear is Settings
+    NEW: "document_add_20_regular",
+    LIST: "text_bullet_list_20_regular",
+    LOGIN: "key_20_regular",
+    NUMBER: "number_symbol_20_regular",
+    OPEN: "folder_open_20_regular",
+    PAUSE: "pause_20_regular",
+    PICK: "target_arrow_20_regular",  # exactly this one
+    PIN: "pin_20_regular",  # outlined: not pinned yet
+    PINNED: "pin_20_filled",  # filled in: pinned, and pressing it unpins
+    PLOT: "data_line_20_regular",
+    READ: "book_open_20_regular",
+    RECORD: "record_20_regular",
+    RECOVER: "arrow_clockwise_20_regular",  # a controller back on the bus
+    RESET: "arrow_counterclockwise_20_regular",  # the other way from Recover
+    RESTART: "power_20_regular",  # a device starting again
+    SEARCH: "search_20_regular",
+    RELEASE: "flag_off_20_regular",  # giving the address up
+    RELOAD: "arrow_sync_20_regular",
+    REMOVE: "subtract_20_regular",
+    RENAME: "rename_a_20_regular",  # a name in a box: the pencil is Edit
+    SAVE: "save_20_regular",
+    SAVE_AS: "save_edit_20_regular",
+    SELECT_ALL: "select_all_on_20_regular",
+    SEND: "send_20_regular",
+    SETTINGS: "settings_20_regular",
+    SPEED: "top_speed_20_regular",  # a bit rate
+    START: "play_20_regular",
+    # Solid: an outlined square beside the Cyclic tick boxes read as one
+    # more of them.
+    STOP: "stop_20_filled",
+    SWITCH: "arrow_swap_20_regular",
+    UNDO: "arrow_undo_20_regular",
+    UPDATES: "arrow_sync_circle_20_regular",
+    UNLOCK: "lock_open_20_regular",
+    UP: "arrow_up_20_regular",
+    UPLOAD: "arrow_upload_20_regular",
+    VIEW: "eye_20_regular",
+    WRITE: "edit_line_horizontal_3_20_regular",  # writing on lines: the plain pencil is Edit
 }
 
-#: The ones Qt has no name for, as characters of Windows' icon font. The same
-#: code in Windows 11's Segoe Fluent Icons and Windows 10's Segoe MDL2 Assets.
-GLYPH: dict[str, int] = {
-    ATTACH: 0xE944,  # back into the window
-    BOOKMARK: 0xE734,  # a star, outlined: showing everything
-    BOOKMARKED: 0xE735,  # a star, filled in: showing only the bookmarked
-    BUG: 0xEBE8,  # a beetle
-    CHECK: 0xE73E,  # a tick: the magnifying glass is kept for search
-    # The theme's own X is drawn bigger and bolder than the icons beside it.
-    CLOSE: 0xE711,
-    DETACH: 0xE8A7,  # open in a new window
-    DIAGNOSTICS: 0xE9D9,  # a pulse on a screen, as Windows has it
-    DOWNLOAD: 0xE896,  # an arrow down into a tray
-    EDIT: 0xE70F,  # a pencil, as Write
-    # The theme's own is an X, the same as Remove DBC's beside it.
-    EXIT: 0xE89F,  # an arrow into a box: Windows 10 has no door
-    FILTER: 0xE71C,  # a funnel
-    HELP: 0xE897,  # a question mark
-    INFO: 0xE946,  # an i in a circle
-    KNOWN_IDS: 0xE8EC,  # a tag: the name each id goes by
-    LICENCE: 0xEB95,  # a certificate
-    LIST: 0xE8FD,  # a bulleted list
-    LOGIN: 0xE8D7,  # a key
-    MANAGE: 0xE90F,  # a spanner: the gear is Settings
-    PIN: 0xE718,  # a pin, outlined: not pinned yet
-    PINNED: 0xE842,  # a pin, filled in: pinned, and pressing it unpins
-    PLOT: 0xE9D2,  # a small chart
-    READ: 0xE736,  # an open book
-    RESET: 0xE777,  # an arrow back round: the other way from Reload
-    RESTART: 0xE7E8,  # a power button: a device starting again
-    SEARCH: 0xE721,  # a magnifying glass
-    SETTINGS: 0xE713,  # a gear
-    # Solid: the theme's own stop is a hollow square, which beside the
-    # Cyclic tick boxes read as one more of them.
-    STOP: 0xE73B,
-    SWITCH: 0xE8AB,  # two arrows, one each way
-    UNLOCK: 0xE785,  # an open padlock
-    UPDATES: 0xE895,  # two arrows round, as Windows Update has them
-    UPLOAD: 0xE898,  # an arrow up out of a tray
-    VIEW: 0xE890,  # an eye
-    WRITE: 0xE70F,  # a pencil
-}
 
-#: Better ones that only Windows 11's font has.
-FLUENT_ONLY: dict[str, int] = {EXIT: 0xF3B1}  # a door, with the arrow going out
-
-#: How much of the icon's room a glyph takes, where not all of it: the solid
-#: square fills its whole cell and looked twice the weight of those beside it.
-GLYPH_SCALE: dict[str, float] = {STOP: 0.7}
-
-#: Windows 11's icon font first, then Windows 10's.
-GLYPH_FONTS = ("Segoe Fluent Icons", "Segoe MDL2 Assets")
+def path(name: str):
+    """Where the picture for one of the names above is shipped."""
+    return resources.path(f"icons/{FILE[name]}.svg")
 
 
 #: Where *Tools > Settings > Show icons* is kept: with the computer,
@@ -230,7 +244,7 @@ def set_shown(on: bool) -> None:
 
 
 def beside[Thing](thing: Thing, name: str) -> Thing:
-    """Give a button or menu item the system's icon for ``name``, if it has one.
+    """Give a button or menu item the icon for ``name``.
 
     Returns ``thing``, so that it can wrap the line that makes it.
     """
@@ -241,14 +255,7 @@ def beside[Thing](thing: Thing, name: str) -> Thing:
 
 
 def _draw(thing, name: str) -> None:
-    code = GLYPH.get(name)
-    if name in FLUENT_ONLY and glyph_font() == GLYPH_FONTS[0]:
-        code = FLUENT_ONLY[name]
-    icon = _glyph(code, GLYPH_SCALE.get(name, 1.0)) if code else None
-    if icon is None and name in THEME:
-        icon = QIcon.fromTheme(THEME[name])
-    if icon is not None and not icon.isNull():
-        thing.setIcon(icon)
+    thing.setIcon(icon(name))
 
 
 _Box = QDialogButtonBox.StandardButton
@@ -291,37 +298,54 @@ def on_buttons[Box: (QDialogButtonBox, QMessageBox)](box: Box) -> Box:
     return box
 
 
-# --- drawn from the icon font --------------------------------------------------------
-def glyph_font() -> str:
-    """The icon font this machine has, or "" where it has none."""
-    have = set(QFontDatabase.families())
-    return next((family for family in GLYPH_FONTS if family in have), "")
-
+# --- drawing --------------------------------------------------------------------------
+#: One renderer per picture, read from the disk the first time it is drawn.
+_RENDERERS: dict[str, QSvgRenderer] = {}
 
 #: Engines handed to Qt, kept here so that Python does not collect one that
 #: an icon is still drawing with.
 _ENGINES: list[QIconEngine] = []
 
 
-class _GlyphEngine(QIconEngine):
-    """One character of the icon font, in the palette's text colour when drawn."""
+def icon(name: str) -> QIcon:
+    """The icon for one of the names above, drawn in the text colour."""
+    return QIcon(_kept(_Engine(name)))
 
-    def __init__(self, family: str, code: int, scale: float = 1.0) -> None:
+
+def _renderer(name: str) -> QSvgRenderer:
+    if name not in _RENDERERS:
+        _RENDERERS[name] = QSvgRenderer(str(path(name)))
+    return _RENDERERS[name]
+
+
+class _Engine(QIconEngine):
+    """One picture, in the palette's text colour when drawn.
+
+    The files are drawn in one dark grey. The shape is drawn first and then
+    filled with the colour the word beside it has, so the file's own colour
+    never shows.
+    """
+
+    def __init__(self, name: str) -> None:
         super().__init__()
-        self.family = family
-        self.code = code
-        self.scale = scale
+        self.name = name
 
     def paint(self, painter, rect: QRect, mode, state) -> None:
         palette = QGuiApplication.palette()
         group = QPalette.Disabled if mode == QIcon.Disabled else QPalette.Active
-        font = QFont(self.family)
-        font.setPixelSize(max(1, round(min(rect.width(), rect.height()) * self.scale)))
-        painter.save()
-        painter.setFont(font)
-        painter.setPen(palette.color(group, _ink(state)))
-        painter.drawText(rect, Qt.AlignCenter, chr(self.code))
-        painter.restore()
+        ratio = painter.device().devicePixelRatioF() if painter.device() else 1.0
+        side = min(rect.width(), rect.height())
+        shape = QImage(round(side * ratio), round(side * ratio), QImage.Format_ARGB32_Premultiplied)
+        shape.fill(Qt.transparent)
+        inner = QPainter(shape)
+        _renderer(self.name).render(inner, QRectF(0, 0, shape.width(), shape.height()))
+        inner.setCompositionMode(QPainter.CompositionMode_SourceIn)
+        inner.fillRect(shape.rect(), palette.color(group, _ink(state)))
+        inner.end()
+        shape.setDevicePixelRatio(ratio)
+        left = rect.x() + (rect.width() - side) // 2
+        top = rect.y() + (rect.height() - side) // 2
+        painter.drawImage(QRect(left, top, side, side), shape)
 
     def pixmap(self, size: QSize, mode, state) -> QPixmap:
         out = QPixmap(size)
@@ -332,7 +356,7 @@ class _GlyphEngine(QIconEngine):
         return out
 
     def clone(self) -> QIconEngine:
-        return _kept(_GlyphEngine(self.family, self.code, self.scale))
+        return _kept(_Engine(self.name))
 
 
 def _ink(state) -> QPalette.ColorRole:
@@ -351,8 +375,3 @@ def _ink(state) -> QPalette.ColorRole:
 def _kept(engine: QIconEngine) -> QIconEngine:
     _ENGINES.append(engine)
     return engine
-
-
-def _glyph(code: int, scale: float = 1.0) -> QIcon | None:
-    family = glyph_font()
-    return QIcon(_kept(_GlyphEngine(family, code, scale))) if family else None

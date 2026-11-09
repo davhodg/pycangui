@@ -437,7 +437,7 @@ class UdsView(QWidget):
         )
         self.brs.setChecked(cfg.bitrate_switch)
         self.brs.toggled.connect(lambda _on: self._save())
-        self.open_btn = QPushButton("Open")
+        self.open_btn = icons.beside(QPushButton("Open"), icons.CONNECT)
         self.open_btn.setCheckable(True)
         self.open_btn.toggled.connect(self._toggle_open)
         # Which services go to every ECU: a tick each, behind one button beside
@@ -1047,7 +1047,7 @@ class UdsView(QWidget):
                     action.setChecked(step.key in ticked)
                 action.toggled.connect(lambda _on: self._steps_changed())
             button.setMenu(menu)
-        self.values_btn = QPushButton("Values...")
+        self.values_btn = icons.beside(QPushButton("Values..."), icons.EDIT)
         self.values_btn.setToolTip(VALUES_TIP)
         self.values_btn.clicked.connect(self._edit_sequence_values)
         self._show_steps()
@@ -1380,6 +1380,7 @@ class UdsView(QWidget):
         self.open_btn.blockSignals(True)
         self.open_btn.setChecked(opened)
         self.open_btn.setText("Close" if opened else "Open")
+        icons.beside(self.open_btn, icons.DISCONNECT if opened else icons.CONNECT)
         self.open_btn.blockSignals(False)
         if not opened:
             self.tp.setChecked(False)

@@ -285,6 +285,7 @@ def _framed(name: str) -> tuple[QGroupBox, QHBoxLayout]:
 
 #: The node right-click's items that have a standard icon.
 NODE_MENU_ICONS = {
+    "Identify": icons.IDENTIFY,
     "Read PDO config": icons.READ,
     "Store": icons.SAVE,
     "Restore defaults": icons.RESET,
@@ -293,6 +294,7 @@ NODE_MENU_ICONS = {
     "Load EDS...": icons.OPEN,
     "Read EDS from node": icons.READ,
     "Save DCF...": icons.SAVE_AS,
+    "Apply DCF...": icons.APPLY,
 }
 
 
@@ -424,6 +426,7 @@ class CanopenView(QWidget):
         # to the one wanted; what is pressed all the time is still a button.
         self.node_menu_btn = _MenuButton("Node", NODE_MENU_TIP)
         identify = self.node_menu_btn.add("Identify", IDENTIFY_TIP, self._identify)
+        icons.beside(identify, icons.IDENTIFY)
         store = self.node_menu_btn.add(
             "Store", "Save the node's parameters to non-volatile memory (0x1010)", self._store
         )
@@ -471,11 +474,13 @@ class CanopenView(QWidget):
             "Write the parameter values from a .dcf file into the node",
             self._apply_dcf,
         )
+        icons.beside(apply_dcf, icons.APPLY)
         self.dcf_menu_btn.menu().addSeparator()
         # For a node and for a file alike, so not one of the node's own.
         self.compare_action = self.dcf_menu_btn.add(
             "Compare...", COMPARE_TIP, lambda: self.compare()
         )
+        icons.beside(self.compare_action, icons.COMPARE)
         # A database is made from what was read from a node or a DCF, not
         # asked of the node, so the selected one is offered whether or not it
         # answers -- and the network always, since it needs nothing selected.

@@ -48,11 +48,12 @@ def test_the_python_badge_is_the_floor_the_project_declares(page):
 def test_the_licence_badge_is_the_licence(page):
     """The badge names pycangui's licence, which is the first term of the
     expression. The MIT-0 after it covers the templates copied into a
-    workspace -- more permissive, so leaving it off the badge understates
-    nothing anybody could rely on."""
+    workspace, and the MIT the icons shipped from Microsoft's Fluent set --
+    both more permissive, so leaving them off the badge understates nothing
+    anybody could rely on."""
     main, *rest = PROJECT["license"].split(" AND ")
     assert badge("license", page).replace("--", "-") == main
-    assert rest == ["MIT-0"], "a new licence term needs a decision about the badge"
+    assert sorted(rest) == ["MIT", "MIT-0"], "a new licence term needs a decision about the badge"
 
 
 def test_the_ci_badge_is_the_live_one():

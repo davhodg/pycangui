@@ -402,7 +402,7 @@ class ManageWorkspaces(QDialog):
         self.list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.list.currentRowChanged.connect(lambda _row: self._update_buttons())
 
-        self.rename = icons.beside(QPushButton("Rename..."), icons.EDIT)
+        self.rename = icons.beside(QPushButton("Rename..."), icons.RENAME)
         self.rename.clicked.connect(self._rename)
         self.delete = icons.beside(QPushButton("Delete..."), icons.DELETE)
         self.delete.clicked.connect(self._delete)

@@ -136,6 +136,8 @@ pycangui is Apache-2.0 and is a pure-Python application on top of these packages
 | [msgpack](https://msgpack.org) | Packing frames for UDP multicast, on Windows | Apache-2.0 |
 | [asammdf](https://github.com/danielhrisca/asammdf) | Reading MDF / MF4 measurement files | LGPL-3.0 |
 
+The icons beside the words on buttons and menu items are Microsoft's [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons), MIT, shipped with pycangui as files rather than a package.
+
 asammdf, the MDF and MF4 reader, is currently the only **optional** entry: the Windows installer includes it, and a `pip` installation fetches it the first time a measurement file is opened. `pip install pycangui[all]` includes it up front. On Python 3.15 it cannot be installed yet, since one of the libraries it needs has no download for 3.15; everything else installs and runs there.
 
 Only LGPL Qt modules are used (QtCore, QtGui, QtWidgets). pycangui depends on **PySide6-Essentials**, the package that holds them. Adapter drivers (PCAN, Kvaser, Vector, ...) are not included: install the vendor's driver and python-can loads it at run time.

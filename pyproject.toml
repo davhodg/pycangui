@@ -15,7 +15,7 @@ readme = "PYPI.md"
 # templates copied into a workspace are MIT-0, so the file somebody fills with
 # their own seed-key algorithm carries no conditions. Each file says which in
 # its SPDX line, and tests/test_headers.py keeps it that way.
-license = "Apache-2.0 AND MIT-0"
+license = "Apache-2.0 AND MIT-0 AND MIT"
 license-files = ["LICENSE", "NOTICE", "LICENSES/*.txt"]
 requires-python = ">=3.12"
 authors = [{ name = "davhodg" }]
@@ -143,7 +143,7 @@ include = ["pycangui*"]
 # without anyone having to remember this. tests/test_packaging.py checks that
 # every non-Python file under pycangui/ is covered by a pattern here.
 [tool.setuptools.package-data]
-"pycangui.resources" = ["*"]
+"pycangui.resources" = ["*", "icons/*"]
 "pycangui.help" = ["*"]
 # Shipped virtual nodes are copied into a workspace as source, so a wheel
 # must carry the .py files rather than only importable modules.

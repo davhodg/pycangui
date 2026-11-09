@@ -50,6 +50,12 @@ def owning_package(path: Path) -> tuple[str, str]:
     return dotted, path.relative_to(folder).as_posix()
 
 
+def matches(inside: str, pattern: str) -> bool:
+    """As setuptools reads a package-data pattern: a ``*`` stays inside one folder."""
+    parts, wanted = inside.split("/"), pattern.split("/")
+    return len(parts) == len(wanted) and all(map(fnmatch.fnmatch, parts, wanted))
+
+
 def package_data() -> dict[str, list[str]]:
     config = tomllib.loads((PROJECT / "pyproject.toml").read_text(encoding="utf-8"))
     return config["tool"]["setuptools"]["package-data"]
@@ -65,7 +71,7 @@ def test_every_shipped_file_is_declared_for_the_wheel(path):
     declared = package_data()
     package, inside = owning_package(path)
     patterns = declared.get(package, [])
-    assert any(fnmatch.fnmatch(inside, pattern) for pattern in patterns), (
+    assert any(matches(inside, pattern) for pattern in patterns), (
         f"{path.relative_to(PROJECT)} would not be in a wheel: add a pattern "
         f'matching {inside!r} under [tool.setuptools.package-data] "{package}"'
     )
@@ -73,10 +79,15 @@ def test_every_shipped_file_is_declared_for_the_wheel(path):
 
 @pytest.mark.parametrize("path", data_files(), ids=lambda p: p.name)
 def test_every_shipped_file_is_declared_for_the_frozen_build(path):
-    """The installer takes a different route and has to be told separately."""
-    spec = (PROJECT / "build" / "pycangui.spec").read_text(encoding="utf-8")
-    folder = path.parent.relative_to(PROJECT).as_posix()
-    assert folder in spec.replace("\\", "/"), (
+    """The installer takes a different route and has to be told separately.
+
+    A folder named there is copied with everything under it, so the file's
+    own folder or any folder above it inside pycangui will do.
+    """
+    spec = (PROJECT / "build" / "pycangui.spec").read_text(encoding="utf-8").replace("\\", "/")
+    folder = path.parent.relative_to(PROJECT)
+    copied = [folder, *folder.parents][: len(folder.parts) - 1]  # not pycangui/ itself
+    assert any(f'"{above.as_posix()}"' in spec for above in copied), (
         f"{path.relative_to(PROJECT)} would not be in the installer: add "
         f"{folder} to DATA in build/pycangui.spec"
     )

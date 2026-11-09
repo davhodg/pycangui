@@ -233,7 +233,7 @@ class CompareView(QWidget):
         self.left = Side("Left", canopen_manager, ctx)
         self.right = Side("Right", canopen_manager, ctx)
 
-        self.compare_button = QPushButton("Compare")
+        self.compare_button = icons.beside(QPushButton("Compare"), icons.COMPARE)
         self.compare_button.clicked.connect(self.run)
         self.differences_only = QCheckBox("Differences only")
         self.differences_only.setChecked(True)

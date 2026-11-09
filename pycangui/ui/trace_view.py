@@ -280,7 +280,7 @@ class TraceView(QWidget):
         self._channel_menu = menu.addMenu("Channels")
         self._channel_actions: dict[str, QAction] = {}
         menu.addSeparator()
-        menu.addAction("Show all", self._show_all)
+        icons.beside(menu.addAction("Show all", self._show_all), icons.SELECT_ALL)
         self.filter_button.setMenu(menu)
         self._apply_filter(save=False)
 

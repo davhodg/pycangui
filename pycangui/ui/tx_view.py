@@ -515,7 +515,7 @@ class TxView(QWidget):
         )
         rpdo_action.triggered.connect(lambda _=False: self._add_rpdo())
         add.setMenu(self.add_menu)
-        fields = QPushButton("Counter / checksum...")
+        fields = icons.beside(QPushButton("Counter / checksum..."), icons.CALCULATE)
         fields.setToolTip(
             "Give the selected message a rolling counter, a checksum over\n"
             "its own bytes, or both -- computed fresh for every frame sent.\n"
