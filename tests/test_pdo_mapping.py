@@ -241,7 +241,12 @@ def test_the_pane_shows_what_the_node_maps_not_only_what_its_eds_says(app, on_th
 
     manager, demo = on_the_bus
     device = demo["canopen_device"].state.device
-    device.set_data(0x1A00, 0, b"\x01")  # TPDO1 cut down to its first object
+    # TPDO1 cut down to its first object, switched off while it is, as the
+    # device itself holds a remapping to.
+    cob_id = device.get_data(0x1800, 1)
+    device.set_data(0x1800, 1, (int.from_bytes(cob_id, "little") | 1 << 31).to_bytes(4, "little"))
+    device.set_data(0x1A00, 0, b"\x01")
+    device.set_data(0x1800, 1, cob_id)
     view = PdoConfigView(manager, Context(log=print))
     view.set_node(NODE)
 

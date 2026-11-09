@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import struct
 
+from canopen import SdoAbortedError
+
 from pycangui import resources
 
 NAME = "CANopen device"
@@ -48,6 +50,11 @@ STORED_ERRORS = 0x1003
 MOST_STORED = 4  # what the EDS declares room for
 STORE_EDS = 0x1021  # the EDS itself, for *Read EDS from node*
 
+#: CiA 301's abort code for "not in the device's present state": what a
+#: device answers a PDO change made in the wrong order.
+WRONG_STATE = 0x08000022
+PDO_NOT_VALID = 0x80000000  # bit 31 of a PDO's COB-ID: the PDO is switched off
+
 #: Past this demand the device complains. A device that never faults is a
 #: device you cannot test the fault handling of.
 TOO_FAST = 2000
@@ -63,6 +70,7 @@ def start(node, *, ctx):
     with a second copy of it on another channel.
     """
     device = node.canopen(EDS, NODE_ID)
+    device.add_write_callback(lambda **write: _pdo_rules(device, **write))
     device.nmt.state = "PRE-OPERATIONAL"
     device.nmt.start_heartbeat(500)
 
@@ -185,3 +193,32 @@ def _apply(device, pdo_map):
     """
     for var in pdo_map:
         device.set_data(var.index, var.subindex, var.get_data())
+
+
+def _pdo_rules(device, index, subindex, od, data):
+    """Refuse a PDO change made in the wrong order, as CiA 301 says a device may.
+
+    A PDO's mapping can only be changed while the PDO is switched off (bit 31
+    of its COB-ID set) and its count of mapped objects is 0; its COB-ID can
+    only be moved while it is switched off. Real devices hold to this, so a
+    tool that writes a PDO in any other order fails on them -- and this device
+    fails it the same way, rather than accepting what a real one would not.
+    """
+    if 0x1400 <= index <= 0x15FF or 0x1800 <= index <= 0x19FF:
+        comm = index
+    elif 0x1600 <= index <= 0x17FF or 0x1A00 <= index <= 0x1BFF:
+        comm = index - 0x200
+    else:
+        return
+    cob_id = int.from_bytes(device.get_data(comm, 1), "little")
+    switched_on = not cob_id & PDO_NOT_VALID
+    if index == comm:
+        new = int.from_bytes(data, "little")
+        moved = (new ^ cob_id) & 0x1FFFFFFF
+        if subindex == 1 and switched_on and not new & PDO_NOT_VALID and moved:
+            raise SdoAbortedError(WRONG_STATE)
+        return
+    if switched_on:
+        raise SdoAbortedError(WRONG_STATE)
+    if subindex >= 1 and device.get_data(index, 0) != bytes(1):
+        raise SdoAbortedError(WRONG_STATE)

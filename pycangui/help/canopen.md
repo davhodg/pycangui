@@ -15,6 +15,13 @@ chooses one by hand for the selected node. The **name** is whatever
 [`hooks/canopen.py::node_name`](hooks.md) answers, or the EDS's ProductName,
 or `Node <id>` until one of those says otherwise.
 
+**A node with no heartbeat has no NMT state shown.** pycangui learns a node's
+state only from its heartbeat, so a node added by hand or found by a scan says
+*not known: no heartbeat* in the State column, and its tooltip says why. When
+its PDO configuration is read and its heartbeat time (0x1017) is 0, the Event
+Log says once that the heartbeat is off. Nothing is changed on the node to find
+the state out: turning a heartbeat on is a change to the machine, and is left to you.
+
 **A node that goes away and comes back** -- which is what a controller does
 while it is reflashed -- keeps its row, because which node went is the news.
 Its identity is *not* read again: probing a node that has just recovered
@@ -93,7 +100,7 @@ nodes instead of you naming them: it reads object 0x1000 from every id in
 *Settings... > Node ids* whose heartbeat is not heard, one at a time, waiting a
 tenth of a second for each, with a bar and **Stop** -- so all 127 ids take
 about thirteen seconds. Any answer, a refusal included, means a node is there,
-and it is put in the list as *found by scan* (and identified, if *Identify a
+and it is put in the list as *not known: no heartbeat (found by scan)* (and identified, if *Identify a
 node when it is first heard* is on). It is only ever started by hand, so a
 pause does not hold it; *Stop all* ends it. The Event Log and a box say which
 ids answered; the ids that did not are in the SDO log, not the Event Log.
@@ -140,6 +147,16 @@ DCF* writes no file, since half a configuration is not one, and a stopped
 could not be read or written, with how many failed for each reason -- each
 abort code and its meaning -- and the Event Log lists every one of them by name,
 under its reason.
+
+*Apply DCF* writes the PDO records last, one PDO at a time, in the order CiA 301
+asks: the PDO switched off (bit 31 of its COB-ID), its settings, its mapping
+count set to 0, the mapped objects, the count, and then the COB-ID the file
+gives. Written in file order, a device that holds to the standard refuses the
+mapping of every PDO that is switched on. If the node's heartbeat says it is
+**Operational**, *Apply DCF* first offers to put it in **Pre-operational**, where
+many devices take parameter and PDO changes they refuse otherwise; it is left
+there afterwards. When objects are refused, the box also says the node's NMT
+state, or that it is not known because the node sends no heartbeat.
 
 A DCF is written as CiA 306 describes: the EDS's own text, unchanged, with a
 `ParameterValue` added after the last entry of each object the node gave a value
@@ -307,10 +324,17 @@ every TPDO and RPDO with its COB-ID, transmission type, inhibit time, event
 timer and mapped objects. **Read from node** reads what the node is actually
 configured to send and receive, rather than what its EDS says it was built
 with; edit a cell, or use **Map object...** and **Unmap object**, and
-**Write to node** writes the selected PDO's communication and mapping records
-back over SDO. Nothing reaches the node until then: mapping, unmapping and
-editing a cell all change a working copy, and **Read from node** is what
-throws that copy away and asks the node again.
+**Write to node** writes every edited PDO's communication and mapping records
+back over SDO, each in the order CiA 301 asks. Nothing reaches the node until
+then: mapping, unmapping and editing a cell all change a working copy, and a
+PDO changed there is **shaded**, as an edited value in the object dictionary
+is, until it is written, with a count beside the buttons. A PDO the node
+refuses stays shaded, with a box saying why, and
+*Write to node* tries it again. The edits are kept when the configuration is
+read again by something else -- *Apply DCF*, a boot-up -- and when another node
+is chosen and this one chosen back. **Read from node** is what throws them away
+and asks the node again, and asks first while there are any. As with *Apply
+DCF*, an Operational node is offered Pre-operational first.
 
 **Map object...** lists what the node's EDS says it has from 0x2000 up, each
 with the width its data type gives it, which is the length written into the

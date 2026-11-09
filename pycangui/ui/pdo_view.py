@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -33,11 +34,17 @@ from pycangui.canopen import PdoConfig, PdoEntry, pdo_file
 from pycangui.canopen.manager import CanopenManager, mappable, mapped_bits, od_entries
 from pycangui.core.classify import predefined_meaning
 from pycangui.core.context import Context
-from pycangui.ui import fonts, icons, messages
+from pycangui.ui import fonts, icons, messages, pre_operational
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.edit_columns import EditColumns
 
 COL_NAME, COL_COBID, COL_ENABLED, COL_TRANS, COL_INHIBIT, COL_TIMER, COL_BITS = range(7)
+
+#: On the name of a PDO changed here and not yet written to the node.
+EDITED_TIP = "Edited here, not yet written to the node. Write to node writes it."
+#: The shade of an edited PDO: the object dictionary's for a value changed
+#: and not yet saved, so an edit waiting to go anywhere looks the same.
+EDITED_COLOUR = QColor(230, 150, 0, 70)
 
 #: Eight bytes, which is what a classic CAN frame carries.
 PDO_BITS = 64
@@ -161,6 +168,12 @@ class PdoConfigView(QWidget):
         #: again, which handed back what the node still says and threw away
         #: whatever had just been mapped or unmapped.
         self._configs: list[PdoConfig] = []
+        #: node -> {"TPDO1": its edited config}: the PDOs changed here and not
+        #: yet written. Kept per node, so choosing another node and coming
+        #: back finds them still edited; and kept through a read of the node,
+        #: so the configuration arriving again (after Apply DCF, a boot-up, or
+        #: writing some of them) does not quietly undo the rest.
+        self._edited: dict[int, dict[str, PdoConfig]] = {}
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(HEADERS)
@@ -208,6 +221,7 @@ class PdoConfigView(QWidget):
         layout.addWidget(self.tree)
 
         manager.pdo_config.connect(self._on_config_changed)
+        manager.pdo_written.connect(self._on_written)
 
     # --- population -------------------------------------------------------------
     @Slot(int)
@@ -236,10 +250,11 @@ class PdoConfigView(QWidget):
             self.write_btn.setText("Write to node")
             icons.beside(self.write_btn, icons.WRITE)
             self.write_btn.setToolTip(
-                "Write the selected PDO's communication and mapping parameters"
+                "Write every PDO marked as edited -- shaded -- to the node: its\n"
+                "communication and mapping parameters, switched off while they\n"
+                "are written, as CiA 301 asks."
             )
-            self.write_btn.setEnabled(True)
-            self.hint.setText("Edit a cell, then Write to node")
+            self._show_edited()
         else:
             self.read_btn.setText("Read from file")
             self.read_btn.setToolTip("Show the PDOs as the file's objects have them now.")
@@ -264,14 +279,51 @@ class PdoConfigView(QWidget):
             self.refresh()
 
     def refresh(self) -> None:
-        """Ask the node again, losing anything not yet written to it."""
+        """Show the configuration as the node has it, with the edits not yet
+        written in place of the PDOs they change."""
         if self._file is not None:
             self._configs = pdo_file.configs(self._file)
         elif self.node_id is not None:
-            self._configs = self.manager.pdo_configs(self.node_id)
+            fresh = self.manager.pdo_configs(self.node_id)
+            edits = self._edited.get(self.node_id, {})
+            names = {_name(config) for config in fresh}
+            for gone in set(edits) - names:
+                del edits[gone]  # the node no longer has that PDO
+            self._configs = [edits.get(_name(config), config) for config in fresh]
         else:
             self._configs = []
         self._redraw()
+
+    def _edits(self) -> dict[str, PdoConfig]:
+        """The selected node's edited PDOs; nothing for a file, which takes
+        each change as it is made."""
+        if self._file is not None or self.node_id is None:
+            return {}
+        return self._edited.setdefault(self.node_id, {})
+
+    def _mark(self, config: PdoConfig) -> None:
+        """Remember a PDO as edited and not yet written."""
+        if self._file is None and self.node_id is not None:
+            self._edits()[_name(config)] = config
+
+    def _show_edited(self) -> None:
+        """Write to node only while there is something to write, and say what."""
+        if self._file is not None:
+            return
+        count = len(self._edits())
+        self.write_btn.setEnabled(count > 0)
+        self.hint.setText(
+            f"{count} PDO(s) edited, shaded: Write to node writes them"
+            if count
+            else "Edit a cell, then Write to node"
+        )
+
+    @staticmethod
+    def _look_edited(item: QTreeWidgetItem) -> None:
+        for row in (item, *(item.child(i) for i in range(item.childCount()))):
+            for column in range(row.columnCount()):
+                row.setBackground(column, EDITED_COLOUR)
+        item.setToolTip(COL_NAME, EDITED_TIP)
 
     def _redraw(self) -> None:
         """Show the working copy, keeping edits that are not written yet.
@@ -287,6 +339,7 @@ class PdoConfigView(QWidget):
             self.tree.addTopLevelItem(self._make_row(config))
         self._updating = False
         self._select_place(where)
+        self._show_edited()
 
     def _selected_place(self) -> tuple[int, int] | None:
         """Where the selection is, as (PDO row, object row or -1)."""
@@ -364,6 +417,8 @@ class PdoConfigView(QWidget):
                     "the node maps part of the\nobject, or the EDS has its type wrong.",
                 )
             item.addChild(child)
+        if _name(config) in self._edits():
+            self._look_edited(item)
         item.setExpanded(True)
         return item
 
@@ -421,6 +476,12 @@ class PdoConfigView(QWidget):
             return
         finally:
             self._updating = False
+        if self._file is None:
+            self._mark(config)
+            self._updating = True
+            self._look_edited(item)
+            self._updating = False
+            self._show_edited()
         self._into_file(config)
 
     def _into_file(self, config: PdoConfig) -> bool:
@@ -470,6 +531,7 @@ class PdoConfigView(QWidget):
         at = item.indexOfChild(child) + 1 if child is not None else len(config.entries)
         row = self.tree.indexOfTopLevelItem(item)  # the item goes with the redraw
         config.entries.insert(at, entry)
+        self._mark(config)
         self._redraw()
         if self._into_file(config):
             self._select_place((row, at))
@@ -493,6 +555,7 @@ class PdoConfigView(QWidget):
         where = parent.indexOfChild(child)
         if 0 <= where < len(config.entries):
             del config.entries[where]
+        self._mark(config)
         self._redraw()
         self._into_file(config)
 
@@ -516,6 +579,7 @@ class PdoConfigView(QWidget):
             return  # already first, or last
         entries = config.entries
         entries[where], entries[to] = entries[to], entries[where]
+        self._mark(config)
         self._redraw()
         if self._into_file(config):
             self._select_place((row, to))
@@ -524,6 +588,16 @@ class PdoConfigView(QWidget):
         if self._file is not None:
             self.refresh()
         elif self.node_id is not None:
+            if (count := len(self._edits())) and messages.question(
+                self,
+                "Discard the edits?",
+                f"{count} PDO(s) are edited and not written. Reading from the node "
+                "shows what it has, and the edits are lost.",
+                QMessageBox.Discard | QMessageBox.Cancel,
+                QMessageBox.Cancel,
+            ) != QMessageBox.Discard:
+                return
+            self._edits().clear()
             self.manager.read_pdo_config(self.node_id)
 
     def offer_save(self) -> None:
@@ -535,11 +609,32 @@ class PdoConfigView(QWidget):
         if self._file is not None:
             self.save_requested.emit()
             return
-        item = self._selected_row()
-        if item is None:
-            messages.information(self, "Nothing to write", "Select the PDO to write first.")
+        edits = self._edits()
+        configs = [config for config in self._configs if _name(config) in edits]
+        if self.node_id is None or not configs:
+            messages.information(self, "Nothing to write", "No PDO has been edited.")
             return
-        self.manager.write_pdo_config(self._config_of(item))
+        if pre_operational.offer(self, self.manager, self.node_id, "PDO changes"):
+            self.manager.write_pdo_configs(self.node_id, configs)
+
+    @Slot(int, list, list)
+    def _on_written(self, node_id: int, written: list, refused: list) -> None:
+        """Let go of what was written; keep what was not, and say why."""
+        edits = self._edited.get(node_id, {})
+        for name in written:
+            edits.pop(name, None)
+        if refused and node_id == self.node_id and self._file is None:
+            messages.warning(
+                self,
+                f"Node {node_id}: {len(refused)} PDO(s) not written",
+                "\n".join(f"{name}: {why}" for name, why in refused)
+                + "\n\nThey are still marked as edited: Write to node tries them again."
+                + pre_operational.state_note(self.manager, node_id),
+            )
+
+
+def _name(config: PdoConfig) -> str:
+    return f"{config.direction}{config.number}"
 
 
 def _optional_int(text: str) -> int | None:

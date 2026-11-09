@@ -126,6 +126,46 @@ def test_dcf_save_and_apply(stack):
     )
 
 
+def test_a_dcf_is_applied_in_the_order_a_strict_device_accepts(stack):
+    """The demo device refuses a PDO's mapping while the PDO is on, as CiA 301
+    lets a device do. Written in file order, the mapping records failed; each
+    PDO is now switched off, mapped and switched back on, and none is refused."""
+    manager, demo, tmp_path = stack
+    finished: list[tuple[str, bool]] = []
+    manager.dcf_finished.connect(lambda _n, said, wrong: finished.append((said, wrong)))
+    dcf = tmp_path / "node5.dcf"
+    manager.save_dcf(5, str(dcf))
+    wait_until(lambda: finished, timeout=20)
+    finished.clear()
+
+    manager.apply_dcf(5, str(dcf))
+    wait_until(lambda: finished, timeout=20)
+    assert finished[0][1] is False, finished[0][0]
+    device = demo["canopen_device"].state.device
+    for comm in (0x1400, 0x1800):
+        cob_id = int.from_bytes(device.get_data(comm, 1), "little")
+        assert not cob_id & 0x80000000, f"{comm:04X} left switched off"
+    assert device.get_data(0x1A00, 0) != bytes(1), "TPDO1 left with nothing mapped"
+
+
+def test_several_pdos_are_written_and_each_said(stack):
+    manager, demo, _tmp = stack
+    manager.read_pdo_config(5)
+    wait_until(lambda: manager.read_from_node(5) == (True, True))
+    configs = named(manager)
+    tpdo, rpdo = configs["TPDO1"], configs["RPDO1"]
+    tpdo.transmission_type = 255
+    rpdo.transmission_type = 254
+    said: list[tuple[list, list]] = []
+    manager.pdo_written.connect(lambda _n, written, refused: said.append((written, refused)))
+
+    manager.write_pdo_configs(5, [tpdo, rpdo])
+    wait_until(lambda: said)
+    assert said[0] == (["TPDO1", "RPDO1"], [])
+    device = demo["canopen_device"].state.device
+    assert (device.get_data(0x1800, 2)[0], device.get_data(0x1400, 2)[0]) == (255, 254)
+
+
 def test_store_restore_and_sync(stack):
     manager, _demo, _tmp = stack
     messages: list[str] = []

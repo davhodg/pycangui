@@ -65,9 +65,22 @@ MIN_HEARTBEAT_GAP_S = 0.01  # the shortest gap that can be a real heartbeat peri
 MIN_HEARTBEAT_TIMEOUT_S = 1.0
 
 #: The state shown for a node put in the list by hand, until it is heard from.
-ADDED_BY_HAND = "added by hand"
+#: Its NMT state is not known: pycangui learns a node's state only from its
+#: heartbeat, so the State column says that rather than guessing.
+ADDED_BY_HAND = "not known: no heartbeat (added by hand)"
 #: The State column of a node that answered a scan and has sent no heartbeat.
-FOUND_BY_SCAN = "found by scan"
+FOUND_BY_SCAN = "not known: no heartbeat (found by scan)"
+#: Said once per node when its heartbeat producer time (0x1017) reads 0.
+HEARTBEAT_OFF = (
+    "Node {node_id}: its heartbeat is off (0x1017 is 0), so its NMT state cannot be "
+    "seen. pycangui knows a node's state only from its heartbeat; nothing has been "
+    "changed on the node."
+)
+#: The PDO records CiA 301 puts in the communication profile, and how far a
+#: PDO's mapping record is from its communication record.
+PDO_RECORDS = ((0x1400, 0x15FF), (0x1800, 0x19FF))
+MAPPING_OFFSET = 0x200
+PDO_NOT_VALID = 0x80000000  # bit 31 of a PDO's COB-ID: switched off
 #: How long a scan waits for each id. A node that is there answers an SDO
 #: within a few milliseconds; waiting the SDO timeout for each of 127 empty
 #: ids would take minutes.
@@ -225,6 +238,10 @@ class CanopenManager(QObject):
     lss_result = Signal(str)  # readable outcome of an LSS operation
     lss_found = Signal(object)  # NodeIdentity discovered by LSS
     pdo_config = Signal(int)  # node_id: its PDO configuration changed
+    #: PDOs written: node_id, the names written ("TPDO1"), and (name, why) for
+    #: each the node refused. Sent before pdo_config, so an editor can let go
+    #: of what was written and keep what was not.
+    pdo_written = Signal(int, list, list)
     dcf_progress = Signal(int, int)  # done, total (while reading or writing a DCF)
     #: Save DCF or Apply DCF is over: node_id, what to say (the result, or
     #: why it failed), and whether it went wrong. Stopped is not wrong.
@@ -343,6 +360,8 @@ class CanopenManager(QObject):
         #: and a description of the network wants the node's.
         self.emcy_cob_ids: dict[int, int | None] = {}
         self.heartbeat_times: dict[int, int | None] = {}
+        #: Nodes already told about: heartbeat off, so no NMT state to show.
+        self._heartbeat_off_said: set[int] = set()
         #: (node, PDO) already reported for frames of the wrong size, and the
         #: (CAN-ID, error) already reported for a frame nothing could handle:
         #: each said once rather than once a frame.
@@ -690,6 +709,7 @@ class CanopenManager(QObject):
         ):
             known.pop(node_id, None)
         self.lost_nodes.discard(node_id)
+        self._heartbeat_off_said.discard(node_id)
         self._mapping_read.discard(node_id)
         self._rpdo_read.discard(node_id)
         self._held.pop(node_id, None)
@@ -720,6 +740,7 @@ class CanopenManager(QObject):
         self._size_mismatches_said.clear()
         self.emcy_cob_ids.clear()
         self.heartbeat_times.clear()
+        self._heartbeat_off_said.clear()
         self._mapping_read.clear()
         self._rpdo_read.clear()
         self._held.clear()
@@ -1892,55 +1913,92 @@ class CanopenManager(QObject):
             if not error:
                 self.message.emit(f"Node {node_id}: {count} PDO(s) configured", INFORMATION)
             self.flag_mapping_sizes(node_id, again=True)
+            self._say_if_heartbeat_off(node_id)
             self.forget_labels()
             self.pdo_config.emit(node_id)
             self.rpdos_read.emit(node_id)
 
         self._worker.submit(job, done)
 
+    def _say_if_heartbeat_off(self, node_id: int) -> None:
+        """Say once why a node with no heartbeat has no NMT state shown."""
+        if (
+            self.heartbeat_times.get(node_id) == 0
+            and node_id not in self.last_heartbeat
+            and node_id not in self._heartbeat_off_said
+        ):
+            self._heartbeat_off_said.add(node_id)
+            self.message.emit(HEARTBEAT_OFF.format(node_id=node_id), INFORMATION)
+
     def write_pdo_config(self, config: PdoConfig) -> None:
         """Write one PDO's communication and mapping parameters back to the node."""
-        node = self.node(config.node_id)
+        self.write_pdo_configs(config.node_id, [config])
+
+    def write_pdo_configs(self, node_id: int, configs: list[PdoConfig]) -> None:
+        """Write each PDO's communication and mapping parameters back to the node.
+
+        One after another, and on to the next when one is refused: each is a
+        PDO of its own, and one the node will not take is no reason to leave
+        the rest unwritten. canopen writes each in the order CiA 301 asks --
+        switched off, mapping count 0, the mapping, the count, switched back
+        on -- which is what a device that holds to the standard accepts.
+        """
+        node = self.node(node_id)
         if node is None:
             return
-        maps = node.tpdo.map if config.direction == "TPDO" else node.rpdo.map
-        pdo_map = maps.get(config.number)
-        if pdo_map is None:
-            self.message.emit(
-                f"Node {config.node_id}: {config.direction}{config.number} unknown", WARNING
-            )
-            return
 
-        def job() -> str:
-            pdo_map.cob_id = config.cob_id
-            pdo_map.enabled = config.enabled
-            pdo_map.trans_type = config.transmission_type
-            # Many devices implement only sub-indices 1 and 2 of the communication
-            # record; setting the others would make canopen write a missing entry.
-            has = {sub for sub in pdo_map.com_record}
-            pdo_map.inhibit_time = (
-                int(config.inhibit_time_us // 100)
-                if config.inhibit_time_us is not None and 3 in has
-                else None
-            )
-            pdo_map.event_timer = config.event_timer_ms if 5 in has else None
-            if 6 not in has:
-                pdo_map.sync_start_value = None
-            pdo_map.clear()
-            for entry in config.entries:
-                pdo_map.add_variable(entry.index, entry.subindex, entry.bits)
-            pdo_map.save()  # writes the communication and mapping records over SDO
-            return f"{config.direction}{config.number} written to node {config.node_id}"
+        def job() -> tuple[list[str], list[tuple[str, str]]]:
+            written: list[str] = []
+            refused: list[tuple[str, str]] = []
+            for config in configs:
+                name = f"{config.direction}{config.number}"
+                maps = node.tpdo.map if config.direction == "TPDO" else node.rpdo.map
+                pdo_map = maps.get(config.number)
+                if pdo_map is None:
+                    refused.append((name, "not a PDO this node has"))
+                    continue
+                try:
+                    self._write_one_pdo(pdo_map, config)
+                except Exception as exc:
+                    refused.append((name, _reason(exc)))
+                else:
+                    written.append(name)
+            return written, refused
 
-        def done(text: str | None, error: str | None) -> None:
+        def done(result, error: str | None) -> None:
             if error:
-                self.message.emit(f"Node {config.node_id}: PDO write failed ({error})", WARNING)
-            else:
-                self.message.emit(f"Node {config.node_id}: {text}", INFORMATION)
-                self.forget_labels()
-                self.pdo_config.emit(config.node_id)
+                result = ([], [(f"{c.direction}{c.number}", error) for c in configs])
+            written, refused = result
+            for name, why in refused:
+                self.message.emit(f"Node {node_id}: {name} not written ({why})", WARNING)
+            if written:
+                self.message.emit(f"Node {node_id}: {', '.join(written)} written", INFORMATION)
+            self.forget_labels()
+            self.pdo_written.emit(node_id, written, refused)
+            self.pdo_config.emit(node_id)
 
         self._worker.submit(job, done)
+
+    @staticmethod
+    def _write_one_pdo(pdo_map, config: PdoConfig) -> None:
+        pdo_map.cob_id = config.cob_id
+        pdo_map.enabled = config.enabled
+        pdo_map.trans_type = config.transmission_type
+        # Many devices implement only sub-indices 1 and 2 of the communication
+        # record; setting the others would make canopen write a missing entry.
+        has = {sub for sub in pdo_map.com_record}
+        pdo_map.inhibit_time = (
+            int(config.inhibit_time_us // 100)
+            if config.inhibit_time_us is not None and 3 in has
+            else None
+        )
+        pdo_map.event_timer = config.event_timer_ms if 5 in has else None
+        if 6 not in has:
+            pdo_map.sync_start_value = None
+        pdo_map.clear()
+        for entry in config.entries:
+            pdo_map.add_variable(entry.index, entry.subindex, entry.bits)
+        pdo_map.save()  # writes the communication and mapping records over SDO
 
     # --- saving and restoring parameters (0x1010 / 0x1011) ---------------------
     def store_parameters(self, node_id: int, subindex: int = 1) -> None:
@@ -2410,20 +2468,47 @@ class CanopenManager(QObject):
                 for var in _all_variables(source)
                 if var.value is not None and var.writable and var.index >= 0x1000
             ]
-            written: int = 0
+            # The PDO records go last, a PDO at a time and in the order CiA 301
+            # asks; written in file order like the rest, a device that holds
+            # to the standard refuses the mapping of every PDO that is on.
+            pdos: dict[int, dict[tuple[int, int], object]] = {}
+            others = []
+            for var in wanted:
+                if (comm := _pdo_communication(var.index)) is None:
+                    others.append(var)
+                else:
+                    pdos.setdefault(comm, {})[(var.index, var.subindex)] = var
+            written = 0
             failures: list[tuple[int, int, str]] = []
-            for i, var in enumerate(wanted):
-                if self._stop_batch:
-                    break
+            counted = 0
+
+            def put(index: int, sub: int, value, var=None) -> bool:
+                """One write; a DCF value (var) counts towards the total."""
+                nonlocal written, counted
                 try:
-                    self._variable(node, var.index, var.subindex).raw = var.value
-                    written += 1
+                    self._variable(node, index, sub).raw = value
+                    ok = True
                 except sdo_log.NodeStopped:
                     raise
                 except Exception as exc:
-                    failures.append((var.index, var.subindex, _reason(exc)))
-                if i % 5 == 0:
-                    self.dcf_progress.emit(i, len(wanted))
+                    reason = _reason(exc)
+                    failures.append((index, sub, reason if var else f"switching it off: {reason}"))
+                    ok = False
+                if var is not None:
+                    written += ok
+                    counted += 1
+                    if counted % 5 == 0:
+                        self.dcf_progress.emit(counted, len(wanted))
+                return ok
+
+            for var in others:
+                if self._stop_batch:
+                    break
+                put(var.index, var.subindex, var.value, var)
+            for comm, values in sorted(pdos.items()):
+                if self._stop_batch:
+                    break
+                self._apply_pdo(node, comm, values, put)
             self.dcf_progress.emit(len(wanted), len(wanted))
             return written, len(wanted), failures
 
@@ -2462,6 +2547,46 @@ class CanopenManager(QObject):
             self.read_pdo_config(node_id)
 
         self._worker.submit(job, done)
+
+    def _apply_pdo(self, node, comm: int, values: dict, put) -> None:
+        """Write one PDO's records from a DCF: off, settings, mapping, on.
+
+        CiA 301's order. The PDO is switched off (bit 31 of its COB-ID) before
+        anything else, because a device may refuse a mapping, an inhibit time
+        or a new COB-ID while it is on; the mapping count is 0 while the
+        entries are written; the count and then the COB-ID the file gives go
+        last. A PDO the file has no COB-ID for is switched off and back to
+        what the node had.
+        """
+        mapping = comm + MAPPING_OFFSET
+        cob = values.get((comm, 1))
+        if cob is not None:
+            final = cob.value
+            put(comm, 1, final | PDO_NOT_VALID)
+        else:
+            try:
+                final = self._variable(node, comm, 1).raw
+            except sdo_log.NodeStopped:
+                raise
+            except Exception:
+                final = None  # not readable: written as the file has it, unswitched
+            if final is not None:
+                put(comm, 1, final | PDO_NOT_VALID)
+        for (index, sub), var in sorted(values.items()):
+            if index == comm and sub != 1:
+                put(index, sub, var.value, var)
+        count = values.get((mapping, 0))
+        if count is not None:
+            put(mapping, 0, 0)
+        for (index, sub), var in sorted(values.items()):
+            if index == mapping and sub >= 1:
+                put(index, sub, var.value, var)
+        if count is not None:
+            put(mapping, 0, count.value, count)
+        if cob is not None:
+            put(comm, 1, cob.value, cob)
+        elif final is not None:
+            put(comm, 1, final)
 
     # --- RPDO (the node receives these, so the tester transmits them) -----------
     def rpdos(self, node_id: int) -> list[tuple[int, str, list[str]]]:
@@ -2540,6 +2665,16 @@ def settled(state: str) -> str:
     """The state a heartbeat says the node is in: a boot-up is its entry into
     Pre-operational, and SDO is served there as soon as it is sent."""
     return PRE_OPERATIONAL if state == BOOT_UP else state
+
+
+def _pdo_communication(index: int) -> int | None:
+    """The communication record of the PDO an index belongs to, or None."""
+    for first, last in PDO_RECORDS:
+        if first <= index <= last:
+            return index
+        if first + MAPPING_OFFSET <= index <= last + MAPPING_OFFSET:
+            return index - MAPPING_OFFSET
+    return None
 
 
 def _reason(exc: Exception) -> str:

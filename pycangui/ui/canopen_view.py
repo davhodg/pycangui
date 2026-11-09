@@ -54,6 +54,8 @@ from pycangui.canopen.display import (
 )
 from pycangui.canopen.display import text as value_text
 from pycangui.canopen.manager import (
+    ADDED_BY_HAND,
+    FOUND_BY_SCAN,
     NODE_STOPPED,
     NOT_CONNECTED,
     SCAN_TIMEOUT_S,
@@ -82,6 +84,7 @@ from pycangui.ui import (
     icons,
     keep_file,
     messages,
+    pre_operational,
 )
 from pycangui.ui.canopen_log_view import CanopenLogView
 from pycangui.ui.column_widths import ColumnWidths
@@ -185,6 +188,15 @@ WHY_STOPPED = (
 )
 #: The abort a node gives when it will not do it in the state it is in.
 REFUSED_IN_STATE = "0x08000022"
+#: What a node shows in place of a state until its heartbeat is heard.
+NOT_HEARD = (ADDED_BY_HAND, FOUND_BY_SCAN)
+#: The State column's tooltip for a node whose state cannot be seen.
+NO_HEARTBEAT_TIP = (
+    "This node has sent no heartbeat, so its NMT state cannot be seen:\n"
+    "pycangui knows a node's state only from its heartbeat. With the\n"
+    "heartbeat off (0x1017 is 0) it stays unknown -- the node may be\n"
+    "Pre-operational or Operational. Nothing is changed on the node to find out."
+)
 REFUSED_WHY = (
     "The node refused in the state it is in. CiA 301 leaves which state to the "
     "device: many store only in PRE-OPERATIONAL, and a drive may also need its "
@@ -1383,6 +1395,7 @@ class CanopenView(QWidget):
         if item is None:
             item = QTreeWidgetItem([str(node_id), f"Node {node_id}", state, ""])
             item.setData(0, ROLE_INDEX, node_id)
+            item.setToolTip(2, NO_HEARTBEAT_TIP if state in NOT_HEARD else "")
             self.nodes.addTopLevelItem(item)
             if self.nodes.currentItem() is None:
                 self.nodes.setCurrentItem(item)
@@ -1394,6 +1407,7 @@ class CanopenView(QWidget):
                 self.manager.identify_unasked(node_id)
         else:
             item.setText(2, state)  # a fresh heartbeat replaces any "lost" text
+            item.setToolTip(2, NO_HEARTBEAT_TIP if state in NOT_HEARD else "")
 
     @Slot(int)
     def on_node_lost(self, node_id: int) -> None:
@@ -1773,7 +1787,7 @@ class CanopenView(QWidget):
             "Device configuration (*.dcf *.eds);;All files (*)",
             self.ctx.eds_dir,
         )
-        if path:
+        if path and pre_operational.offer(self, self.manager, node_id, "parameter and PDO changes"):
             self._start_dcf("Apply DCF", f"Writing {Path(path).name} into node {node_id}...")
             self.manager.apply_dcf(node_id, path)
 
@@ -1801,6 +1815,8 @@ class CanopenView(QWidget):
             return  # not one this pane started: a script's, or the console's
         self._close_dcf_progress()
         if wrong:
+            if self._dcf_title == "Apply DCF":
+                said += pre_operational.state_note(self.manager, node_id)
             messages.warning(self, f"{self._dcf_title}: node {node_id}", said)
 
     @Slot(bool)

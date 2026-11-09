@@ -15,6 +15,10 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- CANopen *Write to node* in the PDO tab writes every edited PDO, shaded until written; a refused one stays edited, and edits survive a re-read.
+- CANopen *Apply DCF* writes each PDO switched off, mapped, then switched on, as CiA 301 asks, and offers Pre-operational first to an Operational node.
+- A CANopen node with no heartbeat says its NMT state is not known, and why.
+- The demo CANopen device refuses a PDO change made in the wrong order, as a real one may.
 - Icons are now Microsoft's Fluent UI System Icons, shipped with pycangui: the same on Windows, Linux and macOS, where Linux had only some.
 
 ## [0.5.1] - 2026-11-08
