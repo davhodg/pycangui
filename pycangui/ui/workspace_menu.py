@@ -112,7 +112,7 @@ class WorkspaceMenu(QObject):
         super().__init__(window)
         self.window = window
         self.ctx = ctx
-        self.menu = QMenu("Workspace")
+        self.menu = QMenu("Workspace", window)  # goes with the window
         self.menu.setToolTipsVisible(True)
         self._build()
 

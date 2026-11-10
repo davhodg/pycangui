@@ -339,7 +339,8 @@ class CanopenManager(QObject):
         self._time_after_pause = False
         self._sync_thread: threading.Thread | None = None
         self._sync_stop = threading.Event()
-        self._worker = Worker()  # starts itself the first time it is used
+        # Its own, so it goes with this manager: see MainWindow, which owns that.
+        self._worker = Worker(self)  # starts itself the first time it is used
         self._stop_stored_eds = False
         self._stop_batch = False
         self._stop_scan = False

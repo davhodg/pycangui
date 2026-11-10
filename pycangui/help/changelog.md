@@ -25,6 +25,7 @@ since the last version, and comes out in the next one.
 
 ### Fixed
 
+- Switching workspace no longer keeps the old window in memory.
 - CiA 402 plugin (1.11): Velocity mode (2) sets its own target, 0x6042, turns on the ramp bits it needs to move, and shows its own speed, 0x6044, in rpm.
 
 ## [0.5.1] - 2026-11-08

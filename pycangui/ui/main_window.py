@@ -406,6 +406,26 @@ class MainWindow(QMainWindow):
         pause.stop_all_requested.connect(self._say_stopped_all)
         self.uds.transferring.connect(self._uds_transferring)
         self.recorder = Recorder(self.channels)  # every connected channel
+        # The window's own, so destroyed with it. Each is a QObject with no
+        # parent, with signals connected to lambdas that hold the window: Qt
+        # keeps those, Python cannot see them, and so it could never free the
+        # loop -- every window closed, by a workspace switch or by a test,
+        # stayed in memory for good, and a test run slowed to a crawl.
+        for owned in (
+            self.channels,
+            self.bus,
+            self.canopen,
+            self.uds,
+            self.j1939,
+            self.signals,
+            self.xcp,
+            self.recorder,
+            self.ctx.pause,
+        ):
+            owned.setParent(self)
+        # Not the Event Log or the exception hook: Python's and Qt's hooks are
+        # set to them, and a window put away without closing -- a test's --
+        # would leave the hooks calling into an object Qt had destroyed.
 
         # --- panes -----------------------------------------------------------
         #: Every dock, and how many of each kind there can be. The window

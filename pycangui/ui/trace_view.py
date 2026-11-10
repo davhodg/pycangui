@@ -197,6 +197,10 @@ class TraceView(QWidget):
         self._trace_proxy.setSourceModel(self.model)
         self._latest_proxy = _TraceFilter()
         self._latest_proxy.setSourceModel(self.latest)
+        # The pane's own, so they go with it rather than holding it in memory
+        # through the connections to them that Qt keeps.
+        for owned in (self.model, self.latest, self._trace_proxy, self._latest_proxy):
+            owned.setParent(self)
 
         # The widths are every trace's, as the other lists' are every list's
         # of their kind: a second trace is for another filter, not another shape.

@@ -176,7 +176,7 @@ class UdsManager(QObject):
         self.client: Client | None = None
         self.component_name = ctx.settings.get("components.isotp", DEFAULT_COMPONENT)
         self._transport: IsoTpTransport | None = None
-        self._worker = Worker()  # starts itself the first time it is used
+        self._worker = Worker(self)  # starts itself the first time it is used; goes with this
         self._cancel = threading.Event()
         self._busy = False
         #: What a transfer is waiting on, so a timeout can say which request

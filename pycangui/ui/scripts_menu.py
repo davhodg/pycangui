@@ -50,7 +50,7 @@ class ScriptsMenu(QObject):
         super().__init__(window)
         self.window = window
         self.ctx = ctx
-        self.recent_menu = QMenu("Recent scripts")
+        self.recent_menu = QMenu("Recent scripts", window)  # goes with the window
         self.recent_menu.setToolTipsVisible(True)
         self.recent_menu.aboutToShow.connect(self._build_recent)
 
