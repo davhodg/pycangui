@@ -305,8 +305,8 @@ class DiagnosticsDialog(QDialog):
             buttons.addButton("Report a bug...", QDialogButtonBox.ActionRole), icons.BUG
         )
         report.setToolTip(
-            "Copy the report and open a new bug report on GitHub, in the browser,\n"
-            "to paste it into. Nothing is sent until you submit it there."
+            "Open a new bug report on GitHub, in the browser. Copy or Save puts\n"
+            "the report where you can add it. Nothing is sent until you submit it there."
         )
         report.clicked.connect(self.report_a_bug)
         refresh = icons.beside(
@@ -336,14 +336,14 @@ class DiagnosticsDialog(QDialog):
         QGuiApplication.clipboard().setText(self.report())
 
     def report_a_bug(self) -> None:
-        """The report on the clipboard, and GitHub's bug form open to paste it into.
+        """GitHub's bug form, in the browser, and nothing else.
 
-        Not put in the address: it is too long for one, and it is the user's
-        to read through before it goes anywhere.
+        The clipboard is left alone -- it may hold something of the user's --
+        and nothing goes in the Event Log: Copy is beside this button for the
+        report. Not put in the address either: it is too long for one, and it
+        is the user's to read through before it goes anywhere.
         """
-        self.copy_to_clipboard()
         QDesktopServices.openUrl(QUrl(BUG_REPORT_PAGE))
-        self._ctx.log("Diagnostics copied: paste them into the bug report's Diagnostics box.")
 
     def save(self) -> None:
         path = folders.save_file(

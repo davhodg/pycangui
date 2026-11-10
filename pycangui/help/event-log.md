@@ -66,5 +66,5 @@ traceback, rather than disappearing with only a button that did nothing to show
 for it. Please send it with a bug report.
 
 *Help > Diagnostics...* opens a report in a window of its own, with the last
-twenty warnings and errors from here among it, and copies it to the clipboard;
-see [About, licences and updates](about.md).
+twenty warnings and errors from here among it, and **Copy** there puts it on the
+clipboard; see [About, licences and updates](about.md).

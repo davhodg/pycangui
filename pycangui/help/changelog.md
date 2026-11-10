@@ -16,6 +16,7 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- *Report a bug...* only opens GitHub's bug form, and *Help > Diagnostics...* only opens the report: neither copies it or writes to the Event Log; *Copy* does.
 - CANopen *Write to node* in the PDO tab writes every edited PDO, shaded until written; a refused one stays edited, and edits survive a re-read.
 - CANopen *Apply DCF* writes each PDO switched off, mapped, then switched on, as CiA 301 asks, and offers Pre-operational first to an Operational node.
 - A CANopen node with no heartbeat says its NMT state is not known, and why.

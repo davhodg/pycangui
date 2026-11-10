@@ -8,10 +8,11 @@ The report names the version, and -- when pycangui is being run from a source ch
 
 **Help > Known CAN ids...** lists every identifier pycangui would put a name to -- the messages in the [databases](signals.md) loaded, the [CANopen](canopen.md) nodes it knows of, the [UDS](uds.md) addresses and the [XCP](xcp.md) identifiers -- with where each name comes from, and marks any id two sources both claim. **Copy** puts the whole list on the clipboard, tab separated, ready for a spreadsheet or an email. J1939 is not in the list: 29-bit frames are named from the PGN in the identifier rather than from a list.
 
-**Help > Diagnostics...** opens a report in a window of its own, and copies it to the
-clipboard as it opens -- ready to paste into a bug report. **Refresh** makes it again,
-**Copy** copies it again and **Save...** writes it to a file. **Report a bug...** copies
-it and opens a new bug report on GitHub in the browser, to paste it into. It gives:
+**Help > Diagnostics...** opens a report in a window of its own. **Refresh** makes it
+again, **Copy** puts it on the clipboard -- ready to paste into a bug report -- and
+**Save...** writes it to a file. **Report a bug...** opens a new bug report on GitHub in
+the browser, and does nothing else: Copy the report and paste it in, or attach the
+file. Nothing is copied or logged unless you ask. It gives:
 
 - the versions, the Qt style and the theme, each channel's adapter, state, load and error
   count, and any panes out on their own;

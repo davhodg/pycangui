@@ -581,26 +581,6 @@ def test_a_link_out_of_the_manual_goes_to_the_browser(app, window, monkeypatch):
     assert opened == ["https://example.invalid/thing"]
 
 
-def test_diagnostics_are_information_whatever_came_before(app, window):
-    """Written into the pane directly, the report took the colour of the line
-    above it: red and bold after an error."""
-    from PySide6.QtGui import QTextCursor
-
-    from pycangui.core.events import INFORMATION
-
-    posted = []
-    window.events.posted.connect(lambda text, level: posted.append((level, text)))
-    window.events.error("something went wrong")
-
-    window.help_menu._show_diagnostics()
-
-    level, text = posted[-1]
-    assert level == INFORMATION and text.startswith("Diagnostics")
-    cursor = QTextCursor(window.log.document())
-    cursor.movePosition(QTextCursor.End)
-    assert not cursor.charFormat().font().bold(), "the last line is not the error's format"
-
-
 # --- a pip installation asks PyPI --------------------------------------------------------
 def test_pypi_s_latest_version_is_read(monkeypatch):
     github(monkeypatch, {"/pypi/pycangui/json": {"info": {"version": "0.2.0"}}})
@@ -669,7 +649,7 @@ def test_a_pip_installation_finds_the_licence_in_its_metadata(tmp_path, monkeypa
     assert help_menu._find("NOTICE") is None  # only what the wheel calls a licence file
 
 
-def test_report_a_bug_copies_the_report_and_opens_the_bug_form(app, window, monkeypatch):
+def test_report_a_bug_only_opens_the_bug_form(app, window, monkeypatch):
     from PySide6.QtGui import QDesktopServices, QGuiApplication
 
     from pycangui.core.updates import BUG_REPORT_PAGE
@@ -678,10 +658,13 @@ def test_report_a_bug_copies_the_report_and_opens_the_bug_form(app, window, monk
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: opened.append(url.toString()))
     window.help_menu._show_diagnostics()
     dialog = window.help_menu.diagnostics
-    QGuiApplication.clipboard().clear()
+    QGuiApplication.clipboard().setText("something of the user's")
+    logged = []
+    monkeypatch.setattr(dialog._ctx, "log", lambda *a, **k: logged.append(a))
 
     dialog.report_a_bug()
 
     assert opened == [BUG_REPORT_PAGE]
-    assert QGuiApplication.clipboard().text() == dialog.report()
+    assert QGuiApplication.clipboard().text() == "something of the user's"
+    assert logged == []
     dialog.close()

@@ -94,14 +94,16 @@ def test_a_section_that_fails_costs_only_itself(window, monkeypatch):
     assert section_of(text, "Threads"), "the rest is still there"
 
 
-def test_it_opens_in_a_window_of_its_own_and_is_copied(app, window, tmp_path, monkeypatch):
+def test_it_opens_in_a_window_of_its_own_and_is_not_copied(app, window, tmp_path, monkeypatch):
     from pycangui.ui import folders
 
+    QGuiApplication.clipboard().setText("something of the user's")
+    logged = window.log.toPlainText()
     window.help_menu._show_diagnostics()
     dialog = window.help_menu.diagnostics
     assert dialog.isVisible() and "Sending" in dialog.report()
-    assert QGuiApplication.clipboard().text() == dialog.report(), "as the bug report form says"
-    assert "Sending" not in window.log.toPlainText(), "not pushed through the Event Log"
+    assert QGuiApplication.clipboard().text() == "something of the user's", "Copy does that"
+    assert window.log.toPlainText() == logged, "nothing in the Event Log"
 
     window.help_menu._show_diagnostics()
     assert window.help_menu.diagnostics is dialog, "one window, brought forward"
