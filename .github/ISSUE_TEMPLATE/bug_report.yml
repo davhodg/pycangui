@@ -6,10 +6,7 @@ body:
     id: what-happened
     attributes:
       label: What happened
-      description: What you did, what you expected, and what happened instead.
-      placeholder: |
-        Connected an IXXAT at 500 kbit/s and loaded a DBC. Expected decoded
-        signals in Signals and Plot; the trace shows frames but nothing decodes.
+      description: What you did, what you expected to happen, and what happened instead. Quote any message pycangui showed word for word.
     validations:
       required: true
 
@@ -17,17 +14,14 @@ body:
     id: steps
     attributes:
       label: How to make it happen again
-      placeholder: |
-        1.
-        2.
-        3.
+      description: The steps from starting pycangui to the problem, one per line, in order. Say if it happens every time or only sometimes.
 
   - type: textarea
     id: diagnostics
     attributes:
       label: Diagnostics
       description: |
-        *Help > Diagnostics...* opens a report and copies it to the clipboard: the versions of pycangui, Python, PySide6, python-can and canopen, the platform, each channel's adapter, state and load, what is being sent, and the state of each protocol. Paste it here. An adapter's description can include its serial number, and the report names your workspace folder and the files loaded; remove any of that if you would rather.
+        *Help > Diagnostics...* opens a report, and *Copy* there puts it on the clipboard: the versions of pycangui, Python, PySide6, python-can and canopen, the platform, each channel's adapter, state and load, what is being sent, and the state of each protocol. Paste it here. An adapter's description can include its serial number, and the report names your workspace folder and the files loaded; remove any of that if you would rather.
         If pycangui will not start at all, say so, and paste whatever it printed instead.
       render: text
 

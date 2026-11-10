@@ -11,7 +11,7 @@ body:
     id: task
     attributes:
       label: What you were trying to do
-      placeholder: Read a node's access level in the CANopen pane, using the keyboard only.
+      description: The task in pycangui you were part way through, and how you were working -- with the keyboard alone, a screen reader, large text, or another way.
     validations:
       required: true
 
@@ -19,8 +19,7 @@ body:
     id: what-happened
     attributes:
       label: What happened
-      description: What got in the way, and where in the window.
-      placeholder: Tab goes from the node list to the object dictionary and never reaches the Access menu.
+      description: What got in the way, and where in the window -- the pane, button or menu, by the name it shows. Say what you expected instead.
     validations:
       required: true
 
@@ -39,14 +38,13 @@ body:
     id: system
     attributes:
       label: Operating system
-      placeholder: Windows 11, Ubuntu 24.04, macOS 15
+      description: Its name and version, and on Linux the desktop too.
 
   - type: textarea
     id: using
     attributes:
       label: What you were using
       description: Whichever of these matter -- the text size or display scaling, the theme (light, dark, high contrast), and any assistive technology with its version (Narrator, NVDA, JAWS, Orca, VoiceOver, a screen magnifier, voice control).
-      placeholder: Text size 175 %, display scaling 150 %, NVDA 2025.1.
 
   - type: input
     id: version
