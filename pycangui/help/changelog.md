@@ -9,6 +9,8 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-12
+
 ### Added
 
 - CiA 402 plugin (1.12): *Poll* reads the demand of the mode in use (0x6062, 0x6043, 0x606B or 0x6074) beside the actual values, and a fault shows the drive's error code (0x603F).
@@ -375,7 +377,8 @@ The first release, on PyPI (`pip install pycangui`) and as a Windows installer.
 - **Simulated nodes** on a virtual bus or a real adapter, and gateways between channels.
 - **Workspaces**, one per product, exported and imported as one zip.
 
-[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/davhodg/pycangui/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/davhodg/pycangui/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/davhodg/pycangui/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/davhodg/pycangui/compare/v0.4.0...v0.4.1
