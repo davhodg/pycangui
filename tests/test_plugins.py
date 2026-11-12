@@ -210,7 +210,37 @@ def test_a_plugin_menu_entry_says_whose_it_is(app, window):
     window._reload_plugins()
     settle(app)
     assert entries(window.plugins_menu)[0] == "Demo"
-    assert entries(window.plugin_menu("demo")) == ["Say hello"]
+    assert entries(window.plugin_menu("demo")) == ["Demo screen", "Say hello"]
+
+
+def test_a_plugins_panes_are_under_its_name_as_in_the_view_menu(app, window):
+    """Ticked while on screen, and picking one does what the View menu does."""
+    write_plugin(window, "demo", PANE.format(what="hi"))
+    window._reload_plugins()
+    settle(app)
+    menu = window.plugin_menu("demo")
+    window.plugins_menu.aboutToShow.emit()
+    [screen] = [a for a in menu.actions() if a.text() == "Demo screen"]
+    assert screen.isCheckable() and not screen.isChecked()
+    assert "A screen that says something." not in entries(menu), "not empty, so no stand-in"
+    assert menu.menuAction().toolTip() == "A screen that says something."
+
+    screen.trigger()
+    settle(app)
+    assert window.panes.on_screen("demo:screen")
+    window.plugins_menu.aboutToShow.emit()
+    assert next(a for a in menu.actions() if a.text() == "Demo screen").isChecked()
+    assert entries(menu).count("Demo screen") == 1, "made again, not added again"
+
+
+def test_with_a_pane_and_an_entry_the_panes_come_first(app, window):
+    write_plugin(window, "demo", EVERYTHING)
+    window._reload_plugins()
+    settle(app)
+    window.plugins_menu.aboutToShow.emit()
+    actions = window.plugin_menu("demo").actions()
+    assert [a.text() for a in actions] == ["Demo screen", "", "Say hello"]
+    assert actions[1].isSeparator()
 
 
 def test_a_plugin_can_name_frames_in_every_trace(app, window):

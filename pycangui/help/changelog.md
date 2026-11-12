@@ -11,11 +11,15 @@ since the last version, and comes out in the next one.
 
 ### Added
 
+- CiA 402 plugin (1.12): *Poll* reads the demand of the mode in use (0x6062, 0x6043, 0x606B or 0x6074) beside the actual values, and a fault shows the drive's error code (0x603F).
 - CiA 402 plugin (1.11): the selected node's NMT state beside it, with Pre-operational and Start; a warning when an enabled RPDO carries the controlword, the mode or the target.
 - Icons on the controls that had none: LSS, Identify, Apply DCF, Compare, UDS Open and Values, J1939 Claim, Counter / checksum, and the CiA 402 (1.10) and firmware (1.4) plugins' buttons.
 
 ### Changed
 
+- Each plugin's panes are in its own menu under *Plugins*, ticked as in the View menu.
+- *Disconnect* on the last connected channel while recording asks whether to stop the recording, keep it, or cancel.
+- CAN Trace's search box keeps its width while there is empty space beside it.
 - *Report a bug...* only opens GitHub's bug form, and *Help > Diagnostics...* only opens the report: neither copies it or writes to the Event Log; *Copy* does.
 - CANopen *Write to node* in the PDO tab writes every edited PDO, shaded until written; a refused one stays edited, and edits survive a re-read.
 - CANopen *Apply DCF* writes each PDO switched off, mapped, then switched on, as CiA 301 asks, and offers Pre-operational first to an Operational node.
@@ -27,6 +31,8 @@ since the last version, and comes out in the next one.
 ### Fixed
 
 - Switching workspace no longer keeps the old window in memory.
+- CiA 402 plugin (1.12): position and velocity are shown in the drive's own units, from 0x60A8 and 0x60A9, not always as counts.
+- CiA 402 plugin (1.12): *Set target* takes off a halt the pane left, so the drive follows the new target.
 - CiA 402 plugin (1.11): Velocity mode (2) sets its own target, 0x6042, turns on the ramp bits it needs to move, and shows its own speed, 0x6044, in rpm.
 
 ## [0.5.1] - 2026-11-08

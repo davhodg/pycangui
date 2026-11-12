@@ -308,6 +308,8 @@ class FakeDrive:
         #: for: a drive is free to refuse a mode.
         self.mode = mode
         self.supported = self.ALL_MODES
+        #: What it answers for 0x60A8 and 0x60A9; zero, "no unit", if not here.
+        self.units: dict[tuple, int] = {}
         self.written: list[tuple] = []
 
     def read(self, obj):
@@ -315,6 +317,8 @@ class FakeDrive:
             return self.statusword
         if obj.where == cia402.MODE_DISPLAY.where:
             return self.mode
+        if obj.where in self.units:
+            return self.units[obj.where]
         return self.supported if obj.where == cia402.SUPPORTED_MODES.where else 0
 
     def write(self, obj, value):
@@ -574,8 +578,101 @@ def test_the_limits_are_there_to_be_read_and_written(app, view):
 def test_the_speed_limits_are_two_different_objects_in_two_units(app):
     """0x607F caps the profile in the same units as the velocity objects;
     0x6080 is about the motor and is in rpm by the standard."""
-    assert cia402.MAX_PROFILE_VELOCITY.unit == "counts/s"
-    assert cia402.MAX_MOTOR_SPEED.unit == "rpm"
+    assert cia402.MAX_PROFILE_VELOCITY.measures == cia402.TARGET_VELOCITY.measures
+    assert not cia402.MAX_MOTOR_SPEED.measures and cia402.MAX_MOTOR_SPEED.unit == "rpm"
+
+
+# --- the demand, and why it faulted -------------------------------------------------------
+def test_each_mode_polls_its_own_demand():
+    """Beside the actual value, the demand says whether the drive took its target."""
+    demands = {mode: cia402.watched(mode)[-1].index for mode in (1, 2, 3, 4)}
+    assert demands == {1: 0x6062, 2: 0x6043, 3: 0x606B, 4: 0x6074}
+    assert cia402.watched(6) == cia402.WATCHED, "homing has none"
+
+
+def test_the_demand_row_follows_the_mode(app, view):
+    _name, value, unit = view._demand_row
+    view._took(cia402.MODE_DISPLAY, 3)
+    view._took(cia402.VELOCITY_DEMAND, 1200)
+    assert value.text() == "1,200" and "0x606B" in value.toolTip()
+
+    view._took(cia402.MODE_DISPLAY, 2)
+    assert value.text() == "--" and unit.text() == "rpm" and "0x6043" in value.toolTip()
+    view._took(cia402.VL_VELOCITY_DEMAND, 900)
+    assert value.text() == "900"
+
+    view._took(cia402.MODE_DISPLAY, 6)
+    assert value.text() == "--" and unit.text() == ""
+
+
+def test_a_fault_reads_the_error_code_once_and_shows_it(app, view, monkeypatch):
+    drive = wired(view, monkeypatch, FAULT)
+    reads = []
+    answer = drive.read
+
+    def read(obj):
+        reads.append(obj.index)
+        return 0x2310 if obj.where == cia402.ERROR_CODE.where else answer(obj)
+
+    drive.read = read
+    view._took(cia402.STATUSWORD, FAULT)
+    view._took(cia402.STATUSWORD, FAULT)  # the next poll round
+    assert reads.count(cia402.ERROR_CODE.index) == 1
+    assert not view.error_code.isHidden() and "0x2310" in view.error_code.text()
+
+    view._took(cia402.STATUSWORD, SWITCH_ON_DISABLED)  # reset
+    assert view.error_code.isHidden()
+    view._took(cia402.STATUSWORD, FAULT)  # a new fault is asked about again
+    assert reads.count(cia402.ERROR_CODE.index) == 2
+
+
+def test_a_drive_that_is_not_faulted_is_not_asked_why(app, view, monkeypatch):
+    drive = wired(view, monkeypatch, ENABLED)
+    view._took(cia402.STATUSWORD, ENABLED)
+    assert view.error_code.isHidden()
+    assert drive.written == []
+
+
+# --- the drive's own units -----------------------------------------------------------------
+def test_the_si_unit_objects_are_read_as_units():
+    assert cia402.si_unit(0x00B44700) == "rpm"
+    assert cia402.si_unit(0x00B40300) == "rev/s"
+    assert cia402.si_unit(0x00B50300) == "inc/s"
+    assert cia402.si_unit(0x00B50000) == "inc"
+    assert cia402.si_unit(0xFF410000) == "0.1 °"
+    assert cia402.si_unit(0xFD010300) == "0.001 m/s"
+    assert cia402.si_unit(0) is None, "says nothing, so nothing is claimed"
+    assert "0x7E" in cia402.si_unit(0x007E0000), "a code not in the table is shown as itself"
+
+
+def test_the_drives_own_units_go_on_everything_in_them(app, view, monkeypatch):
+    """A drive set up in rpm was shown in counts per second: the units are
+    the drive's, and 0x60A8 and 0x60A9 say which."""
+    drive = wired(view, monkeypatch, ENABLED)
+    drive.units = {
+        cia402.SI_UNIT_VELOCITY.where: 0x00B44700,
+        cia402.SI_UNIT_POSITION.where: 0x00B50000,
+    }
+    view._fit_to_drive()
+    view._took(cia402.MODE_DISPLAY, 3)
+
+    units = {obj.where: label.text() for obj, label, _w in view._unit_labels}
+    assert units[cia402.MAX_PROFILE_VELOCITY.where] == "rpm"
+    assert units[cia402.POSITION_ACTUAL.where] == "inc"
+    assert units[cia402.MAX_MOTOR_SPEED.where] == "rpm"
+    assert view._velocity_row[2].text() == "rpm"
+    assert view.target_note.text().endswith("in rpm.")
+
+    drive.units = {}
+    view._forget()  # another drive, without them: the first one's are not kept
+    assert view._velocity_row[2].text() == cia402.VELOCITY_UNITS
+
+
+def test_a_drive_without_the_si_unit_objects_claims_no_unit(app, view, monkeypatch):
+    wired(view, monkeypatch, ENABLED)
+    view._fit_to_drive()
+    view._took(cia402.MODE_DISPLAY, 3)
+    assert view._velocity_row[2].text() == cia402.VELOCITY_UNITS
 
 
 # --- only what this drive has ------------------------------------------------------------
@@ -922,13 +1019,26 @@ def test_a_velocity_target_too_big_for_sixteen_bits_is_refused(app, window, view
     assert drive.written == []
 
 
-def test_profile_velocity_is_left_as_it_was(app, view, monkeypatch):
+def test_a_profile_velocity_target_takes_the_halt_off(app, view, monkeypatch):
+    """The pane halts the drive whenever it is hidden or paused, and a target
+    written after that left 0x606B at zero: the enable controlword follows it."""
     drive = wired(view, monkeypatch, ENABLED)
     view._took(cia402.MODE_DISPLAY, 3)
     view._took(cia402.STATUSWORD, ENABLED)
     view.target.setValue(1500)
     view._write_target()
-    assert drive.written == [(cia402.TARGET_VELOCITY.index, 1500)]
+    assert drive.written == [
+        (cia402.TARGET_VELOCITY.index, 1500),
+        (cia402.CONTROLWORD.index, cia402.ENABLE_OPERATION),
+    ]
+
+
+def test_a_target_enables_nothing_and_profile_position_waits_for_go():
+    assert cia402.word_after_target(3, SWITCH_ON_DISABLED) is None, "enabling is asked first"
+    assert cia402.word_after_target(1, ENABLED) is None, "Go writes its own"
+    assert cia402.word_after_target(4, ENABLED) == cia402.ENABLE_OPERATION
+    assert cia402.word_after_target(2, ENABLED) == cia402.ENABLE_OPERATION | cia402.VL_RAMP
+    assert not cia402.word_after_target(3, ENABLED) & cia402.HALT
 
 
 def test_go_says_why_it_is_greyed_in_a_mode_that_moves_at_once(app, view):
@@ -942,11 +1052,11 @@ def test_go_says_why_it_is_greyed_in_a_mode_that_moves_at_once(app, view):
 def test_in_velocity_mode_the_speed_shown_is_its_own_in_rpm(app, view):
     """A drive in velocity mode keeps its speed in 0x6044, in the rpm its
     target is set in; 0x606C may not be there at all."""
-    assert [o.where for o in cia402.watched(2)] == [
+    assert [o.where for o in cia402.watched(2)][: len(cia402.WATCHED)] == [
         cia402.VL_VELOCITY_ACTUAL.where if o.where == cia402.VELOCITY_ACTUAL.where else o.where
         for o in cia402.WATCHED
     ]
-    assert cia402.watched(3) == cia402.WATCHED
+    assert cia402.watched(3)[: len(cia402.WATCHED)] == cia402.WATCHED
 
     view._took(cia402.MODE_DISPLAY, 2)
     view._took(cia402.VL_VELOCITY_ACTUAL, 1200)

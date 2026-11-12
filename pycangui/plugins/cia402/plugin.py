@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pycangui.canopen.emcy import describe_code
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
 from pycangui.ui import icons
 
@@ -65,7 +66,7 @@ def _fixed_pitch() -> QFont:
 
 
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.11"
+VERSION = "1.12"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -112,18 +113,17 @@ BUS_GONE = (
     "last target it was given, and nothing here can stop it now."
 )
 
-#: How the numbers are shown. Counts and per mille are what the profile says;
-#: turning them into millimetres or amps needs the gearing and the motor
-#: rating, which are the maker's and not ours to assume.
+#: How the numbers are shown. Position and velocity are in whatever units the
+#: drive was set up in, which only the drive can say.
 UNITS_NOTE = (
-    "Counts, counts per second and per mille of rated torque, which is what the "
-    "profile defines. Turning those into millimetres or amps needs the gearing "
-    "and the motor rating, which are the drive's business and not pycangui's. "
-    "Velocity mode's own objects are in rpm."
+    "Position and velocity are in the drive's own units, as 0x60A8 and 0x60A9 "
+    "say when it has them, and torque in per mille of rated. Nothing is "
+    "converted: that needs the gearing and the motor rating, which are the "
+    "drive's business and not pycangui's. Velocity mode's own objects are in rpm."
 )
 
 
-def about(obj: Object) -> str:
+def about(obj: Object, unit: str | None = None) -> str:
     """Which object a control reads or writes, for its tooltip.
 
     Every number on this pane is an index in somebody's object dictionary,
@@ -131,7 +131,22 @@ def about(obj: Object) -> str:
     drive manual needs. It was only on the limits, and not even there once
     an EDS had been looked at.
     """
-    return f"0x{obj.index:04X} sub {obj.sub}: {obj.name}, in {obj.unit}."
+    return f"0x{obj.index:04X} sub {obj.sub}: {obj.name}, in {unit or obj.unit}."
+
+
+DEMAND_TIP = (
+    "What the drive is asking of itself, before the motor has followed.\n"
+    "Still at zero with a target set: the drive has not taken it -- halted,\n"
+    "or no acceleration to ramp with. Moving while the actual value is\n"
+    "not: the motor is not following."
+)
+NO_DEMAND_TIP = "{mode} has no demand to show."
+ERROR_CODE_TIP = "0x603F, read when the drive went to Fault: why it did."
+
+
+def error_text(code: int) -> str:
+    """0x603F as a line beside the state: the code, and what CiA 301 calls it."""
+    return f"Error code 0x{code:04X}: {describe_code(code)}"
 
 
 WRITE_LIMITS_TIP = (
@@ -250,6 +265,12 @@ class MotorView(QWidget):
         #: poll asks ten times a second, so an abort said every time would
         #: fill the Event Log with one fact. See _went_wrong.
         self._complained: set[tuple[int, int]] = set()
+        #: The drive's own units, "position" and "velocity", from 0x60A8 and
+        #: 0x60A9: empty until read, or when it has neither.
+        self._units: dict[str, str] = {}
+        #: Each unit on screen, with the object it is the unit of and the
+        #: widgets that say which object in their tooltip.
+        self._unit_labels: list[tuple[Object, QLabel, tuple]] = []
 
         self.node = QComboBox()
         self.node.setToolTip("Which drive.")
@@ -286,6 +307,13 @@ class MotorView(QWidget):
         self.flags = QLabel("")
         self.flags.setWordWrap(True)
         self.raw = QLabel("")
+        #: Why it is in Fault: 0x603F, read once as it gets there.
+        self.error_code = QLabel("")
+        self.error_code.setToolTip(ERROR_CODE_TIP)
+        self.error_code.hide()
+        #: Whether 0x603F has been asked for this fault, so a poll does not ask
+        #: again every round while it lasts.
+        self._asked_why = False
         self.raw.setToolTip("The statusword itself, for when the state is not the whole story.")
 
         # --- the bits the profile leaves to the maker -----------------------------------
@@ -388,6 +416,7 @@ class MotorView(QWidget):
             unit = QLabel(obj.unit)
             for widget in (name, box, unit):
                 widget.setToolTip(about(obj))
+            self._unit_labels.append((obj, unit, (name, unit)))
             limits_grid.addWidget(name, row, 0)
             limits_grid.addWidget(box, row, 1)
             limits_grid.addWidget(unit, row, 2)
@@ -435,9 +464,19 @@ class MotorView(QWidget):
             if obj.where == cia402.VELOCITY_ACTUAL.where:
                 #: Relabelled in velocity mode, which reads 0x6044 in its place.
                 self._velocity_row = (name, value, unit)
+            else:
+                self._unit_labels.append((obj, unit, (name, value, unit)))
             watched.addWidget(name, row, 0)
             watched.addWidget(value, row, 1)
             watched.addWidget(unit, row, 2)
+        #: The mode's demand, under what the drive is actually doing: the
+        #: object changes with the mode, so the row is relabelled with it.
+        demand = (QLabel(""), QLabel("--"), QLabel(""))
+        demand[1].setFont(_fixed_pitch())
+        demand[1].setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self._demand_row = demand
+        for column, widget in enumerate(demand):
+            watched.addWidget(widget, 3, column)
         watched.setColumnStretch(3, 1)
 
         self.banner = QLabel("")
@@ -454,6 +493,7 @@ class MotorView(QWidget):
         self.poll.setToolTip(
             "Read these, over and over:\n"
             + "\n".join(f"    {about(obj)}" for obj in cia402.WATCHED)
+            + "\nand the demand of the mode the drive is in."
         )
         self.poll.toggled.connect(self._set_polling)
         self.hz = QDoubleSpinBox()
@@ -483,6 +523,7 @@ class MotorView(QWidget):
         inside.addWidget(self.banner)
         inside.addWidget(self.state)
         inside.addWidget(self.flags)
+        inside.addWidget(self.error_code)
         inside.addWidget(self.raw)
         inside.addLayout(maker_row)
         inside.addLayout(commands)
@@ -660,11 +701,14 @@ class MotorView(QWidget):
         self._read_something = False
         self.statusword = 0
         self.mode = 0
+        self._asked_why = False
         self._complained.clear()  # another drive's refusals are not this one's
+        self._units.clear()  # nor its units
         self.mode_now.setText("")
         for value in self.actuals.values():
             value.setText("--")
         self._show_velocity_row()
+        self._show_demand_row()
         self._show_nmt()
         self._show_state()
         self._show_target()
@@ -708,13 +752,54 @@ class MotorView(QWidget):
             # Which object it is stays in the tooltip either way. It used to
             # be replaced by the note, so looking at a drive with an EDS was
             # the one time the pane stopped saying what it was writing to.
-            box.setToolTip(about(obj) if has else f"{about(obj)}\n{MISSING_TIP}")
+            said = about(obj, self._unit(obj))
+            box.setToolTip(said if has else f"{said}\n{MISSING_TIP}")
         for where, label in self.actuals.items():
             if not self._has(self._shown_in(where)):
                 label.setText("not in the EDS")
             elif label.text() == "not in the EDS":
                 label.setText("--")  # a different drive, or an EDS since loaded
+        self._show_units()
         self._read_supported_modes()
+        self._read_units()
+
+    # --- the drive's own units ---------------------------------------------------------
+    def _unit(self, obj: Object) -> str:
+        """The unit to show beside an object: the drive's, once it has said."""
+        return self._units.get(obj.measures, obj.unit)
+
+    def _read_units(self) -> None:
+        """Ask 0x60A8 and 0x60A9 what units position and velocity are in.
+
+        Asked once, when a drive is chosen. A drive without them -- older
+        ones -- keeps the plain "velocity units": it may be set up in counts
+        per second, rpm or millimetres per second, and nothing on the bus
+        says which.
+        """
+        drive = self._quietly()
+        if drive is None:
+            return
+        for measures, obj in cia402.SI_UNITS.items():
+            if not self._has(obj):
+                continue
+
+            def done(value, error, measures=measures) -> None:
+                if error:
+                    return  # an older drive without it: the plain label stands
+                if (unit := cia402.si_unit(int(value))) is not None:
+                    self._units[measures] = unit
+                    self._show_units()
+
+            self.app.run_in_background(lambda o=obj: drive.read(o), done)
+
+    def _show_units(self) -> None:
+        for obj, label, widgets in self._unit_labels:
+            label.setText(self._unit(obj))
+            for widget in widgets:
+                widget.setToolTip(about(obj, self._unit(obj)))
+        self._show_velocity_row()
+        self._show_demand_row()
+        self._show_target()
 
     def _read_supported_modes(self) -> None:
         """Ask 0x6502 which modes this drive has, and offer only those."""
@@ -888,6 +973,7 @@ class MotorView(QWidget):
         if obj.where == cia402.STATUSWORD.where:
             self.statusword = int(value)
             self._show_state()
+            self._ask_why()
         elif obj.where == cia402.MODE_DISPLAY.where:
             was, self.mode = self.mode, int(value)
             self.mode_now.setText(f"in {cia402.mode_name(self.mode)}")
@@ -895,9 +981,12 @@ class MotorView(QWidget):
             if (was == 2) != (self.mode == 2):
                 self._show_velocity_row()
             if was != self.mode:
+                self._show_demand_row()
                 self._show_rpdo_conflicts()  # the target it writes changed
         elif obj.where == cia402.VL_VELOCITY_ACTUAL.where:
             self._velocity_row[1].setText(f"{int(value):,}")
+        elif (demand := cia402.DEMAND_FOR.get(self.mode)) is not None and obj.where == demand.where:
+            self._demand_row[1].setText(f"{int(value):,}")
         elif (label := self.actuals.get(obj.where)) is not None:
             label.setText(f"{int(value):,}")
 
@@ -916,13 +1005,60 @@ class MotorView(QWidget):
         obj = self._shown_in(cia402.VELOCITY_ACTUAL.where)
         name, value, unit = self._velocity_row
         name.setText(f"{obj.name}:")
-        unit.setText(obj.unit)
+        unit.setText(self._unit(obj))
         for widget in (name, value, unit):
-            widget.setToolTip(about(obj))
+            widget.setToolTip(about(obj, self._unit(obj)))
         value.setText("--" if self._has(obj) else "not in the EDS")
         poller = getattr(self, "poller", None)  # not yet, while the pane is being built
         if poller is not None and poller.running:
             poller.set_objects(o.where for o in cia402.watched(self.mode))
+
+    def _show_demand_row(self) -> None:
+        """The demand of the mode the drive is in, or that it has none."""
+        obj = cia402.DEMAND_FOR.get(self.mode)
+        name, value, unit = self._demand_row
+        if obj is None:
+            name.setText("Demand:")
+            value.setText("--")
+            unit.setText("")
+            tip = NO_DEMAND_TIP.format(mode=cia402.mode_name(self.mode))
+        else:
+            name.setText(f"{obj.name}:")
+            value.setText("--" if self._has(obj) else "not in the EDS")
+            unit.setText(self._unit(obj))
+            tip = f"{about(obj, self._unit(obj))}\n{DEMAND_TIP}"
+        for widget in (name, value, unit):
+            widget.setToolTip(tip)
+        poller = getattr(self, "poller", None)  # not yet, while the pane is being built
+        if poller is not None and poller.running:
+            poller.set_objects(o.where for o in cia402.watched(self.mode))
+
+    # --- why it faulted ----------------------------------------------------------------
+    def _ask_why(self) -> None:
+        """Read 0x603F once as the drive gets to Fault, and say what it says.
+
+        Once per fault rather than every poll: the code does not change while
+        the fault lasts, and it is cleared from the screen when the fault is.
+        """
+        if not cia402.is_faulted(self.statusword):
+            self._asked_why = False
+            self.error_code.hide()
+            return
+        if self._asked_why or not self._has(cia402.ERROR_CODE):
+            return
+        drive = self._quietly()
+        if drive is None:
+            return
+        self._asked_why = True
+
+        def done(value, error) -> None:
+            if self._went_wrong(cia402.ERROR_CODE, error):
+                return
+            if cia402.is_faulted(self.statusword):  # not reset while it was asked
+                self.error_code.setText(error_text(int(value)))
+                self.error_code.show()
+
+        self.app.run_in_background(lambda: drive.read(cia402.ERROR_CODE), done)
 
     def _on_rate(self, requested: float, achieved: float) -> None:
         # Polling starting or stopping changes what the banner is entitled to
@@ -981,7 +1117,7 @@ class MotorView(QWidget):
         # else this button would enable the drive without asking.
         self.apply_target.setEnabled(self.mode == 1 and cia402.is_enabled(self.statusword))
         if allowed and obj is not None:
-            self.target_note.setText(f"{obj.name} (0x{obj.index:04X}), in {obj.unit}.")
+            self.target_note.setText(f"{obj.name} (0x{obj.index:04X}), in {self._unit(obj)}.")
         else:
             self.target_note.setText(why)
         acts_at_once = allowed and self.mode != 1
@@ -1096,20 +1232,17 @@ class MotorView(QWidget):
         if obj is None:
             self.app.warn(cia402.can_set_target(self.mode)[1])
             return
-        bits = cia402.operation_bits(self.mode)
-        if not (bits and cia402.is_enabled(self.statusword)):
+        word = cia402.word_after_target(self.mode, self.statusword)
+        if word is None:
             self._write(obj, self.target.value())
             return
-        # A drive enabled before velocity mode was chosen was enabled without
-        # the ramp bits, and sits still whatever its target. The enable
-        # controlword again, with them, is what lets it move -- and it is
-        # already enabled, so this enables nothing.
-        word = cia402.ENABLE_OPERATION | bits | self._maker_bits()
+        # Halt off, and the ramp on in velocity mode: see word_after_target.
+        word |= self._maker_bits()
 
-        def ramp_on() -> None:
+        def release() -> None:
             self._write(cia402.CONTROLWORD, word, then=self._read_statusword)
 
-        self._write(obj, self.target.value(), then=ramp_on)
+        self._write(obj, self.target.value(), then=release)
 
     def _write(self, obj: Object, value: int, then=None) -> None:
         """One write, and whatever has to be read back afterwards.

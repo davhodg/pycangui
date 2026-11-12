@@ -14,6 +14,11 @@ top of it, which is what you send somebody. *Plugins > Install plugin...*
 unpacks one into `workspaces\<name>\plugins\` and loads it, and its pane
 opens straight away -- you asked for it, so you are shown what you got.
 
+Each plugin has a menu of its own under *Plugins*, by its name. Its panes come
+first, ticked while on screen, the same entries as in the View menu; then
+anything else it added. Its description is the menu's tooltip, and a plugin
+with nothing else there shows it, greyed.
+
 Before it unpacks anything it says what is in the package and reminds you what
 a plugin is: **Python that runs as part of pycangui, with everything pycangui
 can reach.** Install ones you would be willing to run yourself. You can open
@@ -90,7 +95,7 @@ pycangui ships rather than the one you are editing.
 
 | | |
 |---|---|
-| `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu opens it; `area` is `left`, `right`, `top` or `bottom` |
+| `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu, or *Plugins > your plugin*, opens it; `area` is `left`, `right`, `top` or `bottom` |
 | `open_pane(name)` | show one of your panes, for a plugin with a reason to |
 | `show_panes()` | bring all of your panes out, as installing one does |
 | `on_pane_shown(fn)` | `fn(name, on)` when one of *your* panes appears or is put away |

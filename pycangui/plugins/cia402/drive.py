@@ -52,6 +52,10 @@ class Object:
     name: str
     fmt: str  # struct format, little endian: CANopen is
     unit: str = ""
+    #: "position" or "velocity" for an object in the drive's own units, which
+    #: 0x60A8 or 0x60A9 says when the drive has them; ``unit`` is what is
+    #: shown until then.
+    measures: str = ""
 
     @property
     def where(self) -> tuple[int, int]:
@@ -64,12 +68,19 @@ MODE = Object(0x6060, 0, "Mode of operation", "<b")
 MODE_DISPLAY = Object(0x6061, 0, "Mode in use", "<b")
 ERROR_CODE = Object(0x603F, 0, "Error code", "<H")
 
-POSITION_ACTUAL = Object(0x6064, 0, "Position", "<i", "counts")
-VELOCITY_ACTUAL = Object(0x606C, 0, "Velocity", "<i", "counts/s")
+#: Position and velocity are in whatever units the drive was set up in --
+#: increments, rpm, mm/s -- and not in counts by any rule. The drive says
+#: which in 0x60A8 and 0x60A9 when it has them; until then the label claims
+#: nothing it does not know.
+POSITION_UNITS = "position units"
+VELOCITY_UNITS = "velocity units"
+
+POSITION_ACTUAL = Object(0x6064, 0, "Position", "<i", POSITION_UNITS, "position")
+VELOCITY_ACTUAL = Object(0x606C, 0, "Velocity", "<i", VELOCITY_UNITS, "velocity")
 TORQUE_ACTUAL = Object(0x6077, 0, "Torque", "<h", "per mille of rated")
 
-TARGET_POSITION = Object(0x607A, 0, "Target position", "<i", "counts")
-TARGET_VELOCITY = Object(0x60FF, 0, "Target velocity", "<i", "counts/s")
+TARGET_POSITION = Object(0x607A, 0, "Target position", "<i", POSITION_UNITS, "position")
+TARGET_VELOCITY = Object(0x60FF, 0, "Target velocity", "<i", VELOCITY_UNITS, "velocity")
 #: Velocity mode's own target, which is not 0x60FF: mode 2 ("vl") is the
 #: frequency-inverter mode, with 16-bit objects of its own and a speed in
 #: rpm unless the drive's vl dimension factor (0x604C) scales it otherwise.
@@ -79,18 +90,80 @@ VL_TARGET_VELOCITY = Object(0x6042, 0, "vl target velocity", "<h", "rpm")
 #: not have 0x606C at all, or keep it in counts per second beside this.
 VL_VELOCITY_ACTUAL = Object(0x6044, 0, "vl velocity actual value", "<h", "rpm")
 TARGET_TORQUE = Object(0x6071, 0, "Target torque", "<h", "per mille of rated")
-PROFILE_VELOCITY = Object(0x6081, 0, "Profile velocity", "<I", "counts/s")
+PROFILE_VELOCITY = Object(0x6081, 0, "Profile velocity", "<I", VELOCITY_UNITS, "velocity")
+
+#: What the drive is asking of itself: the output of its profile generator,
+#: before the motor has followed. Beside the actual value it tells a target
+#: the drive never took (both still) from a motor that is not following (the
+#: demand moving, the actual value not).
+POSITION_DEMAND = Object(0x6062, 0, "Position demand", "<i", POSITION_UNITS, "position")
+VELOCITY_DEMAND = Object(0x606B, 0, "Velocity demand", "<i", VELOCITY_UNITS, "velocity")
+VL_VELOCITY_DEMAND = Object(0x6043, 0, "vl velocity demand", "<h", "rpm")
+TORQUE_DEMAND = Object(0x6074, 0, "Torque demand", "<h", "per mille of rated")
+
+#: Which demand each mode has. Homing has none worth reading.
+DEMAND_FOR = {
+    1: POSITION_DEMAND,
+    2: VL_VELOCITY_DEMAND,
+    3: VELOCITY_DEMAND,
+    4: TORQUE_DEMAND,
+    8: POSITION_DEMAND,
+    9: VELOCITY_DEMAND,
+    10: TORQUE_DEMAND,
+}
 
 #: Limits. These are not mode specific in the way a target is: a drive in
 #: any mode is held to its maximum torque, and the velocity limits cap what
 #: a profile or a controller may ask for. They are written once for a set-up
 #: rather than moment to moment, which is why they sit apart from the target.
 MAX_TORQUE = Object(0x6072, 0, "Max torque", "<H", "per mille of rated")
-MAX_PROFILE_VELOCITY = Object(0x607F, 0, "Max profile velocity", "<I", "counts/s")
+MAX_PROFILE_VELOCITY = Object(0x607F, 0, "Max profile velocity", "<I", VELOCITY_UNITS, "velocity")
 #: In rpm by the standard, unlike the velocity objects above: this one is
 #: about the motor rather than about the profile, and CiA 402 gives it
 #: revolutions per minute directly.
 MAX_MOTOR_SPEED = Object(0x6080, 0, "Max motor speed", "<I", "rpm")
+
+#: The units the drive's position and velocity objects are in, one byte each:
+#: a power of ten, the unit, and for velocity the unit of time below it.
+SI_UNIT_POSITION = Object(0x60A8, 0, "SI unit position", "<I")
+SI_UNIT_VELOCITY = Object(0x60A9, 0, "SI unit velocity", "<I")
+#: Which of them says the units of what, by ``Object.measures``.
+SI_UNITS = {"position": SI_UNIT_POSITION, "velocity": SI_UNIT_VELOCITY}
+
+#: The unit codes CiA 402 takes from its table of SI units, as far as a drive
+#: is likely to use them.
+SI_CODES = {
+    0x01: "m",
+    0x03: "s",
+    0x10: "rad",
+    0x41: "°",
+    0x47: "min",
+    0x48: "h",
+    0xB4: "rev",
+    0xB5: "inc",
+}
+
+
+def si_unit(value: int) -> str | None:
+    """What 0x60A8 or 0x60A9 says, as a unit to show; None if it says nothing.
+
+    Byte 3 is a power of ten, byte 2 the unit and byte 1 the unit of time
+    for a velocity. 0x00B44700 is rev per minute, so rpm; 0xFF410000 is
+    tenths of a degree. A code not in the table is shown as itself, since
+    a label that guesses is the fault being put right here.
+    """
+    value = int(value) & 0xFFFF_FFFF
+    power = struct.unpack("<b", bytes([value >> 24]))[0]
+    unit, per = (value >> 16) & 0xFF, (value >> 8) & 0xFF
+    if unit == 0:
+        return None
+    name = SI_CODES.get(unit, f"unit 0x{unit:02X}")
+    if (unit, per) == (0xB4, 0x47):
+        name = "rpm"
+    elif per:
+        name = f"{name}/{SI_CODES.get(per, f'0x{per:02X}')}"
+    return name if power == 0 else f"{10.0**power:g} {name}"
+
 
 #: Which modes this drive has, as a bit per mode. Bit 0 is profile position,
 #: so the bit number is the mode number minus one, and the top sixteen bits
@@ -116,12 +189,15 @@ WATCHED = (STATUSWORD, MODE_DISPLAY, POSITION_ACTUAL, VELOCITY_ACTUAL, TORQUE_AC
 
 def watched(mode: int) -> tuple[Object, ...]:
     """What to read each round in this mode: velocity mode's own speed in place
-    of 0x606C, so the speed shown is in the units its target is set in."""
-    if mode != 2:
-        return WATCHED
-    return tuple(
-        VL_VELOCITY_ACTUAL if obj.where == VELOCITY_ACTUAL.where else obj for obj in WATCHED
-    )
+    of 0x606C, so the speed shown is in the units its target is set in, and
+    the mode's demand, if it has one."""
+    objects = WATCHED
+    if mode == 2:
+        objects = tuple(
+            VL_VELOCITY_ACTUAL if obj.where == VELOCITY_ACTUAL.where else obj for obj in WATCHED
+        )
+    demand = DEMAND_FOR.get(mode)
+    return objects + ((demand,) if demand is not None else ())
 
 
 #: Written rather than watched: read once when a drive is chosen, and
@@ -469,6 +545,24 @@ def operation_bits(mode: int) -> int:
     reset -- would otherwise put the ramp back to holding the drive still.
     """
     return VL_RAMP if mode == 2 else 0
+
+
+def word_after_target(mode: int, statusword: int) -> int | None:
+    """The controlword to write after a target, so the drive acts on it; None
+    when there is none to write.
+
+    The enable controlword again, with nothing else in it. Two things can be
+    holding an enabled drive still whatever its target: halt (bit 8), which
+    this pane itself leaves set whenever it is hidden or paused, and in
+    velocity mode the ramp bits, clear if it was enabled before the mode was
+    chosen. Either way 0x606B stays at zero. The drive is already enabled, so
+    this enables nothing; a drive that is not is left alone, since enabling
+    is asked about first. Profile position is not here: it waits for Go,
+    which writes the enable controlword itself.
+    """
+    if mode == 1 or mode not in RATE_TARGETS or not is_enabled(statusword):
+        return None
+    return ENABLE_OPERATION | operation_bits(mode)
 
 
 def can_set_target(mode: int) -> tuple[bool, str]:

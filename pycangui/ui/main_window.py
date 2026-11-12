@@ -72,6 +72,7 @@ from pycangui.ui import (
     keep_file,
     message_filter,
     messages,
+    recording_question,
     theme,
 )
 from pycangui.ui.ascii_view import AsciiView, Stream
@@ -800,6 +801,9 @@ class MainWindow(QMainWindow):
         # them, and before the layout is restored, because a plugin's pane has
         # to exist for restoreState to be able to put it back where it was.
         self._plugin_menus: dict[str, QMenu] = {}
+        #: What _mirror_panes put in each plugin's menu, taken out again next time.
+        self._pane_mirrors: dict[str, list[QAction]] = {}
+        self.plugins_menu.aboutToShow.connect(self._mirror_all_panes)
         self.plugins = Plugins(
             folder=self.ctx.workspace_dir / "plugins",
             disabled=self._disabled_plugins(),
@@ -2361,7 +2365,49 @@ class MainWindow(QMainWindow):
             menu.setToolTipsVisible(True)
         return menu
 
+    def _mirror_panes(self, plugin: str) -> None:
+        """A plugin's panes at the top of its own menu, as in the View menu.
+
+        The same entries, ticked while on screen and doing the same thing
+        when picked, so a plugin's screen is found under its name as well as
+        among every other pane. Made again each time the menu opens, since
+        a pane can be added, closed or renamed in between.
+
+        A plugin with no pane and no entry of its own gets its description,
+        greyed, so the menu is not empty: it is still the answer to what is
+        installed.
+        """
+        menu = self._plugin_menus.get(plugin)
+        if menu is None:
+            return
+        for action in self._pane_mirrors.pop(plugin, []):
+            menu.removeAction(action)
+            action.deleteLater()
+        own = menu.actions()
+        names = [n for n in self._view_order() if self.panes.kind_of(n).startswith(f"{plugin}:")]
+        made = []
+        for name in names:
+            action = QAction(self.panes.docks[name].windowTitle(), menu)
+            action.setCheckable(True)
+            action.setChecked(self.panes.on_screen(name))
+            action.triggered.connect(lambda _checked=False, n=name: self._view_picked(n))
+            menu.insertAction(own[0] if own else None, action)
+            made.append(action)
+        if made and own:
+            made.append(menu.insertSeparator(own[0]))
+        if not made and not own:
+            record = self.plugins.loaded.get(plugin)
+            note = menu.addAction((record and record.description) or "Adds no menu entries.")
+            note.setEnabled(False)
+            made.append(note)
+        self._pane_mirrors[plugin] = made
+
+    def _mirror_all_panes(self) -> None:
+        for plugin in self._plugin_menus:
+            self._mirror_panes(plugin)
+
     def drop_plugin_menu(self, plugin: str) -> None:
+        self._pane_mirrors.pop(plugin, None)
         menu = self._plugin_menus.pop(plugin, None)
         if menu is not None:
             self.plugins_menu.removeAction(menu.menuAction())
@@ -2390,9 +2436,8 @@ class MainWindow(QMainWindow):
                 continue
             menu = self.plugin_menu(record.name)
             menu.setTitle(record.label)
-            if not menu.actions():
-                nothing = menu.addAction(record.description or "Adds no menu entries.")
-                nothing.setEnabled(False)
+            self._mirror_panes(record.name)
+            menu.menuAction().setToolTip(record.description)
             self.plugins_menu.addMenu(menu)
         if not self.plugins.loaded:
             none = self.plugins_menu.addAction("No plugins installed")
@@ -2626,8 +2671,23 @@ class MainWindow(QMainWindow):
     @Slot()
     def _disconnect_active(self) -> None:
         bus = self.channels.active_bus()
-        if bus is not None:
+        if bus is None:
+            return
+        if self.recorder.is_recording and self._last_connected(bus):
+            answer = recording_question.ask(self, self.recorder.path)
+            if answer == recording_question.CANCEL:
+                self.connect_bar.set_connected(bus.is_connected)  # the button had toggled
+                return
             bus.disconnect_bus()
+            if answer == recording_question.STOP:
+                self.recorder.stop()  # after, so the last frames are in the file
+            return
+        bus.disconnect_bus()
+
+    def _last_connected(self, bus) -> bool:
+        """Whether ``bus`` is the only channel still connected."""
+        others = (self.channels.get(name) for name in self.channels.names())
+        return not any(other.is_connected for other in others if other is not bus)
 
     @Slot(str, bool)
     def _on_channel_state(self, name: str, connected: bool) -> None:

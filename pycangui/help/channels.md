@@ -187,6 +187,13 @@ follows the file extension, and each frame is tagged with the channel it
 arrived on. A recording is not tied to the channel you have selected, so
 switching channel, or a channel dropping, leaves it running.
 
+**Disconnect** on the last connected channel while recording asks first, since
+it sits beside Record and is easily pressed for it. *Disconnect and stop
+recording* ends the file; *Disconnect, keep recording* leaves it running, and
+it goes on in the same file once a channel is connected again -- at a new
+bitrate, say; *Cancel*, the default, changes nothing. With another channel
+still connected it is not asked, as the recording is still getting frames.
+
 Replay plays a log back onto the selected channel with its original timing.
 The arrow beside the button holds the speed (0.1x to 20x), *Loop*, and the
 last few files replayed. There is no separate offline mode: replaying onto a

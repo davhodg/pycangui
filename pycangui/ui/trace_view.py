@@ -316,9 +316,12 @@ class TraceView(QWidget):
         bar.addWidget(self.mode)
         bar.addWidget(self.display)
         bar.addWidget(self.autoscroll)
-        bar.addWidget(self.search)
+        # The search box takes spare width first, up to its maximum, and the
+        # gap only what is left: sharing it equally shrank the box while
+        # there was still empty space beside it.
+        bar.addWidget(self.search, 1)
         bar.addWidget(self.filter_button)
-        bar.addStretch()
+        bar.addStretch(0)
         bar.addWidget(self.count_label)
         bar.addWidget(clear)
 
