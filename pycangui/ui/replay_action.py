@@ -55,11 +55,23 @@ class ReplayAction(QObject):
         self.action.setCheckable(True)
         self.action.toggled.connect(self._toggle)
 
+        # The ticks are in the submenus -- which file, which speed, whether it
+        # loops -- so that this menu can have icons: none has both.
         self.menu = QMenu(toolbar)
-        browse = self.menu.addAction("Choose file...")
+        self.menu.setToolTipsVisible(True)
+        #: The file loaded, greyed: what Replay will play, seen without
+        #: opening anything or hovering over the button.
+        self.loaded = self.menu.addAction("")
+        self.loaded.setEnabled(False)
+        browse = icons.beside(self.menu.addAction("Choose file..."), icons.OPEN)
         browse.triggered.connect(self._browse)
-        self._recent_before = self.menu.addSeparator()
-        speed_menu = self.menu.addMenu("Speed")
+        self.recent_menu = self.menu.addMenu("Recent files")
+        self.recent_menu.setToolTipsVisible(True)
+        icons.beside(self.recent_menu.menuAction(), icons.LIST)
+        self._recent_group = QActionGroup(self)
+        self.menu.addSeparator()
+        speed_menu = self.menu.addMenu("Speed and loop")
+        icons.beside(speed_menu.menuAction(), icons.SPEED)
         self._speed_group = QActionGroup(self)
         for value in SPEEDS:
             item = speed_menu.addAction(f"{value:g}x")
@@ -67,7 +79,8 @@ class ReplayAction(QObject):
             item.setData(value)
             item.setChecked(value == 1.0)
             self._speed_group.addAction(item)
-        self.loop_action = self.menu.addAction("Loop")
+        speed_menu.addSeparator()
+        self.loop_action = speed_menu.addAction("Loop")
         self.loop_action.setCheckable(True)
         self.loop_action.setChecked(bool(ctx.settings.get("replay.loop", False)))
 
@@ -128,20 +141,25 @@ class ReplayAction(QObject):
         self._refresh_text()
 
     def _refresh_recent(self) -> None:
-        """Rebuild the recent files, between "Choose file..." and the settings.
+        """Rebuild the recent files, with the one loaded ticked.
 
         Replaying the same log several times over is the normal way this gets
         used, so the last few are one click away.
         """
-        for action in list(self.menu.actions()):
-            if action.data() == "recent":
-                self.menu.removeAction(action)
+        for action in self.recent_menu.actions():
+            self._recent_group.removeAction(action)
+        self.recent_menu.clear()
         for text in self._recent:
-            action = QAction(Path(text).name, self.menu)
-            action.setData("recent")
+            action = self.recent_menu.addAction(Path(text).name)
             action.setToolTip(text)
+            action.setCheckable(True)
+            action.setChecked(self._path is not None and str(self._path) == text)
+            self._recent_group.addAction(action)
             action.triggered.connect(lambda _checked=False, t=text: self._remember(Path(t)))
-            self.menu.insertAction(self._recent_before, action)
+        self.recent_menu.setEnabled(bool(self._recent))
+        loaded = self._path.name if self._path is not None else "No file chosen"
+        self.loaded.setText(loaded)
+        self.loaded.setToolTip(str(self._path) if self._path is not None else "")
 
     def _refresh_text(self) -> None:
         # The file name lives in the tooltip: it is far too long for a toolbar

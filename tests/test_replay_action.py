@@ -130,3 +130,20 @@ def test_the_player_thread_is_finished_before_it_is_let_go(app, setup):
     drain(app, lambda: action.player is None)
 
     assert not started.isRunning(), "waited for, not merely forgotten"
+
+
+def test_the_loaded_file_is_the_one_ticked_among_the_recent(app, setup, tmp_path):
+    action, _channels, path = setup
+    other = tmp_path / "other.blf"
+    other.write_bytes(path.read_bytes())
+    action._remember(other)
+
+    ticked = [a.toolTip() for a in action.recent_menu.actions() if a.isChecked()]
+    assert ticked == [str(other)]
+    assert action.loaded.toolTip() == str(other) and not action.loaded.isEnabled()
+
+    first = next(a for a in action.recent_menu.actions() if a.toolTip() == str(path))
+    first.trigger()
+    assert action._path == path
+    ticked = [a.toolTip() for a in action.recent_menu.actions() if a.isChecked()]
+    assert ticked == [str(path)], "one ticked at a time"

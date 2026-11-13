@@ -9,6 +9,10 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Changed
+
+- The Replay menu shows the file loaded, ticks it in a *Recent files* submenu, and has icons; *Loop* is with the speeds.
+
 ## [0.5.2] - 2026-11-12
 
 ### Added

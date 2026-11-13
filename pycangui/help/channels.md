@@ -195,8 +195,9 @@ bitrate, say; *Cancel*, the default, changes nothing. With another channel
 still connected it is not asked, as the recording is still getting frames.
 
 Replay plays a log back onto the selected channel with its original timing.
-The arrow beside the button holds the speed (0.1x to 20x), *Loop*, and the
-last few files replayed. There is no separate offline mode: replaying onto a
+The arrow beside the button names the file loaded, greyed, at the top; then
+*Choose file...*, *Recent files* with the loaded one ticked, and *Speed and
+loop*, which holds the speed (0.1x to 20x) and *Loop*. There is no separate offline mode: replaying onto a
 **virtual** channel feeds the trace, the decoders, the signal hub and the plot
 without touching any hardware, which is how a recording is
 examined with nothing attached -- and if nothing is connected when you press
