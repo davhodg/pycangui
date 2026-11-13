@@ -58,6 +58,84 @@ is reported at startup and then sits there marked *(missing)*. The demo device
 answers XCP on 0x7A0/0x7A1 and CCP on 0x7B0/0x7B1 at station 1, and both match
 `resources/demo.a2l`.
 
+The parameters are on the **Parameters** tab. Flashing, reading memory out
+and checksums are on the **Transfer** tab, described below.
+
+## Transfer: flashing, uploading and checksums
+
+The **Transfer** tab is the [UDS](uds.md) pane's firmware transfer for a slave
+flashed over XCP or CCP. The connection above it is the one it uses, and its
+log is the pane's. **Operation** chooses what it does:
+
+- **Program (flash)** erases each area the file has bytes for, then writes
+  them: PROGRAM_START, PROGRAM_CLEAR and PROGRAM over XCP; CLEAR_MEMORY and
+  PROGRAM over CCP.
+- **Download (RAM)** writes with DOWNLOAD and erases nothing, for memory that
+  is written like RAM, a calibration page say.
+- **Upload to file** reads the ticked areas into an Intel HEX, S-record or raw
+  binary file. A raw binary has no addresses, so it holds one area only.
+- **Checksum** has the slave sum each ticked area with BUILD_CHECKSUM. With a
+  file chosen, it sums the file's bytes in each area instead, and compares.
+
+The file is an Intel HEX, S-record or raw binary, as on the UDS tab; a raw
+binary needs its start address typed in.
+
+### Areas
+
+Where UDS sends each segment of a file where the file says, here the A2L has a
+say as well. The **Areas** table lists the stretches of memory that may be
+programmed, and the order they are erased in and written in. They come from the
+A2L's programming `SECTOR`s, in the `PGM` block of its XCP `IF_DATA`, which give
+both orders. A file with no sectors gives its `FLASH` memory segments instead,
+taken in address order. Only the file's bytes inside a ticked area are sent.
+**In file** says how many bytes, in hex, that is for each area.
+
+An area the file has nothing for is not erased, since erasing it would only take
+away what the slave had there. The demo A2L's header sector is erased first and
+written last, which is the usual reason for the two orders: a flash cut short
+leaves no valid header pointing at half an application.
+
+The A2L is not always right, and not always there, so the table can be changed:
+
+- untick an area to leave it alone;
+- edit an area's address, size or either order;
+- **Add** an area the A2L does not list;
+- **From file** makes the file's own segments the areas, to flash it as it is;
+- **Write bytes in no area too** sends the file's bytes that no area covers,
+  each run of them as an area of its own, after the rest. Without it they are
+  left out, and the log says which.
+
+An edited table is kept, and comes back next time, until **From A2L** puts the
+file's areas back.
+
+### How it is done
+
+- **Erase first** clears each area, whole, before anything is written.
+- **Unlock** does the seed and key first, for the PGM resource to program and
+  CAL to download. The key comes from the same hook or DLL as *Unlock CAL*.
+- **Verify** checks what was written. *Checksum* has the slave sum each run it
+  was sent, and compares that with the file. *Read back* reads it all out
+  again, which is slower but says where it first differs.
+- **Checksum** chooses the algorithm to compare with. Left as it is, that is
+  the one an XCP slave says it used, or else the one the A2L names: the
+  `CHECKSUM` block in XCP's `IF_DATA`, or `CHECKSUM_PARAM` in CCP's `TP_BLOB`,
+  whose procedure numbers are XCP's checksum types. A CCP answer does not say
+  which algorithm made it, so for CCP the A2L is what makes a comparison
+  possible. A procedure number above XCP's is the maker's own: it is shown,
+  and nothing is compared unless one is chosen here. The A2L's largest block
+  (`MAX_BLOCK_SIZE`, or the second number of `CHECKSUM_PARAM`) is kept to:
+  a longer stretch is summed a block at a time.
+- **Reset after** sends PROGRAM_RESET, so the slave starts what it was given.
+  It is XCP only, since CCP has no reset, and the pane is disconnected
+  afterwards.
+
+Programming asks first, once a session, and says what will be erased and
+written, in order. *Cancel* stops after the piece being sent now. Polling waits
+while a transfer runs. The demo device's XCP and CCP slaves have flash from
+0x4000: erased to FF, and programming can only turn ones into zeros, as real
+flash does. Their checksums are CRC_32 over XCP and ADD_12 over CCP, as the
+demo A2L says, in blocks of up to 0x100 bytes.
+
 ## What is read from an A2L
 
 Single values, and rows of them:

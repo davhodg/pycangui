@@ -1102,7 +1102,7 @@ class MainWindow(QMainWindow):
                 # CCP existed still names its own pane.
                 "XCP / CCP",
                 Qt.RightDockWidgetArea,
-                lambda _name: XcpView(self.xcp, self.ctx),
+                lambda _name: XcpView(self.xcp, self.ctx, self.confirm),
                 detached_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,
             ),

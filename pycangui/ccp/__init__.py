@@ -37,6 +37,9 @@ CMD_GET_SEED = 0x12
 CMD_UNLOCK = 0x13
 CMD_SHORT_UP = 0x0F
 CMD_DISCONNECT = 0x07
+CMD_BUILD_CHKSUM = 0x0E
+CMD_CLEAR_MEMORY = 0x10
+CMD_PROGRAM = 0x18
 
 #: Every answer starts with this: a command return message.
 PID_RETURN = 0xFF

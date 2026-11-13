@@ -201,19 +201,37 @@ def write(path: str, address: int, data: bytes) -> str:
     padded, nothing cropped, nothing filled in. Returns the format used, for
     the log.
     """
+    return write_segments(path, [Segment(address, data)])
+
+
+def write_segments(path: str, segments: list[Segment]) -> str:
+    """Several stretches of memory in one file, each at its own address.
+
+    A hex or S-record file holds them as they are, gaps and all. A raw
+    binary has no addresses to say where the second one starts, so it can
+    hold only one; asked for more, it says so rather than closing the gaps
+    with bytes nobody read.
+    """
     import bincopy
 
-    binfile = bincopy.BinFile()
-    binfile.add_binary(data, address=address)
     suffix = Path(path).suffix.lower()
+    if suffix not in IHEX_SUFFIXES and suffix not in SREC_SUFFIXES and len(segments) != 1:
+        raise ImageError(
+            f"a raw binary holds one block of memory, and this is {len(segments)}: "
+            "save it as Intel HEX or S-record, which keep each at its address"
+        )
+    binfile = bincopy.BinFile()
+    for segment in segments:
+        binfile.add_binary(segment.data, address=segment.address)
     try:
         if suffix in IHEX_SUFFIXES:
             fmt, text = "Intel HEX", binfile.as_ihex()
         elif suffix in SREC_SUFFIXES:
-            width = _srec_width(suffix, address, len(data))
+            top = max(s.address + len(s) for s in segments)
+            width = _srec_width(suffix, 0, top)
             fmt, text = "Motorola S-record", binfile.as_srec(address_length_bits=width)
         else:
-            Path(path).write_bytes(data)
+            Path(path).write_bytes(segments[0].data)
             return "raw binary"
         Path(path).write_text(text, encoding="ascii")
     except (OSError, bincopy.Error, ValueError) as exc:

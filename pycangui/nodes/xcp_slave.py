@@ -16,7 +16,13 @@ are the ones in ``resources/demo.a2l``.
 
 Calibration is locked until a seed and key exchange, which is the usual
 arrangement: reading a slave is one thing and writing new constants into a
-running controller is quite another.
+running controller is quite another. Flashing is locked the same way, by its
+own resource, PGM.
+
+From 0x4000 up the memory behaves like flash: PROGRAM_CLEAR erases it to
+FF, and PROGRAM can only turn ones into zeros, so writing over what was not
+erased first leaves a mixture -- which a read back or a checksum then shows.
+BUILD_CHECKSUM answers with CRC-32.
 
 XCP on CAN has no standard identifiers -- every project picks a pair -- so
 these are pycangui's own.
@@ -29,9 +35,10 @@ from __future__ import annotations
 
 import math
 import struct
+import zlib
 
 NAME = "XCP slave"
-DESCRIPTION = "A calibratable memory: connect, upload, unlock, download."
+DESCRIPTION = "A calibratable memory with flash: connect, upload, unlock, download, program."
 RATE_HZ = 20
 
 COMMAND_ID = 0x7A0
@@ -45,20 +52,33 @@ UNLOCK = 0xF7
 SET_MTA = 0xF6
 UPLOAD = 0xF5
 SHORT_UPLOAD = 0xF4
+BUILD_CHECKSUM = 0xF3
 DOWNLOAD = 0xF0
+PROGRAM_START = 0xD2
+PROGRAM_CLEAR = 0xD1
+PROGRAM = 0xD0
+PROGRAM_RESET = 0xCF
 
 POSITIVE = 0xFF
 ERROR = 0xFE
 ERR_CMD_UNKNOWN = 0x20
 ERR_OUT_OF_RANGE = 0x22
 ERR_ACCESS_LOCKED = 0x25
+ERR_SEQUENCE = 0x29
 ERR_ACCESS_DENIED = 0x35
 
 #: Which resources are protected. Bit 0 is calibration, so a master has to
-#: unlock before it may write anything.
+#: unlock before it may write anything; bit 4 is programming.
 RESOURCE_CAL = 0x01
+RESOURCE_PGM = 0x10
+#: The checksum BUILD_CHECKSUM makes, by its XCP number: CRC-32.
+CHECKSUM_CRC_32 = 0x09
 
-MEMORY_BYTES = 0x3000
+MEMORY_BYTES = 0x8000
+#: Flash: erased by PROGRAM_CLEAR, written by PROGRAM. resources/demo.a2l
+#: lists it, in two sectors.
+FLASH_START = 0x4000
+FLASH_END = 0x8000
 ENGINE_SPEED = 0x1000  # a measurement: poll() moves it
 BATTERY_MV = 0x1002
 COOLANT_C = 0x1004
@@ -72,13 +92,16 @@ SEED = bytes([0xA5, 0x5A, 0x12, 0x34])
 
 def start(node, *, ctx):
     memory = bytearray(MEMORY_BYTES)
+    memory[FLASH_START:FLASH_END] = b"\xff" * (FLASH_END - FLASH_START)  # erased
     struct.pack_into("<H", memory, BATTERY_MV, 1320)  # 13.20 V
     struct.pack_into("<h", memory, COOLANT_C, 90)
     struct.pack_into("<H", memory, SPEED_LIMIT, 6500)
     struct.pack_into("<H", memory, IDLE_TARGET, 850)
     node.state.memory = memory
     node.state.connected = False
-    node.state.unlocked = False
+    node.state.unlocked = 0  # the resources unlocked, as bits
+    node.state.asked = 0  # the resource the last seed was for
+    node.state.programming = False
     node.state.mta = 0
     node.state.polls = 0
 
@@ -111,7 +134,8 @@ def _handle(node, data: bytes) -> bytes | None:
         # What the master reads its whole world out of: which resources are
         # protected, the byte order and granularity, then the biggest
         # command and data packets it may use, then the protocol version.
-        return bytes([POSITIVE, RESOURCE_CAL, 0x00, 8]) + struct.pack("<H", 8) + bytes([0x01, 0x01])
+        resources = RESOURCE_CAL | RESOURCE_PGM
+        return bytes([POSITIVE, resources, 0x00, 8]) + struct.pack("<H", 8) + bytes([0x01, 0x01])
 
     if not node.state.connected:
         # Everything else is meaningless before CONNECT, and answering
@@ -123,14 +147,20 @@ def _handle(node, data: bytes) -> bytes | None:
         return bytes([POSITIVE])
 
     if command == GET_SEED:
+        # A master that names no resource is taken to mean calibration,
+        # which is what this slave unlocked for anybody before it had PGM.
+        node.state.asked = (data[2] if len(data) > 2 else 0) or RESOURCE_CAL
+        if node.state.unlocked & node.state.asked:
+            return bytes([POSITIVE, 0])  # no seed: it is not locked
         return bytes([POSITIVE, len(SEED), *SEED])
 
     if command == UNLOCK:
         key = data[2 : 2 + data[1]]
         if key != bytes(b ^ 0xFF for b in SEED):
             return bytes([ERROR, ERR_ACCESS_DENIED])
-        node.state.unlocked = True
-        return bytes([POSITIVE, 0x00])  # nothing left protected
+        node.state.unlocked |= node.state.asked
+        # What is still protected.
+        return bytes([POSITIVE, (RESOURCE_CAL | RESOURCE_PGM) & ~node.state.unlocked])
 
     if command == SET_MTA:
         node.state.mta = struct.unpack("<I", data[4:8])[0]
@@ -148,7 +178,7 @@ def _handle(node, data: bytes) -> bytes | None:
         return bytes([POSITIVE]) + chunk
 
     if command == DOWNLOAD:
-        if not node.state.unlocked:
+        if not node.state.unlocked & RESOURCE_CAL:
             # The reason the seed exists: writing constants into a running
             # controller is not the same as reading one.
             return bytes([ERROR, ERR_ACCESS_LOCKED])
@@ -157,4 +187,59 @@ def _handle(node, data: bytes) -> bytes | None:
         node.state.mta += count
         return bytes([POSITIVE])
 
-    return bytes([ERROR, ERR_CMD_UNKNOWN])
+    if command == BUILD_CHECKSUM:
+        size = struct.unpack("<I", data[4:8])[0]
+        start = node.state.mta
+        if start + size > len(node.state.memory):
+            return bytes([ERROR, ERR_OUT_OF_RANGE])
+        crc = zlib.crc32(bytes(node.state.memory[start : start + size])) & 0xFFFFFFFF
+        node.state.mta += size
+        return bytes([POSITIVE, CHECKSUM_CRC_32, 0, 0]) + struct.pack("<I", crc)
+
+    return _programming(node, command, data)
+
+
+def _programming(node, command: int, data: bytes) -> bytes:
+    """PROGRAM_START, then clear, program and reset: flashing.
+
+    Unlocking PGM comes first, and PROGRAM_START before anything else, as a
+    real bootloader insists.
+    """
+    if command == PROGRAM_START:
+        if not node.state.unlocked & RESOURCE_PGM:
+            return bytes([ERROR, ERR_ACCESS_LOCKED])
+        node.state.programming = True
+        # reserved, COMM_MODE_PGM, MAX_CTO_PGM, MAX_BS_PGM, MIN_ST_PGM, QUEUE_SIZE_PGM
+        return bytes([POSITIVE, 0x00, 0x00, 8, 0x00, 0x00, 0x00])
+
+    if command not in (PROGRAM_CLEAR, PROGRAM, PROGRAM_RESET):
+        return bytes([ERROR, ERR_CMD_UNKNOWN])
+    if not node.state.programming:
+        return bytes([ERROR, ERR_SEQUENCE])
+
+    if command == PROGRAM_CLEAR:
+        size = struct.unpack("<I", data[4:8])[0]
+        start = node.state.mta
+        if start < FLASH_START or start + size > FLASH_END:
+            return bytes([ERROR, ERR_OUT_OF_RANGE])
+        node.state.memory[start : start + size] = b"\xff" * size
+        return bytes([POSITIVE])
+
+    if command == PROGRAM:
+        count = data[1]
+        if count == 0:
+            return bytes([POSITIVE])  # the end of a memory segment
+        start = node.state.mta
+        if start < FLASH_START or start + count > FLASH_END:
+            return bytes([ERROR, ERR_OUT_OF_RANGE])
+        # Flash only turns ones into zeros: what was not erased stays mixed.
+        for at, byte in enumerate(data[2 : 2 + count]):
+            node.state.memory[start + at] &= byte
+        node.state.mta += count
+        return bytes([POSITIVE])
+
+    # PROGRAM_RESET: the session ends, and with it every unlock.
+    node.state.programming = False
+    node.state.connected = False
+    node.state.unlocked = 0
+    return bytes([POSITIVE])

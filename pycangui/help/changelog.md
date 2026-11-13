@@ -9,6 +9,11 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Added
+
+- XCP / CCP pane: a *Transfer* tab to flash a file, upload memory and check it with BUILD_CHECKSUM, by the A2L's areas and order, which can be overridden.
+- The demo XCP and CCP slaves have flash, and answer the programming and checksum commands.
+
 ### Changed
 
 - The Replay menu shows the file loaded, ticks it in a *Recent files* submenu, and has icons; *Loop* is with the speeds.

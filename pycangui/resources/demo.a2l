@@ -2,6 +2,39 @@ ASAP2_VERSION 1 60
 /begin PROJECT pycangui_demo "pycangui demo"
 /begin MODULE demo "demo ECU"
 
+/begin MOD_PAR "demo ECU memory"
+    /begin MEMORY_SEGMENT ram "measurements and calibration"
+        DATA RAM INTERN 0x1000 0x2000 -1 -1 -1 -1 -1
+    /end MEMORY_SEGMENT
+    /begin MEMORY_SEGMENT code "program flash"
+        CODE FLASH INTERN 0x4000 0x4000 -1 -1 -1 -1 -1
+    /end MEMORY_SEGMENT
+/end MOD_PAR
+
+/* What the Transfer tab flashes, and in which order. The header is erased
+   first and written last, so a flash cut short leaves no valid header
+   pointing at half an application. */
+/begin IF_DATA XCP
+    /begin PGM
+        PGM_MODE_ABSOLUTE 2 8
+        /begin SECTOR "application" 0 0x4000 0x3000 1 0 0x00
+        /end SECTOR
+        /begin SECTOR "header" 1 0x7000 0x1000 0 1 0x00
+        /end SECTOR
+    /end PGM
+    /begin CHECKSUM XCP_CRC_32 MAX_BLOCK_SIZE 0x100
+    /end CHECKSUM
+/end IF_DATA
+
+/* The CCP slave's checksum: procedure 2 is XCP's ADD_12, a 16-bit sum of the
+   bytes, and it sums up to 0x100 bytes at a time. */
+/begin IF_DATA ASAP1B_CCP
+    /begin TP_BLOB 0x201 0x204 0x7B0 0x7B1 0x0001 1
+        /begin CHECKSUM_PARAM 0x02 0x100 CHECKSUM_CALCULATION_ACTIVE_PAGE
+        /end CHECKSUM_PARAM
+    /end TP_BLOB
+/end IF_DATA
+
 /begin COMPU_METHOD rpm_conv "engine speed"
     RAT_FUNC "%.1f" "rpm"
     COEFFS 0 1 0 0 0 1

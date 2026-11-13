@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 davhodg
 """XCP pane: connect to a slave, load an A2L, read/write characteristics and
-measurements, and stream measurements into the Plot via the signal hub."""
+measurements, and stream measurements into the Plot via the signal hub; and,
+on its Transfer tab, flash a file, read memory out, and have it summed."""
 
 from __future__ import annotations
 
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressDialog,
     QPushButton,
+    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -32,6 +34,9 @@ from pycangui.core.context import Context
 from pycangui.ui import folders, fonts, icons, keep_file, messages, seedkey_view
 from pycangui.ui.buttons import SplitButton
 from pycangui.ui.column_widths import ColumnWidths
+from pycangui.ui.confirm import Confirmations
+from pycangui.ui.persist import remember
+from pycangui.ui.xcp_transfer import TransferTab
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
 
@@ -267,7 +272,9 @@ def _as_written(cfg: dict, key: str) -> str:
 
 
 class XcpView(QWidget):
-    def __init__(self, manager: XcpManager, ctx: Context) -> None:
+    def __init__(
+        self, manager: XcpManager, ctx: Context, confirm: Confirmations | None = None
+    ) -> None:
         super().__init__()
         self.manager = manager
         self.ctx = ctx
@@ -421,11 +428,24 @@ class XcpView(QWidget):
         self.output.setFont(mono)
         self.output.setMaximumBlockCount(1000)
 
+        # The connection is above the tabs, as the UDS pane keeps its ECU:
+        # both tabs talk to the slave it names, and the log below says what
+        # either of them did.
+        parameters = QWidget()
+        parameters_layout = QVBoxLayout(parameters)
+        parameters_layout.setContentsMargins(0, 0, 0, 0)
+        parameters_layout.addLayout(row)
+        parameters_layout.addWidget(self.tree, 1)
+        self.transfer = TransferTab(manager, ctx, confirm or Confirmations(), self._append)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(parameters, "Parameters")
+        self.tabs.addTab(self.transfer, "Transfer")
+        remember(ctx, "xcp.tab", self.tabs)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.addLayout(bar)
-        layout.addLayout(row)
-        layout.addWidget(self.tree, 1)
+        layout.addWidget(self.tabs, 1)
         layout.addWidget(self.output)
 
         manager.result.connect(self._append)

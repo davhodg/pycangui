@@ -2,10 +2,12 @@
 # SPDX-FileCopyrightText: 2026 davhodg
 """XCP on CAN (ASAM MCD-1 XCP), implemented directly on the shared bus.
 
-Only the command/response layer needed for measurement and calibration is
-implemented: CONNECT / DISCONNECT, status, SET_MTA + UPLOAD / SHORT_UPLOAD,
-DOWNLOAD, and GET_SEED / UNLOCK (key from a hook). Measurements are polled
-with SHORT_UPLOAD into the signal hub; DAQ lists are a later addition.
+Only the command/response layer needed for measurement, calibration and
+flashing is implemented: CONNECT / DISCONNECT, SET_MTA + UPLOAD /
+SHORT_UPLOAD, DOWNLOAD, GET_SEED / UNLOCK (key from a hook), BUILD_CHECKSUM,
+and the programming commands PROGRAM_START, PROGRAM_CLEAR, PROGRAM and
+PROGRAM_RESET. Measurements are polled with SHORT_UPLOAD into the signal hub;
+DAQ lists are a later addition.
 """
 
 from __future__ import annotations
@@ -23,10 +25,18 @@ CMD_UNLOCK = 0xF7
 CMD_SET_MTA = 0xF6
 CMD_UPLOAD = 0xF5
 CMD_SHORT_UPLOAD = 0xF4
+CMD_BUILD_CHECKSUM = 0xF3
 CMD_DOWNLOAD = 0xF0
+CMD_PROGRAM_START = 0xD2
+CMD_PROGRAM_CLEAR = 0xD1
+CMD_PROGRAM = 0xD0
+CMD_PROGRAM_RESET = 0xCF
 
 PID_RES = 0xFF  # positive response
 PID_ERR = 0xFE
+PID_EV = 0xFD  # an event packet
+#: The event a slave sends to say a command is taking a while, and to wait.
+EV_CMD_PENDING = 0x05
 
 ERROR_CODES = {
     0x00: "ERR_CMD_SYNCH",

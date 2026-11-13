@@ -17,6 +17,10 @@ one pair of identifiers; a counter in every command, echoed in the answer;
 and addresses in Motorola order. Everything else -- a block of memory, a
 seed and key before anything may be written -- is the same job.
 
+It has the same flash from 0x4000 up: CLEAR_MEMORY erases it to FF, and
+PROGRAM can only turn ones into zeros. CCP leaves the checksum algorithm to
+the ECU; this one's BUILD_CHKSUM is a 16-bit sum of the bytes, XCP's ADD_12.
+
 To make it yours: change the identifiers and the station address, point
 pycangui at your A2L, and lay the memory out where that A2L says.
 """
@@ -27,7 +31,7 @@ import math
 import struct
 
 NAME = "CCP slave"
-DESCRIPTION = "A calibratable memory over CCP: connect, upload, unlock, download."
+DESCRIPTION = "A calibratable memory with flash, over CCP: upload, unlock, download, program."
 RATE_HZ = 20
 
 #: CCP fixes no identifiers either, so these are pycangui's own, and chosen
@@ -44,9 +48,16 @@ SET_MTA = 0x02
 DNLOAD = 0x03
 UPLOAD = 0x04
 DISCONNECT = 0x07
+BUILD_CHKSUM = 0x0E
 SHORT_UP = 0x0F
+CLEAR_MEMORY = 0x10
 GET_SEED = 0x12
 UNLOCK = 0x13
+PROGRAM = 0x18
+
+#: Resources, as CCP numbers them: calibration and programming.
+RESOURCE_CAL = 0x01
+RESOURCE_PGM = 0x40
 
 #: Every answer is a command return message: this, a return code, then the
 #: counter the command carried.
@@ -58,7 +69,9 @@ ERR_ACCESS_DENIED = 0x33
 ERR_ACCESS_LOCKED = 0x35
 ERR_NOT_AVAILABLE = 0x36
 
-MEMORY_BYTES = 0x3000
+MEMORY_BYTES = 0x8000
+FLASH_START = 0x4000
+FLASH_END = 0x8000
 ENGINE_SPEED = 0x1000  # a measurement: poll() moves it
 BATTERY_MV = 0x1002
 COOLANT_C = 0x1004
@@ -77,13 +90,15 @@ ORDER = ">"
 
 def start(node, *, ctx):
     memory = bytearray(MEMORY_BYTES)
+    memory[FLASH_START:FLASH_END] = b"\xff" * (FLASH_END - FLASH_START)  # erased
     struct.pack_into(f"{ORDER}H", memory, BATTERY_MV, 1320)  # 13.20 V
     struct.pack_into(f"{ORDER}h", memory, COOLANT_C, 90)
     struct.pack_into(f"{ORDER}H", memory, SPEED_LIMIT, 6500)
     struct.pack_into(f"{ORDER}H", memory, IDLE_TARGET, 850)
     node.state.memory = memory
     node.state.connected = False
-    node.state.unlocked = False
+    node.state.unlocked = 0  # the resources unlocked, as bits
+    node.state.asked = 0  # the resource the last seed was for
     node.state.mta = 0
     node.state.polls = 0
 
@@ -129,18 +144,20 @@ def _handle(node, data: bytes) -> bytes | None:
         # Byte 0 says whether this ends the session or is a pause. A pause
         # keeps the unlock, which is what a master reconnecting expects.
         if body and body[0]:
-            node.state.unlocked = False
+            node.state.unlocked = 0
         node.state.connected = False
         return _answer(ACKNOWLEDGE, counter)
 
     if command == GET_SEED:
-        return _answer(ACKNOWLEDGE, counter, bytes([0x01, *SEED]))
+        node.state.asked = (body[0] if body else 0) or RESOURCE_CAL
+        protected = 0 if node.state.unlocked & node.state.asked else 1
+        return _answer(ACKNOWLEDGE, counter, bytes([protected, *SEED]))
 
     if command == UNLOCK:
         if body[:4] != bytes(b ^ 0xFF for b in SEED):
             return _answer(ERR_ACCESS_DENIED, counter)
-        node.state.unlocked = True
-        return _answer(ACKNOWLEDGE, counter, bytes([0x01]))
+        node.state.unlocked |= node.state.asked
+        return _answer(ACKNOWLEDGE, counter, bytes([node.state.unlocked]))
 
     if command == SET_MTA:
         if len(body) < 6:
@@ -161,7 +178,7 @@ def _handle(node, data: bytes) -> bytes | None:
         return _answer(ACKNOWLEDGE, counter, chunk)
 
     if command == DNLOAD:
-        if not node.state.unlocked:
+        if not node.state.unlocked & RESOURCE_CAL:
             # The reason the seed exists: writing constants into a running
             # controller is not the same as reading one.
             return _answer(ERR_ACCESS_LOCKED, counter)
@@ -170,4 +187,35 @@ def _handle(node, data: bytes) -> bytes | None:
         node.state.mta += size
         return _answer(ACKNOWLEDGE, counter, struct.pack(">I", node.state.mta)[:4])
 
+    if command == BUILD_CHKSUM:
+        size, start = struct.unpack(">I", body[:4])[0], node.state.mta
+        if start + size > len(node.state.memory):
+            return _answer(ERR_OUT_OF_RANGE, counter)
+        total = sum(node.state.memory[start : start + size]) & 0xFFFF
+        return _answer(ACKNOWLEDGE, counter, bytes([2]) + struct.pack(">H", total))
+
+    if command in (CLEAR_MEMORY, PROGRAM):
+        return _flash(node, command, counter, body)
+
     return _answer(ERR_SYNTAX, counter)
+
+
+def _flash(node, command: int, counter: int, body: bytes) -> bytes:
+    """CLEAR_MEMORY and PROGRAM, both once PGM is unlocked."""
+    if not node.state.unlocked & RESOURCE_PGM:
+        return _answer(ERR_ACCESS_LOCKED, counter)
+    start = node.state.mta
+    if command == CLEAR_MEMORY:
+        size = struct.unpack(">I", body[:4])[0]
+        if start < FLASH_START or start + size > FLASH_END:
+            return _answer(ERR_OUT_OF_RANGE, counter)
+        node.state.memory[start : start + size] = b"\xff" * size
+        return _answer(ACKNOWLEDGE, counter)
+    size = body[0]
+    if start < FLASH_START or start + size > FLASH_END:
+        return _answer(ERR_OUT_OF_RANGE, counter)
+    # Flash only turns ones into zeros: what was not erased stays mixed.
+    for at, byte in enumerate(body[1 : 1 + size]):
+        node.state.memory[start + at] &= byte
+    node.state.mta += size
+    return _answer(ACKNOWLEDGE, counter, struct.pack(">I", node.state.mta)[:4])

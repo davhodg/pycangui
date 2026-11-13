@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import queue
 import threading
+from dataclasses import dataclass
+from itertools import groupby
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -22,9 +24,11 @@ from pycangui.core.components import COMPONENTS
 from pycangui.core.context import Context
 from pycangui.core.hooks import Hooks
 from pycangui.core.signals import SignalHub
-from pycangui.xcp import DATATYPES, decode_value, encode_value
-from pycangui.xcp.a2l import MOST_AT_ONCE, A2l, Parameter
-from pycangui.xcp.engine import XcpEngine, XcpError
+from pycangui.uds import images
+from pycangui.xcp import DATATYPES, RESOURCE_CAL, checksum, decode_value, encode_value
+from pycangui.xcp import transfer as plans
+from pycangui.xcp.a2l import MOST_AT_ONCE, A2l, Area, Parameter
+from pycangui.xcp.engine import UnsupportedError, XcpEngine, XcpError
 
 #: An engine is named "<protocol>-<implementation>", so that the list says
 #: both things it has to: which protocol it speaks, and whose code speaks
@@ -32,12 +36,48 @@ from pycangui.xcp.engine import XcpEngine, XcpError
 #: "xcp-builtin".
 DEFAULT_COMPONENT = "xcp-builtin"
 
+#: How a file is written to the slave: PROGRAM, for flash, or DOWNLOAD, for
+#: memory that is written like RAM.
+PROGRAM, DOWNLOAD = "program", "download"
+#: How what was written is checked afterwards.
+VERIFY_CHECKSUM, VERIFY_READ_BACK, VERIFY_NONE = "checksum", "read back", "none"
+
+
+@dataclass(frozen=True)
+class FlashOptions:
+    """How the Transfer tab's Program button goes about it."""
+
+    write_with: str = PROGRAM
+    #: Erase each area the file has bytes for before writing any of them.
+    clear: bool = True
+    #: Seed and key for the resource first: PGM to program, CAL to download.
+    unlock: bool = True
+    verify: str = VERIFY_CHECKSUM
+    #: The checksum to compare with. None takes the one an XCP slave says it
+    #: used; CCP does not say, so for CCP one has to be chosen to compare.
+    checksum_kind: int | None = None
+    #: PROGRAM_RESET at the end, which XCP has and CCP does not.
+    reset: bool = False
+    #: Write the file's bytes that are in no area too.
+    outside_too: bool = False
+
+
+class _CancelledError(Exception):
+    pass
+
+
+class VerifyError(Exception):
+    """What was written does not read back, or sum, as the file has it."""
+
 
 class XcpManager(QObject):
     result = Signal(str)
     connected = Signal(bool)
     a2l_loaded = Signal(int)  # number of parameters
     value = Signal(str, float)  # parameter name, physical value
+    progress = Signal(str, int, int)  # what, done, out of
+    transferring = Signal(bool)  # a transfer started or finished
+    transferred = Signal(bool)  # a transfer finished: True if all of it was done
 
     def __init__(self, bus: BusManager, hooks: Hooks, signals: SignalHub, ctx: Context) -> None:
         super().__init__()
@@ -51,6 +91,9 @@ class XcpManager(QObject):
         self._connected = False
         self._polled: dict[str, Parameter] = {}
         self._jobs: queue.Queue = queue.Queue()
+        #: A transfer is running; polling holds back until it is done.
+        self._busy = False
+        self._cancel = threading.Event()
         self._poll_timer = QTimer(self, interval=100, timeout=self._poll)
         self._worker = threading.Thread(target=self._run, name="xcp", daemon=True)
         self._worker.start()
@@ -238,6 +281,10 @@ class XcpManager(QObject):
                 f"A2L: {len(unread)} of them are listed but not read -- curves, maps, "
                 "arrays and text. Hover over one for why."
             )
+        for protocol, info in sorted(self.a2l.checksums.items()):
+            most = f", up to 0x{info.max_block:X} bytes at a time" if info.max_block else ""
+            what = checksum.name(info.kind) if info.kind else f"procedure 0x{info.code:X}"
+            self.result.emit(f"A2L: {protocol} checksum {what}{most}")
         if (ids := self.a2l.xcp_on_can) is not None:
             self.result.emit(
                 f"A2L: it gives XCP on CAN as command 0x{ids.command_id:X}, "
@@ -411,7 +458,7 @@ class XcpManager(QObject):
         return self._paused
 
     def _poll(self) -> None:
-        if not self._connected or not self._polled or self._paused:
+        if not self._connected or not self._polled or self._paused or self._busy:
             return
         for name, param in list(self._polled.items()):
 
@@ -425,6 +472,243 @@ class XcpManager(QObject):
 
             self._submit(f"poll {name}", fn)
 
+    # --- transfers: the Transfer tab ------------------------------------------------------
+    @property
+    def is_transferring(self) -> bool:
+        return self._busy
+
+    def cancel_transfer(self) -> None:
+        """Stop after the piece being sent now, never part way through a command."""
+        if self._busy:
+            self._cancel.set()
+            self.result.emit("Transfer: stopping after this piece")
+
+    def _transfer(self, label: str, fn) -> None:
+        """Run a transfer on the worker: minutes rather than one answer, with
+        progress, a Cancel, and polling held back meanwhile."""
+        if self.engine is None:
+            self.result.emit(f"{label}: no XCP engine")
+            return
+        if self._busy:
+            self.result.emit(f"{label}: a transfer is already running")
+            return
+        if not self._connected:
+            self.result.emit(f"{label}: not connected")
+            return
+        self._busy = True
+        self._cancel.clear()
+        self.transferring.emit(True)
+
+        def job() -> str:
+            done = False
+            try:
+                text = fn()
+                done = True
+                return text
+            except _CancelledError:
+                return f"{label}: cancelled"
+            except (UnsupportedError, VerifyError, images.ImageError) as exc:
+                return f"{label}: {exc}"
+            finally:
+                self._busy = False
+                self.transferring.emit(False)
+                self.transferred.emit(done)
+
+        self._jobs.put((job, label))
+
+    def _step(self) -> None:
+        if self._cancel.is_set():
+            raise _CancelledError
+
+    def _unlock_now(self, resource: int) -> str:
+        """Seed and key on the worker, as one step of a transfer."""
+        seed = bytes(self.engine.get_seed(resource))
+        if not seed:
+            return f"resource 0x{resource:02X} is not protected"
+        self.engine.unlock(self._key_for(resource, seed))
+        return f"resource 0x{resource:02X} unlocked"
+
+    def plan(self, image: images.Image, areas: list[Area], outside_too: bool = False):
+        return plans.make(image.segments, areas, outside_too)
+
+    def flash(self, image: images.Image, areas: list[Area], options: FlashOptions) -> None:
+        """Write a file to the slave, area by area, in the order the areas give."""
+        plan = self.plan(image, areas, options.outside_too)
+        label = "Program" if options.write_with == PROGRAM else "Download"
+        if not plan.runs:
+            self.result.emit(f"{label}: nothing in the file is inside the areas ticked")
+            return
+
+        def fn() -> str:
+            engine = self.engine
+            said = self.result.emit
+            for address, size in plan.outside:
+                said(f"{label}: 0x{address:X}+0x{size:X} is in no area, and is left out")
+            if options.write_with == PROGRAM:
+                if options.unlock:
+                    said(f"{label}: {self._unlock_now(engine.pgm_resource)}")
+                engine.program_start()
+                if options.clear:
+                    for n, area in enumerate(plan.clears):
+                        self._step()
+                        self.progress.emit(f"Erasing {area.name}", n, len(plan.clears))
+                        engine.program_clear(area.address, area.size, **_space(area))
+                        said(f"{label}: erased {area.name}, 0x{area.address:X}+0x{area.size:X}")
+                write = engine.program
+            else:
+                if options.unlock:
+                    said(f"{label}: {self._unlock_now(RESOURCE_CAL)}")
+                write = engine.write
+            done, total = 0, plan.size
+            for name, runs in groupby(plan.runs, key=lambda r: r.area):
+                written = 0
+                for run in runs:
+                    for piece in plans.chunks(run):
+                        self._step()
+                        write(piece.address, piece.data, **_space(piece))
+                        done += len(piece.data)
+                        written += len(piece.data)
+                        self.progress.emit(f"Writing {name}", done, total)
+                if options.write_with == PROGRAM:
+                    engine.program_end()
+                said(f"{label}: wrote {written} bytes to {name}")
+            verified = self._verify(plan.runs, options) if options.verify != VERIFY_NONE else ""
+            if options.reset and options.write_with == PROGRAM:
+                engine.program_reset()
+                self.set_connected(False)
+                said(f"{label}: PROGRAM_RESET -- the slave restarts, and is disconnected")
+            return f"{label}: {done} bytes in {len(plan.clears)} area(s){verified}"
+
+        self._transfer(label, fn)
+
+    def _verify(self, runs, options: FlashOptions) -> str:
+        if options.verify == VERIFY_READ_BACK:
+            total, done = sum(len(r.data) for r in runs), 0
+            for run in runs:
+                for piece in plans.chunks(run):
+                    self._step()
+                    got = self.engine.read(piece.address, len(piece.data), **_space(piece))
+                    if got != piece.data:
+                        at = _first_difference(got, piece.data)
+                        raise VerifyError(
+                            f"reading back, 0x{piece.address + at:X} in {run.area} "
+                            "is not what was written"
+                        )
+                    done += len(piece.data)
+                    self.progress.emit("Reading back", done, total)
+            return ", read back and the same"
+        for run in runs:
+            for address, data in self._blocks(run.address, run.data):
+                self._step()
+                kind, value, width = self.engine.checksum(address, len(data), **_space(run))
+                line, same = self._compare(kind, value, width, data, options.checksum_kind)
+                self.result.emit(f"Checksum {run.area} 0x{address:X}+0x{len(data):X}: {line}")
+                if same is False:
+                    raise VerifyError(f"the checksum of {run.area} is not the file's")
+        return ", checksums checked"
+
+    def a2l_checksum(self):
+        """What the A2L says about this protocol's checksum, if anything."""
+        return self.a2l.checksums.get(self.protocol) if self.a2l is not None else None
+
+    def _blocks(self, address: int, data):
+        """A stretch to be summed, in blocks no bigger than the A2L allows.
+
+        ``data`` is the file's bytes, or a size where there is no file.
+        """
+        size = data if isinstance(data, int) else len(data)
+        info = self.a2l_checksum()
+        most = info.max_block if info and info.max_block else size
+        for at in range(0, size, max(most, 1)):
+            part = min(most, size - at)
+            yield address + at, (part if isinstance(data, int) else data[at : at + part])
+
+    def _compare(self, kind, value, width, data, chosen) -> tuple[str, bool | None]:
+        """What the slave said, and whether it is the file's: None where it
+        cannot be said, for a checksum nobody here knows how to make."""
+        digits = 2 * width
+        line = f"0x{value:0{digits}X}"
+        # Chosen in the tab, then what the slave says it used, then the A2L.
+        info = self.a2l_checksum()
+        use = next((k for k in (chosen, kind, info and info.kind) if k is not None), None)
+        if kind is not None:
+            line += f" ({checksum.name(kind)})"
+        if data is None:
+            return line, None
+        if use is None and info is not None:
+            return (
+                line + f", not compared: the A2L's procedure 0x{info.code:X} is the maker's own",
+                None,
+            )
+        big_endian = bool(self.info and self.info.big_endian)
+        expected = checksum.compute(use, data, big_endian) if use is not None else None
+        if expected is None:
+            return line + ", not compared: no algorithm here to compare it with", None
+        expected &= (1 << (8 * width)) - 1
+        if expected == value:
+            return line + ", the same as the file", True
+        return line + f", the file's is 0x{expected:0{digits}X} by {checksum.name(use)}", False
+
+    def upload(self, path: str, areas: list[Area]) -> None:
+        """Read the areas out of the slave into one file."""
+
+        def fn() -> str:
+            total, done, segments = sum(a.size for a in areas), 0, []
+            for area in areas:
+                data = bytearray()
+                for at in range(0, area.size, plans.CHUNK):
+                    self._step()
+                    size = min(plans.CHUNK, area.size - at)
+                    data += self.engine.read(area.address + at, size, **_space(area))
+                    done += size
+                    self.progress.emit(f"Reading {area.name}", done, total)
+                segments.append(images.Segment(area.address, bytes(data)))
+            fmt = images.write_segments(path, segments)
+            where = workspace_files.shown(path, self._ctx.workspace_dir)
+            return f"Upload: {done} bytes from {len(areas)} area(s) to {where}, {fmt}"
+
+        if not areas:
+            self.result.emit("Upload: no areas ticked to read")
+            return
+        self._transfer("Upload", fn)
+
+    def build_checksums(
+        self, areas: list[Area], image: images.Image | None = None, kind: int | None = None
+    ) -> None:
+        """BUILD_CHECKSUM over each area, or with a file, over the file's
+        bytes in each area, so that there is something to compare it with."""
+        if image is not None:
+            runs = self.plan(image, areas).runs
+            ranges = [
+                (Area(r.area, r.address, len(r.data), extension=r.extension), r.data) for r in runs
+            ]
+        else:
+            ranges = [(area, None) for area in areas]
+
+        def fn() -> str:
+            differ = []
+            for n, (area, data) in enumerate(ranges):
+                self.progress.emit(f"Checksum {area.name}", n, len(ranges))
+                for address, part in self._blocks(
+                    area.address, area.size if data is None else data
+                ):
+                    self._step()
+                    size = part if isinstance(part, int) else len(part)
+                    found, value, width = self.engine.checksum(address, size, **_space(area))
+                    sent = None if isinstance(part, int) else part
+                    line, same = self._compare(found, value, width, sent, kind)
+                    self.result.emit(f"Checksum {area.name} 0x{address:X}+0x{size:X}: {line}")
+                    if same is False and area.name not in differ:
+                        differ.append(area.name)
+            if differ:
+                raise VerifyError(f"not the file's in {', '.join(differ)}")
+            return ""
+
+        if not ranges:
+            self.result.emit("Checksum: nothing to sum -- no areas ticked, or none the file is in")
+            return
+        self._transfer("Checksum", fn)
+
     # --- trace labelling ---------------------------------------------------------------
     def classify(self, frame: Frame) -> str | None:
         return self.engine.owns_frame(frame) if self.engine else None
@@ -434,9 +718,18 @@ class XcpManager(QObject):
 ARRAY_SHOWN = 16
 
 
-def _space(param: Parameter) -> dict:
+def _first_difference(got: bytes, wanted: bytes) -> int:
+    """Where two runs of bytes first differ, or where the shorter one ends."""
+    for at, (a, b) in enumerate(zip(got, wanted, strict=False)):
+        if a != b:
+            return at
+    return min(len(got), len(wanted))
+
+
+def _space(param) -> dict:
     """The address extension, as a keyword and only when there is one: an
-    engine written before extensions takes an address and nothing else."""
+    engine written before extensions takes an address and nothing else.
+    For a parameter, an area or a run of a file alike."""
     return {"extension": param.extension} if param.extension else {}
 
 

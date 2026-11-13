@@ -23,16 +23,25 @@ from PySide6.QtCore import QObject
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.components import register_component
 from pycangui.xcp import (
+    CMD_BUILD_CHECKSUM,
     CMD_CONNECT,
     CMD_DISCONNECT,
     CMD_DOWNLOAD,
     CMD_GET_SEED,
+    CMD_PROGRAM,
+    CMD_PROGRAM_CLEAR,
+    CMD_PROGRAM_RESET,
+    CMD_PROGRAM_START,
     CMD_SET_MTA,
     CMD_SHORT_UPLOAD,
     CMD_UNLOCK,
+    CMD_UPLOAD,
     ERROR_CODES,
+    EV_CMD_PENDING,
     PID_ERR,
+    PID_EV,
     PID_RES,
+    RESOURCE_PGM,
     ConnectInfo,
 )
 
@@ -46,6 +55,16 @@ class XcpError(Exception):
 #: Stands for "nobody has said yet", and cannot collide with a real
 #: identifier because no CAN id is negative.
 NO_ID = -1
+
+#: How long a command that erases or sums a whole area may take before the
+#: slave is given up on. Erasing flash is seconds, not milliseconds, and a
+#: slave that says so with EV_CMD_PENDING is waited for again each time.
+LONG_TIMEOUT = 30.0
+
+
+class UnsupportedError(Exception):
+    """This engine has no way to do what was asked: an engine written before
+    the Transfer tab existed, or a protocol without the command."""
 
 
 class XcpEngine(ABC):
@@ -66,6 +85,11 @@ class XcpEngine(ABC):
 
     #: Filled in by connect(); the manager reads byte order and limits from it.
     info: ConnectInfo | None = None
+
+    #: The resource that unlocks flashing, as this protocol numbers it.
+    pgm_resource = RESOURCE_PGM
+    #: Whether program_reset() means anything: CCP has no such command.
+    can_reset = False
 
     def set_ids(self, cmd_id: int, res_id: int, extended: bool) -> None:
         """Addressing for XCP on CAN. Engines on another link may ignore it."""
@@ -100,6 +124,37 @@ class XcpEngine(ABC):
     @abstractmethod
     def write(self, address: int, data: bytes, extension: int = 0) -> None:
         """Write *data* at *address* (SET_MTA + DOWNLOAD or equivalent)."""
+
+    # --- flashing: optional, for the Transfer tab ------------------------------------
+    # Not abstract, so an engine written before them goes on loading: what it
+    # cannot do is said when it is asked, not by refusing to start.
+    def program_start(self) -> None:
+        """Begin a programming session (XCP PROGRAM_START). Optional."""
+        return None
+
+    def program_clear(self, address: int, size: int, extension: int = 0) -> None:
+        """Erase *size* bytes from *address*, before they are programmed."""
+        raise UnsupportedError(f"this {self.protocol} engine cannot erase memory")
+
+    def program(self, address: int, data: bytes, extension: int = 0) -> None:
+        """Program *data* at *address* (XCP PROGRAM, CCP PROGRAM)."""
+        raise UnsupportedError(f"this {self.protocol} engine cannot program memory")
+
+    def program_end(self) -> None:
+        """Say that one memory segment is finished. Optional."""
+        return None
+
+    def program_reset(self) -> None:
+        """End the programming session and reset the slave."""
+        raise UnsupportedError(f"{self.protocol} has no reset after programming")
+
+    def checksum(self, address: int, size: int, extension: int = 0) -> tuple[int | None, int, int]:
+        """BUILD_CHECKSUM over *size* bytes from *address*.
+
+        Returns which algorithm the slave used (an XCP checksum type, or None
+        where the protocol does not say), the checksum, and its size in bytes.
+        """
+        raise UnsupportedError(f"this {self.protocol} engine cannot build a checksum")
 
     def owns_frame(self, frame: Frame) -> str | None:
         """Optional: label a frame for the trace ("XCP cmd" / "XCP resp")."""
@@ -178,7 +233,11 @@ class NativeCanEngine(XcpEngine):
         self.res_id = NO_ID
         self.extended = False
         self.info: ConnectInfo | None = None
+        #: The largest command packet while programming, from PROGRAM_START.
+        self._max_cto_pgm = 8
         self._answers = AnswerTap(bus, self)
+
+    can_reset = True
 
     # --- plumbing -----------------------------------------------------------
     def set_ids(self, cmd_id: int, res_id: int, extended: bool) -> None:
@@ -199,12 +258,16 @@ class NativeCanEngine(XcpEngine):
         while not self._responses.empty():  # drop stale responses
             self._responses.get_nowait()
         self._bus.send(self.cmd_id, bytes([pid]) + payload, extended=self.extended)
-        try:
-            data = self._responses.get(timeout=timeout)
-        except queue.Empty as exc:
-            raise TimeoutError from exc
-        if not data:
-            raise TimeoutError
+        while True:
+            try:
+                data = self._responses.get(timeout=timeout)
+            except queue.Empty as exc:
+                raise TimeoutError from exc
+            if not data:
+                raise TimeoutError
+            # A slave busy erasing says so, and is waited for again.
+            if not (data[0] == PID_EV and len(data) > 1 and data[1] == EV_CMD_PENDING):
+                break
         if data[0] == PID_ERR:
             raise XcpError(data[1] if len(data) > 1 else 0x31)
         if data[0] != PID_RES:
@@ -240,14 +303,73 @@ class NativeCanEngine(XcpEngine):
     def unlock(self, key: bytes) -> None:
         self.command(CMD_UNLOCK, bytes([len(key), *key]))
 
+    @property
+    def _max_cto(self) -> int:
+        return self.info.max_cto if self.info and self.info.max_cto >= 8 else 8
+
     def read(self, address: int, size: int, extension: int = 0) -> bytes:
-        where = bytes([size, 0x00, extension & 0xFF]) + self._pack_address(address)
-        return self.command(CMD_SHORT_UPLOAD, where)
+        most = self._max_cto - 1  # the answer's first byte is the PID
+        if size <= most:
+            where = bytes([size, 0x00, extension & 0xFF]) + self._pack_address(address)
+            return self.command(CMD_SHORT_UPLOAD, where)[:size]
+        # More than one answer holds: point the MTA at it and UPLOAD a frame
+        # at a time, which every slave can do, rather than in block mode,
+        # which only some can.
+        self._set_mta(address, extension)
+        out = bytearray()
+        while len(out) < size:
+            want = min(most, size - len(out))
+            out += self.command(CMD_UPLOAD, bytes([want]))[:want]
+        return bytes(out)
 
     def write(self, address: int, data: bytes, extension: int = 0) -> None:
+        self._set_mta(address, extension)
+        most = self._max_cto - 2  # the PID and the count
+        for at in range(0, len(data), most):
+            chunk = data[at : at + most]
+            self.command(CMD_DOWNLOAD, bytes([len(chunk)]) + chunk)
+
+    def _set_mta(self, address: int, extension: int = 0) -> None:
         where = bytes([0x00, 0x00, extension & 0xFF]) + self._pack_address(address)
         self.command(CMD_SET_MTA, where)
-        self.command(CMD_DOWNLOAD, bytes([len(data)]) + data)
+
+    # --- flashing -------------------------------------------------------------
+    def program_start(self) -> None:
+        # reserved, COMM_MODE_PGM, MAX_CTO_PGM, MAX_BS_PGM, MIN_ST_PGM, QUEUE_SIZE_PGM
+        r = self.command(CMD_PROGRAM_START)
+        self._max_cto_pgm = r[2] if len(r) > 2 and r[2] >= 8 else self._max_cto
+
+    def program_clear(self, address: int, size: int, extension: int = 0) -> None:
+        self._set_mta(address, extension)
+        # Mode 0, absolute: the range is a number of bytes from the MTA.
+        payload = bytes([0x00, 0x00, 0x00]) + self._pack_address(size)
+        self.command(CMD_PROGRAM_CLEAR, payload, timeout=LONG_TIMEOUT)
+
+    def program(self, address: int, data: bytes, extension: int = 0) -> None:
+        self._set_mta(address, extension)
+        most = self._max_cto_pgm - 2  # the PID and the count
+        for at in range(0, len(data), most):
+            chunk = data[at : at + most]
+            self.command(CMD_PROGRAM, bytes([len(chunk)]) + chunk)
+
+    def program_end(self) -> None:
+        # A PROGRAM of nothing is how XCP says a memory segment is complete.
+        self.command(CMD_PROGRAM, bytes([0x00]))
+
+    def program_reset(self) -> None:
+        try:
+            self.command(CMD_PROGRAM_RESET)
+        except TimeoutError:
+            pass  # a slave that resets at once has nobody left to answer
+        self.info = None
+
+    def checksum(self, address: int, size: int, extension: int = 0) -> tuple[int | None, int, int]:
+        self._set_mta(address, extension)
+        payload = bytes([0x00, 0x00, 0x00]) + self._pack_address(size)
+        r = self.command(CMD_BUILD_CHECKSUM, payload, timeout=LONG_TIMEOUT)
+        # The checksum type, two reserved bytes, then the checksum as a DWORD.
+        order = ">I" if self._big_endian else "<I"
+        return r[0], struct.unpack(order, r[3:7])[0], 4
 
     def close(self) -> None:
         self._answers.close()

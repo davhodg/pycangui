@@ -20,10 +20,13 @@ import struct
 
 from pycangui.ccp import (
     ACKNOWLEDGE,
+    CMD_BUILD_CHKSUM,
+    CMD_CLEAR_MEMORY,
     CMD_CONNECT,
     CMD_DISCONNECT,
     CMD_DNLOAD,
     CMD_GET_SEED,
+    CMD_PROGRAM,
     CMD_SET_MTA,
     CMD_SHORT_UP,
     CMD_UNLOCK,
@@ -31,12 +34,13 @@ from pycangui.ccp import (
     COUNTER_WRAP,
     MOST_PER_FRAME,
     PID_RETURN,
+    RESOURCE_PGM,
     RETURN_CODES,
 )
 from pycangui.core.bus import BusManager, Frame
 from pycangui.core.components import register_component
 from pycangui.xcp import ConnectInfo
-from pycangui.xcp.engine import NO_ID, AnswerTap, XcpEngine
+from pycangui.xcp.engine import LONG_TIMEOUT, NO_ID, AnswerTap, XcpEngine
 
 
 class CcpError(Exception):
@@ -57,6 +61,7 @@ class CanCcpEngine(XcpEngine):
     protocol = "CCP"
     #: The pane shows a station address box for an engine that has this.
     needs_station = True
+    pgm_resource = RESOURCE_PGM
 
     def __init__(self, bus: BusManager, ctx=None) -> None:
         self._bus = bus
@@ -153,6 +158,27 @@ class CanCcpEngine(XcpEngine):
         for start in range(0, len(data), MOST_PER_FRAME):
             chunk = data[start : start + MOST_PER_FRAME]
             self.command(CMD_DNLOAD, bytes([len(chunk)]) + chunk)
+
+    # --- flashing -------------------------------------------------------------
+    # CCP has no PROGRAM_START and no reset: a session is unlocked for PGM,
+    # cleared, programmed, and that is all the standard says about it.
+    def program_clear(self, address: int, size: int, extension: int = 0) -> None:
+        self._set_mta(address, extension)
+        self.command(CMD_CLEAR_MEMORY, struct.pack(">I", size), timeout=LONG_TIMEOUT)
+
+    def program(self, address: int, data: bytes, extension: int = 0) -> None:
+        self._set_mta(address, extension)
+        for start in range(0, len(data), MOST_PER_FRAME):
+            chunk = data[start : start + MOST_PER_FRAME]
+            self.command(CMD_PROGRAM, bytes([len(chunk)]) + chunk)
+
+    def checksum(self, address: int, size: int, extension: int = 0) -> tuple[int | None, int, int]:
+        self._set_mta(address, extension)
+        answer = self.command(CMD_BUILD_CHKSUM, struct.pack(">I", size), timeout=LONG_TIMEOUT)
+        # How many bytes the checksum has, then the checksum. Which algorithm
+        # made it, CCP does not say: that is the ECU's own business.
+        width = max(1, min(answer[0], 4))
+        return None, int.from_bytes(answer[1 : 1 + width], "big"), width
 
     def _set_mta(self, address: int, extension: int = 0) -> None:
         """Point the slave's transfer address at somewhere, MTA 0 as usual."""

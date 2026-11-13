@@ -245,6 +245,70 @@ class Parameter:
         return self.conversion.choices if self.conversion else {}
 
 
+@dataclass(frozen=True)
+class Area:
+    """A stretch of the slave's memory that is erased and programmed as one.
+
+    From an A2L, an XCP programming SECTOR or a MOD_PAR MEMORY_SEGMENT; or
+    typed into the Transfer tab, or made from a file's own segments, which
+    is how the A2L is overridden.
+    """
+
+    name: str
+    address: int
+    size: int
+    #: The order areas are erased in, then the order they are programmed in.
+    #: A SECTOR gives both; a MEMORY_SEGMENT gives neither, and is taken in
+    #: address order.
+    clear_order: int = 0
+    program_order: int = 0
+    #: FLASH, RAM, EEPROM and the rest, for a MEMORY_SEGMENT; empty otherwise.
+    memory: str = ""
+    #: Where it came from: "SECTOR", "MEMORY_SEGMENT", "typed" or "file".
+    source: str = ""
+    extension: int = 0
+
+    @property
+    def end(self) -> int:
+        return self.address + self.size
+
+
+@dataclass(frozen=True)
+class ChecksumInfo:
+    """What an A2L says about BUILD_CHECKSUM, for one protocol.
+
+    XCP's IF_DATA has a ``CHECKSUM`` block, ``XCP_CRC_32 MAX_BLOCK_SIZE ...``;
+    CCP's has ``CHECKSUM_PARAM`` in its TP_BLOB, a procedure number and the
+    largest block one command may sum. The procedure numbers are XCP's
+    checksum types; a number above them is the maker's own, and kept as
+    ``code`` so it can be shown even though it cannot be worked out here.
+    """
+
+    kind: int | None
+    code: int
+    max_block: int | None = None
+
+
+#: XCP's checksum types by the names its A2L blocks use.
+CHECKSUM_NAMES = {
+    "XCP_ADD_11": 0x01,
+    "XCP_ADD_12": 0x02,
+    "XCP_ADD_14": 0x03,
+    "XCP_ADD_22": 0x04,
+    "XCP_ADD_24": 0x05,
+    "XCP_ADD_44": 0x06,
+    "XCP_CRC_16": 0x07,
+    "XCP_CRC_16_CITT": 0x08,
+    "XCP_CRC_32": 0x09,
+    "XCP_USER_DEFINED": 0xFF,
+}
+
+#: Memory segments that are flashed, by their memory type.
+FLASHED = {"FLASH", "EEPROM", "EPROM"}
+#: Programming types a segment is never flashed for.
+NOT_FLASHED = {"RESERVED", "EXCLUDE_FROM_FLASH", "VARIABLES"}
+
+
 @dataclass
 class XcpOnCan:
     """The identifiers an A2L gives for XCP on CAN, where it gives them."""
@@ -288,6 +352,13 @@ class A2l:
         self.big_endian: bool | None = None
         #: XCP on CAN identifiers from the file's IF_DATA, if it has them.
         self.xcp_on_can: XcpOnCan | None = None
+        #: MOD_PAR's MEMORY_SEGMENTs, every one of them, in the file's order.
+        self.memory_segments: list[Area] = []
+        #: The SECTORs of an XCP IF_DATA's PGM block: what is flashed, and in
+        #: which order, where the file says.
+        self.sectors: list[Area] = []
+        #: The checksum each protocol's IF_DATA names, by "XCP" or "CCP".
+        self.checksums: dict[str, ChecksumInfo] = {}
         #: Where it was read from, so the pane can say which file these names
         #: came from. Empty for one parsed from text, as the tests do.
         self.path = ""
@@ -373,6 +444,21 @@ class A2l:
             for indices in product(*(range(size) for size in array.sizes))
         ]
 
+    def flash_areas(self) -> list[Area]:
+        """What the Transfer tab programs, as the file has it.
+
+        The programming SECTORs where there are any, since they are written
+        for exactly this and give the order. Otherwise the memory segments
+        that are flash, erased and programmed in address order.
+        """
+        if self.sectors:
+            return list(self.sectors)
+        # One marked RESERVED or EXCLUDE_FROM_FLASH says so in its memory
+        # type, "FLASH (RESERVED)", which is then not one of these.
+        flashed = [a for a in self.memory_segments if a.memory in FLASHED and a.size > 0]
+        flashed.sort(key=lambda a: a.address)
+        return [replace(a, clear_order=n, program_order=n) for n, a in enumerate(flashed)]
+
     def unreadable(self) -> list[Parameter]:
         """The ones listed and not read: curves, maps, types not known."""
         return [p for p in self.parameters.values() if not p.readable]
@@ -415,6 +501,10 @@ class A2l:
                 self.parameters[parameter.name] = parameter
         if self.xcp_on_can is None:
             self.xcp_on_can = _xcp_on_can(module)
+        for protocol, info in _checksums(module).items():
+            self.checksums.setdefault(protocol, info)
+        self.memory_segments += _memory_segments(module)
+        self.sectors += _sectors(module)
 
     def _measurement(self, block: _Block) -> Parameter | None:
         """Name LongIdentifier Datatype Conversion Resolution Accuracy Lower Upper."""
@@ -648,6 +738,73 @@ def _older_address(block: _Block) -> int | None:
         if fields[0] in ("ETK", "ASAP1B_ETK", "ASAP1B_KWP2000", "ASAP1B_ADDRESS") and blob:
             return _integer(blob[0])
     return None
+
+
+def _memory_segments(module: _Block) -> list[Area]:
+    """``MEMORY_SEGMENT name "text" PrgType MemoryType Attribute Address Size ...``
+
+    A programming type that is never flashed is added to the memory type,
+    where it is seen in the table and keeps the segment out of flash_areas.
+    """
+    found = []
+    for block in _all(module, "MEMORY_SEGMENT"):
+        words = block.fields()
+        if len(words) < 7:
+            continue
+        address, size = _integer(words[5]), _integer(words[6])
+        if address is None or size is None:
+            continue
+        kind, memory = str(words[2]), str(words[3])
+        area = Area(str(words[0]), address, size, memory=memory, source="MEMORY_SEGMENT")
+        if kind in NOT_FLASHED:
+            area = replace(area, memory=f"{memory} ({kind})")
+        found.append(area)
+    return found
+
+
+def _checksums(module: _Block) -> dict[str, ChecksumInfo]:
+    """The first ``CHECKSUM`` block (XCP) and ``CHECKSUM_PARAM`` block (CCP)."""
+    found: dict[str, ChecksumInfo] = {}
+    for block in _all(module, "CHECKSUM"):
+        words = block.fields()
+        if not words:
+            continue
+        code = CHECKSUM_NAMES.get(str(words[0]), _integer(words[0]))
+        if code is None:
+            continue
+        most = block.after("MAX_BLOCK_SIZE")
+        found["XCP"] = ChecksumInfo(_known(code), code, _integer(most[0]) if most else None)
+        break
+    for block in _all(module, "CHECKSUM_PARAM"):
+        words = block.fields()
+        code = _integer(words[0]) if words else None
+        if code is None:
+            continue
+        most = _integer(words[1]) if len(words) > 1 else None
+        found["CCP"] = ChecksumInfo(_known(code), code, most)
+        break
+    return found
+
+
+def _known(code: int) -> int | None:
+    """A procedure number this can work out: one of XCP's types."""
+    return code if code in CHECKSUM_NAMES.values() and code != 0xFF else None
+
+
+def _sectors(module: _Block) -> list[Area]:
+    """``SECTOR "name" number address length clear-seq program-seq method``,
+    from an XCP IF_DATA's PGM block."""
+    found = []
+    for block in _all(module, "SECTOR"):
+        words = block.fields()
+        if len(words) < 6:
+            continue
+        numbers = [_integer(w) for w in words[2:6]]
+        if any(n is None for n in numbers):
+            continue
+        address, size, clear, program = numbers
+        found.append(Area(str(words[0]), address, size, clear, program, source="SECTOR"))
+    return found
 
 
 def _xcp_on_can(module: _Block) -> XcpOnCan | None:
