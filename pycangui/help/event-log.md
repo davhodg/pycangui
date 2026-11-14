@@ -29,7 +29,8 @@ line on, and it is kept when the log is copied. Off to begin with; it is kept
 with this computer rather than the workspace, like the theme.
 
 Everything is kept for the whole session -- the line that matters is often the
-first of a thousand -- until **Clear**, on the pane's right-click, empties it.
+first of a thousand -- until *Clear all*, on the pane's right-click, empties it.
+*Save all...* beside it writes the whole log to a text file.
 
 A warning or an error opens the pane if it has been closed, a plain note does
 not, and neither does good news -- a fault clearing is worth seeing and is not

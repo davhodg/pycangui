@@ -48,6 +48,7 @@ SCRIPT = "script"
 EXPORT = "export"
 PLUGIN = "plugin"  # plugin packages, installed and exported
 WORKSPACE = "workspace"  # workspace files, exported and imported
+TEXT = "text"  # what a pane says, saved as text: the Event Log, the console, an ASCII log
 
 PREFIX = "folders."
 #: The chosen file type is kept beside the folder and under the same

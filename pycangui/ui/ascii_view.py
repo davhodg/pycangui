@@ -227,7 +227,7 @@ class AsciiView(QWidget):
         bar.addWidget(self.send_disable)
         bar.addWidget(clear)
 
-        self.text = clear_menu.add(QPlainTextEdit())
+        self.text = clear_menu.add(QPlainTextEdit(), ctx, "ASCII log")
         self.text.setReadOnly(True)
         self.text.setFont(fonts.mono())
         self.text.setMaximumBlockCount(MAX_LINES)

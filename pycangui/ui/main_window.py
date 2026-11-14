@@ -123,6 +123,8 @@ def window_title() -> str:
 
 #: A custom pane's dock is named after the pane it shows, so that reopening a
 #: workspace reopens the same ones and two of them are two docks.
+#: What the Event Log is called in Save all's dialog, and the start of the file name offered.
+LOG_NAME = "Event Log"
 CUSTOM_PREFIX = "custom:"
 
 
@@ -309,9 +311,8 @@ class MainWindow(QMainWindow):
         self.log.setReadOnly(True)
         # Everything is kept, however long the session: the line that matters
         # is often the first of a thousand, and a log that drops its oldest
-        # lines drops exactly that one. Clear, on the right-click, empties it.
+        # lines drops exactly that one. Clear all, on the right-click, empties it.
         self.log.setMaximumBlockCount(0)
-        clear_menu.add(self.log)
         #: Every line said to the user arrives here with a level, and this is
         #: the only thing that writes to the pane. Warnings and errors open it
         #: if it has been closed; notes do not.
@@ -324,6 +325,8 @@ class MainWindow(QMainWindow):
 
         # --- user context, hooks, protocol managers -------------------------
         self.ctx = Context(events=self.events)
+        # Once there is somewhere to save to: Save all is on it too.
+        clear_menu.add(self.log, self.ctx, LOG_NAME)
         #: python-can says everything through the logging module and nothing
         #: through return values -- a wrong bitrate is reported there and
         #: nowhere else, so without this it looks like an idle bus.
@@ -1874,6 +1877,17 @@ class MainWindow(QMainWindow):
         self.panes.save()
 
     def closeEvent(self, event) -> None:
+        # A script waiting in the console is still inside this window: closing
+        # under it would take away what it is about to use. Stop it first.
+        if not self._closing and self.console.running:
+            event.ignore()
+            self.ctx.warn("A script is running in the Python Console: stop it, then close.")
+            messages.warning(
+                self,
+                "A script is running",
+                "A script is running in the Python Console.\n\nPress Stop, then close.",
+            )
+            return
         # Before anything is put away, because Cancel has to leave everything
         # exactly as it was: a file edited on a custom pane exists only here.
         if not self._closing and not self._custom_panes_may_close():
@@ -1957,8 +1971,8 @@ class MainWindow(QMainWindow):
             self._surface_log()
 
     def log_menu(self):
-        """Copy and Select All as usual, and Clear. Built apart from being shown."""
-        return clear_menu.menu(self.log)
+        """Copy and Select All as usual, Save all and Clear all. Built apart from being shown."""
+        return clear_menu.menu(self.log, self.ctx, LOG_NAME)
 
     def _dark_log(self) -> bool:
         """Which set of colours reads on the Event Log's own background."""

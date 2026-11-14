@@ -23,7 +23,22 @@ the workspace, by either, newest first: one click runs one again. A script kept
 in the workspace is remembered relative to it, and found wherever the workspace
 is taken.
 
-**Clear**, on the button or the output's right-click, empties the output.
+It behaves like the `python` prompt: a block over several lines carries on with
+`...`, Up and Down go back through what was typed, and a mistake shows Python's
+own traceback. The box typed into takes several lines too: **Shift+Enter**
+starts another, indented as the one before and further after a colon, and
+several lines pasted at once arrive as they are. **Enter** then runs them all
+together, each value shown as the prompt shows it, and **Tab** indents.
+
+What is printed appears as it is printed, so a script stepping through twenty
+nodes says so a node at a time rather than all at the end. **Stop** stops a
+line or a script at its next `wait()` or `print`, the places where the window
+gets to run and so to see Stop pressed; a call that holds the window, an SDO
+read say, finishes first. The window will not close while a script is running.
+
+A right-click in the output offers *Save all...*, to write all of it to a text
+file, and *Clear all* -- the same menu as the [Event Log](event-log.md) and an
+[ASCII log](ascii-log.md).
 
 `wait` rather than `time.sleep`, because the console runs on the window's
 thread: `time.sleep` stops the window, and the frames, answers and timers a

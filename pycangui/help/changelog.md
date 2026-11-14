@@ -13,9 +13,12 @@ since the last version, and comes out in the next one.
 
 - XCP / CCP pane: a *Transfer* tab to flash a file, upload memory and check it with BUILD_CHECKSUM, by the A2L's areas and order, which can be overridden.
 - The demo XCP and CCP slaves have flash, and answer the programming and checksum commands.
+- Python Console: several lines at once (Shift+Enter, or pasted), output shown as it is printed, and **Stop**.
+- *Save all...* on the right-click of the Event Log, the Python Console and an ASCII log.
 
 ### Changed
 
+- The Python Console's Clear button is gone: *Clear all* on its right-click does the same.
 - The Replay menu shows the file loaded, ticks it in a *Recent files* submenu, and has icons; *Loop* is with the speeds.
 
 ## [0.5.2] - 2026-11-12
