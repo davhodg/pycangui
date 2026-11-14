@@ -47,6 +47,7 @@ RESPONSE_ID = 0x7A1
 #: Command codes, from the ASAM XCP standard.
 CONNECT = 0xFF
 DISCONNECT = 0xFE
+GET_STATUS = 0xFD
 GET_SEED = 0xF8
 UNLOCK = 0xF7
 SET_MTA = 0xF6
@@ -89,10 +90,17 @@ IDLE_TARGET = 0x2002
 #: keeps a secret and an algorithm; this shows that the exchange happens.
 SEED = bytes([0xA5, 0x5A, 0x12, 0x34])
 
+#: The software's identity, where resources/demo.a2l's MOD_PAR says it is
+#: (EPK and ADDR_EPK). The XCP pane reads it on connecting and says if the
+#: A2L was made for something else.
+EPK_ADDRESS = 0x0F00
+EPK = b"pycangui demo 1.0"
+
 
 def start(node, *, ctx):
     memory = bytearray(MEMORY_BYTES)
     memory[FLASH_START:FLASH_END] = b"\xff" * (FLASH_END - FLASH_START)  # erased
+    memory[EPK_ADDRESS : EPK_ADDRESS + len(EPK)] = EPK
     struct.pack_into("<H", memory, BATTERY_MV, 1320)  # 13.20 V
     struct.pack_into("<h", memory, COOLANT_C, 90)
     struct.pack_into("<H", memory, SPEED_LIMIT, 6500)
@@ -145,6 +153,11 @@ def _handle(node, data: bytes) -> bytes | None:
     if command == DISCONNECT:
         node.state.connected = False
         return bytes([POSITIVE])
+
+    if command == GET_STATUS:
+        # The session, then which resources are still protected.
+        locked = (RESOURCE_CAL | RESOURCE_PGM) & ~node.state.unlocked
+        return bytes([POSITIVE, 0x00, locked, 0x00, 0x00, 0x00])
 
     if command == GET_SEED:
         # A master that names no resource is taken to mean calibration,

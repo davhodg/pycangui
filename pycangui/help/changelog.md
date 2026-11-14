@@ -15,6 +15,8 @@ since the last version, and comes out in the next one.
 - The demo XCP and CCP slaves have flash, and answer the programming and checksum commands.
 - Python Console: several lines at once (Shift+Enter, or pasted), output shown as it is printed, and **Stop**.
 - *Save all...* on the right-click of the Event Log, the Python Console and an ASCII log.
+- XCP: seeds and keys longer than a frame, slaves with two- or four-byte elements, GET_STATUS on connecting, and `MAX_DLC_REQUIRED` padding.
+- XCP / CCP: the A2L's EPK is compared with the slave's on connecting, and a different one is warned about.
 
 ### Changed
 

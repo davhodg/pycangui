@@ -106,7 +106,9 @@ def test_xcp_against_demo_slave(stack):
     (workspaces.hooks_dir() / "xcp.py").write_text(hook)
     manager._hooks.reload()
     manager.unlock(0x01)
-    assert last_after(n) == "XCP resource 0x01 unlocked"
+    last_after(n)
+    # UNLOCK's answer says what is still protected: CAL is open, PGM is not.
+    assert manager.info.protection & 0x01 == 0 and manager.info.protection & 0x10
     n += 1
     manager.write("SpeedLimit", "7000")
     assert last_after(n) == "SpeedLimit <- 7000"

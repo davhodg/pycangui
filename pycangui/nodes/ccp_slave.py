@@ -87,10 +87,17 @@ SEED = bytes([0xA5, 0x5A, 0x12, 0x34])
 #: way round is the classic first mistake.
 ORDER = ">"
 
+#: The software's identity, where resources/demo.a2l's MOD_PAR says it is
+#: (EPK and ADDR_EPK). The XCP pane reads it on connecting and says if the
+#: A2L was made for something else.
+EPK_ADDRESS = 0x0F00
+EPK = b"pycangui demo 1.0"
+
 
 def start(node, *, ctx):
     memory = bytearray(MEMORY_BYTES)
     memory[FLASH_START:FLASH_END] = b"\xff" * (FLASH_END - FLASH_START)  # erased
+    memory[EPK_ADDRESS : EPK_ADDRESS + len(EPK)] = EPK
     struct.pack_into(f"{ORDER}H", memory, BATTERY_MV, 1320)  # 13.20 V
     struct.pack_into(f"{ORDER}h", memory, COOLANT_C, 90)
     struct.pack_into(f"{ORDER}H", memory, SPEED_LIMIT, 6500)

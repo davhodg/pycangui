@@ -16,6 +16,7 @@ from __future__ import annotations
 import queue
 import struct
 from abc import ABC, abstractmethod
+from dataclasses import replace
 
 import can
 from PySide6.QtCore import QObject
@@ -28,6 +29,7 @@ from pycangui.xcp import (
     CMD_DISCONNECT,
     CMD_DOWNLOAD,
     CMD_GET_SEED,
+    CMD_GET_STATUS,
     CMD_PROGRAM,
     CMD_PROGRAM_CLEAR,
     CMD_PROGRAM_RESET,
@@ -44,6 +46,11 @@ from pycangui.xcp import (
     RESOURCE_PGM,
     ConnectInfo,
 )
+
+#: How long a classic CAN frame is: what a padded command is filled out to.
+CAN_FRAME = 8
+#: CONNECT's address granularity bits, as bytes in one element.
+GRANULARITIES = {0: 1, 1: 2, 2: 4}
 
 
 class XcpError(Exception):
@@ -90,6 +97,9 @@ class XcpEngine(ABC):
     pgm_resource = RESOURCE_PGM
     #: Whether program_reset() means anything: CCP has no such command.
     can_reset = False
+    #: Whether every command goes out as a full 8-byte frame. An A2L's
+    #: MAX_DLC_REQUIRED says the slave ignores a shorter one.
+    pad = False
 
     def set_ids(self, cmd_id: int, res_id: int, extended: bool) -> None:
         """Addressing for XCP on CAN. Engines on another link may ignore it."""
@@ -257,7 +267,10 @@ class NativeCanEngine(XcpEngine):
             raise XcpError(0x31)  # nothing has said where the slave is
         while not self._responses.empty():  # drop stale responses
             self._responses.get_nowait()
-        self._bus.send(self.cmd_id, bytes([pid]) + payload, extended=self.extended)
+        frame = bytes([pid]) + payload
+        if self.pad:
+            frame = frame.ljust(CAN_FRAME, b"\x00")
+        self._bus.send(self.cmd_id, frame, extended=self.extended)
         while True:
             try:
                 data = self._responses.get(timeout=timeout)
@@ -286,8 +299,18 @@ class NativeCanEngine(XcpEngine):
         r = self.command(CMD_CONNECT, bytes([0x00]))
         # resource, commModeBasic, maxCTO, maxDTO(2), protocol version, transport version
         big_endian = bool(r[1] & 0x01)
+        # Bits 1 and 2: the address granularity, as BYTE, WORD or DWORD.
+        granularity = GRANULARITIES.get((r[1] >> 1) & 0x03, 1)
         max_dto = struct.unpack(">H" if big_endian else "<H", r[3:5])[0]
-        self.info = ConnectInfo(r[0], 0, big_endian, r[2], max_dto)
+        self.info = ConnectInfo(r[0], 0, big_endian, r[2], max_dto, granularity)
+        # What is still locked. GET_STATUS is one every slave must answer, but
+        # a slave that does not is still worth talking to.
+        try:
+            status = self.command(CMD_GET_STATUS)
+        except (XcpError, TimeoutError):
+            return self.info
+        if len(status) > 1:
+            self.info = replace(self.info, protection=status[1])
         return self.info
 
     def disconnect(self) -> None:
@@ -297,37 +320,85 @@ class NativeCanEngine(XcpEngine):
             self.info = None
 
     def get_seed(self, resource: int) -> bytes:
-        seed = self.command(CMD_GET_SEED, bytes([0x00, resource]))
-        return bytes(seed[1 : 1 + seed[0]])
+        # The first answer says how long the whole seed is; one longer than a
+        # frame holds comes in pieces, each asked for with mode 1, and each
+        # saying how much is still to come.
+        answer = self.command(CMD_GET_SEED, bytes([0x00, resource]))
+        total = answer[0]
+        seed = bytearray(answer[1 : 1 + total])
+        while len(seed) < total:
+            answer = self.command(CMD_GET_SEED, bytes([0x01, resource]))
+            left = answer[0]
+            if not left:
+                break
+            seed += answer[1 : 1 + left]
+        return bytes(seed[:total])
 
     def unlock(self, key: bytes) -> None:
-        self.command(CMD_UNLOCK, bytes([len(key), *key]))
+        # Likewise in pieces, each saying how much of the key is left,
+        # counting itself.
+        most = self._max_cto - 2  # the PID and the length
+        at = 0
+        while True:
+            piece = key[at : at + most]
+            answer = self.command(CMD_UNLOCK, bytes([len(key) - at, *piece]))
+            at += len(piece)
+            if at >= len(key):
+                break
+        if answer and self.info is not None:
+            self.info = replace(self.info, protection=answer[0])
 
     @property
     def _max_cto(self) -> int:
         return self.info.max_cto if self.info and self.info.max_cto >= 8 else 8
 
+    @property
+    def _granularity(self) -> int:
+        return self.info.granularity if self.info else 1
+
     def read(self, address: int, size: int, extension: int = 0) -> bytes:
-        most = self._max_cto - 1  # the answer's first byte is the PID
-        if size <= most:
-            where = bytes([size, 0x00, extension & 0xFF]) + self._pack_address(address)
-            return self.command(CMD_SHORT_UPLOAD, where)[:size]
+        # Counted in elements, and an answer's elements start on an element's
+        # boundary: after the PID come granularity - 1 bytes of padding.
+        g = self._granularity
+        elements = -(-size // g)
+        most = (self._max_cto - g) // g
+        if elements <= most:
+            where = bytes([elements, 0x00, extension & 0xFF]) + self._pack_address(address)
+            return self.command(CMD_SHORT_UPLOAD, where)[g - 1 : g - 1 + size]
         # More than one answer holds: point the MTA at it and UPLOAD a frame
         # at a time, which every slave can do, rather than in block mode,
         # which only some can.
         self._set_mta(address, extension)
         out = bytearray()
-        while len(out) < size:
-            want = min(most, size - len(out))
-            out += self.command(CMD_UPLOAD, bytes([want]))[:want]
-        return bytes(out)
+        while len(out) < elements * g:
+            want = min(most, elements - len(out) // g)
+            out += self.command(CMD_UPLOAD, bytes([want]))[g - 1 : g - 1 + want * g]
+        return bytes(out[:size])
+
+    def _whole(self, data: bytes) -> int:
+        """The elements ``data`` makes, refusing what is not a whole number."""
+        g = self._granularity
+        if len(data) % g:
+            raise ValueError(
+                f"{len(data)} bytes is not a whole number of the slave's "
+                f"{g}-byte elements, so it cannot be written"
+            )
+        return len(data) // g
+
+    def _send_elements(self, pid: int, data: bytes, max_cto: int) -> None:
+        """DOWNLOAD or PROGRAM: the count in elements, the data on an element's
+        boundary -- after two bytes of padding when elements are four bytes."""
+        self._whole(data)
+        g = self._granularity
+        align = -2 % g
+        most = (max_cto - 2 - align) // g * g
+        for at in range(0, len(data), most):
+            chunk = data[at : at + most]
+            self.command(pid, bytes([len(chunk) // g]) + bytes(align) + chunk)
 
     def write(self, address: int, data: bytes, extension: int = 0) -> None:
         self._set_mta(address, extension)
-        most = self._max_cto - 2  # the PID and the count
-        for at in range(0, len(data), most):
-            chunk = data[at : at + most]
-            self.command(CMD_DOWNLOAD, bytes([len(chunk)]) + chunk)
+        self._send_elements(CMD_DOWNLOAD, data, self._max_cto)
 
     def _set_mta(self, address: int, extension: int = 0) -> None:
         where = bytes([0x00, 0x00, extension & 0xFF]) + self._pack_address(address)
@@ -347,10 +418,7 @@ class NativeCanEngine(XcpEngine):
 
     def program(self, address: int, data: bytes, extension: int = 0) -> None:
         self._set_mta(address, extension)
-        most = self._max_cto_pgm - 2  # the PID and the count
-        for at in range(0, len(data), most):
-            chunk = data[at : at + most]
-            self.command(CMD_PROGRAM, bytes([len(chunk)]) + chunk)
+        self._send_elements(CMD_PROGRAM, data, self._max_cto_pgm)
 
     def program_end(self) -> None:
         # A PROGRAM of nothing is how XCP says a memory segment is complete.
@@ -365,7 +433,8 @@ class NativeCanEngine(XcpEngine):
 
     def checksum(self, address: int, size: int, extension: int = 0) -> tuple[int | None, int, int]:
         self._set_mta(address, extension)
-        payload = bytes([0x00, 0x00, 0x00]) + self._pack_address(size)
+        # The block size is in elements.
+        payload = bytes([0x00, 0x00, 0x00]) + self._pack_address(-(-size // self._granularity))
         r = self.command(CMD_BUILD_CHECKSUM, payload, timeout=LONG_TIMEOUT)
         # The checksum type, two reserved bytes, then the checksum as a DWORD.
         order = ">I" if self._big_endian else "<I"

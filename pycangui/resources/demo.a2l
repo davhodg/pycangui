@@ -3,6 +3,10 @@ ASAP2_VERSION 1 60
 /begin MODULE demo "demo ECU"
 
 /begin MOD_PAR "demo ECU memory"
+    /* The software this file is for, and where the slave keeps its own name
+       for it: the XCP pane compares the two on connecting. */
+    EPK "pycangui demo 1.0"
+    ADDR_EPK 0x0F00
     /begin MEMORY_SEGMENT ram "measurements and calibration"
         DATA RAM INTERN 0x1000 0x2000 -1 -1 -1 -1 -1
     /end MEMORY_SEGMENT

@@ -3,7 +3,7 @@
 """XCP on CAN (ASAM MCD-1 XCP), implemented directly on the shared bus.
 
 Only the command/response layer needed for measurement, calibration and
-flashing is implemented: CONNECT / DISCONNECT, SET_MTA + UPLOAD /
+flashing is implemented: CONNECT / DISCONNECT, GET_STATUS, SET_MTA + UPLOAD /
 SHORT_UPLOAD, DOWNLOAD, GET_SEED / UNLOCK (key from a hook), BUILD_CHECKSUM,
 and the programming commands PROGRAM_START, PROGRAM_CLEAR, PROGRAM and
 PROGRAM_RESET. Measurements are polled with SHORT_UPLOAD into the signal hub;
@@ -72,6 +72,9 @@ class ConnectInfo:
     big_endian: bool = False
     max_cto: int = 8
     max_dto: int = 8
+    #: Bytes in one addressed element: 1, 2 or 4. Sizes in UPLOAD, DOWNLOAD,
+    #: PROGRAM and BUILD_CHECKSUM count elements, not bytes.
+    granularity: int = 1
 
     def resource_names(self, bits: int) -> str:
         names = []

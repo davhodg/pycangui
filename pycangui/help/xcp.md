@@ -31,6 +31,13 @@ number as well as by identifiers, so several controllers can share one pair
 and answer in turn; a station the slave does not recognise gets no answer at
 all, which is how it should be. XCP has no such thing, so the box is hidden.
 
+Connecting says what the slave offers and, from XCP's GET_STATUS, what of
+it is still locked. A seed or a key longer than one frame holds goes in
+pieces, as XCP has it, so a key of eight bytes or more works on classic CAN.
+A slave that addresses its memory in two- or four-byte elements says so on
+connecting, and reads, writes, programming and checksums are counted in its
+elements; a write that is not a whole number of them is refused.
+
 Two smaller differences are handled without asking. CCP is a Motorola-order
 protocol, so values are read big-endian, where XCP uses the order the slave
 declares on connecting. And every CCP command carries a counter which the
@@ -158,6 +165,14 @@ Single values, and rows of them:
 - **Older files**, from before `ECU_ADDRESS`: a measurement's address is taken
   from the `KP_BLOB` in its `IF_DATA`, for the CCP, ETK and KWP2000 layouts.
 - **Included files** (`/include`), beside the file that names them.
+- **The EPK**: `EPK` and `ADDR_EPK` in `MOD_PAR` name the software build the
+  file was made for and where the slave keeps its own. On connecting, or on
+  loading the file while connected, the slave's is read and compared, and a
+  different one is a warning in the Event Log: an A2L for another build has
+  addresses that may be wrong, and reads and writes there go to the wrong
+  place without anything else saying so.
+- **`MAX_DLC_REQUIRED`** in `XCP_ON_CAN`: every command is sent as a full
+  eight-byte frame, for a slave that ignores a shorter one.
 - **Arrays**: a measurement with `MATRIX_DIM` or `ARRAY_SIZE`, and a `VAL_BLK`
   characteristic. The row shows the type and how many, `UWORD[16]`.
   Double-click it to read every value, which opens it into a row for each,

@@ -148,6 +148,13 @@ class XcpManager(QObject):
         except Exception as exc:  # one of your own components may fail to construct
             self.engine = None
             self.result.emit(f"Calibration engine {self.component_name!r} failed: {exc}")
+        self._apply_padding()
+
+    def _apply_padding(self) -> None:
+        """Pad commands to 8 bytes where the A2L says the slave needs it."""
+        ids = self.a2l.xcp_on_can if self.a2l is not None else None
+        if getattr(self.engine, "protocol", None) == "XCP":
+            self.engine.pad = bool(ids and ids.padded)
 
     # --- worker ------------------------------------------------------------------
     def _run(self) -> None:
@@ -196,11 +203,20 @@ class XcpManager(QObject):
             info = self.engine.connect()
             self.set_connected(True)
             order = "big-endian" if info.big_endian else "little-endian"
-            return (
+            elements = f", {info.granularity}-byte elements" if info.granularity > 1 else ""
+            locked = f", locked: {info.resource_names(info.protection)}" if info.protection else ""
+            said = (
                 f"{self.protocol} connected ({self.component_name}): resources "
                 f"{info.resource_names(info.resources)}, maxCTO {info.max_cto}, "
-                f"maxDTO {info.max_dto}, {order}"
+                f"maxDTO {info.max_dto}, {order}{elements}{locked}"
             )
+            # Connected whatever the EPK says: a read that fails is reported,
+            # not taken as the connection failing.
+            try:
+                epk = self._check_epk()
+            except (XcpError, TimeoutError, ValueError) as exc:
+                epk = f"EPK not read: {exc or type(exc).__name__}"
+            return f"{said}; {epk}" if epk else said
 
         self._submit("CONNECT", fn)
 
@@ -233,7 +249,13 @@ class XcpManager(QObject):
             seed = self.engine.get_seed(resource)
             key = self._key_for(resource, bytes(seed))
             self.engine.unlock(key)
-            return f"{self.protocol} resource 0x{resource:02X} unlocked"
+            info = self.engine.info
+            still = (
+                f"; still locked: {info.resource_names(info.protection)}"
+                if info is not None and info.protection
+                else ""
+            )
+            return f"{self.protocol} resource 0x{resource:02X} unlocked{still}"
 
         self._submit("UNLOCK", fn)
 
@@ -262,6 +284,27 @@ class XcpManager(QObject):
         return seedkey.key_for(dll, resource, seed, other, protocol)
 
     # --- A2L -------------------------------------------------------------------------
+    def _check_epk(self) -> str:
+        """Read the slave's EPK and compare it with the A2L's. Run on the worker.
+
+        The A2L describes one build of the software. Loaded against another,
+        every address may be wrong, and nothing else says so: values read are
+        plausible nonsense, and values written land on the wrong variable.
+        """
+        a2l = self.a2l
+        if a2l is None or a2l.epk is None or a2l.epk_address is None:
+            return ""
+        expected = a2l.epk.encode("latin-1", "replace")
+        data = self.engine.read(a2l.epk_address, len(expected))
+        found = data.decode("latin-1").rstrip("\x00 ")
+        if found == a2l.epk.rstrip("\x00 "):
+            return f"EPK matches the A2L: {found!r}"
+        self._ctx.warn(
+            f"{self.protocol}: the slave's EPK is {found!r} but the A2L was made for "
+            f"{a2l.epk!r}. The addresses in this A2L may be wrong for this software."
+        )
+        return f"EPK differs: the slave has {found!r}, the A2L expects {a2l.epk!r}"
+
     def load_a2l(self, path: str, progress=None) -> None:
         """Read an A2L and make it the one in use.
 
@@ -291,13 +334,20 @@ class XcpManager(QObject):
                 f"response 0x{ids.response_id:X}"
                 + (", 29-bit" if ids.extended else "")
                 + (f", {ids.bitrate} bit/s" if ids.bitrate else "")
+                + (", every command padded to 8 bytes" if ids.padded else "")
             )
+        self._apply_padding()
+        if self.a2l.epk is not None:
+            self.result.emit(f"A2L: made for EPK {self.a2l.epk!r}")
+            if self._connected:
+                self._submit("EPK", self._check_epk)
 
     def clear_a2l(self) -> None:
         """Forget the A2L. Polling goes with it: it is named parameters that
         are polled, and there are none left to name."""
         self.a2l = None
         self._polled.clear()
+        self._apply_padding()
         self.a2l_loaded.emit(0)
 
     # --- read / write ------------------------------------------------------------------

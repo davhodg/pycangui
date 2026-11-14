@@ -317,6 +317,8 @@ class XcpOnCan:
     response_id: int
     extended: bool = False
     bitrate: int | None = None
+    #: MAX_DLC_REQUIRED: the slave ignores a command shorter than 8 bytes.
+    padded: bool = False
 
 
 #: Told how far a read has got, from 0 to 1. A big file is seconds of work,
@@ -359,6 +361,10 @@ class A2l:
         self.sectors: list[Area] = []
         #: The checksum each protocol's IF_DATA names, by "XCP" or "CCP".
         self.checksums: dict[str, ChecksumInfo] = {}
+        #: MOD_PAR's EPK: the software version this file was made for, and
+        #: where in the slave's memory the slave keeps its own, to compare.
+        self.epk: str | None = None
+        self.epk_address: int | None = None
         #: Where it was read from, so the pane can say which file these names
         #: came from. Empty for one parsed from text, as the tests do.
         self.path = ""
@@ -505,6 +511,11 @@ class A2l:
             self.checksums.setdefault(protocol, info)
         self.memory_segments += _memory_segments(module)
         self.sectors += _sectors(module)
+        for parameters in _all(module, "MOD_PAR"):
+            if self.epk is None and (epk := parameters.after("EPK")):
+                self.epk = str(epk[0])
+            if self.epk_address is None and (at := parameters.after("ADDR_EPK")):
+                self.epk_address = _integer(at[0])
 
     def _measurement(self, block: _Block) -> Parameter | None:
         """Name LongIdentifier Datatype Conversion Resolution Accuracy Lower Upper."""
@@ -822,6 +833,7 @@ def _xcp_on_can(module: _Block) -> XcpOnCan | None:
             response_id=response & 0x1FFFFFFF,
             extended=bool((command | response) & 0x80000000),
             bitrate=_integer(rate[0]) if rate else None,
+            padded=block.has("MAX_DLC_REQUIRED"),
         )
     return None
 
