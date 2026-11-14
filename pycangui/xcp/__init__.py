@@ -3,7 +3,7 @@
 """XCP on CAN (ASAM MCD-1 XCP), implemented directly on the shared bus.
 
 Only the command/response layer needed for measurement, calibration and
-flashing is implemented: CONNECT / DISCONNECT, GET_STATUS, SET_MTA + UPLOAD /
+flashing is implemented: CONNECT / DISCONNECT, GET_STATUS, GET_ID, SYNCH, SET_MTA + UPLOAD /
 SHORT_UPLOAD, DOWNLOAD, GET_SEED / UNLOCK (key from a hook), BUILD_CHECKSUM,
 and the programming commands PROGRAM_START, PROGRAM_CLEAR, PROGRAM and
 PROGRAM_RESET. Measurements are polled with SHORT_UPLOAD into the signal hub;
@@ -20,6 +20,7 @@ CMD_CONNECT = 0xFF
 CMD_DISCONNECT = 0xFE
 CMD_GET_STATUS = 0xFD
 CMD_SYNCH = 0xFC
+CMD_GET_ID = 0xFA
 CMD_GET_SEED = 0xF8
 CMD_UNLOCK = 0xF7
 CMD_SET_MTA = 0xF6
@@ -37,6 +38,10 @@ PID_ERR = 0xFE
 PID_EV = 0xFD  # an event packet
 #: The event a slave sends to say a command is taking a while, and to wait.
 EV_CMD_PENDING = 0x05
+
+#: The answer to SYNCH: an error by its packet, and the one that means it worked.
+ERR_CMD_SYNCH = 0x00
+ERR_CMD_BUSY = 0x10
 
 ERROR_CODES = {
     0x00: "ERR_CMD_SYNCH",

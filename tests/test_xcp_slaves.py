@@ -13,7 +13,7 @@ import pytest
 
 from pycangui.xcp import RESOURCE_CAL, RESOURCE_PGM
 from pycangui.xcp.a2l import A2l
-from pycangui.xcp.engine import NativeCanEngine
+from pycangui.xcp.engine import DEFAULT_TIMEOUTS, NativeCanEngine
 
 SEED = bytes(range(0x10, 0x1A))  # ten bytes: more than one frame holds
 KEY = bytes(b ^ 0xFF for b in SEED)
@@ -31,10 +31,26 @@ class FakeSlave:
         self._seed_at = 0
         self._key = bytearray()
         self._asked = 0
+        #: Commands whose next answer goes missing, and those answered busy once.
+        self.lose: list[int] = []
+        self.busy: list[int] = []
+
+    def undo(self) -> None:
+        """Put back what the last command did, for a slave that said it was busy."""
+        self.memory[:] = self._before
+        self.mta = self._mta_before
 
     def answer(self, data: bytes) -> bytes:
         g = self.granularity
         command = data[0]
+        self._before, self._mta_before = bytearray(self.memory), self.mta
+        if command == 0xFC:  # SYNCH: answered with ERR_CMD_SYNCH, which means it worked
+            return bytes([0xFE, 0x00])
+        if command == 0xFA:  # GET_ID: the A2L's name, uploaded from the MTA
+            self.mta = 0xF00
+            self.memory[0xF00:0xF07] = b"fake.a2"
+            self.memory[0xF07] = ord("l")
+            return bytes([0xFF, 0, 0, 0]) + struct.pack("<I", 8)
         if command == 0xFF:  # CONNECT
             basic = {1: 0, 2: 1, 4: 2}[g] << 1
             return bytes([0xFF, RESOURCE_CAL | RESOURCE_PGM, basic, 8, 8, 0, 1, 1])
@@ -87,7 +103,16 @@ class FakeBus:
 
     def send(self, can_id, data, extended=False) -> None:
         self.slave.sent.append(bytes(data))
-        self.engine._responses.put(self.slave.answer(bytes(data)))
+        answer = self.slave.answer(bytes(data))
+        if data[0] in self.slave.lose:
+            self.slave.lose.remove(data[0])  # done, and its answer lost on the way
+            return
+        if data[0] in self.slave.busy:
+            self.slave.busy.remove(data[0])
+            self.engine._responses.put(bytes([0xFE, 0x10]))  # ERR_CMD_BUSY, and nothing done
+            self.slave.undo()
+            return
+        self.engine._responses.put(answer)
 
 
 def engine_for(slave: FakeSlave) -> NativeCanEngine:
@@ -97,6 +122,9 @@ def engine_for(slave: FakeSlave) -> NativeCanEngine:
     engine.cmd_id, engine.res_id, engine.extended = 0x7A0, 0x7A1, False
     engine.info = None
     engine._max_cto_pgm = 8
+    engine.timeouts = {**DEFAULT_TIMEOUTS, "T1": 0.05, "T7": 0.01}
+    engine.said = []
+    engine.on_recover = engine.said.append
     return engine
 
 
@@ -205,3 +233,88 @@ def test_the_epk_is_compared_on_connecting(app, tmp_path, monkeypatch):
     slave.memory[0x0F00:0x0F08] = b"build 41"
     manager._check_epk()
     assert len(warned) == 1, "a different build is warned about"
+
+
+# --- recovering ------------------------------------------------------------------------------
+def test_a_lost_answer_is_followed_by_synch_and_the_command_again():
+    slave = FakeSlave()
+    engine = engine_for(slave)
+    engine.connect()
+    slave.memory[0x100:0x104] = b"abcd"
+    slave.lose.append(0xF4)  # SHORT_UPLOAD
+    assert engine.read(0x100, 4) == b"abcd"
+    assert [frame[0] for frame in slave.sent[-3:]] == [0xF4, 0xFC, 0xF4], "again, after SYNCH"
+    assert len(engine.said) == 1, "and the log says so"
+
+
+def test_an_upload_whose_answer_is_lost_does_not_skip_bytes():
+    slave = FakeSlave()
+    engine = engine_for(slave)
+    engine.connect()
+    slave.memory[0x100:0x120] = bytes(range(32))
+    slave.lose.append(0xF5)  # the first UPLOAD's answer: the slave has moved its MTA on
+    assert engine.read(0x100, 32) == bytes(range(32))
+    sent = [frame[0] for frame in slave.sent]
+    assert sent[sent.index(0xFC) + 1] == 0xF6, "the MTA put back before the UPLOAD again"
+
+
+def test_a_write_whose_answer_is_lost_is_written_once_where_it_belongs():
+    slave = FakeSlave()
+    engine = engine_for(slave)
+    engine.connect()
+    slave.lose.append(0xF0)  # DOWNLOAD
+    engine.write(0x200, bytes(range(1, 15)))
+    assert bytes(slave.memory[0x200:0x20E]) == bytes(range(1, 15))
+    assert slave.memory[0x20E] == 0, "nothing written beyond it"
+
+
+def test_a_slave_with_no_answer_at_all_is_given_up_on():
+    slave = FakeSlave()
+    engine = engine_for(slave)
+    engine.connect()
+    slave.lose.extend([0xF4] * 3)
+    with pytest.raises(TimeoutError):
+        engine.read(0x100, 4)
+    assert len(engine.said) == 2, "sent again twice, as the standard says, and then given up"
+
+
+def test_a_busy_slave_is_asked_again():
+    slave = FakeSlave()
+    engine = engine_for(slave)
+    engine.connect()
+    slave.busy.append(0xF0)
+    engine.write(0x300, b"xy")
+    assert bytes(slave.memory[0x300:0x302]) == b"xy"
+
+
+def test_the_seed_is_not_sent_again_but_starts_over():
+    slave = FakeSlave()
+    engine = engine_for(slave)
+    engine.connect()
+    slave.lose.append(0xF8)
+    with pytest.raises(TimeoutError):
+        engine.get_seed(RESOURCE_CAL)
+
+
+# --- GET_ID and PROTOCOL_LAYER ------------------------------------------------------------------
+def test_get_id_uploads_the_a2ls_name():
+    slave = FakeSlave()
+    engine = engine_for(slave)
+    engine.connect()
+    assert engine.get_id() == "fake.a2l"
+
+
+def test_the_a2l_gives_the_timeouts():
+    a2l = A2l.parse(
+        """
+        /begin MODULE m ""
+        /begin IF_DATA XCP
+          /begin PROTOCOL_LAYER 0x0104 25 2000 3000 4000 5000 60 7 8 8
+            BYTE_ORDER_MSB_LAST ADDRESS_GRANULARITY_BYTE
+          /end PROTOCOL_LAYER
+        /end IF_DATA
+        /end MODULE
+        """
+    )
+    assert a2l.timeouts["T1"] == pytest.approx(0.025)
+    assert a2l.timeouts["T4"] == pytest.approx(4.0) and a2l.timeouts["T7"] == pytest.approx(0.007)

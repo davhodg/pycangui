@@ -19,6 +19,12 @@ ASAP2_VERSION 1 60
    first and written last, so a flash cut short leaves no valid header
    pointing at half an application. */
 /begin IF_DATA XCP
+    /* Version, then the timeouts T1 to T7 in milliseconds: commands, checksum,
+       PROGRAM_START, PROGRAM_CLEAR, PROGRAM, CONNECT, and the wait before a
+       busy slave is asked again. Then the packet sizes, order and granularity. */
+    /begin PROTOCOL_LAYER 0x0104 1000 30000 30000 30000 30000 1000 200 8 8
+        BYTE_ORDER_MSB_LAST ADDRESS_GRANULARITY_BYTE
+    /end PROTOCOL_LAYER
     /begin PGM
         PGM_MODE_ABSOLUTE 2 8
         /begin SECTOR "application" 0 0x4000 0x3000 1 0 0x00

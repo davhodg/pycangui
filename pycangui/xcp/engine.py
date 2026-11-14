@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import queue
 import struct
+import time
 from abc import ABC, abstractmethod
 from dataclasses import replace
 
@@ -28,6 +29,7 @@ from pycangui.xcp import (
     CMD_CONNECT,
     CMD_DISCONNECT,
     CMD_DOWNLOAD,
+    CMD_GET_ID,
     CMD_GET_SEED,
     CMD_GET_STATUS,
     CMD_PROGRAM,
@@ -36,8 +38,10 @@ from pycangui.xcp import (
     CMD_PROGRAM_START,
     CMD_SET_MTA,
     CMD_SHORT_UPLOAD,
+    CMD_SYNCH,
     CMD_UNLOCK,
     CMD_UPLOAD,
+    ERR_CMD_BUSY,
     ERROR_CODES,
     EV_CMD_PENDING,
     PID_ERR,
@@ -51,6 +55,10 @@ from pycangui.xcp import (
 CAN_FRAME = 8
 #: CONNECT's address granularity bits, as bytes in one element.
 GRANULARITIES = {0: 1, 1: 2, 2: 4}
+
+
+def _name(pid: int) -> str:
+    return _NAMES.get(pid, f"command 0x{pid:02X}")
 
 
 class XcpError(Exception):
@@ -67,6 +75,72 @@ NO_ID = -1
 #: slave is given up on. Erasing flash is seconds, not milliseconds, and a
 #: slave that says so with EV_CMD_PENDING is waited for again each time.
 LONG_TIMEOUT = 30.0
+
+#: XCP's timeouts, in seconds, until an A2L's PROTOCOL_LAYER gives its own:
+#: T1 for most commands, T2 for BUILD_CHECKSUM, T3 for PROGRAM_START, T4 for
+#: PROGRAM_CLEAR, T5 for PROGRAM and PROGRAM_RESET, T6 for CONNECT, and T7
+#: how long to wait before asking a busy slave again.
+DEFAULT_TIMEOUTS = {
+    "T1": 1.0,
+    "T2": LONG_TIMEOUT,
+    "T3": LONG_TIMEOUT,
+    "T4": LONG_TIMEOUT,
+    "T5": LONG_TIMEOUT,
+    "T6": 1.0,
+    "T7": 0.2,
+}
+#: Which timeout each command waits for, where it is not T1.
+TIMEOUT_OF = {
+    CMD_BUILD_CHECKSUM: "T2",
+    CMD_PROGRAM_START: "T3",
+    CMD_PROGRAM_CLEAR: "T4",
+    CMD_PROGRAM: "T5",
+    CMD_PROGRAM_RESET: "T5",
+    CMD_CONNECT: "T6",
+}
+#: How many times a command whose answer did not come is sent again, after a
+#: SYNCH, as the standard has it.
+REPEATS = 2
+#: How many times a slave that says ERR_CMD_BUSY is asked again, T7 apart,
+#: before it is taken to be stuck.
+BUSY_REPEATS = 10
+#: The commands sent again when their answer does not come: those it does
+#: no harm to do twice, given the MTA put back first where they move it.
+#: Not the seed and key, which start again from GET_SEED; not CONNECT,
+#: which is how talking starts; not PROGRAM_RESET, which a slave that
+#: resets at once never answers; and not GET_ID, which a slave without it
+#: may simply not answer, and connecting should not wait three times for.
+REPEATED = {
+    CMD_DISCONNECT,
+    CMD_GET_STATUS,
+    CMD_SET_MTA,
+    CMD_UPLOAD,
+    CMD_SHORT_UPLOAD,
+    CMD_BUILD_CHECKSUM,
+    CMD_DOWNLOAD,
+    CMD_PROGRAM_START,
+    CMD_PROGRAM_CLEAR,
+    CMD_PROGRAM,
+}
+#: Commands by number, for saying which one went unanswered.
+_NAMES = {
+    CMD_CONNECT: "CONNECT",
+    CMD_DISCONNECT: "DISCONNECT",
+    CMD_GET_STATUS: "GET_STATUS",
+    CMD_GET_ID: "GET_ID",
+    CMD_SET_MTA: "SET_MTA",
+    CMD_UPLOAD: "UPLOAD",
+    CMD_SHORT_UPLOAD: "SHORT_UPLOAD",
+    CMD_BUILD_CHECKSUM: "BUILD_CHECKSUM",
+    CMD_DOWNLOAD: "DOWNLOAD",
+    CMD_PROGRAM_START: "PROGRAM_START",
+    CMD_PROGRAM_CLEAR: "PROGRAM_CLEAR",
+    CMD_PROGRAM: "PROGRAM",
+    CMD_PROGRAM_RESET: "PROGRAM_RESET",
+}
+#: GET_ID's request types: text, and the A2L's name without its path.
+ID_TEXT = 0
+ID_A2L_NAME = 1
 
 
 class UnsupportedError(Exception):
@@ -100,6 +174,9 @@ class XcpEngine(ABC):
     #: Whether every command goes out as a full 8-byte frame. An A2L's
     #: MAX_DLC_REQUIRED says the slave ignores a shorter one.
     pad = False
+    #: Told, in words, when a command is sent again because its answer did
+    #: not come or the slave was busy. None to say nothing.
+    on_recover = None
 
     def set_ids(self, cmd_id: int, res_id: int, extended: bool) -> None:
         """Addressing for XCP on CAN. Engines on another link may ignore it."""
@@ -157,6 +234,10 @@ class XcpEngine(ABC):
     def program_reset(self) -> None:
         """End the programming session and reset the slave."""
         raise UnsupportedError(f"{self.protocol} has no reset after programming")
+
+    def get_id(self, kind: int = ID_A2L_NAME) -> str:
+        """GET_ID: what the slave calls itself, or its A2L. Optional."""
+        raise UnsupportedError(f"{self.protocol} has no GET_ID")
 
     def checksum(self, address: int, size: int, extension: int = 0) -> tuple[int | None, int, int]:
         """BUILD_CHECKSUM over *size* bytes from *address*.
@@ -245,6 +326,8 @@ class NativeCanEngine(XcpEngine):
         self.info: ConnectInfo | None = None
         #: The largest command packet while programming, from PROGRAM_START.
         self._max_cto_pgm = 8
+        #: T1 to T7, in seconds: the A2L's PROTOCOL_LAYER, where the manager has one.
+        self.timeouts = dict(DEFAULT_TIMEOUTS)
         self._answers = AnswerTap(bus, self)
 
     can_reset = True
@@ -262,9 +345,59 @@ class NativeCanEngine(XcpEngine):
             return "XCP resp"
         return None
 
-    def command(self, pid: int, payload: bytes = b"", timeout: float = 1.0) -> bytes:
+    def command(
+        self,
+        pid: int,
+        payload: bytes = b"",
+        timeout: float | None = None,
+        mta: tuple[int, int] | None = None,
+        repeat: bool = True,
+    ) -> bytes:
+        """Send a command and wait for its answer, recovering as XCP says to.
+
+        An answer that does not come in time is followed by a SYNCH, which puts
+        the slave back to waiting for a command, and the command is sent
+        again, up to REPEATS times -- with the MTA put back to ``mta`` first,
+        where the command moves it, so that a lost answer does not make a read
+        or a write skip or repeat bytes. A slave that says it is busy is asked
+        again after T7. ``repeat`` False sends it once, as a command whose MTA
+        is not known has to be.
+        """
         if self.cmd_id == NO_ID:
             raise XcpError(0x31)  # nothing has said where the slave is
+        wait = timeout if timeout is not None else self.timeouts[TIMEOUT_OF.get(pid, "T1")]
+        lost = busy = 0
+        while True:
+            try:
+                return self._exchange(pid, payload, wait)
+            except TimeoutError:
+                if not repeat or pid not in REPEATED or lost >= REPEATS:
+                    raise
+                lost += 1
+                self._say(f"no answer to {_name(pid)}: SYNCH, and again ({lost} of {REPEATS})")
+                self._synch()
+                if mta is not None:
+                    self._exchange(CMD_SET_MTA, self._mta_payload(*mta), self.timeouts["T1"])
+            except XcpError as exc:
+                if exc.code != ERR_CMD_BUSY or busy >= BUSY_REPEATS:
+                    raise
+                busy += 1
+                time.sleep(self.timeouts["T7"])
+
+    def _say(self, text: str) -> None:
+        if self.on_recover is not None:
+            self.on_recover(text)
+
+    def _synch(self) -> None:
+        """SYNCH: the slave stops whatever it was in the middle of. It answers
+        with an error, ERR_CMD_SYNCH, which is how it says it worked."""
+        try:
+            self._exchange(CMD_SYNCH, b"", self.timeouts["T1"])
+        except (XcpError, TimeoutError):
+            pass
+
+    def _exchange(self, pid: int, payload: bytes, timeout: float) -> bytes:
+        """One command and its answer, nothing more."""
         while not self._responses.empty():  # drop stale responses
             self._responses.get_nowait()
         frame = bytes([pid]) + payload
@@ -369,10 +502,21 @@ class NativeCanEngine(XcpEngine):
         # at a time, which every slave can do, rather than in block mode,
         # which only some can.
         self._set_mta(address, extension)
+        return self._upload(size, address, extension)
+
+    def _upload(self, size: int, address: int | None = None, extension: int = 0) -> bytes:
+        """UPLOAD from where the MTA is, a frame at a time. With ``address``, each
+        piece is sent again from where it should start if its answer is lost;
+        without it, where the slave put the MTA itself, it is sent once."""
+        g = self._granularity
+        elements = -(-size // g)
+        most = (self._max_cto - g) // g
         out = bytearray()
         while len(out) < elements * g:
             want = min(most, elements - len(out) // g)
-            out += self.command(CMD_UPLOAD, bytes([want]))[g - 1 : g - 1 + want * g]
+            at = (address + len(out), extension) if address is not None else None
+            answer = self.command(CMD_UPLOAD, bytes([want]), mta=at, repeat=at is not None)
+            out += answer[g - 1 : g - 1 + want * g]
         return bytes(out[:size])
 
     def _whole(self, data: bytes) -> int:
@@ -385,7 +529,9 @@ class NativeCanEngine(XcpEngine):
             )
         return len(data) // g
 
-    def _send_elements(self, pid: int, data: bytes, max_cto: int) -> None:
+    def _send_elements(
+        self, pid: int, data: bytes, max_cto: int, address: int, extension: int
+    ) -> None:
         """DOWNLOAD or PROGRAM: the count in elements, the data on an element's
         boundary -- after two bytes of padding when elements are four bytes."""
         self._whole(data)
@@ -394,15 +540,33 @@ class NativeCanEngine(XcpEngine):
         most = (max_cto - 2 - align) // g * g
         for at in range(0, len(data), most):
             chunk = data[at : at + most]
-            self.command(pid, bytes([len(chunk) // g]) + bytes(align) + chunk)
+            self.command(
+                pid,
+                bytes([len(chunk) // g]) + bytes(align) + chunk,
+                mta=(address + at, extension),
+            )
 
     def write(self, address: int, data: bytes, extension: int = 0) -> None:
         self._set_mta(address, extension)
-        self._send_elements(CMD_DOWNLOAD, data, self._max_cto)
+        self._send_elements(CMD_DOWNLOAD, data, self._max_cto, address, extension)
+
+    def _mta_payload(self, address: int, extension: int = 0) -> bytes:
+        return bytes([0x00, 0x00, extension & 0xFF]) + self._pack_address(address)
 
     def _set_mta(self, address: int, extension: int = 0) -> None:
-        where = bytes([0x00, 0x00, extension & 0xFF]) + self._pack_address(address)
-        self.command(CMD_SET_MTA, where)
+        self.command(CMD_SET_MTA, self._mta_payload(address, extension))
+
+    def get_id(self, kind: int = ID_A2L_NAME) -> str:
+        """GET_ID: the answer says how long the identification is and whether it
+        is in the answer itself; on CAN it hardly ever fits, and is uploaded
+        from where the slave has put the MTA."""
+        r = self.command(CMD_GET_ID, bytes([kind]))
+        order = ">I" if self._big_endian else "<I"
+        length = struct.unpack(order, r[3:7])[0] if len(r) >= 7 else 0
+        if not length:
+            return ""
+        data = r[7 : 7 + length] if r[0] & 0x01 else self._upload(length)
+        return data.split(b"\x00", 1)[0].decode("latin-1")
 
     # --- flashing -------------------------------------------------------------
     def program_start(self) -> None:
@@ -414,11 +578,11 @@ class NativeCanEngine(XcpEngine):
         self._set_mta(address, extension)
         # Mode 0, absolute: the range is a number of bytes from the MTA.
         payload = bytes([0x00, 0x00, 0x00]) + self._pack_address(size)
-        self.command(CMD_PROGRAM_CLEAR, payload, timeout=LONG_TIMEOUT)
+        self.command(CMD_PROGRAM_CLEAR, payload, mta=(address, extension))
 
     def program(self, address: int, data: bytes, extension: int = 0) -> None:
         self._set_mta(address, extension)
-        self._send_elements(CMD_PROGRAM, data, self._max_cto_pgm)
+        self._send_elements(CMD_PROGRAM, data, self._max_cto_pgm, address, extension)
 
     def program_end(self) -> None:
         # A PROGRAM of nothing is how XCP says a memory segment is complete.
@@ -435,7 +599,7 @@ class NativeCanEngine(XcpEngine):
         self._set_mta(address, extension)
         # The block size is in elements.
         payload = bytes([0x00, 0x00, 0x00]) + self._pack_address(-(-size // self._granularity))
-        r = self.command(CMD_BUILD_CHECKSUM, payload, timeout=LONG_TIMEOUT)
+        r = self.command(CMD_BUILD_CHECKSUM, payload, mta=(address, extension))
         # The checksum type, two reserved bytes, then the checksum as a DWORD.
         order = ">I" if self._big_endian else "<I"
         return r[0], struct.unpack(order, r[3:7])[0], 4

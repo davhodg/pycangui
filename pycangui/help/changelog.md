@@ -22,6 +22,8 @@ since the last version, and comes out in the next one.
 - The demo device has a curve and a map.
 - XCP / CCP: a *Group* box shows one of the A2L's GROUPs or FUNCTIONs at a time.
 - XCP / CCP: values are shown to the A2L's FORMAT and with its PHYS_UNIT; ASCII characteristics are read and written as text.
+- XCP: a command whose answer is lost is sent again after a SYNCH, with the memory pointer put back; a busy slave is asked again; the timeouts T1 to T7 come from the A2L's PROTOCOL_LAYER.
+- XCP: connecting asks GET_ID for the slave's A2L, and says it.
 
 ### Changed
 

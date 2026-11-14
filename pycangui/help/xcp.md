@@ -38,6 +38,34 @@ A slave that addresses its memory in two- or four-byte elements says so on
 connecting, and reads, writes, programming and checksums are counted in its
 elements; a write that is not a whole number of them is refused.
 
+Connecting over XCP also asks the slave, with GET_ID, which A2L it goes
+with, and says so. A name that is not the A2L loaded is said but not warned
+about, since files are renamed far more often than they are wrong; the EPK,
+below, is the real check. GET_ID is optional, and a slave without it is
+connected to all the same.
+
+### When the slave does not answer
+
+XCP says what to do when an answer goes missing, and pycangui does it. The
+command is sent again, up to twice, each time after a SYNCH, which puts the
+slave back to waiting for a command. Where the command moves the slave's
+memory pointer -- UPLOAD, DOWNLOAD, PROGRAM -- the pointer is put back first,
+so a lost answer cannot make a read or a write skip bytes or repeat them. A
+slave that answers ERR_CMD_BUSY is asked again a moment later. The log says
+each time it happens; three silences in a row and the command is given up on.
+
+The seed and key are not sent again piece by piece: an unlock that loses an
+answer is started over, with Unlock. Nor is CONNECT, or PROGRAM_RESET, which
+a slave that resets at once never answers.
+
+How long to wait is the A2L's, from the `PROTOCOL_LAYER` in its XCP
+`IF_DATA` (XCP on CAN's own, where it has one): T1 for most commands, T2 for
+BUILD_CHECKSUM, T3 for PROGRAM_START, T4 for PROGRAM_CLEAR, T5 for PROGRAM
+and PROGRAM_RESET, T6 for CONNECT, and T7 before a busy slave is asked again.
+Without one, a second for most commands, thirty for erasing, summing and
+programming, and a fifth of a second for T7. Loading an A2L says which it
+gives. CCP has no SYNCH, and waits as it always has.
+
 Two smaller differences are handled without asking. CCP is a Motorola-order
 protocol, so values are read big-endian, where XCP uses the order the slave
 declares on connecting. And every CCP command carries a counter which the

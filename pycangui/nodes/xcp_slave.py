@@ -48,6 +48,8 @@ RESPONSE_ID = 0x7A1
 CONNECT = 0xFF
 DISCONNECT = 0xFE
 GET_STATUS = 0xFD
+SYNCH = 0xFC
+GET_ID = 0xFA
 GET_SEED = 0xF8
 UNLOCK = 0xF7
 SET_MTA = 0xF6
@@ -62,6 +64,7 @@ PROGRAM_RESET = 0xCF
 
 POSITIVE = 0xFF
 ERROR = 0xFE
+ERR_CMD_SYNCH = 0x00
 ERR_CMD_UNKNOWN = 0x20
 ERR_OUT_OF_RANGE = 0x22
 ERR_ACCESS_LOCKED = 0x25
@@ -94,6 +97,10 @@ SEED = bytes([0xA5, 0x5A, 0x12, 0x34])
 #: (EPK and ADDR_EPK). The XCP pane reads it on connecting and says if the
 #: A2L was made for something else.
 EPK_ADDRESS = 0x0F00
+#: What GET_ID says the slave's A2L is called, kept where the master is
+#: pointed to upload it from.
+A2L_NAME_ADDRESS = 0x0F40
+A2L_NAME = b"demo"
 EPK = b"pycangui demo 1.0"
 
 #: A curve and a map, where resources/demo.a2l says they are. The curve
@@ -128,6 +135,7 @@ def start(node, *, ctx):
     memory = bytearray(MEMORY_BYTES)
     memory[FLASH_START:FLASH_END] = b"\xff" * (FLASH_END - FLASH_START)  # erased
     memory[EPK_ADDRESS : EPK_ADDRESS + len(EPK)] = EPK
+    memory[A2L_NAME_ADDRESS : A2L_NAME_ADDRESS + len(A2L_NAME)] = A2L_NAME
     memory[PART_NUMBER : PART_NUMBER + len(PART_NUMBER_TEXT)] = PART_NUMBER_TEXT
     _tables(memory, "<")
     struct.pack_into("<H", memory, BATTERY_MV, 1320)  # 13.20 V
@@ -182,6 +190,19 @@ def _handle(node, data: bytes) -> bytes | None:
     if command == DISCONNECT:
         node.state.connected = False
         return bytes([POSITIVE])
+
+    if command == SYNCH:
+        # The master's way of starting again after an answer went missing. Its
+        # answer is an error by its packet, and this one means it worked.
+        return bytes([ERROR, ERR_CMD_SYNCH])
+
+    if command == GET_ID:
+        # Asked for the A2L's name (type 1): its length, and the MTA pointed at
+        # it, for the master to UPLOAD. Anything else, nothing to say.
+        if len(data) > 1 and data[1] == 1:
+            node.state.mta = A2L_NAME_ADDRESS
+            return bytes([POSITIVE, 0, 0, 0]) + struct.pack("<I", len(A2L_NAME))
+        return bytes([POSITIVE, 0, 0, 0, 0, 0, 0, 0])
 
     if command == GET_STATUS:
         # The session, then which resources are still protected.

@@ -570,6 +570,8 @@ class A2l:
         self.alignment: dict[str, int] = {}
         #: GROUPs and FUNCTIONs by name: how the file sorts its parameters.
         self.groups: dict[str, Group] = {}
+        #: XCP's timeouts T1 to T7 from its PROTOCOL_LAYER, in seconds, by name.
+        self.timeouts: dict[str, float] = {}
         #: The axis points a curve or a map keeps in its own record, as
         #: parameters of their own: ``Map:x``. Not in ``parameters``, which is
         #: what the file lists, but found by name like them.
@@ -914,6 +916,8 @@ class A2l:
                 self.parameters[parameter.name] = parameter
         if self.xcp_on_can is None:
             self.xcp_on_can = _xcp_on_can(module)
+        if not self.timeouts:
+            self.timeouts = _timeouts(module)
         for protocol, info in _checksums(module).items():
             self.checksums.setdefault(protocol, info)
         self.memory_segments += _memory_segments(module)
@@ -1525,6 +1529,20 @@ def _sectors(module: _Block) -> list[Area]:
         address, size, clear, program = numbers
         found.append(Area(str(words[0]), address, size, clear, program, source="SECTOR"))
     return found
+
+
+def _timeouts(module: _Block) -> dict[str, float]:
+    """``PROTOCOL_LAYER version T1 T2 T3 T4 T5 T6 T7 ...``, in milliseconds.
+
+    XCP on CAN's own, where it has one, since it is for this transport; then
+    the first in the file.
+    """
+    layers = [b for c in _all(module, "XCP_ON_CAN") for b in _all(c, "PROTOCOL_LAYER")]
+    for block in layers + _all(module, "PROTOCOL_LAYER"):
+        times = [_integer(word) for word in block.fields()[1:8]]
+        if len(times) == 7 and None not in times:
+            return {f"T{n}": ms / 1000 for n, ms in enumerate(times, 1) if ms > 0}
+    return {}
 
 
 def _xcp_on_can(module: _Block) -> XcpOnCan | None:

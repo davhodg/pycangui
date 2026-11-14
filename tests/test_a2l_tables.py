@@ -300,3 +300,13 @@ def test_the_pane_opens_a_map_as_a_table(demo):
     assert float(window.table.item(1, 0).text()) == 0, "the loads down the side"
     window.close()
     view.deleteLater()
+
+
+def test_connecting_asks_the_slave_for_its_a2l_and_takes_the_a2ls_timeouts(demo):
+    manager, _slave, _values, _order = demo
+    if manager.protocol == "XCP":
+        wait_until(lambda: manager.slave_id == "demo")  # GET_ID, just after connecting
+        assert manager.engine.timeouts["T4"] == pytest.approx(30.0)
+        assert manager.engine.timeouts["T7"] == pytest.approx(0.2)
+    else:
+        assert manager.slave_id == "", "CCP has no GET_ID, and connecting goes on without it"

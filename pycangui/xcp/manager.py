@@ -15,6 +15,7 @@ import queue
 import threading
 from dataclasses import dataclass
 from itertools import groupby
+from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -29,7 +30,7 @@ from pycangui.uds import images
 from pycangui.xcp import DATATYPES, RESOURCE_CAL, checksum, decode_value, encode_value
 from pycangui.xcp import transfer as plans
 from pycangui.xcp.a2l import MOST_AT_ONCE, A2l, Area, Parameter
-from pycangui.xcp.engine import UnsupportedError, XcpEngine, XcpError
+from pycangui.xcp.engine import DEFAULT_TIMEOUTS, UnsupportedError, XcpEngine, XcpError
 
 #: An engine is named "<protocol>-<implementation>", so that the list says
 #: both things it has to: which protocol it speaks, and whose code speaks
@@ -93,6 +94,8 @@ class XcpManager(QObject):
         self._ctx = ctx
         self.a2l: A2l | None = None
         self.engine: XcpEngine | None = None
+        #: What the slave said GET_ID was on connecting: its A2L's name, or "".
+        self.slave_id = ""
         self.component_name = str(ctx.settings.get("components.xcp", DEFAULT_COMPONENT))
         self._connected = False
         self._polled: dict[str, Parameter] = {}
@@ -157,10 +160,19 @@ class XcpManager(QObject):
         self._apply_padding()
 
     def _apply_padding(self) -> None:
-        """Pad commands to 8 bytes where the A2L says the slave needs it."""
+        """What the A2L says about talking to the slave, given to the engine:
+        whether commands are padded to 8 bytes, and the timeouts T1 to T7.
+        Said in the log when a command has to be sent again."""
+        if getattr(self.engine, "protocol", None) != "XCP":
+            return
         ids = self.a2l.xcp_on_can if self.a2l is not None else None
-        if getattr(self.engine, "protocol", None) == "XCP":
-            self.engine.pad = bool(ids and ids.padded)
+        self.engine.pad = bool(ids and ids.padded)
+        if hasattr(self.engine, "timeouts"):
+            times = dict(DEFAULT_TIMEOUTS)
+            if self.a2l is not None:
+                times.update(self.a2l.timeouts)
+            self.engine.timeouts = times
+        self.engine.on_recover = lambda text: self.result.emit(f"{self.protocol}: {text}")
 
     # --- worker ------------------------------------------------------------------
     def _run(self) -> None:
@@ -222,6 +234,7 @@ class XcpManager(QObject):
                 epk = self._check_epk()
             except (XcpError, TimeoutError, ValueError) as exc:
                 epk = f"EPK not read: {exc or type(exc).__name__}"
+            said += f"; {self._identify()}" if self._identify_wanted() else ""
             return f"{said}; {epk}" if epk else said
 
         self._submit("CONNECT", fn)
@@ -289,6 +302,30 @@ class XcpManager(QObject):
         protocol = seedkey.CCP if self.protocol == "CCP" else seedkey.XCP
         return seedkey.key_for(dll, resource, seed, other, protocol)
 
+    def _identify_wanted(self) -> bool:
+        return getattr(self.engine, "protocol", None) == "XCP"
+
+    def _identify(self) -> str:
+        """GET_ID: the A2L the slave says it goes with. Run on the worker.
+
+        Optional in XCP, so a slave that does not have it is not a problem,
+        and is said to be one only in that it gives no name. A name that is
+        not the A2L loaded is said, but not warned about: files are renamed
+        far more often than they are wrong, and the EPK is the real check.
+        """
+        self.slave_id = ""
+        try:
+            name = self.engine.get_id()
+        except (XcpError, TimeoutError, UnsupportedError):
+            return "no GET_ID"
+        self.slave_id = name
+        if not name:
+            return "GET_ID gave no name"
+        loaded = Path(self.a2l.path).stem if self.a2l is not None and self.a2l.path else ""
+        if loaded and Path(name).stem.lower() != loaded.lower():
+            return f"the slave names its A2L {name!r}, and {loaded!r} is loaded"
+        return f"its A2L is {name!r}"
+
     # --- A2L -------------------------------------------------------------------------
     def _check_epk(self) -> str:
         """Read the slave's EPK and compare it with the A2L's. Run on the worker.
@@ -342,6 +379,9 @@ class XcpManager(QObject):
                 + (f", {ids.bitrate} bit/s" if ids.bitrate else "")
                 + (", every command padded to 8 bytes" if ids.padded else "")
             )
+        if self.a2l.timeouts:
+            times = ", ".join(f"{k} {v * 1000:g} ms" for k, v in sorted(self.a2l.timeouts.items()))
+            self.result.emit(f"A2L: XCP timeouts {times}")
         self._apply_padding()
         if self.a2l.epk is not None:
             self.result.emit(f"A2L: made for EPK {self.a2l.epk!r}")
