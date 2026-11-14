@@ -76,5 +76,52 @@ ASAP2_VERSION 1 60
     VALUE 0x2002 RL_UWORD 0 rpm_conv 0 2000
 /end CHARACTERISTIC
 
+/* A curve and a map, laid out as resources/demo.a2l's record layouts say.
+   The curve keeps its number of points in front of them, as many ECUs do, so
+   the pane reads that first; the map's speed axis is shared (an AXIS_PTS),
+   and its load axis is fixed, worked out from the file and never read. */
+/begin COMPU_METHOD ign_conv "ignition advance"
+    LINEAR "%.1f" "deg"
+    COEFFS_LINEAR 0.5 0
+/end COMPU_METHOD
+
+/begin COMPU_METHOD load_conv "engine load"
+    IDENTICAL "%.0f" "%"
+/end COMPU_METHOD
+
+/begin RECORD_LAYOUT RL_COUNTED_CURVE
+    NO_AXIS_PTS_X 1 UBYTE
+    AXIS_PTS_X 2 SWORD INDEX_INCR DIRECT
+    FNC_VALUES 3 UWORD COLUMN_DIR DIRECT
+/end RECORD_LAYOUT
+
+/begin RECORD_LAYOUT RL_AXIS_UWORD
+    AXIS_PTS_X 1 UWORD INDEX_INCR DIRECT
+/end RECORD_LAYOUT
+
+/begin RECORD_LAYOUT RL_SBYTE_ROWS
+    FNC_VALUES 1 SBYTE ROW_DIR DIRECT
+/end RECORD_LAYOUT
+
+/begin AXIS_PTS SpeedAxis "Engine speeds the ignition map is given at"
+    0x2200 EngineSpeed RL_AXIS_UWORD 0 rpm_conv 5 0 8000
+/end AXIS_PTS
+
+/begin CHARACTERISTIC IdleCurve "Idle speed against coolant temperature"
+    CURVE 0x2100 RL_COUNTED_CURVE 0 rpm_conv 0 2000
+    /begin AXIS_DESCR STD_AXIS CoolantTemp NO_COMPU_METHOD 8 -40 215
+    /end AXIS_DESCR
+/end CHARACTERISTIC
+
+/begin CHARACTERISTIC IgnitionMap "Ignition advance by engine speed and load"
+    MAP 0x2300 RL_SBYTE_ROWS 0 ign_conv -20 50
+    /begin AXIS_DESCR COM_AXIS EngineSpeed rpm_conv 5 0 8000
+        AXIS_PTS_REF SpeedAxis
+    /end AXIS_DESCR
+    /begin AXIS_DESCR FIX_AXIS NO_INPUT_QUANTITY load_conv 5 0 100
+        FIX_AXIS_PAR_DIST 0 25 5
+    /end AXIS_DESCR
+/end CHARACTERISTIC
+
 /end MODULE
 /end PROJECT

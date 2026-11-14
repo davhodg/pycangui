@@ -96,11 +96,35 @@ SEED = bytes([0xA5, 0x5A, 0x12, 0x34])
 EPK_ADDRESS = 0x0F00
 EPK = b"pycangui demo 1.0"
 
+#: A curve and a map, where resources/demo.a2l says they are. The curve
+#: keeps its number of points first, then the points, then the values; the
+#: map's speeds are an AXIS_PTS of their own, and its values go row by row,
+#: a row being the five speeds at one load.
+IDLE_CURVE = 0x2100
+IDLE_TEMPS = (-20, 0, 20, 40, 60, 80)
+IDLE_RPM = (1400, 1200, 1000, 900, 850, 850)
+SPEED_AXIS = 0x2200
+SPEEDS = (800, 2000, 3500, 5000, 6500)
+IGNITION_MAP = 0x2300
+
+
+def _tables(memory: bytearray, order: str) -> None:
+    """Lay out the curve and the map, in this slave's byte order."""
+    memory[IDLE_CURVE] = len(IDLE_TEMPS)
+    struct.pack_into(f"{order}6h", memory, IDLE_CURVE + 2, *IDLE_TEMPS)
+    struct.pack_into(f"{order}6H", memory, IDLE_CURVE + 14, *IDLE_RPM)
+    struct.pack_into(f"{order}5H", memory, SPEED_AXIS, *SPEEDS)
+    for load in range(5):
+        for speed in range(5):
+            degrees = 8 + 6 * speed - 2 * load  # stored in half degrees
+            struct.pack_into("b", memory, IGNITION_MAP + 5 * load + speed, degrees * 2)
+
 
 def start(node, *, ctx):
     memory = bytearray(MEMORY_BYTES)
     memory[FLASH_START:FLASH_END] = b"\xff" * (FLASH_END - FLASH_START)  # erased
     memory[EPK_ADDRESS : EPK_ADDRESS + len(EPK)] = EPK
+    _tables(memory, "<")
     struct.pack_into("<H", memory, BATTERY_MV, 1320)  # 13.20 V
     struct.pack_into("<h", memory, COOLANT_C, 90)
     struct.pack_into("<H", memory, SPEED_LIMIT, 6500)

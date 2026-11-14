@@ -78,6 +78,9 @@ class XcpManager(QObject):
     progress = Signal(str, int, int)  # what, done, out of
     transferring = Signal(bool)  # a transfer started or finished
     transferred = Signal(bool)  # a transfer finished: True if all of it was done
+    #: A curve or a map has been worked out afresh -- its number of points read
+    #: from the slave -- and its values have new names: its name.
+    reshaped = Signal(str)
 
     def __init__(self, bus: BusManager, hooks: Hooks, signals: SignalHub, ctx: Context) -> None:
         super().__init__()
@@ -374,7 +377,9 @@ class XcpManager(QObject):
         raw = self._read_raw(param)
         if (mask := _mask(param)) is not None:
             raw = (int(raw) & mask) >> _shift(mask)
-        return param.conversion.to_phys(raw) if param.conversion else raw
+        if param.conversion is None:
+            return raw
+        return param.conversion.to_phys(raw, (param.lower, param.upper))
 
     def shown(self, name: str, phys: float) -> str:
         """A value as it is shown: by name where the A2L names it, *Run (1)*."""
@@ -389,6 +394,9 @@ class XcpManager(QObject):
             return
         if not param.readable:
             self.result.emit(f"read {name}: {param.unreadable}")
+            return
+        if param.is_table:
+            self._read_table(param)
             return
         if param.is_array:
             if param.count > MOST_AT_ONCE:
@@ -428,6 +436,41 @@ class XcpManager(QObject):
             return f"{array.name} = [{listed}{more}]{unit}"
 
         self._submit(f"read {array.name}", fn)
+
+    def _read_table(self, table: Parameter) -> None:
+        """A curve, a map or an AXIS_PTS: its axis points and its values, as one job.
+
+        Where the number of points is kept in the slave, that is read first,
+        and the table worked out again from it: the values are somewhere else
+        for five points than for eight.
+        """
+        a2l = self.a2l
+
+        def fn() -> str:
+            counts = {}
+            for holder, letter, address, datatype, owner in a2l.counts_to_read(table):
+                size = DATATYPES[datatype][1]
+                data = self.engine.read(address, size, **_space(owner))
+                counts[(holder, letter)] = int(
+                    decode_value(data, datatype, self._big_endian(owner))
+                )
+            before = a2l.find(table.name)
+            resolved = a2l.resolve(table.name, counts) if counts or before.counted else before
+            if counts or resolved is not before:
+                self.reshaped.emit(table.name)
+            if not resolved.readable:
+                return f"read {table.name}: {resolved.unreadable}"
+            for axis in resolved.axes:
+                holder = a2l.find(axis.points) if axis.points else None
+                if holder is not None and holder.name != resolved.name:
+                    for element in a2l.elements(holder) or [holder]:
+                        self.value.emit(element.name, self._read_value(element))
+            for element in a2l.elements(resolved) or [resolved]:
+                self.value.emit(element.name, self._read_value(element))
+            shape = " by ".join(str(size) for size in resolved.sizes)
+            return f"{table.name} read: {shape} values"
+
+        self._submit(f"read {table.name}", fn)
 
     def beyond_limits(self, name: str, text: str) -> tuple[float, float, float] | None:
         """A value that is outside the limits the A2L gives its characteristic.
@@ -484,7 +527,7 @@ class XcpManager(QObject):
     # --- polling ---------------------------------------------------------------------
     def set_polled(self, name: str, on: bool) -> None:
         param = self.a2l.find(name) if self.a2l else None
-        if param is None or not param.readable or param.is_array:
+        if param is None or not param.readable or param.is_array or param.is_table:
             return  # one of an array's values is plotted, not the row of them
         if on:
             self._polled[name] = param

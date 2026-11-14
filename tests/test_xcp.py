@@ -21,7 +21,8 @@ from pycangui.xcp.manager import XcpManager
 
 def test_a2l_parsing():
     a2l = A2l.load(str(resources.path("demo.a2l")))
-    assert len(a2l.measurements()) == 3 and len(a2l.characteristics()) == 2
+    # Two values, a curve, a map, and the axis points the map shares.
+    assert len(a2l.measurements()) == 3 and len(a2l.characteristics()) == 5
     speed = a2l.parameters["EngineSpeed"]
     assert speed.datatype == "UWORD" and speed.address == 0x1000 and speed.unit == "rpm"
     assert not speed.writable and speed.upper == 8000

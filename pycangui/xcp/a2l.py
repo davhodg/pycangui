@@ -5,8 +5,10 @@
 It lists a file's MEASUREMENTs and CHARACTERISTICs with where each one is, what
 type it is, and how its raw value becomes a number somebody recognises. Single
 values are read in full, and so is a row of them: an array measurement or a
-block of values, element by element. Curves, maps and text are listed, so that
-the file is seen whole, and marked as not readable here.
+block of values, element by element. Curves and maps are read with their axes,
+wherever the record layout puts them (see :mod:`pycangui.xcp.layouts`); text
+and three-dimensional maps are listed, so that the file is seen whole, and
+marked as not readable here.
 
 A2L is nested blocks of positional fields and optional keywords::
 
@@ -41,10 +43,11 @@ import math
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from itertools import product
+from itertools import pairwise, product
 from pathlib import Path
 
-from pycangui.xcp import DATATYPES
+from pycangui.xcp import DATATYPES, layouts
+from pycangui.xcp.formula import FormulaError, compile_formula
 
 #: Comments, quoted strings, and everything else up to the next space. A string
 #: may hold a doubled or a backslashed quote.
@@ -59,6 +62,17 @@ _TOKEN = re.compile(
 #: A characteristic that is one value, and one that is a row of them.
 VALUE = "VALUE"
 VAL_BLK = "VAL_BLK"
+#: Values over one axis and over two, and an AXIS_PTS: axis points kept apart,
+#: which several curves and maps share. Each is read with what its axes hold.
+CURVE = "CURVE"
+MAP = "MAP"
+AXIS_PTS = "AXIS_PTS"
+TABLES = (CURVE, MAP, AXIS_PTS)
+#: The axes of a curve, then of a map, by the letter the file gives each.
+AXIS_LETTERS = ("X", "Y")
+#: Axes whose points are somewhere this reader goes: in the record, in an
+#: AXIS_PTS of their own, or worked out from numbers in the file.
+READ_AXES = ("STD_AXIS", "COM_AXIS", "FIX_AXIS")
 
 #: What ``BYTE_ORDER`` can say, as whether the first byte is the most
 #: significant. MSB_FIRST and BIG_ENDIAN are Motorola order; the standard
@@ -145,13 +159,15 @@ class _Block:
 class Conversion:
     """A COMPU_METHOD: how a raw value becomes the number, or the name, shown.
 
-    Linear ones are worked both ways, and so is the other rational function
-    real files use: one over a straight line, which is how a period is
-    stored for something shown as a frequency. A table of names
-    (``choices``) leaves the number alone and says what it is called.
-    Anything else -- a formula, a table to interpolate, a rational function
-    with a square in it -- is ``exact = False``: the raw value is shown as
-    it is, and said to be raw.
+    Linear ones are worked both ways, and so is one over a straight line,
+    which is how a period is stored for something shown as a frequency, and
+    a rational function with a square in it, whose quadratic is solved. A
+    table of numbers (COMPU_TAB) is looked up, with or without interpolating
+    between its rows, and a formula (FORM) is worked out; it is written only
+    where the file gives the formula back the other way, FORMULA_INV. A
+    table of names (``choices``) leaves the number alone and says what it is
+    called. Anything else is ``exact = False``: the raw value is shown as it
+    is, and said to be raw.
     """
 
     name: str
@@ -167,8 +183,33 @@ class Conversion:
     #: ``(b, c, e, f)`` of ``raw = (b*phys + c) / (e*phys + f)``, for a rational
     #: function that is not a straight line; None for one that is.
     fraction: tuple[float, float, float, float] | None = None
+    #: All six coefficients of a RAT_FUNC with a square in it.
+    quadratic: tuple[float, float, float, float, float, float] | None = None
+    #: COMPU_TAB: ``(raw, physical)`` rows, by raw value; whether to interpolate
+    #: between them; and what a raw value not in a table that does not is.
+    table: tuple[tuple[float, float], ...] = ()
+    interpolate: bool = False
+    default: float | None = None
+    #: FORM: the formula, and the one the other way where the file gives it.
+    formula: Callable[[float], float] | None = field(default=None, repr=False, compare=False)
+    inverse: Callable[[float], float] | None = field(default=None, repr=False, compare=False)
 
-    def to_phys(self, raw: float) -> float:
+    @property
+    def invertible(self) -> bool:
+        """Whether a physical value can be turned back into the raw one to write."""
+        return self.formula is None or self.inverse is not None
+
+    def to_phys(
+        self, raw: float, within: tuple[float | None, float | None] = (None, None)
+    ) -> float:
+        """The physical value. ``within`` is the parameter's limits, which
+        choose between the two answers a quadratic can have."""
+        if self.formula is not None:
+            return self.formula(raw)
+        if self.table:
+            return _look_up(self.table, raw, self.interpolate, self.default)
+        if self.quadratic is not None:
+            return _solve(self.quadratic, raw, within)
         if self.fraction is not None:
             b, c, e, f = self.fraction
             below = e * raw - b
@@ -177,11 +218,100 @@ class Conversion:
         return raw * self.factor + self.offset
 
     def to_raw(self, phys: float) -> float:
+        if self.formula is not None:
+            if self.inverse is None:
+                raise ValueError(f"{self.name} has no FORMULA_INV, so it cannot be written")
+            return self.inverse(phys)
+        if self.table:
+            return _look_back(self.table, phys, self.interpolate)
+        if self.quadratic is not None:
+            a, b, c, d, e, f = self.quadratic
+            below = d * phys * phys + e * phys + f
+            return (a * phys * phys + b * phys + c) / below if below else 0.0
         if self.fraction is not None:
             b, c, e, f = self.fraction
             below = e * phys + f
             return (b * phys + c) / below if below else 0.0
         return (phys - self.offset) / self.factor if self.factor else 0.0
+
+
+def _look_up(
+    table: tuple[tuple[float, float], ...], raw: float, interpolate: bool, default: float | None
+) -> float:
+    """A COMPU_TAB's physical value for a raw one.
+
+    Interpolated, a value between two rows is in proportion between them, and
+    one beyond the ends is the end's. Not interpolated, it is the row with
+    that raw value, the file's default where there is none, and the nearest
+    row where the file has no default either.
+    """
+    if not interpolate:
+        for row_raw, row_phys in table:
+            if math.isclose(row_raw, raw):
+                return row_phys
+        if default is not None:
+            return default
+        return min(table, key=lambda row: abs(row[0] - raw))[1]
+    if raw <= table[0][0]:
+        return table[0][1]
+    for (raw_a, phys_a), (raw_b, phys_b) in pairwise(table):
+        if raw <= raw_b:
+            return phys_a + (phys_b - phys_a) * (raw - raw_a) / (raw_b - raw_a)
+    return table[-1][1]
+
+
+def _look_back(table: tuple[tuple[float, float], ...], phys: float, interpolate: bool) -> float:
+    """The raw value to write for a physical one: the other way through the table."""
+    if interpolate:
+        for (raw_a, phys_a), (raw_b, phys_b) in pairwise(table):
+            if min(phys_a, phys_b) <= phys <= max(phys_a, phys_b) and phys_a != phys_b:
+                return raw_a + (raw_b - raw_a) * (phys - phys_a) / (phys_b - phys_a)
+    return min(table, key=lambda row: abs(row[1] - phys))[0]
+
+
+def _solve(
+    coefficients: tuple[float, ...], raw: float, within: tuple[float | None, float | None]
+) -> float:
+    """The physical value of a RAT_FUNC with a square in it.
+
+    ``raw = (a*p*p + b*p + c) / (d*p*p + e*p + f)`` is a quadratic in p for a
+    given raw value. Of its two answers, the one within the limits is taken,
+    and where both are, or neither, the larger: the file's own limits are
+    all there is to choose by.
+    """
+    a, b, c, d, e, f = coefficients
+    big, middle, small = a - raw * d, b - raw * e, c - raw * f
+    if math.isclose(big, 0.0, abs_tol=1e-15):
+        return -small / middle if middle else math.nan
+    under = middle * middle - 4 * big * small
+    if under < 0:
+        return math.nan
+    root = math.sqrt(under)
+    answers = sorted(((-middle - root) / (2 * big), (-middle + root) / (2 * big)))
+    lower, upper = within
+    inside = [p for p in answers if (lower is None or p >= lower) and (upper is None or p <= upper)]
+    return (inside or answers)[-1]
+
+
+@dataclass
+class Axis:
+    """One axis of a curve or a map, from its AXIS_DESCR."""
+
+    letter: str  # X, then Y
+    attribute: str  # STD_AXIS, COM_AXIS, FIX_AXIS ...
+    input: str  # the measurement the axis is of
+    conversion: Conversion | None
+    most: int  # MaxAxisPoints
+    lower: float | None = None
+    upper: float | None = None
+    #: How many points it has where that is known without asking the slave.
+    count: int | None = None
+    #: The parameter its points are read from: ``Map:x`` for points kept in
+    #: the record, an AXIS_PTS's name for a shared axis; "" for a fixed one.
+    points: str = ""
+    #: A FIX_AXIS's raw points, worked out from the file.
+    fixed: tuple[float, ...] = ()
+    read_only: bool = False
 
 
 @dataclass
@@ -220,6 +350,19 @@ class Parameter:
     #: For one value of an array, ``name[3]``: the array's name, and which.
     element_of: str = ""
     index: int = 0
+    #: A curve's or a map's axes, in the order the file gives them.
+    axes: tuple[Axis, ...] = ()
+    #: How far apart, in values, the next one along each index is. Empty
+    #: for an array, which is stored with the last index changing fastest;
+    #: a map's values are named ``[x][y]`` whichever way they are stored.
+    strides: tuple[int, ...] = ()
+    #: The record layout it names, and where its record starts: ``address``
+    #: is where its values do, which the layout decides.
+    layout: str = ""
+    start: int = 0
+    #: Axes whose number of points is kept in the slave: until they are read,
+    #: where the values are is not known.
+    counted: tuple[str, ...] = ()
 
     @property
     def readable(self) -> bool:
@@ -231,9 +374,16 @@ class Parameter:
         return self.count > 1 and self.readable
 
     @property
+    def is_table(self) -> bool:
+        """A curve, a map or an AXIS_PTS, as a whole: read with its axes."""
+        return self.shape in TABLES and not self.element_of
+
+    @property
     def writable(self) -> bool:
-        if self.is_array:
+        if self.is_array or self.is_table:
             return False  # one of its values is; the row as a whole is not typed in
+        if self.conversion is not None and not self.conversion.invertible:
+            return False
         return self.kind == "CHARACTERISTIC" and self.readable and not self.read_only
 
     @property
@@ -346,6 +496,14 @@ class A2l:
         self._only_values: set[str] = set()
         #: The layouts that store their values column by column.
         self._by_column: set[str] = set()
+        #: Every record layout, read in full: where a curve's or a map's parts are.
+        self.record_layouts: dict[str, layouts.Layout] = {}
+        #: MOD_COMMON's ALIGNMENT_* settings, by data type.
+        self.alignment: dict[str, int] = {}
+        #: The axis points a curve or a map keeps in its own record, as
+        #: parameters of their own: ``Map:x``. Not in ``parameters``, which is
+        #: what the file lists, but found by name like them.
+        self._axes: dict[str, Parameter] = {}
         #: Elements already asked for, by name: made when wanted, since a big
         #: file has a hundred thousand of them and uses a handful.
         self._elements: dict[str, Parameter] = {}
@@ -402,7 +560,8 @@ class A2l:
         A parameter the file itself calls ``table[3]`` is found first, as
         itself: files generated from C structures are full of those.
         """
-        if (found := self.parameters.get(name) or self._elements.get(name)) is not None:
+        found = self.parameters.get(name) or self._axes.get(name) or self._elements.get(name)
+        if found is not None:
             return found
         match = _INDICES.search(name)
         if match is None:
@@ -414,7 +573,7 @@ class A2l:
         # ``a[2].b`` with two, before it is ``a[2].b[1]`` with one.
         for taken in range(len(indices), 0, -1):
             base = name[: match.start()] + "".join(f"[{i}]" for i in indices[:-taken])
-            candidate = self.parameters.get(base)
+            candidate = self.parameters.get(base) or self._axes.get(base)
             if (
                 candidate is not None
                 and candidate.is_array
@@ -425,20 +584,148 @@ class A2l:
                 break
         if array is None:
             return None
-        index = 0
-        for position, size in zip(indices, array.sizes, strict=True):
-            index = index * size + position  # the last index changes fastest
+        strides = array.strides or _strides(array.sizes)
+        index = sum(position * stride for position, stride in zip(indices, strides, strict=True))
         element = replace(
             array,
             name=name,
             address=array.address + index * DATATYPES[array.datatype][1],
             count=1,
             sizes=(),
+            strides=(),
+            axes=(),
+            counted=(),
             element_of=array.name,
             index=index,
         )
         self._elements[name] = element
         return element
+
+    # --- curves and maps ----------------------------------------------------------------
+    def counts_to_read(self, table: Parameter) -> list[tuple[str, str, int, str, Parameter]]:
+        """The numbers of axis points to read from the slave before ``table``
+        can be found: ``(holder, axis, address, datatype, holder parameter)``.
+
+        A curve's own, and those of any shared axis (AXIS_PTS) it uses.
+        """
+        wanted = []
+        holders = [table] + [
+            self.parameters[a.points]
+            for a in table.axes
+            if a.attribute == "COM_AXIS" and a.points in self.parameters
+        ]
+        for holder in holders:
+            layout = self.record_layouts.get(holder.layout)
+            if layout is None:
+                continue
+            most = {a.letter: a.most for a in holder.axes}
+            where = layout.place(holder.start, {}, most, self.alignment)
+            for letter in holder.counted:
+                part = layout.part("NO_AXIS_PTS", letter)
+                if part is not None:
+                    at = where[("NO_AXIS_PTS", letter)]
+                    wanted.append((holder.name, letter, at, part.datatype, holder))
+        return wanted
+
+    def resolve(self, name: str, counts: dict[tuple[str, str], int] | None = None) -> Parameter:
+        """Work out where a curve's, a map's or an AXIS_PTS's values and axis
+        points are, with ``counts`` the numbers of points read from the slave,
+        by ``(parameter, axis)``. The parameter is replaced by the one worked
+        out, which is returned; so are its axes, and the values found before.
+        """
+        counts = counts or {}
+        table = self.parameters[name]
+        # A shared axis first: its number of points is this one's too.
+        for axis in table.axes:
+            if axis.attribute == "COM_AXIS" and axis.points in self.parameters:
+                shared = self.parameters[axis.points]
+                if shared.counted or not shared.sizes:
+                    self.resolve(shared.name, counts)
+        table = self.parameters[name]
+        layout = self.record_layouts[table.layout]
+        how_many: dict[str, int] = {}
+        for axis in table.axes:
+            if (table.name, axis.letter) in counts:
+                how_many[axis.letter] = counts[(table.name, axis.letter)]
+            elif axis.attribute == "COM_AXIS":
+                shared = self.parameters.get(axis.points)
+                how_many[axis.letter] = shared.count if shared is not None else axis.most
+            else:
+                how_many[axis.letter] = axis.count if axis.count is not None else axis.most
+        most = {axis.letter: axis.most for axis in table.axes}
+        if any(how_many[letter] > most[letter] or how_many[letter] < 1 for letter in how_many):
+            raise ValueError(
+                f"{name}: the slave says {how_many}, beyond the most points the A2L allows, {most}"
+            )
+        where = layout.place(table.start, how_many, most, self.alignment)
+        for old in [n for n in self._elements if n.startswith((name + "[", name + ":"))]:
+            del self._elements[old]
+        axes = []
+        for axis in table.axes:
+            n = how_many[axis.letter]
+            if axis.attribute == "STD_AXIS" or table.shape == AXIS_PTS:
+                points_name = name if table.shape == AXIS_PTS else f"{name}:{axis.letter.lower()}"
+                part = layout.part("AXIS_PTS", axis.letter)
+                points = Parameter(
+                    name=points_name,
+                    kind="CHARACTERISTIC",
+                    datatype=part.datatype,
+                    address=where[("AXIS_PTS", axis.letter)],
+                    description=f"{axis.letter} axis of {name}: {axis.input}",
+                    conversion=axis.conversion,
+                    lower=axis.lower,
+                    upper=axis.upper,
+                    shape=AXIS_PTS,
+                    big_endian=table.big_endian,
+                    extension=table.extension,
+                    read_only=table.read_only or axis.read_only,
+                    count=n,
+                    sizes=(n,),
+                    written=(n,),
+                )
+                if table.shape != AXIS_PTS:
+                    self._axes[points_name] = points
+                axis = replace(axis, points=points_name, count=n)
+            else:
+                axis = replace(axis, count=n)
+            axes.append(axis)
+        if table.shape == AXIS_PTS:
+            resolved = replace(
+                points,
+                name=name,
+                description=table.description,
+                axes=tuple(axes),
+                layout=table.layout,
+                start=table.start,
+                counted=(),
+            )
+        else:
+            sizes = tuple(how_many[axis.letter] for axis in table.axes)
+            room = most if layout.static else how_many
+            if table.shape == MAP and layout.values.order == "ROW_DIR":
+                strides = (1, room["X"])  # a row is the values along x
+            elif table.shape == MAP:
+                strides = (room["Y"], 1)
+            else:
+                strides = (1,)
+            resolved = replace(
+                table,
+                address=where[("FNC_VALUES", "")],
+                datatype=layout.values.datatype,
+                count=math.prod(sizes),
+                sizes=sizes,
+                written=sizes,
+                strides=strides,
+                column_dir=layout.values.order == "COLUMN_DIR",
+                axes=tuple(axes),
+                counted=(),
+            )
+            if resolved.count > MOST_ELEMENTS:
+                resolved.unreadable = (
+                    f"it is {resolved.count} values, and up to {MOST_ELEMENTS} are opened"
+                )
+        self.parameters[name] = resolved
+        return resolved
 
     def elements(self, array: Parameter) -> list[Parameter]:
         """Each value of an array, in the order they are stored; nothing for
@@ -474,16 +761,23 @@ class A2l:
         for common in module.blocks("MOD_COMMON"):
             if (order := common.after("BYTE_ORDER")) and order[0] in BYTE_ORDERS:
                 self.big_endian = BYTE_ORDERS[order[0]]
+            self.alignment.update(layouts.module_alignment(common.fields()))
         tables = {}
         for kind in ("COMPU_VTAB", "COMPU_VTAB_RANGE", "COMPU_TAB"):
             for block in module.blocks(kind):
                 if (table := _table(block)) is not None:
                     tables[table[0]] = table[1]
+        numbers = {}
+        for block in module.blocks("COMPU_TAB"):
+            if (rows := _numbers(block)) is not None:
+                numbers[rows[0]] = rows[1:]
         for block in module.blocks("COMPU_METHOD"):
-            if (conversion := _conversion(block, tables)) is not None:
+            if (conversion := _conversion(block, tables, numbers)) is not None:
                 self.conversions[conversion.name] = conversion
         for block in module.blocks("RECORD_LAYOUT"):
             fields = block.fields()
+            if fields:
+                self.record_layouts[str(fields[0])] = layouts.parse(str(fields[0]), fields[1:])
             if fields and (values := block.after("FNC_VALUES", 2)):
                 self.layouts[fields[0]] = values[1]
                 more = any(
@@ -498,7 +792,9 @@ class A2l:
                     self._by_column.add(fields[0])
         measurements = module.blocks("MEASUREMENT")
         characteristics = module.blocks("CHARACTERISTIC")
-        readers = [(self._measurement, block) for block in measurements]
+        # The shared axes before the curves and maps that use them.
+        readers = [(self._axis_points, block) for block in module.blocks("AXIS_PTS")]
+        readers += [(self._measurement, block) for block in measurements]
         readers += [(self._characteristic, block) for block in characteristics]
         for done, (read, block) in enumerate(readers):
             if progress is not None and not done % BLOCKS_A_REPORT:
@@ -561,14 +857,18 @@ class A2l:
             read_only=block.has("READ_ONLY"),
         )
         dimensions = _dimensions(block, "MATRIX_DIM", "NUMBER")
-        if parameter.shape not in (VALUE, VAL_BLK):
+        if parameter.shape in (CURVE, MAP):
+            self._table(block, parameter, f[4])
+        elif parameter.shape not in (VALUE, VAL_BLK):
             what = {
-                "CURVE": "a curve",
-                "MAP": "a map",
                 "CUBOID": "a three-dimensional map",
+                "CUBE_4": "a four-dimensional map",
+                "CUBE_5": "a five-dimensional map",
                 "ASCII": "text",
             }.get(parameter.shape, parameter.shape)
-            parameter.unreadable = f"it is {what}, and values and rows of them are what is read"
+            parameter.unreadable = (
+                f"it is {what}, and values, rows of them, curves and maps are what is read"
+            )
         elif not parameter.datatype:
             parameter.unreadable = f"its record layout, {f[4]}, is not in the file"
         elif parameter.shape == VAL_BLK and not dimensions:
@@ -581,7 +881,171 @@ class A2l:
         else:
             _sized(parameter, dimensions, f[4] in self._by_column)
         self._common(block, parameter)
+        # A curve or a map worked out already is in the list as a new object,
+        # which the keywords above were not read into: do it again for that.
+        if (resolved := self.parameters.get(parameter.name)) is not None and (
+            resolved is not parameter
+        ):
+            self._common(block, resolved)
+            return resolved
         return parameter
+
+    def _table(self, block: _Block, parameter: Parameter, layout_name: str) -> None:
+        """A curve or a map: its axes, and where its parts are where that is
+        known without asking the slave."""
+        parameter.layout, parameter.start = layout_name, parameter.address
+        layout = self.record_layouts.get(layout_name)
+        descriptions = block.blocks("AXIS_DESCR")
+        wanted = 1 if parameter.shape == CURVE else 2
+        if layout is None:
+            parameter.unreadable = f"its record layout, {layout_name}, is not in the file"
+            return
+        if len(descriptions) != wanted:
+            parameter.unreadable = f"it has {len(descriptions)} axes where it should have {wanted}"
+            return
+        if layout.problem or layout.values is None:
+            parameter.unreadable = (
+                f"its record layout, {layout_name}: {layout.problem or 'it holds no values'}"
+            )
+            return
+        axes = []
+        for letter, description in zip(AXIS_LETTERS, descriptions, strict=False):
+            axis, why = self._axis(letter, description, layout)
+            if why:
+                parameter.unreadable = why
+                return
+            axes.append(axis)
+        parameter.axes = tuple(axes)
+        parameter.datatype = layout.values.datatype
+        self._place(parameter, layout)
+
+    def _axis(self, letter: str, block: _Block, layout: layouts.Layout) -> tuple[Axis, str]:
+        """``AXIS_DESCR Attribute InputQuantity Conversion MaxAxisPoints Lower Upper``."""
+        f = block.fields()
+        if len(f) < 6:
+            return Axis(letter, "", "", None, 0), f"its {letter} axis is cut short"
+        axis = Axis(
+            letter,
+            attribute=str(f[0]),
+            input=str(f[1]),
+            conversion=self.conversions.get(f[2]),
+            most=_integer(f[3]) or 0,
+            lower=_number(f[4]),
+            upper=_number(f[5]),
+            read_only=block.has("READ_ONLY"),
+        )
+        if axis.conversion is not None and not axis.conversion.exact:
+            axis.conversion = Conversion(axis.conversion.name, unit="raw", exact=False)
+        if axis.attribute not in READ_AXES:
+            return axis, f"its {letter} axis is a {axis.attribute}, which is not read"
+        if (deposit := block.after("DEPOSIT")) and deposit[0] == "DIFFERENCE":
+            return axis, f"its {letter} axis is stored as differences, which are not read"
+        if axis.attribute == "STD_AXIS":
+            if layout.part("AXIS_PTS", letter) is None:
+                return axis, f"its record layout has no axis points for its {letter} axis"
+            if letter in layout.fixed_counts:
+                axis.count = layout.fixed_counts[letter]
+        elif axis.attribute == "COM_AXIS":
+            reference = block.after("AXIS_PTS_REF")
+            shared = self.parameters.get(reference[0]) if reference else None
+            if shared is None or shared.shape != AXIS_PTS:
+                return axis, f"its {letter} axis names an AXIS_PTS that is not in the file"
+            if shared.unreadable:
+                return axis, f"its {letter} axis, {shared.name}, is not read: {shared.unreadable}"
+            axis.points = shared.name
+            axis.most = shared.axes[0].most
+        else:
+            axis.fixed = _fixed_points(block)
+            if not axis.fixed:
+                return axis, f"its {letter} axis is fixed, but the file gives no points"
+            axis.count = len(axis.fixed)
+        return axis, ""
+
+    def _axis_points(self, block: _Block) -> Parameter | None:
+        """``AXIS_PTS Name LongIdentifier Address InputQuantity Deposit MaxDiff
+        Conversion MaxAxisPoints Lower Upper``: axis points that curves and maps share."""
+        f = block.fields()
+        if len(f) < 10:
+            return None
+        address = _integer(f[2]) or 0
+        conversion = self.conversions.get(f[6])
+        parameter = Parameter(
+            name=f[0],
+            kind="CHARACTERISTIC",
+            datatype="",
+            address=address,
+            description=_plain(f[1]),
+            conversion=conversion,
+            lower=_number(f[8]),
+            upper=_number(f[9]),
+            shape=AXIS_PTS,
+            read_only=block.has("READ_ONLY"),
+            layout=str(f[4]),
+            start=address,
+        )
+        self._common(block, parameter)
+        layout = self.record_layouts.get(str(f[4]))
+        axis = Axis(
+            "X",
+            "STD_AXIS",
+            str(f[3]),
+            parameter.conversion,
+            _integer(f[7]) or 0,
+            parameter.lower,
+            parameter.upper,
+            read_only=parameter.read_only,
+        )
+        parameter.axes = (axis,)
+        if layout is None:
+            parameter.unreadable = f"its record layout, {f[4]}, is not in the file"
+        elif layout.problem:
+            parameter.unreadable = f"its record layout, {f[4]}: {layout.problem}"
+        elif (part := layout.part("AXIS_PTS", "X")) is None:
+            parameter.unreadable = f"its record layout, {f[4]}, holds no axis points"
+        elif (deposit := block.after("DEPOSIT")) and deposit[0] == "DIFFERENCE":
+            parameter.unreadable = "it is stored as differences, which are not read"
+        else:
+            parameter.datatype = part.datatype
+            if "X" in layout.fixed_counts:
+                parameter.axes = (replace(axis, count=layout.fixed_counts["X"]),)
+            self._place(parameter, layout)
+        return parameter
+
+    def _place(self, parameter: Parameter, layout: layouts.Layout) -> None:
+        """Work out where its parts are now, or say what has to be read first.
+
+        Where the number of points is kept in the slave, it is read when the
+        parameter is, and only then are the parts found -- unless something
+        that moves with it comes before the count, which would leave the count
+        itself nowhere to be found.
+        """
+        counted = tuple(
+            a.letter for a in parameter.axes if a.letter in layout.counted and a.count is None
+        )
+        shared = [
+            self.parameters[a.points]
+            for a in parameter.axes
+            if a.attribute == "COM_AXIS" and a.points in self.parameters
+        ]
+        if counted and not layout.static:
+            for letter in counted:
+                count_at = layout.part("NO_AXIS_PTS", letter).position
+                moving = [
+                    p
+                    for p in layout.parts
+                    if p.kind in ("AXIS_PTS", "FNC_VALUES") and p.position < count_at
+                ]
+                if moving:
+                    parameter.unreadable = (
+                        f"its record layout keeps the number of {letter} points after parts "
+                        "that move with it"
+                    )
+                    return
+        parameter.counted = counted
+        if counted or any(s.counted for s in shared):
+            return  # read when it is: the slave says how many points there are
+        self.parameters[parameter.name] = parameter
+        self.resolve(parameter.name)
 
     def _common(self, block: _Block, parameter: Parameter) -> None:
         """The optional keywords a measurement and a characteristic share."""
@@ -589,7 +1053,7 @@ class A2l:
             parameter.bit_mask = _integer(mask[0])
         if (order := block.after("BYTE_ORDER")) and order[0] in BYTE_ORDERS:
             parameter.big_endian = BYTE_ORDERS[order[0]]
-        if parameter.readable and parameter.datatype not in DATATYPES:
+        if parameter.readable and parameter.datatype and parameter.datatype not in DATATYPES:
             parameter.unreadable = f"its data type, {parameter.datatype}, is not one pycangui reads"
         if extension := block.after("ECU_ADDRESS_EXTENSION"):
             parameter.extension = _integer(extension[0]) or 0
@@ -601,7 +1065,11 @@ class A2l:
 
 
 # --- the blocks this reader knows ------------------------------------------------------------
-def _conversion(block: _Block, tables: dict[str, dict[int, str] | None]) -> Conversion | None:
+def _conversion(
+    block: _Block,
+    tables: dict[str, dict[int, str] | None],
+    numbers: dict | None = None,
+) -> Conversion | None:
     """Name LongIdentifier ConversionType Format Unit, then how.
 
     RAT_FUNC's six coefficients give the raw value from the physical one,
@@ -631,11 +1099,84 @@ def _conversion(block: _Block, tables: dict[str, dict[int, str] | None]) -> Conv
             if b * g != c * e:  # equal, and raw does not depend on the value at all
                 conversion.fraction = (b, c, e, g)
                 return conversion
-    if (reference := block.after("COMPU_TAB_REF")) and tables.get(reference[0]):
+        elif None not in (a, b, c, d, e, g):
+            conversion.quadratic = (a, b, c, d, e, g)
+            return conversion
+    reference = block.after("COMPU_TAB_REF")
+    if reference and conversion.kind in ("TAB_INTP", "TAB_NOINTP"):
+        if numbers and (rows := numbers.get(reference[0])) is not None:
+            table, interpolate, default = rows
+            conversion.table, conversion.default = table, default
+            conversion.interpolate = conversion.kind == "TAB_INTP" and interpolate
+            return conversion
+    if reference and tables.get(reference[0]):
         conversion.choices = tables[reference[0]]
         return conversion
+    if conversion.kind == "FORM" and (formulas := block.blocks("FORMULA")):
+        words = formulas[0].fields()
+        backwards = formulas[0].after("FORMULA_INV")
+        try:
+            conversion.formula = compile_formula(str(words[0]))
+            if backwards:
+                conversion.inverse = compile_formula(str(backwards[0]))
+            return conversion
+        except (FormulaError, IndexError):
+            conversion.formula = conversion.inverse = None
     conversion.exact = False
     return conversion
+
+
+def _numbers(block: _Block) -> tuple | None:
+    """A COMPU_TAB of numbers: ``Name LongIdentifier ConversionType Count (in out)...``
+    and an optional ``DEFAULT_VALUE_NUMERIC``. As ``(name, rows by raw value,
+    whether to interpolate, default)``."""
+    f = block.fields()
+    if len(f) < 4:
+        return None
+    count = _integer(f[3]) or 0
+    rows = []
+    for raw, phys in zip(f[4 : 4 + 2 * count : 2], f[5 : 5 + 2 * count : 2], strict=False):
+        a, b = _number(raw), _number(phys)
+        if a is None or b is None:
+            return None
+        rows.append((a, b))
+    if not rows:
+        return None
+    default = block.after("DEFAULT_VALUE_NUMERIC")
+    return (
+        str(f[0]),
+        tuple(sorted(rows)),
+        str(f[2]) == "TAB_INTP",
+        _number(default[0]) if default else None,
+    )
+
+
+def _fixed_points(block: _Block) -> tuple[float, ...]:
+    """A FIX_AXIS's raw points: ``FIX_AXIS_PAR offset shift count`` (each one
+    2 to the shift further on), ``FIX_AXIS_PAR_DIST offset distance count``, or
+    a ``FIX_AXIS_PAR_LIST`` of them."""
+    if par := block.after("FIX_AXIS_PAR", 3):
+        offset, shift, count = (_number(x) for x in par)
+        if None not in (offset, shift, count):
+            return tuple(offset + i * 2**shift for i in range(int(count)))
+    if par := block.after("FIX_AXIS_PAR_DIST", 3):
+        offset, distance, count = (_number(x) for x in par)
+        if None not in (offset, distance, count):
+            return tuple(offset + i * distance for i in range(int(count)))
+    for listed in block.blocks("FIX_AXIS_PAR_LIST"):
+        points = [_number(x) for x in listed.fields()]
+        if points and None not in points:
+            return tuple(points)
+    return ()
+
+
+def _strides(sizes: tuple[int, ...]) -> tuple[int, ...]:
+    """How far apart the values along each index are, the last changing fastest."""
+    strides, step = [], 1
+    for size in reversed(sizes):
+        strides.append(step)
+        step *= size
+    return tuple(reversed(strides))
 
 
 def _table(block: _Block) -> tuple[str, dict[int, str] | None] | None:

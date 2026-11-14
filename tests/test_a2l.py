@@ -185,12 +185,15 @@ def test_linear_conversions_are_worked_both_ways(a2l):
     assert a2l.parameters["Serial"].conversion.to_phys(7) == 7
 
 
-def test_a_conversion_that_is_not_a_straight_line_is_shown_raw_and_says_so(a2l):
-    for name in ("Torque", "Kelvin"):
-        parameter = a2l.parameters[name]
-        assert parameter.readable, "a true raw number beats a wrong converted one"
-        assert not parameter.conversion.exact
-        assert parameter.conversion.to_phys(123) == 123
+def test_a_formula_and_a_rational_function_with_a_square_are_worked_out(a2l):
+    kelvin = a2l.parameters["Kelvin"]
+    assert kelvin.conversion.exact and kelvin.conversion.to_phys(20) == pytest.approx(293)
+    assert not kelvin.writable, "no FORMULA_INV, so nothing to turn a value back with"
+    torque = a2l.parameters["Torque"]
+    # raw = p*p + 2p + 3: 123 raw is p = 10, or -12; both are within -500 to 500.
+    phys = torque.conversion.to_phys(123, (torque.lower, torque.upper))
+    assert phys == pytest.approx(10)
+    assert torque.conversion.to_raw(phys) == pytest.approx(123)
 
 
 def test_values_are_named_from_a_table_or_a_table_of_ranges(a2l):

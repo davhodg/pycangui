@@ -149,11 +149,19 @@ Single values, and rows of them:
 
 - **Measurements**, and **characteristics** of type `VALUE`. A characteristic's
   data type comes from the record layout it names, as the standard has it.
-- **Conversions** that are a straight line -- `LINEAR`, `IDENTICAL`, and a
-  `RAT_FUNC` whose coefficients make one -- or one over a straight line, which
-  is how a period is stored for something shown as a frequency. Any other -- a
-  formula, a table to interpolate -- and the value is shown **raw**, with *raw*
-  as its unit: a true raw number rather than a wrong converted one.
+- **Conversions**: `LINEAR`, `IDENTICAL` and `RAT_FUNC`, including one over a
+  straight line (a period shown as a frequency) and one with a square in it,
+  whose two answers are chosen between by the parameter's limits. A
+  `COMPU_TAB` of numbers is looked up, interpolated between its rows for
+  `TAB_INTP` and not for `TAB_NOINTP`, which uses the table's default for a
+  raw value it does not list. A `FORM` formula is worked out, with `X1` the
+  raw value; it can be written only where the file gives `FORMULA_INV` as
+  well. A formula is checked when the file is read: arithmetic, comparisons,
+  bit operations and the usual functions (`sqrt`, `exp`, `log`, `sin` ...)
+  only, so nothing in an A2L is ever run as code. Anything else -- a formula
+  with more than that in it, a conversion of another kind -- and the value is
+  shown **raw**, with *raw* as its unit: a true raw number rather than a wrong
+  converted one.
 - **Named values** from a `COMPU_VTAB` or `COMPU_VTAB_RANGE`: shown as *Run (1)*,
   and written as the name, the number, or both.
 - **Bit masks.** A masked value is read as its own bits. Writing one reads the
@@ -191,9 +199,42 @@ Single values, and rows of them:
   round for your controller, the values are still each at the right address,
   in order: only the split into rows is in question.
 
-Listed, in grey, and not read: curves, maps, text, arrays of more than 4,096
-values, a measurement the file gives no address,
-and a characteristic whose record layout is missing. They are listed so that
+## Curves and maps
+
+A **CURVE** is values over one axis, a **MAP** values over two, and an
+**AXIS_PTS** is axis points kept apart, which several curves and maps share.
+Double-click one to open it as a table, with its axes along the top and down
+the side, and read it. Each cell is a value of its own: type into it to write
+it, after unlocking CAL, as for any characteristic. Expand the row in the list
+to read, write or plot one value from it. A map's values are named `[x][y]` --
+`IgnitionMap[2][3]` is the third speed and the fourth load -- whichever way
+round they are stored, and a curve's own axis points are `IdleCurve:x[0]`
+onwards, which are written the same way.
+
+Where everything is comes from the **record layout**, which lists the parts in
+order: the number of axis points, the points, the values, and anything else a
+generator keeps there. Each part starts after the one before it, moved on to
+its type's alignment (`ALIGNMENT_*` in the layout or `MOD_COMMON`, and
+otherwise the type's own size). Where the number of points is kept in the
+slave (`NO_AXIS_PTS_X`), it is read first, and the table laid out from it: a
+curve of six points takes less room than one of eight, unless the layout says
+`STATIC_RECORD_LAYOUT`. Until then the list shows the type as `UWORD[?]`.
+
+The axes read are those whose points are somewhere to be read: kept with the
+curve (`STD_AXIS`), in an `AXIS_PTS` (`COM_AXIS`, through `AXIS_PTS_REF`), or
+worked out from the file (`FIX_AXIS`, by `FIX_AXIS_PAR`, `FIX_AXIS_PAR_DIST` or
+`FIX_AXIS_PAR_LIST`), which are shown and cannot be typed into because the
+slave keeps none. The demo device has one of each: `IdleCurve`, whose number of
+points is in the slave, and `IgnitionMap`, with a shared speed axis and a fixed
+load axis.
+
+## What is not read
+
+Listed, in grey, and not read: three-dimensional maps, text, an axis that is
+a `RES_AXIS` or a `CURVE_AXIS` or is stored as differences, a part of a
+record reached through a pointer, arrays of more than 4,096 values, a
+measurement the file gives no address, and a characteristic whose record
+layout is missing. They are listed so that
 the file is seen whole; hover over
 one for why. A characteristic marked `READ_ONLY` is read and cannot be edited.
 Hovering over any parameter gives its description, address, type and limits.

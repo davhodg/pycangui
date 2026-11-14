@@ -36,6 +36,7 @@ from pycangui.ui.buttons import SplitButton
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations
 from pycangui.ui.persist import remember
+from pycangui.ui.xcp_table import TableWindow
 from pycangui.ui.xcp_transfer import TransferTab
 from pycangui.xcp import RESOURCE_CAL
 from pycangui.xcp.manager import XcpManager
@@ -216,7 +217,13 @@ def _kind(param) -> str:
 
 
 def _type(param) -> str:
-    """The data type, and for an array how many of it: ``UWORD[16]``, ``UBYTE[2][24]``."""
+    """The data type, and for an array how many of it: ``UWORD[16]``, ``UBYTE[2][24]``.
+
+    A curve or a map whose number of points is in the slave says ``[?]``
+    until it has been read.
+    """
+    if param.is_table and param.readable and not param.sizes:
+        return param.datatype + "[?]" * max(1, len(param.axes))
     if not param.is_array:
         return param.datatype
     return param.datatype + "".join(f"[{size}]" for size in param.sizes)
@@ -227,7 +234,19 @@ def _about(param) -> str:
     lines = [param.description] if param.description else []
     where = f"0x{param.address:X}" + (f", extension {param.extension}" if param.extension else "")
     lines.append(where + (f", {param.datatype}" if param.datatype else ""))
-    if param.is_array:
+    if param.is_table and param.readable:
+        for axis in param.axes:
+            how = {
+                "STD_AXIS": "its points kept with it",
+                "COM_AXIS": f"its points in {axis.points}",
+                "FIX_AXIS": "fixed points, from the A2L",
+            }.get(axis.attribute, axis.attribute)
+            lines.append(f"{axis.letter} axis: {axis.input}, {how}")
+        lines.append(
+            "Double-click to open it as a table and read it.\n"
+            "Expand the row to read, write or plot one value."
+        )
+    elif param.is_array:
         lines.append(
             f"{param.count} values. Double-click to read them all;\n"
             "expand the row to read, write or plot one."
@@ -366,6 +385,8 @@ class XcpView(QWidget):
         #: What each value last read as, to put back when a write is not gone through with.
         self._last: dict[str, str] = {}
         self._updating = False
+        #: The curves and maps open as tables, by name.
+        self._tables: dict[str, TableWindow] = {}
 
         read_btn = icons.beside(QPushButton("Read selected"), icons.READ)
         read_btn.setToolTip(
@@ -454,6 +475,7 @@ class XcpView(QWidget):
         manager.a2l_loaded.connect(lambda _n: self._show_a2l())
         manager.a2l_loaded.connect(lambda _n: self._whose_ids())
         manager.value.connect(self._on_value)
+        manager.reshaped.connect(self._on_reshaped)
         manager.connected.connect(lambda _on: self._ids_changed())
         self.engine_box.currentTextChanged.connect(lambda _n: self._engine_changed())
         ctx.pause.stop_all_requested.connect(self.stop_polling)
@@ -626,6 +648,9 @@ class XcpView(QWidget):
         return True
 
     def _populate(self) -> None:
+        # Tables of the A2L there was name what may not be in this one.
+        for window in list(self._tables.values()):
+            window.close()
         self._updating = True
         self.tree.clear()
         self._items.clear()
@@ -648,6 +673,8 @@ class XcpView(QWidget):
                     # opened: a big file has a hundred thousand of them, and
                     # anybody looks at a handful.
                     item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+                elif param.is_table and param.readable:
+                    pass  # read as a table; its values are rows once it has been
                 elif param.readable:
                     item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                     item.setCheckState(5, Qt.Unchecked)
@@ -700,8 +727,45 @@ class XcpView(QWidget):
             item.setHidden(not all(needle in haystack for needle in needles))
 
     def _on_double_clicked(self, item: QTreeWidgetItem, column: int) -> None:
+        name = item.data(0, ROLE_NAME)
+        param = self.manager.a2l.find(name) if self.manager.a2l and name else None
+        if param is not None and param.is_table and param.readable:
+            self.open_table(name)
+            self.manager.read(name)
+            return
         if column != 3:
             self._read(item)
+
+    def open_table(self, name: str) -> TableWindow:
+        """A curve's, a map's or an AXIS_PTS's table: opened, or brought forward."""
+        window = self._tables.get(name)
+        if window is None:
+            window = TableWindow(self.manager, name, self._within_limits_or_meant, self)
+            window._last.update(self._last)
+            window.build()
+            window.destroyed.connect(lambda _o=None, n=name: self._tables.pop(n, None))
+            self._tables[name] = window
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        return window
+
+    @Slot(str)
+    def _on_reshaped(self, name: str) -> None:
+        """A curve or a map now has its number of points: its row is made again."""
+        item = self._items.get(name)
+        param = self.manager.a2l.find(name) if self.manager.a2l else None
+        if item is None or param is None:
+            return
+        was_updating, self._updating = self._updating, True
+        for index in reversed(range(item.childCount())):
+            child = item.takeChild(index)
+            self._items.pop(child.data(0, ROLE_NAME), None)
+        item.setText(2, _type(param))
+        item.setToolTip(0, _about(param))
+        if param.is_array:
+            item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
+        self._updating = was_updating
 
     def _read(self, item: QTreeWidgetItem) -> None:
         """Read a row: one value, or every value of an array, into rows made for them."""

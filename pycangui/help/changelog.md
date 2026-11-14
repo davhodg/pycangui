@@ -17,6 +17,9 @@ since the last version, and comes out in the next one.
 - *Save all...* on the right-click of the Event Log, the Python Console and an ASCII log.
 - XCP: seeds and keys longer than a frame, slaves with two- or four-byte elements, GET_STATUS on connecting, and `MAX_DLC_REQUIRED` padding.
 - XCP / CCP: the A2L's EPK is compared with the slave's on connecting, and a different one is warned about.
+- XCP / CCP: curves and maps, with their axes (kept with them, shared or fixed), opened as tables to read and write; record layouts are read in full, counts kept in the slave included.
+- XCP / CCP: COMPU_TAB tables, FORM formulas and RAT_FUNC with a square are worked out, where they were shown raw.
+- The demo device has a curve and a map.
 
 ### Changed
 
