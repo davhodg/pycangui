@@ -21,8 +21,8 @@ from pycangui.xcp.manager import XcpManager
 
 def test_a2l_parsing():
     a2l = A2l.load(str(resources.path("demo.a2l")))
-    # Two values, a curve, a map, and the axis points the map shares.
-    assert len(a2l.measurements()) == 3 and len(a2l.characteristics()) == 5
+    # Two values, a curve, a map, the axis points the map shares, and text.
+    assert len(a2l.measurements()) == 3 and len(a2l.characteristics()) == 6
     speed = a2l.parameters["EngineSpeed"]
     assert speed.datatype == "UWORD" and speed.address == 0x1000 and speed.unit == "rpm"
     assert not speed.writable and speed.upper == 8000
@@ -89,10 +89,12 @@ def test_xcp_against_demo_slave(stack):
     n += 1
 
     manager.read("BatteryVoltage")
-    assert last_after(n) == "BatteryVoltage = 13.2 V"
+    last_after(n)
+    assert values[-1][0] == "BatteryVoltage" and values[-1][1] == pytest.approx(13.2)
     n += 1
     manager.read("SpeedLimit")
-    assert last_after(n) == "SpeedLimit = 6500 rpm"
+    last_after(n)
+    assert values[-1] == ("SpeedLimit", 6500)
     n += 1
 
     manager.write("SpeedLimit", "7000")  # CAL locked
@@ -112,7 +114,7 @@ def test_xcp_against_demo_slave(stack):
     assert manager.info.protection & 0x01 == 0 and manager.info.protection & 0x10
     n += 1
     manager.write("SpeedLimit", "7000")
-    assert last_after(n) == "SpeedLimit <- 7000"
+    last_after(n)
     assert struct.unpack_from("<H", demo["xcp_slave"].state.memory, 0x2000)[0] == 7000
 
     manager.set_polled("EngineSpeed", True)

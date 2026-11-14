@@ -66,6 +66,9 @@ ASAP2_VERSION 1 60
 /begin MEASUREMENT CoolantTemp "Coolant temperature"
     SWORD NO_COMPU_METHOD 0 0 -40 215
     ECU_ADDRESS 0x1004
+    /* No conversion, so no unit from one: the measurement gives its own. */
+    PHYS_UNIT "degC"
+    FORMAT "%4.0"
 /end MEASUREMENT
 
 /begin CHARACTERISTIC SpeedLimit "Maximum engine speed"
@@ -122,6 +125,57 @@ ASAP2_VERSION 1 60
         FIX_AXIS_PAR_DIST 0 25 5
     /end AXIS_DESCR
 /end CHARACTERISTIC
+
+/* Text: a part number, sixteen bytes, NULs after it. */
+/begin RECORD_LAYOUT RL_TEXT
+    FNC_VALUES 1 UBYTE ROW_DIR DIRECT
+/end RECORD_LAYOUT
+
+/begin CHARACTERISTIC PartNumber "Part number"
+    ASCII 0x2400 RL_TEXT 0 NO_COMPU_METHOD 0 255
+    NUMBER 16
+/end CHARACTERISTIC
+
+/* How the file sorts its parameters: groups, one inside another, and a
+   function. The XCP pane's Group box shows one at a time. */
+/begin GROUP Engine "The engine"
+    ROOT
+    /begin REF_MEASUREMENT EngineSpeed CoolantTemp
+    /end REF_MEASUREMENT
+    /begin REF_CHARACTERISTIC SpeedLimit
+    /end REF_CHARACTERISTIC
+    /begin SUB_GROUP Idle Ignition
+    /end SUB_GROUP
+/end GROUP
+
+/begin GROUP Idle "Idle speed"
+    /begin REF_CHARACTERISTIC IdleTarget IdleCurve
+    /end REF_CHARACTERISTIC
+/end GROUP
+
+/begin GROUP Ignition "Ignition timing"
+    /begin REF_CHARACTERISTIC IgnitionMap SpeedAxis
+    /end REF_CHARACTERISTIC
+/end GROUP
+
+/begin GROUP Supply "Power supply"
+    ROOT
+    /begin REF_MEASUREMENT BatteryVoltage
+    /end REF_MEASUREMENT
+/end GROUP
+
+/begin GROUP Identification "What this ECU is"
+    ROOT
+    /begin REF_CHARACTERISTIC PartNumber
+    /end REF_CHARACTERISTIC
+/end GROUP
+
+/begin FUNCTION IdleControl "Holds the engine at its idle speed"
+    /begin DEF_CHARACTERISTIC IdleTarget IdleCurve
+    /end DEF_CHARACTERISTIC
+    /begin IN_MEASUREMENT EngineSpeed CoolantTemp
+    /end IN_MEASUREMENT
+/end FUNCTION
 
 /end MODULE
 /end PROJECT

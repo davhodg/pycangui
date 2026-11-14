@@ -134,6 +134,11 @@ FROM_A2L_TIP = (
     "Ticked, the two boxes show the A2L's and are not typed into; unticked,\n"
     "they are yours again. Only shown for an A2L that has them."
 )
+GROUP_TIP = (
+    "Show one of the A2L's GROUPs or FUNCTIONs: the file's own way of sorting\n"
+    "its parameters, with the groups inside the one chosen. The filter box\n"
+    "beside it narrows what is shown further."
+)
 LIMITS_TITLE = "Outside the A2L's limits"
 LIMITS_TEXT = (
     "{name} is given limits of {lower:g} to {upper:g}{unit} by the A2L, and\n"
@@ -224,6 +229,8 @@ def _type(param) -> str:
     """
     if param.is_table and param.readable and not param.sizes:
         return param.datatype + "[?]" * max(1, len(param.axes))
+    if param.is_text:
+        return f"{param.datatype}[{param.length}]"  # how much text fits
     if not param.is_array:
         return param.datatype
     return param.datatype + "".join(f"[{size}]" for size in param.sizes)
@@ -406,6 +413,13 @@ class XcpView(QWidget):
             "the rest back."
         )
         self.search.textChanged.connect(lambda _t: self._apply_filter())
+        # The file's own way of sorting its parameters: a GROUP or a FUNCTION,
+        # with the groups inside it. Shown only for a file that has some.
+        self.group_box = QComboBox()
+        self.group_box.setToolTip(GROUP_TIP)
+        self.group_box.currentIndexChanged.connect(lambda _i: self._apply_filter())
+        #: The parameters in the group chosen, or None for all of them.
+        self._in_group: set[str] | None = None
         self.plotted_only = icons.beside(QPushButton("Plotted"), icons.PLOT)
         self.plotted_only.setCheckable(True)
         self.plotted_only.setToolTip(
@@ -440,6 +454,7 @@ class XcpView(QWidget):
         row = QHBoxLayout()
         row.addWidget(self.a2l_btn)
         row.addWidget(self.a2l_label)
+        row.addWidget(self.group_box)
         row.addWidget(self.search, 1)
         row.addWidget(self.plotted_only)
         row.addWidget(read_btn)
@@ -476,6 +491,7 @@ class XcpView(QWidget):
         manager.a2l_loaded.connect(lambda _n: self._whose_ids())
         manager.value.connect(self._on_value)
         manager.reshaped.connect(self._on_reshaped)
+        manager.text.connect(self._on_text)
         manager.connected.connect(lambda _on: self._ids_changed())
         self.engine_box.currentTextChanged.connect(lambda _n: self._engine_changed())
         ctx.pause.stop_all_requested.connect(self.stop_polling)
@@ -673,8 +689,8 @@ class XcpView(QWidget):
                     # opened: a big file has a hundred thousand of them, and
                     # anybody looks at a handful.
                     item.setChildIndicatorPolicy(QTreeWidgetItem.ShowIndicator)
-                elif param.is_table and param.readable:
-                    pass  # read as a table; its values are rows once it has been
+                elif (param.is_table and param.readable) or param.is_text:
+                    pass  # a table, read as one; or text, which is not plotted
                 elif param.readable:
                     item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                     item.setCheckState(5, Qt.Unchecked)
@@ -687,7 +703,31 @@ class XcpView(QWidget):
                 self.tree.addTopLevelItem(item)
                 self._items[param.name] = item
         self._updating = False
+        self._fill_groups()
         self._apply_filter()  # a new A2L arrives into whatever filter is set
+
+    def _fill_groups(self) -> None:
+        """The GROUPs, then the FUNCTIONs, each indented under the one it is in."""
+        self.group_box.blockSignals(True)
+        self.group_box.clear()
+        self.group_box.addItem("All parameters", "")
+        a2l = self.manager.a2l
+        if a2l is not None:
+            for kind in ("GROUP", "FUNCTION"):
+                listed = a2l.group_tree(kind)
+                if listed:
+                    self.group_box.insertSeparator(self.group_box.count())
+                for depth, group in listed:
+                    label = "    " * depth + group.name
+                    if depth == 0 and kind == "FUNCTION":
+                        label += " (function)"
+                    self.group_box.addItem(label, group.name)
+                    tip = group.description or group.name
+                    self.group_box.setItemData(self.group_box.count() - 1, tip, Qt.ToolTipRole)
+        self.group_box.setVisible(self.group_box.count() > 1)
+        self.group_box.setCurrentIndex(0)
+        self._in_group = None
+        self.group_box.blockSignals(False)
 
     def _fill(self, item: QTreeWidgetItem) -> None:
         """Give an array's row a row for each of its values, the first time it is wanted."""
@@ -713,6 +753,9 @@ class XcpView(QWidget):
         """Hide what does not match. Nothing is unloaded and nothing is read."""
         needles = self.search.text().lower().split()
         polled_only = self.plotted_only.isChecked()
+        chosen = self.group_box.currentData()
+        a2l = self.manager.a2l
+        self._in_group = a2l.members(chosen) if chosen and a2l is not None else None
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
             # An array is plotted through its values, so it is one of those
@@ -721,6 +764,9 @@ class XcpView(QWidget):
                 item.child(c).checkState(5) == Qt.Checked for c in range(item.childCount())
             )
             if polled_only and not plotted:
+                item.setHidden(True)
+                continue
+            if self._in_group is not None and item.data(0, ROLE_NAME) not in self._in_group:
                 item.setHidden(True)
                 continue
             haystack = item.data(0, ROLE_SEARCH) or ""
@@ -826,6 +872,16 @@ class XcpView(QWidget):
             item.setText(3, self.manager.shown(name, value))
             self._updating = was_updating
         self._last[name] = self.manager.shown(name, value)
+
+    @Slot(str, str)
+    def _on_text(self, name: str, text: str) -> None:
+        """Text read from, or written to, an ASCII characteristic."""
+        item = self._items.get(name)
+        if item is not None:
+            was_updating, self._updating = self._updating, True
+            item.setText(3, text)
+            self._updating = was_updating
+        self._last[name] = text
 
     @Slot(str)
     def _append(self, text: str) -> None:

@@ -10,6 +10,7 @@ the GUI. Commands run on a worker thread because they block on the slave.
 
 from __future__ import annotations
 
+import math
 import queue
 import threading
 from dataclasses import dataclass
@@ -81,6 +82,8 @@ class XcpManager(QObject):
     #: A curve or a map has been worked out afresh -- its number of points read
     #: from the slave -- and its values have new names: its name.
     reshaped = Signal(str)
+    #: Text read from an ASCII characteristic: its name, and the text.
+    text = Signal(str, str)
 
     def __init__(self, bus: BusManager, hooks: Hooks, signals: SignalHub, ctx: Context) -> None:
         super().__init__()
@@ -382,10 +385,16 @@ class XcpManager(QObject):
         return param.conversion.to_phys(raw, (param.lower, param.upper))
 
     def shown(self, name: str, phys: float) -> str:
-        """A value as it is shown: by name where the A2L names it, *Run (1)*."""
+        """A value as it is shown: by name where the A2L names it, *Run (1)*, and
+        otherwise to the places after the point its FORMAT asks for."""
         param = self.a2l.find(name) if self.a2l else None
         named = named_values.shown(phys, param.choices) if param and param.choices else None
-        return named or f"{phys:g}"
+        if named:
+            return named
+        places = param.decimals if param is not None else None
+        if places is not None and math.isfinite(phys):
+            return f"{phys:.{places}f}"
+        return f"{phys:g}"
 
     def read(self, name: str) -> None:
         param = self.a2l.find(name) if self.a2l else None
@@ -397,6 +406,16 @@ class XcpManager(QObject):
             return
         if param.is_table:
             self._read_table(param)
+            return
+        if param.is_text:
+
+            def text() -> str:
+                data = self.engine.read(param.address, param.length, **_space(param))
+                said = _text(data)
+                self.text.emit(name, said)
+                return f"{name} = {said!r}"
+
+            self._submit(f"read {name}", text)
             return
         if param.is_array:
             if param.count > MOST_AT_ONCE:
@@ -501,6 +520,9 @@ class XcpManager(QObject):
             why = param.unreadable if param is not None and param.unreadable else ""
             self.result.emit(f"write {name}: {why or 'not a writable characteristic'}")
             return
+        if param.is_text:
+            self._write_text(param, text)
+            return
         if not beyond_limits and (outside := self.beyond_limits(name, text)) is not None:
             value, lower, upper = outside
             self.result.emit(
@@ -524,10 +546,34 @@ class XcpManager(QObject):
 
         self._submit(f"write {name}", fn)
 
+    def _write_text(self, param: Parameter, text: str) -> None:
+        """Text into an ASCII characteristic: as Latin-1, with NULs after it to fill
+        the space, and refused where it is longer than the space."""
+        try:
+            data = text.encode("latin-1")
+        except UnicodeEncodeError:
+            self.result.emit(
+                f"write {param.name}: only Latin-1 characters fit in it -- not written"
+            )
+            return
+        if len(data) > param.length:
+            self.result.emit(
+                f"write {param.name}: {len(data)} characters, and it holds {param.length} "
+                "-- not written"
+            )
+            return
+
+        def fn() -> str:
+            self.engine.write(param.address, data.ljust(param.length, b"\x00"), **_space(param))
+            self.text.emit(param.name, text)
+            return f"{param.name} <- {text!r}"
+
+        self._submit(f"write {param.name}", fn)
+
     # --- polling ---------------------------------------------------------------------
     def set_polled(self, name: str, on: bool) -> None:
         param = self.a2l.find(name) if self.a2l else None
-        if param is None or not param.readable or param.is_array or param.is_table:
+        if param is None or not param.readable or param.is_array or param.is_table or param.is_text:
             return  # one of an array's values is plotted, not the row of them
         if on:
             self._polled[name] = param
@@ -817,6 +863,11 @@ def _first_difference(got: bytes, wanted: bytes) -> int:
         if a != b:
             return at
     return min(len(got), len(wanted))
+
+
+def _text(data: bytes) -> str:
+    """An ASCII characteristic's bytes as text: up to the first NUL, as Latin-1."""
+    return data.split(b"\x00", 1)[0].decode("latin-1")
 
 
 def _space(param) -> dict:

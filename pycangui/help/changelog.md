@@ -20,6 +20,8 @@ since the last version, and comes out in the next one.
 - XCP / CCP: curves and maps, with their axes (kept with them, shared or fixed), opened as tables to read and write; record layouts are read in full, counts kept in the slave included.
 - XCP / CCP: COMPU_TAB tables, FORM formulas and RAT_FUNC with a square are worked out, where they were shown raw.
 - The demo device has a curve and a map.
+- XCP / CCP: a *Group* box shows one of the A2L's GROUPs or FUNCTIONs at a time.
+- XCP / CCP: values are shown to the A2L's FORMAT and with its PHYS_UNIT; ASCII characteristics are read and written as text.
 
 ### Changed
 

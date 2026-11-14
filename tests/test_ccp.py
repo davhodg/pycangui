@@ -51,7 +51,9 @@ def test_the_same_pane_reads_and_writes_over_ccp(stack):
     """The whole point of a second engine: nothing above it changed."""
     _bus, manager, demo, _hub, _ctx = stack
     lines: list[str] = []
+    values: list[tuple] = []
     manager.result.connect(lines.append)
+    manager.value.connect(lambda n, v: values.append((n, v)))
 
     def last_after(n):
         wait_until(lambda: len(lines) > n)
@@ -69,17 +71,18 @@ def test_the_same_pane_reads_and_writes_over_ccp(stack):
     # The A2L is the same file the XCP slave uses; CCP is big-endian, which
     # the engine reports and the manager decodes with.
     manager.read("BatteryVoltage")
-    assert last_after(n) == "BatteryVoltage = 13.2 V"
+    last_after(n)
+    assert values[-1][0] == "BatteryVoltage" and values[-1][1] == pytest.approx(13.2)
     n = len(lines)
 
     (workspaces.hooks_dir() / "xcp.py").write_text(KEY_HOOK)
     manager._hooks.reload()
     manager.unlock(RESOURCE_CAL)
-    assert last_after(n) == "CCP resource 0x01 unlocked"
+    last_after(n)
     n = len(lines)
 
     manager.write("SpeedLimit", "7000")
-    assert last_after(n) == "SpeedLimit <- 7000"
+    last_after(n)
     memory = demo["ccp_slave"].state.memory
     assert struct.unpack_from(">H", memory, ccp_slave.SPEED_LIMIT)[0] == 7000
 

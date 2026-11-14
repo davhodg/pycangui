@@ -104,6 +104,10 @@ SPEED_AXIS = 0x2200
 SPEEDS = (800, 2000, 3500, 5000, 6500)
 IGNITION_MAP = 0x2300
 
+#: The part number, as text where resources/demo.a2l's PartNumber says.
+PART_NUMBER = 0x2400
+PART_NUMBER_TEXT = b"PCG-DEMO-0001"
+
 
 def _tables(memory: bytearray, order: str) -> None:
     """Lay out the curve and the map, in this slave's byte order."""
@@ -121,6 +125,7 @@ def start(node, *, ctx):
     memory = bytearray(MEMORY_BYTES)
     memory[FLASH_START:FLASH_END] = b"\xff" * (FLASH_END - FLASH_START)  # erased
     memory[EPK_ADDRESS : EPK_ADDRESS + len(EPK)] = EPK
+    memory[PART_NUMBER : PART_NUMBER + len(PART_NUMBER_TEXT)] = PART_NUMBER_TEXT
     _tables(memory, ORDER)
     struct.pack_into(f"{ORDER}H", memory, BATTERY_MV, 1320)  # 13.20 V
     struct.pack_into(f"{ORDER}h", memory, COOLANT_C, 90)

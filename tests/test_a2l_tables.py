@@ -295,8 +295,8 @@ def test_the_pane_opens_a_map_as_a_table(demo):
     wait_until(lambda: "IgnitionMap[4][4]" in values)
     wait_until(lambda: window.table.rowCount() == 6)
     assert window.table.columnCount() == 6, "five speeds and the load axis"
-    wait_until(lambda: window.table.item(4, 3).text() == "14")
-    assert window.table.item(0, 1).text() == "800", "the speeds along the top"
-    assert window.table.item(1, 0).text() == "0", "the loads down the side"
+    wait_until(lambda: float(window.table.item(4, 3).text() or "nan") == 14)
+    assert float(window.table.item(0, 1).text()) == 800, "the speeds along the top"
+    assert float(window.table.item(1, 0).text()) == 0, "the loads down the side"
     window.close()
     view.deleteLater()

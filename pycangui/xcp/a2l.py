@@ -68,6 +68,19 @@ CURVE = "CURVE"
 MAP = "MAP"
 AXIS_PTS = "AXIS_PTS"
 TABLES = (CURVE, MAP, AXIS_PTS)
+#: Text: a row of bytes read and written as a string.
+ASCII = "ASCII"
+#: What a GROUP and a FUNCTION list, by the block each list is in.
+GROUP_LISTS = ("REF_CHARACTERISTIC", "REF_MEASUREMENT")
+FUNCTION_LISTS = (
+    "DEF_CHARACTERISTIC",
+    "REF_CHARACTERISTIC",
+    "IN_MEASUREMENT",
+    "OUT_MEASUREMENT",
+    "LOC_MEASUREMENT",
+)
+#: ``%6.1``, ``%.2f``: how many places after the point a value is shown with.
+_FORMAT = re.compile(r"%\s*\d*\.(\d+)")
 #: The axes of a curve, then of a map, by the letter the file gives each.
 AXIS_LETTERS = ("X", "Y")
 #: Axes whose points are somewhere this reader goes: in the record, in an
@@ -180,6 +193,8 @@ class Conversion:
     exact: bool = True
     #: What kind it is in the file: RAT_FUNC, LINEAR, TAB_VERB, IDENTICAL, FORM...
     kind: str = ""
+    #: The places after the point its FORMAT shows, or None to show as many as there are.
+    decimals: int | None = None
     #: ``(b, c, e, f)`` of ``raw = (b*phys + c) / (e*phys + f)``, for a rational
     #: function that is not a straight line; None for one that is.
     fraction: tuple[float, float, float, float] | None = None
@@ -293,6 +308,33 @@ def _solve(
     return (inside or answers)[-1]
 
 
+def _unit(conversion: Conversion | None, own: str) -> str:
+    """A value's unit: raw where it is shown raw, else its own PHYS_UNIT, else its conversion's."""
+    if conversion is not None and not conversion.exact:
+        return "raw"
+    return own or (conversion.unit if conversion else "")
+
+
+def _places(conversion: Conversion | None, own: int | None) -> int | None:
+    if conversion is not None and not conversion.exact:
+        return None  # a raw number is shown as it is
+    if own is not None:
+        return own
+    return conversion.decimals if conversion is not None else None
+
+
+@dataclass
+class Group:
+    """A GROUP or a FUNCTION: names of parameters, and of the groups inside it."""
+
+    name: str
+    description: str
+    kind: str  # GROUP or FUNCTION
+    root: bool = False
+    members: list[str] = field(default_factory=list)
+    inside: list[str] = field(default_factory=list)
+
+
 @dataclass
 class Axis:
     """One axis of a curve or a map, from its AXIS_DESCR."""
@@ -312,6 +354,17 @@ class Axis:
     #: A FIX_AXIS's raw points, worked out from the file.
     fixed: tuple[float, ...] = ()
     read_only: bool = False
+    #: Its own FORMAT and PHYS_UNIT, where it gives them.
+    own_decimals: int | None = None
+    phys_unit: str = ""
+
+    @property
+    def unit(self) -> str:
+        return _unit(self.conversion, self.phys_unit)
+
+    @property
+    def decimals(self) -> int | None:
+        return _places(self.conversion, self.own_decimals)
 
 
 @dataclass
@@ -363,6 +416,11 @@ class Parameter:
     #: Axes whose number of points is kept in the slave: until they are read,
     #: where the values are is not known.
     counted: tuple[str, ...] = ()
+    #: Its own FORMAT and PHYS_UNIT, which win over its conversion's.
+    own_decimals: int | None = None
+    phys_unit: str = ""
+    #: For text (ASCII): how many bytes it has.
+    length: int = 0
 
     @property
     def readable(self) -> bool:
@@ -388,7 +446,17 @@ class Parameter:
 
     @property
     def unit(self) -> str:
-        return self.conversion.unit if self.conversion else ""
+        return _unit(self.conversion, self.phys_unit)
+
+    @property
+    def decimals(self) -> int | None:
+        """The places after the point it is shown with: its own FORMAT, then its
+        conversion's; None for a value shown raw, or a file that does not say."""
+        return _places(self.conversion, self.own_decimals)
+
+    @property
+    def is_text(self) -> bool:
+        return self.shape == ASCII and self.readable
 
     @property
     def choices(self) -> dict[int, str]:
@@ -500,6 +568,8 @@ class A2l:
         self.record_layouts: dict[str, layouts.Layout] = {}
         #: MOD_COMMON's ALIGNMENT_* settings, by data type.
         self.alignment: dict[str, int] = {}
+        #: GROUPs and FUNCTIONs by name: how the file sorts its parameters.
+        self.groups: dict[str, Group] = {}
         #: The axis points a curve or a map keeps in its own record, as
         #: parameters of their own: ``Map:x``. Not in ``parameters``, which is
         #: what the file lists, but found by name like them.
@@ -682,6 +752,8 @@ class A2l:
                     count=n,
                     sizes=(n,),
                     written=(n,),
+                    own_decimals=axis.own_decimals,
+                    phys_unit=axis.phys_unit,
                 )
                 if table.shape != AXIS_PTS:
                     self._axes[points_name] = points
@@ -752,6 +824,45 @@ class A2l:
         flashed.sort(key=lambda a: a.address)
         return [replace(a, clear_order=n, program_order=n) for n, a in enumerate(flashed)]
 
+    def members(self, name: str) -> set[str]:
+        """Every parameter in a group or a function, with those in the groups
+        inside it, however deep. A group the file puts inside itself is
+        gone into once."""
+        found: set[str] = set()
+        seen: set[str] = set()
+        waiting = [name]
+        while waiting:
+            group = self.groups.get(waiting.pop())
+            if group is None or group.name in seen:
+                continue
+            seen.add(group.name)
+            found.update(group.members)
+            waiting.extend(group.inside)
+        return found
+
+    def group_tree(self, kind: str) -> list[tuple[int, Group]]:
+        """The groups, or the functions, in the order to list them, each with how
+        deep it is: the top ones (marked ROOT, or inside no other) in the file's
+        order, each followed by those inside it."""
+        of_kind = {n: g for n, g in self.groups.items() if g.kind == kind}
+        inside = {child for g in of_kind.values() for child in g.inside}
+        tops = [g for g in of_kind.values() if g.root or g.name not in inside]
+        listed: list[tuple[int, Group]] = []
+        seen: set[str] = set()
+
+        def add(group: Group, depth: int) -> None:
+            if group.name in seen:
+                return
+            seen.add(group.name)
+            listed.append((depth, group))
+            for child in group.inside:
+                if child in of_kind:
+                    add(of_kind[child], depth + 1)
+
+        for group in tops:
+            add(group, 0)
+        return listed
+
     def unreadable(self) -> list[Parameter]:
         """The ones listed and not read: curves, maps, types not known."""
         return [p for p in self.parameters.values() if not p.readable]
@@ -807,11 +918,45 @@ class A2l:
             self.checksums.setdefault(protocol, info)
         self.memory_segments += _memory_segments(module)
         self.sectors += _sectors(module)
+        self._read_groups(module, measurements + characteristics)
         for parameters in _all(module, "MOD_PAR"):
             if self.epk is None and (epk := parameters.after("EPK")):
                 self.epk = str(epk[0])
             if self.epk_address is None and (at := parameters.after("ADDR_EPK")):
                 self.epk_address = _integer(at[0])
+
+    def _read_groups(self, module: _Block, blocks: list[_Block]) -> None:
+        """GROUPs and FUNCTIONs, and the FUNCTION_LIST an older file puts in a
+        parameter to say which functions it belongs to."""
+        for kind, lists, inner in (
+            ("GROUP", GROUP_LISTS, "SUB_GROUP"),
+            ("FUNCTION", FUNCTION_LISTS, "SUB_FUNCTION"),
+        ):
+            for block in module.blocks(kind):
+                f = block.fields()
+                if not f:
+                    continue
+                group = Group(
+                    str(f[0]),
+                    _plain(f[1]) if len(f) > 1 else "",
+                    kind,
+                    root=block.has("ROOT"),
+                )
+                for listed in lists:
+                    for part in block.blocks(listed):
+                        group.members += [str(name) for name in part.fields()]
+                for part in block.blocks(inner):
+                    group.inside += [str(name) for name in part.fields()]
+                self.groups.setdefault(group.name, group)
+        for block in blocks:
+            for listed in block.blocks("FUNCTION_LIST"):
+                name = str(block.fields()[0]) if block.fields() else ""
+                for function in listed.fields():
+                    group = self.groups.setdefault(
+                        str(function), Group(str(function), "", "FUNCTION")
+                    )
+                    if name and name not in group.members:
+                        group.members.append(name)
 
     def _measurement(self, block: _Block) -> Parameter | None:
         """Name LongIdentifier Datatype Conversion Resolution Accuracy Lower Upper."""
@@ -859,15 +1004,23 @@ class A2l:
         dimensions = _dimensions(block, "MATRIX_DIM", "NUMBER")
         if parameter.shape in (CURVE, MAP):
             self._table(block, parameter, f[4])
+        elif parameter.shape == ASCII:
+            if not parameter.datatype:
+                parameter.unreadable = f"its record layout, {f[4]}, is not in the file"
+            elif DATATYPES.get(parameter.datatype, ("", 0))[1] != 1:
+                parameter.unreadable = f"its characters are {parameter.datatype}, not bytes"
+            elif not dimensions:
+                parameter.unreadable = "the file does not say how long it is"
+            else:
+                parameter.length = _values(dimensions)
         elif parameter.shape not in (VALUE, VAL_BLK):
             what = {
                 "CUBOID": "a three-dimensional map",
                 "CUBE_4": "a four-dimensional map",
                 "CUBE_5": "a five-dimensional map",
-                "ASCII": "text",
             }.get(parameter.shape, parameter.shape)
             parameter.unreadable = (
-                f"it is {what}, and values, rows of them, curves and maps are what is read"
+                f"it is {what}, and values, rows of them, text, curves and maps are what is read"
             )
         elif not parameter.datatype:
             parameter.unreadable = f"its record layout, {f[4]}, is not in the file"
@@ -934,6 +1087,10 @@ class A2l:
             upper=_number(f[5]),
             read_only=block.has("READ_ONLY"),
         )
+        if shown := block.after("FORMAT"):
+            axis.own_decimals = _decimals(shown[0])
+        if unit := block.after("PHYS_UNIT"):
+            axis.phys_unit = _plain(unit[0])
         if axis.conversion is not None and not axis.conversion.exact:
             axis.conversion = Conversion(axis.conversion.name, unit="raw", exact=False)
         if axis.attribute not in READ_AXES:
@@ -995,6 +1152,7 @@ class A2l:
             parameter.upper,
             read_only=parameter.read_only,
         )
+        axis.own_decimals, axis.phys_unit = parameter.own_decimals, parameter.phys_unit
         parameter.axes = (axis,)
         if layout is None:
             parameter.unreadable = f"its record layout, {f[4]}, is not in the file"
@@ -1062,6 +1220,10 @@ class A2l:
             parameter.conversion = Conversion(
                 parameter.conversion.name, unit="raw", exact=False, kind=parameter.conversion.kind
             )
+        if shown := block.after("FORMAT"):
+            parameter.own_decimals = _decimals(shown[0])
+        if unit := block.after("PHYS_UNIT"):
+            parameter.phys_unit = _plain(unit[0])
 
 
 # --- the blocks this reader knows ------------------------------------------------------------
@@ -1082,7 +1244,7 @@ def _conversion(
     f = block.fields()
     if len(f) < 5:
         return None
-    conversion = Conversion(name=f[0], unit=_plain(f[4]), kind=f[2])
+    conversion = Conversion(name=f[0], unit=_plain(f[4]), kind=f[2], decimals=_decimals(f[3]))
     if conversion.kind == "IDENTICAL":
         return conversion
     if linear := block.after("COEFFS_LINEAR", 2):
@@ -1168,6 +1330,12 @@ def _fixed_points(block: _Block) -> tuple[float, ...]:
         if points and None not in points:
             return tuple(points)
     return ()
+
+
+def _decimals(token) -> int | None:
+    """The places after the point a FORMAT asks for: ``%6.1`` is one."""
+    match = _FORMAT.match(str(token).strip())
+    return int(match.group(1)) if match else None
 
 
 def _strides(sizes: tuple[int, ...]) -> tuple[int, ...]:

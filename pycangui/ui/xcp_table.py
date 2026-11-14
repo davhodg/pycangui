@@ -45,7 +45,7 @@ def _with_unit(text: str, unit: str) -> str:
 def _axis_name(axis: Axis) -> str:
     """What an axis is of, with its unit; by its letter where the file names nothing."""
     what = axis.input if axis.input != "NO_INPUT_QUANTITY" else f"the {axis.letter} axis"
-    return _with_unit(what, axis.conversion.unit if axis.conversion else "")
+    return _with_unit(what, axis.unit)
 
 
 class TableWindow(QDialog):
@@ -174,7 +174,8 @@ class TableWindow(QDialog):
             # A fixed axis: worked out from the file, not kept in the slave.
             raw = axis.fixed[index]
             phys = axis.conversion.to_phys(raw) if axis.conversion else raw
-            item = QTableWidgetItem(f"{phys:g}")
+            places = axis.decimals
+            item = QTableWidgetItem(f"{phys:.{places}f}" if places is not None else f"{phys:g}")
             item.setFlags(Qt.ItemIsEnabled)
             item.setToolTip("A fixed axis: the A2L gives these points, and the slave keeps none.")
         item.setBackground(self.palette().alternateBase())

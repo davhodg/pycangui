@@ -59,7 +59,11 @@ box above the list filters them: match on the name, the address in either hex
 or decimal, the type, the unit or the description, with several words all
 having to match, and *MEASUREMENT* or *CHARACTERISTIC* narrowing it to one
 kind. **Plotted** shows only the ones ticked for the plot, which a filter
-would otherwise hide while they went on being read. Which file the names came from is shown beside the
+would otherwise hide while they went on being read. Where the A2L sorts its
+parameters into `GROUP`s and `FUNCTION`s, the **Group** box beside the filter
+shows one of them at a time, with the groups inside it, each listed under the
+one it is in; the filter then narrows that further. A file with none shows no
+box. Which file the names came from is shown beside the
 **A2L** button, and **Remove** under it forgets the file -- including one that has moved since, which
 is reported at startup and then sits there marked *(missing)*. The demo device
 answers XCP on 0x7A0/0x7A1 and CCP on 0x7B0/0x7B1 at station 1, and both match
@@ -164,6 +168,18 @@ Single values, and rows of them:
   converted one.
 - **Named values** from a `COMPU_VTAB` or `COMPU_VTAB_RANGE`: shown as *Run (1)*,
   and written as the name, the number, or both.
+- **How a value is shown**: to the places after the point the `FORMAT` asks
+  for -- the parameter's own, then its conversion's, so `%6.1` shows 13.2 --
+  and with the parameter's own `PHYS_UNIT` where it gives one, in place of its
+  conversion's. A value shown raw is shown as it is, whatever either says.
+- **Text**: an `ASCII` characteristic, as many bytes as its `NUMBER` or
+  `MATRIX_DIM` says, is read as text up to its first NUL and written as text,
+  with NULs after it to fill the space; text longer than the space is not
+  written.
+- **Groups and functions**: `GROUP` (with `REF_CHARACTERISTIC`,
+  `REF_MEASUREMENT` and `SUB_GROUP`), `FUNCTION` (with what it defines, uses and
+  puts out, and `SUB_FUNCTION`), and the `FUNCTION_LIST` an older file puts in a
+  parameter, for the **Group** box.
 - **Bit masks.** A masked value is read as its own bits. Writing one reads the
   stored value first and puts the other bits back as they were.
 - **Byte order**: the parameter's own where it states one, then the file's, and
@@ -230,7 +246,7 @@ load axis.
 
 ## What is not read
 
-Listed, in grey, and not read: three-dimensional maps, text, an axis that is
+Listed, in grey, and not read: three-dimensional maps, an axis that is
 a `RES_AXIS` or a `CURVE_AXIS` or is stored as differences, a part of a
 record reached through a pointer, arrays of more than 4,096 values, a
 measurement the file gives no address, and a characteristic whose record
