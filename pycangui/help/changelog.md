@@ -24,9 +24,12 @@ since the last version, and comes out in the next one.
 - XCP / CCP: values are shown to the A2L's FORMAT and with its PHYS_UNIT; ASCII characteristics are read and written as text.
 - XCP: a command whose answer is lost is sent again after a SYNCH, with the memory pointer put back; a busy slave is asked again; the timeouts T1 to T7 come from the A2L's PROTOCOL_LAYER.
 - XCP: connecting asks GET_ID for the slave's A2L, and says it.
+- XCP / CCP: the A2L is watched, and a change on disk asks whether to read it again; *A2L > Reload* does so by hand, keeping plot ticks and open tables.
+- Loaded databases are watched, and a change on disk asks whether to read them again, once for all that changed together.
 
 ### Changed
 
+- XCP / CCP: the *A2L* button is on its own row above the tabs, since the Transfer tab uses the file too.
 - The Python Console's Clear button is gone: *Clear all* on its right-click does the same.
 - The Replay menu shows the file loaded, ticks it in a *Recent files* submenu, and has icons; *Loop* is with the speeds.
 

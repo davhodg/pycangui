@@ -31,6 +31,17 @@ A loaded database is loaded again next time. One kept outside the workspace
 can be copied into it when you load it, so it travels with the workspace; see
 [Workspaces](workspaces.md).
 
+**A database changed on disk is noticed.** When a newer version of a loaded
+database is written -- a pull, a new release, another tool -- pycangui asks
+whether to read it again, once for all the databases that changed together.
+Yes reads each in its place among the others, so which of two databases
+defining one message wins does not change; a message it no longer has leaves
+Signals and Plot. A file that no longer reads leaves the version there was. No
+leaves them, and is not asked again until the file changes again. A copy in the
+workspace is watched through the file it was copied from, and copied in again.
+Changes being made to the database in the [Database](database.md) pane are asked
+about first. A file pycangui writes itself, with *Save as...*, is not asked about.
+
 Once loaded: the trace shows the message
 name and the **Signals and Plot** pane lists every signal with its live value.
 CANopen PDO values appear there too, a node's TPDOs and the RPDOs it is

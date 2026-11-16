@@ -355,6 +355,18 @@ class XcpManager(QObject):
         raise to stop it: the A2L there was stays the one in use.
         """
         self.a2l = A2l.load(path, progress)
+        # What was being polled goes on being polled where the new file still
+        # has it -- the same file read again, after a build, is the usual
+        # case -- and stops where it does not.
+        self._polled = {
+            name: found
+            for name in self._polled
+            if (found := self.a2l.find(name)) is not None
+            and found.readable
+            and not (found.is_array or found.is_table or found.is_text)
+        }
+        if not self._polled:
+            self._poll_timer.stop()
         self.a2l_loaded.emit(len(self.a2l.parameters))
         where = workspace_files.shown(path, self._ctx.workspace_dir)
         self.result.emit(
@@ -611,6 +623,11 @@ class XcpManager(QObject):
         self._submit(f"write {param.name}", fn)
 
     # --- polling ---------------------------------------------------------------------
+    @property
+    def polled(self) -> list[str]:
+        """The names being polled into the signal hub."""
+        return list(self._polled)
+
     def set_polled(self, name: str, on: bool) -> None:
         param = self.a2l.find(name) if self.a2l else None
         if param is None or not param.readable or param.is_array or param.is_table or param.is_text:

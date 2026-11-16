@@ -6,6 +6,7 @@ on its Transfer tab, flash a file, read memory out, and have it summed."""
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Slot
@@ -35,6 +36,7 @@ from pycangui.ui import folders, fonts, icons, keep_file, messages, seedkey_view
 from pycangui.ui.buttons import SplitButton
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.confirm import Confirmations
+from pycangui.ui.file_watch import FileWatch
 from pycangui.ui.persist import remember
 from pycangui.ui.xcp_table import TableWindow
 from pycangui.ui.xcp_transfer import TransferTab
@@ -49,7 +51,18 @@ UNLOCK_TIP = (
     "the seed and key DLL chosen under the arrow."
 )
 A2L_MENU_TIP = (
-    "The file the parameter names come from: load one, or forget the one\nnamed beside this."
+    "The file the parameter names and the Transfer tab's areas come from:\n"
+    "load one, read it again, or forget the one named beside this."
+)
+#: Where an A2L copied into the workspace was copied from, so that a newer
+#: build of it is noticed and can be copied in again.
+SOURCE_KEY = "xcp.a2l_source"
+CHANGED_TITLE = "The A2L has changed"
+CHANGED_TEXT = (
+    "{name} has been changed on disk since it was loaded.\n"
+    "\n"
+    "Read it again? Parameters ticked for the plot, and curves and maps open\n"
+    "as tables, are kept where the file still has them."
 )
 
 #: A big A2L takes seconds to read and longer to list. Nothing is shown for
@@ -444,6 +457,13 @@ class XcpView(QWidget):
             "can be used by name and in physical units rather than by address."
         )
         load.triggered.connect(lambda _checked=False: self._load_a2l())
+        self.reload_a2l_action = icons.beside(a2l_menu.addAction("Reload"), icons.RELOAD)
+        self.reload_a2l_action.setToolTip(
+            "Read the A2L again, after a new build has written it. One copied into\n"
+            "the workspace is copied in again from where it came from, if that is\n"
+            "still there. Ticks for the plot and open tables are kept."
+        )
+        self.reload_a2l_action.triggered.connect(lambda _checked=False: self.reload_a2l())
         self.remove_a2l_action = icons.beside(a2l_menu.addAction("Remove"), icons.REMOVE)
         self.remove_a2l_action.setToolTip(
             "Forget this A2L. The parameters go with it; the connection and\n"
@@ -451,9 +471,12 @@ class XcpView(QWidget):
         )
         self.remove_a2l_action.triggered.connect(lambda _checked=False: self._remove_a2l())
         self.a2l_btn.setMenu(a2l_menu)
+        # Above the tabs, beside the connection: both tabs use the A2L, the
+        # Parameters tab for its names and the Transfer tab for its areas.
+        a2l_row = QHBoxLayout()
+        a2l_row.addWidget(self.a2l_btn)
+        a2l_row.addWidget(self.a2l_label, 1)
         row = QHBoxLayout()
-        row.addWidget(self.a2l_btn)
-        row.addWidget(self.a2l_label)
         row.addWidget(self.group_box)
         row.addWidget(self.search, 1)
         row.addWidget(self.plotted_only)
@@ -481,6 +504,7 @@ class XcpView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.addLayout(bar)
+        layout.addLayout(a2l_row)
         layout.addWidget(self.tabs, 1)
         layout.addWidget(self.output)
 
@@ -491,6 +515,13 @@ class XcpView(QWidget):
         manager.a2l_loaded.connect(lambda _n: self._whose_ids())
         manager.value.connect(self._on_value)
         manager.reshaped.connect(self._on_reshaped)
+        #: Notices the A2L being changed on disk, and asks whether to read it again.
+        self.watch = FileWatch(self)
+        self.watch.changed.connect(self._a2l_changed)
+        #: A change noticed while a transfer ran, asked about when it ends.
+        self._change_waiting = ""
+        manager.a2l_loaded.connect(lambda _n: self._watch_a2l())
+        manager.transferring.connect(self._transfer_running)
         manager.text.connect(self._on_text)
         manager.connected.connect(lambda _on: self._ids_changed())
         self.engine_box.currentTextChanged.connect(lambda _n: self._engine_changed())
@@ -498,6 +529,7 @@ class XcpView(QWidget):
         if manager.a2l is not None:
             self._populate()
         self._show_a2l()
+        self._watch_a2l()
         self._ids_changed()
         self._engine_changed()
         self._whose_ids()
@@ -616,6 +648,75 @@ class XcpView(QWidget):
         value = keep_file.offer_and_load(self, self.ctx, path, workspace_files.A2L, self.load_a2l)
         if value is not None:
             self.ctx.settings.set("xcp.a2l", value)
+            used = workspace_files.resolve(value, self.ctx.workspace_dir)
+            if used.resolve() != Path(path).resolve():
+                self.ctx.settings.set(SOURCE_KEY, str(Path(path).resolve()))
+            else:
+                self.ctx.settings.remove(SOURCE_KEY)
+            self._watch_a2l()
+
+    def _source(self) -> Path | None:
+        """Where a copy in the workspace came from, while that is still there."""
+        source = str(self.ctx.settings.get(SOURCE_KEY, "") or "")
+        return Path(source) if source and Path(source).is_file() else None
+
+    def _in_use(self) -> Path | None:
+        remembered = str(self.ctx.settings.get("xcp.a2l", "") or "")
+        if not remembered:
+            return None
+        return workspace_files.resolve(remembered, self.ctx.workspace_dir)
+
+    def _watch_a2l(self) -> None:
+        """Watch the A2L in use -- or for a copy, the file it was copied from,
+        since the copy itself only changes when it is copied again."""
+        if self.manager.a2l is None:
+            self.watch.watch(None)
+            return
+        self.watch.watch(self._source() or self._in_use())
+
+    def reload_a2l(self) -> bool:
+        """Read the A2L in use again: copied in again first, where it is a copy
+        and the file it came from is still there."""
+        used, source = self._in_use(), self._source()
+        if used is None:
+            return False
+        if source is not None and source.resolve() != used.resolve():
+            try:
+                shutil.copy2(source, used)
+            except OSError as exc:
+                self._append(f"A2L: {source} could not be copied in again: {exc}")
+                return False
+            self._append(f"A2L: copied in again from {source}")
+        if not used.is_file():
+            self._append(f"A2L: {used} is not there to read")
+            return False
+        loaded = self.load_a2l(str(used))
+        self._show_a2l()
+        return loaded
+
+    def _a2l_changed(self, path: str) -> None:
+        """The file has new contents: ask, unless a transfer is running, in which
+        case ask when it has finished rather than in the middle of a flash."""
+        if self.manager.is_transferring:
+            self._change_waiting = path
+            return
+        answer = messages.question(
+            self,
+            CHANGED_TITLE,
+            CHANGED_TEXT.format(name=Path(path).name),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer == QMessageBox.Yes:
+            self.reload_a2l()
+        else:
+            self._append(f"A2L: {Path(path).name} has changed, and was not read again")
+
+    @Slot(bool)
+    def _transfer_running(self, on: bool) -> None:
+        if not on and self._change_waiting:
+            path, self._change_waiting = self._change_waiting, ""
+            self._a2l_changed(path)
 
     def _show_a2l(self) -> None:
         """Name the A2L in use, or say there is none."""
@@ -631,13 +732,19 @@ class XcpView(QWidget):
             self.a2l_label.setText(f"{Path(remembered).name} (missing)")
         else:
             self.a2l_label.setText("none loaded")
-        self.a2l_label.setToolTip(remembered)
+        source = self._source()
+        self.a2l_label.setToolTip(
+            remembered + (f"\ncopied from {source}, which is watched" if source else "")
+        )
         self.remove_a2l_action.setEnabled(loaded or bool(remembered))
+        self.reload_a2l_action.setEnabled(bool(remembered))
 
     def _remove_a2l(self) -> None:
         """Forget the A2L, whether or not the file is still where it was."""
         self.manager.clear_a2l()
         self.ctx.settings.remove("xcp.a2l")
+        self.ctx.settings.remove(SOURCE_KEY)
+        self.watch.watch(None)
         self._populate()
         self._show_a2l()
         self._append("A2L removed")
@@ -664,9 +771,12 @@ class XcpView(QWidget):
         return True
 
     def _populate(self) -> None:
-        # Tables of the A2L there was name what may not be in this one.
+        # Tables of the A2L there was name what may not be in this one: closed,
+        # and opened again below where this one still has them.
+        open_tables = list(self._tables)
         for window in list(self._tables.values()):
             window.close()
+        polled = set(self.manager.polled)
         self._updating = True
         self.tree.clear()
         self._items.clear()
@@ -693,7 +803,8 @@ class XcpView(QWidget):
                     pass  # a table, read as one; or text, which is not plotted
                 elif param.readable:
                     item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                    item.setCheckState(5, Qt.Unchecked)
+                    # Still polled after the file was read again: ticked.
+                    item.setCheckState(5, Qt.Checked if param.name in polled else Qt.Unchecked)
                 else:
                     # Listed, so the file is seen whole; grey, and nothing to
                     # tick, because there is nothing here that reads it.
@@ -705,6 +816,12 @@ class XcpView(QWidget):
         self._updating = False
         self._fill_groups()
         self._apply_filter()  # a new A2L arrives into whatever filter is set
+        for name in open_tables:
+            param = a2l.find(name) if a2l is not None else None
+            if param is not None and param.is_table and param.readable:
+                self.open_table(name)
+                if self.manager.is_connected:
+                    self.manager.read(name)
 
     def _fill_groups(self) -> None:
         """The GROUPs, then the FUNCTIONs, each indented under the one it is in."""

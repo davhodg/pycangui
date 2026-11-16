@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import shutil
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -83,6 +84,7 @@ from pycangui.ui.connect_bar import ConnectBar
 from pycangui.ui.console_view import ConsoleView
 from pycangui.ui.custom_pane_view import CustomPaneView
 from pycangui.ui.database_view import DatabaseView
+from pycangui.ui.dbc_watch import DbcWatch
 from pycangui.ui.diagnostics import RECENT_PROBLEMS
 from pycangui.ui.help_menu import HelpMenu
 from pycangui.ui.j1939_view import J1939View
@@ -249,6 +251,16 @@ WIDTHS_MANUAL_TIP = (
 )
 #: How many clashing names a warning lists before it counts the rest.
 MOST_CLASHES = 5
+#: Where each database copied into the workspace was copied from: its value in
+#: dbc.paths -> the original, so that a newer version of it is noticed.
+DBC_SOURCES_KEY = "dbc.sources"
+DBCS_CHANGED_TITLE = "A database has changed"
+DBCS_CHANGED_TEXT = (
+    "{names} {verb} been changed on disk since {pronoun} loaded.\n"
+    "\n"
+    "Read {pronoun2} again? Frames are decoded by the new version from then on,\n"
+    "and a message it no longer has leaves Signals and Plot."
+)
 DEFAULT_WIDTH = 1400
 DEFAULT_HEIGHT = 900
 
@@ -571,8 +583,12 @@ class MainWindow(QMainWindow):
         # Resolved against the workspace: a file kept in it is remembered
         # relative to it, so that it is found wherever the workspace is.
         workspace = self.ctx.workspace_dir
+        #: Notices a database being changed on disk, and asks whether to read it again.
+        self.dbc_watch = DbcWatch(self)
+        self.dbc_watch.changed.connect(self._dbcs_changed)
         for value in self.ctx.settings.get("dbc.paths", []):
             self._load_dbc(str(workspace_files.resolve(value, workspace)))
+        self._watch_dbcs()
         timing.mark("databases")
         if a2l := self.ctx.settings.get("xcp.a2l"):
             a2l = workspace_files.resolve(a2l, workspace)
@@ -1141,6 +1157,8 @@ class MainWindow(QMainWindow):
         view.trace_wanted.connect(self._trace_from_database)
         view.plot_wanted.connect(self._plot_from_database)
         view.saved_as.connect(self._database_saved_as)
+        # Its own writes are not changes made elsewhere to ask about.
+        view.written.connect(lambda path: self.dbc_watch.written(path))
         return view
 
     def _database_saved_as(self, old: str, new: str, renames: dict) -> None:
@@ -1179,8 +1197,11 @@ class MainWindow(QMainWindow):
         before = {msg.name for msg in self.dbc.messages()}
         self.dbc.unload(old)
         self.ctx.settings.set("dbc.paths", paths)
+        # The new file is nobody's copy: what the old one came from is not its source.
+        self._forget_dbc_source("", before=old)
         if self._load_dbc(new):
             self._forget_decoded(before - {msg.name for msg in self.dbc.messages()})
+        self._watch_dbcs()
         orphaned = sorted(
             {
                 spec.get("message", "")
@@ -2796,8 +2817,10 @@ class MainWindow(QMainWindow):
         self.dbc.unload(resolved)
         paths = [p for p in self.ctx.settings.get("dbc.paths", []) if str(p) != remembered]
         self.ctx.settings.set("dbc.paths", paths)
+        self._forget_dbc_source(remembered)
         self._forget_decoded(before - {msg.name for msg in self.dbc.messages()})
         self._refresh_transmit_sources()
+        self._watch_dbcs()
         self.events.information(f"Removed {Path(resolved).name}")
 
     def _forget_decoded(self, message_names) -> None:
@@ -2834,7 +2857,9 @@ class MainWindow(QMainWindow):
         paths = list(self.ctx.settings.get("dbc.paths", []))
         chosen = Path(path).resolve()
         if any(workspace_files.resolve(p, workspace).resolve() == chosen for p in paths):
-            return self._load_dbc(path, offer_relaxing=True)  # remembered already
+            loaded = self._load_dbc(path, offer_relaxing=True)  # remembered already
+            self._watch_dbcs()
+            return loaded
         value = keep_file.offer_and_load(
             self,
             self.ctx,
@@ -2845,6 +2870,108 @@ class MainWindow(QMainWindow):
         if value is None:
             return False
         self.ctx.settings.set("dbc.paths", [*paths, value])
+        sources = dict(self.ctx.settings.get(DBC_SOURCES_KEY, {}) or {})
+        if workspace_files.resolve(value, workspace).resolve() != chosen:
+            sources[value] = str(chosen)  # a copy: the original is the one that changes
+        else:
+            sources.pop(value, None)
+        self.ctx.settings.set(DBC_SOURCES_KEY, sources)
+        self._watch_dbcs()
+        return True
+
+    # --- databases changed on disk --------------------------------------------------------
+    def _forget_dbc_source(self, remembered: str, before: str = "") -> None:
+        """Forget where a database was copied from: the one remembered as
+        ``remembered``, or the one loaded from ``before``."""
+        sources = dict(self.ctx.settings.get(DBC_SOURCES_KEY, {}) or {})
+        workspace = self.ctx.workspace_dir
+        for value in list(sources):
+            if value == str(remembered) or (
+                before
+                and workspace_files.resolve(value, workspace).resolve() == Path(before).resolve()
+            ):
+                sources.pop(value)
+        if sources:
+            self.ctx.settings.set(DBC_SOURCES_KEY, sources)
+        else:
+            self.ctx.settings.remove(DBC_SOURCES_KEY)
+
+    def _dbc_in_use(self) -> dict[str, tuple[str, Path | None]]:
+        """Each remembered database that is loaded, by the path it is loaded
+        under: (its value in dbc.paths, the file it was copied from if that is there)."""
+        workspace = self.ctx.workspace_dir
+        sources = dict(self.ctx.settings.get(DBC_SOURCES_KEY, {}) or {})
+        loaded = {Path(key).resolve(): key for key in self.dbc.databases}
+        found: dict[str, tuple[str, Path | None]] = {}
+        for value in self.ctx.settings.get("dbc.paths", []):
+            key = loaded.get(workspace_files.resolve(str(value), workspace).resolve())
+            if key is None:
+                continue  # missing: nothing to read again
+            source = sources.get(str(value))
+            found[key] = (str(value), Path(source) if source and Path(source).is_file() else None)
+        return found
+
+    def _watch_dbcs(self) -> None:
+        """Watch each database in use -- or for a copy, the file it came from.
+
+        Only the ones remembered with the workspace: a database a hook loaded
+        is the hook's to look after.
+        """
+        self.dbc_watch.watch(
+            {key: source or Path(key) for key, (_value, source) in self._dbc_in_use().items()}
+        )
+
+    @Slot(list)
+    def _dbcs_changed(self, keys: list) -> None:
+        """Databases have new contents: one question about all of them."""
+        keys = [key for key in keys if key in self.dbc.databases]
+        if not keys:
+            return
+        names = ", ".join(Path(key).name for key in keys)
+        many = len(keys) > 1
+        answer = messages.question(
+            self,
+            DBCS_CHANGED_TITLE,
+            DBCS_CHANGED_TEXT.format(
+                names=names,
+                verb="have" if many else "has",
+                pronoun="they were" if many else "it was",
+                pronoun2="them" if many else "it",
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            self.events.information(f"{names}: changed on disk, and not read again")
+            return
+        for key in keys:
+            self.reload_dbc(key)
+
+    def reload_dbc(self, key: str) -> bool:
+        """Read a loaded database again, in its place among the others.
+
+        Changes being made to it in the Database pane are asked about first:
+        saved as a new file, or let go. A copy in the workspace is copied in
+        again from where it came from. A file that no longer reads leaves the
+        version there was loaded. Returns whether it was read.
+        """
+        _value, source = self._dbc_in_use().get(key, ("", None))
+        if not self.database_view.may_discard(key):
+            return False
+        if source is not None and source.resolve() != Path(key).resolve():
+            try:
+                shutil.copy2(source, key)
+            except OSError as exc:
+                self.events.warning(f"{Path(key).name}: not copied in again from {source}: {exc}")
+                return False
+            self.events.information(f"{Path(key).name}: copied in again from {source}")
+        self.database_view.forget_edit(key)
+        before = {msg.name for msg in self.dbc.messages()}
+        # Loaded under the same path, so it keeps its place: which of two
+        # databases defining one message wins does not change by reading it.
+        if not self._load_dbc(key, offer_relaxing=True):
+            return False
+        self._forget_decoded(before - {msg.name for msg in self.dbc.messages()})
         return True
 
     def _load_dbc(self, path: str, offer_relaxing: bool = False) -> bool:
@@ -2924,6 +3051,8 @@ class MainWindow(QMainWindow):
         for path in list(self.dbc.databases):
             self.dbc.unload(path)
         self.ctx.settings.set("dbc.paths", [])
+        self.ctx.settings.remove(DBC_SOURCES_KEY)
+        self._watch_dbcs()
         self._forget_decoded(before)
         self._refresh_transmit_sources()
         self.events.information("DBC databases unloaded")

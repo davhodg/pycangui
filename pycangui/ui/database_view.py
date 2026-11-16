@@ -462,6 +462,8 @@ class DatabaseView(QWidget):
     #: A database saved as a new file: the file it came from, the new one,
     #: and its messages renamed, old name -> new.
     saved_as = Signal(str, str, dict)
+    #: A file just written here, so that it is not taken for a change made elsewhere.
+    written = Signal(str)
 
     def __init__(
         self, dbc: DbcDecoder, hub: SignalHub, ctx: Context, parent: QWidget | None = None
@@ -799,6 +801,13 @@ class DatabaseView(QWidget):
     def editing(self) -> DatabaseEdit | None:
         return self._edit
 
+    def forget_edit(self, path: str) -> None:
+        """``path`` is being read again from disk: an edit of it with nothing
+        changed yet was made from what it held before, and goes."""
+        if self._is_edited(path) and not self._edit.changed:
+            self._edit = None
+            self._changed()
+
     def _session(self, path: str) -> DatabaseEdit | None:
         """The edit of this file: the one there is, a new one, or None -- said why."""
         if self._is_edited(path):
@@ -1128,6 +1137,7 @@ class DatabaseView(QWidget):
         except (EditError, OSError) as exc:
             messages.warning(self, "Not saved", str(exc))
             return False
+        self.written.emit(str(target))
         if differences:
             listed = "\n".join(f"{f.where}: {f.what}" for f in differences[:8])
             messages.warning(

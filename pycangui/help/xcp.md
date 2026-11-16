@@ -74,7 +74,8 @@ correct, because slaves in the field are careless with it and refusing a good
 answer over a counter would waste an afternoon.
 
 Set the identifiers, Connect,
-choose **Load...** under the **A2L** button and the MEASUREMENTs and CHARACTERISTICs appear. A file
+choose **Load...** under the **A2L** button, on its own row above the tabs since both
+tabs use the file, and the MEASUREMENTs and CHARACTERISTICs appear. A file
 big enough to take more than a moment shows how far it has got, and *Cancel*
 while it is being read leaves the A2L there was in use.
 Double-click to read one, edit a characteristic's value to write it (unlock CAL
@@ -93,7 +94,18 @@ shows one of them at a time, with the groups inside it, each listed under the
 one it is in; the filter then narrows that further. A file with none shows no
 box. Which file the names came from is shown beside the
 **A2L** button, and **Remove** under it forgets the file -- including one that has moved since, which
-is reported at startup and then sits there marked *(missing)*. The demo device
+is reported at startup and then sits there marked *(missing)*. **Reload** reads it
+again, after a new build has written it.
+
+The file is watched while it is loaded, and when it is changed on disk -- once
+it has been left alone for a second, and only if what is in it is different --
+you are asked whether to read it again. *No* is not asked again until it
+changes again, and a change during a transfer is asked about when the transfer
+has finished. Reading it again keeps the parameters ticked for the plot and
+the curves and maps open as tables, where the new file still has them. An A2L
+copied into the workspace is a copy that never changes by itself, so it is the
+file it was copied from that is watched, and Reload copies that in again
+first; the tooltip on the file's name says where it came from. The demo device
 answers XCP on 0x7A0/0x7A1 and CCP on 0x7B0/0x7B1 at station 1, and both match
 `resources/demo.a2l`.
 
