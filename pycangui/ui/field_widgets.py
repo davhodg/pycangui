@@ -54,7 +54,7 @@ from pycangui.canopen.display import (
     out_of_range,
 )
 from pycangui.canopen.display import text as value_text
-from pycangui.custom_panes.model import Field, display_for
+from pycangui.custom_panes.model import Field, display_for, key_text
 from pycangui.ui import icons, plot_colours
 
 #: A value that was refused, and one that has not been read yet.
@@ -80,16 +80,16 @@ MAX_POINTS = 128
 class FieldWidget(QWidget):
     """One object on a pane: shows what it is, and asks for what it should be.
 
-    Everything is by (index, sub) rather than implied, because a map is one
-    field over many sub-indices and the rest of the machinery should not have
-    to know which sort it is holding.
+    Everything is by key rather than implied -- ``(index, sub)`` on CANopen,
+    a name on XCP -- because a map is one field over many sub-indices and the
+    rest of the machinery should not have to know which sort it is holding.
     """
 
     #: Please fetch this. The pane forwards it to whatever source it is bound
     #: to -- a live node, a DCF, an EDS's defaults.
-    read_requested = Signal(int, int)
-    #: index, sub, raw value to write.
-    write_requested = Signal(int, int, object)
+    read_requested = Signal(object)
+    #: key, raw value to write.
+    write_requested = Signal(object, object)
     #: Something the user should be told: a refusal, mostly.
     message = Signal(str)
     #: It started or stopped holding a change that has not been written.
@@ -114,10 +114,10 @@ class FieldWidget(QWidget):
     # --- what the pane asks of it ---------------------------------------------------
     def refresh(self) -> None:
         """Ask for whatever this field needs in order to show itself."""
-        self.read_requested.emit(self.field.index, self.field.sub)
+        self.read_requested.emit(self.field.key)
 
-    def set_value(self, index: int, sub: int, raw: Any, error: Any = None) -> None:
-        if (index, sub) != self.field.where:
+    def set_value(self, key: Any, raw: Any, error: Any = None) -> None:
+        if key != self.field.key:
             return
         self._raw = None if error else raw
         self._show(raw, error)
@@ -145,8 +145,7 @@ class FieldWidget(QWidget):
 
     # --- shared helpers -------------------------------------------------------------------
     def _tooltip(self) -> str:
-        where = f"0x{self.field.index:04X}:{self.field.sub:02X}"
-        lines = [where]
+        lines = [key_text(self.field.key)]
         if self.display.description:
             lines.append(self.display.description)
         if limits := limits_text(self.display):
@@ -248,7 +247,7 @@ class FieldWidget(QWidget):
         """Multiply what is typed, without writing it."""
 
     def label_text(self) -> str:
-        return self.display.name or f"0x{self.field.index:04X}:{self.field.sub:02X}"
+        return self.display.name or key_text(self.field.key)
 
 
 class ValueWidget(FieldWidget):
@@ -325,7 +324,7 @@ class _EntryWidget(FieldWidget):
             self._put_back()
             return
         self._set_pending(False)
-        self.write_requested.emit(self.field.index, self.field.sub, self._to_wire(raw))
+        self.write_requested.emit(self.field.key, self._to_wire(raw))
 
     def _as_raw(self, typed: str) -> float | None:
         return as_number(typed)
@@ -448,7 +447,7 @@ class EnumWidget(FieldWidget):
         if (data := self.box.currentData()) is None:
             return
         self._set_pending(False)
-        self.write_requested.emit(self.field.index, self.field.sub, int(data))
+        self.write_requested.emit(self.field.key, int(data))
 
     def _put_back(self) -> None:
         self._set_pending(False)
@@ -500,7 +499,7 @@ class FlagsWidget(FieldWidget):
             # them. Put the tick back and say so rather than guessing.
             self._refuse("not read yet, so the other bits are unknown")
             self.boxes[bit].setChecked(not checked)
-            self.read_requested.emit(self.field.index, self.field.sub)
+            self.read_requested.emit(self.field.key)
             return
         mask = 1 << bit
         if checked:
@@ -523,7 +522,7 @@ class FlagsWidget(FieldWidget):
         word = self._word()
         self._set_bits = self._cleared_bits = 0
         self._set_pending(False)
-        self.write_requested.emit(self.field.index, self.field.sub, word)
+        self.write_requested.emit(self.field.key, word)
 
     def _put_back(self) -> None:
         self._set_bits = self._cleared_bits = 0
@@ -629,7 +628,7 @@ class BitsWidget(FieldWidget):
         if self._raw is None:
             # What was typed stays, so Enter works once the read has answered.
             self._refuse("not read yet, so the rest of the word is unknown")
-            self.read_requested.emit(self.field.index, self.field.sub)
+            self.read_requested.emit(self.field.key)
             return
         if int(value) >= (1 << self.field.width):
             self._refuse(f"{value} does not fit in {self.field.width} bits")
@@ -639,9 +638,7 @@ class BitsWidget(FieldWidget):
                 self._show(self._raw, None)
             return
         self._set_pending(False)
-        self.write_requested.emit(
-            self.field.index, self.field.sub, self.field.insert(int(self._raw), int(value))
-        )
+        self.write_requested.emit(self.field.key, self.field.insert(int(self._raw), int(value)))
 
 
 class MapWidget(FieldWidget):
@@ -716,9 +713,12 @@ class MapWidget(FieldWidget):
     def refresh(self) -> None:
         """Sub 0 first: an array says how many entries it has before it says what they are."""
         self._points = 0
-        self.read_requested.emit(self.field.index, COUNT_SUB)
+        self.read_requested.emit((self.field.index, COUNT_SUB))
 
-    def set_value(self, index: int, sub: int, raw: Any, error: Any = None) -> None:
+    def set_value(self, key: Any, raw: Any, error: Any = None) -> None:
+        if not isinstance(key, tuple):
+            return  # a map is CANopen's: an array object, one sub-index a point
+        index, sub = key
         if index == self.field.x_index and self.field.x_index is not None:
             if not error and raw is not None and sub:
                 self._x[sub] = float(raw)
@@ -730,9 +730,9 @@ class MapWidget(FieldWidget):
             self._points = min(int(raw), MAX_POINTS)
             self._start_rows()
             for point in range(1, self._points + 1):
-                self.read_requested.emit(self.field.index, point)
+                self.read_requested.emit((self.field.index, point))
                 if self.field.x_index is not None:
-                    self.read_requested.emit(self.field.x_index, point)
+                    self.read_requested.emit((self.field.x_index, point))
             return
         self._y[sub] = float(raw)
         self._redraw()
@@ -820,8 +820,8 @@ class MapWidget(FieldWidget):
         staged, self._staged = self._staged, {}
         self._untint()
         self._set_pending(False)
-        for (index, sub), raw in staged.items():
-            self.write_requested.emit(index, sub, raw)
+        for where, raw in staged.items():
+            self.write_requested.emit(where, raw)
 
     def _put_back(self) -> None:
         self._staged.clear()

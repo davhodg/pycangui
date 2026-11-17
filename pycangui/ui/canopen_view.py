@@ -71,6 +71,7 @@ from pycangui.core.context import Context
 from pycangui.core.events import ERROR, GOOD
 from pycangui.core.hooks import Hooks
 from pycangui.core.named_values import plain
+from pycangui.custom_panes.model import CANOPEN
 from pycangui.custom_panes.model import Field as PaneField
 from pycangui.custom_panes.model import names as custom_names
 from pycangui.custom_panes.polling import MAX_HZ, MIN_HZ, rate_text
@@ -936,9 +937,7 @@ class CanopenView(QWidget):
             self.nodes.addTopLevelItem(item)
             source.modified.connect(lambda _on, s=source: self._show_file_state(s))
             source.value.connect(
-                lambda index, sub, raw, error, s=source: self._on_file_value(
-                    s, index, sub, raw, error
-                )
+                lambda key, raw, error, s=source: self._on_file_value(s, *key, raw, error)
             )
             self._show_file_state(source)
             self._remember_files()
@@ -1055,7 +1054,7 @@ class CanopenView(QWidget):
 
     def _show_file_value(self, item, source: FileSource, index: int, sub: int, raw, error) -> None:
         was, self._updating = self._updating, True
-        display = source.display(index, sub)
+        display = source.display((index, sub))
         item.setText(COL_VALUE, str(error) if error else _cell_text(display, raw))
         edited = source.unsaved_at(index, sub)
         for column in range(COL_VALUE + 1):
@@ -1069,12 +1068,12 @@ class CanopenView(QWidget):
         """A value typed into the tree, into the file: checked, then held in memory."""
         index, sub = item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0
         var = source._variable(index, sub)
-        raw, why = _typed_value(var, source.display(index, sub), text)
+        raw, why = _typed_value(var, source.display((index, sub)), text)
         if why:
             self.ctx.warn(f"{source.label}: {index:04X}:{sub:02X} not changed, {why}")
             self._show_file_value(item, source, index, sub, *source.current(index, sub))
             return
-        source.write(index, sub, raw)
+        source.write((index, sub), raw)
 
     # --- a node by hand, and its access level --------------------------------------
     def _node_menu(self, at) -> None:
@@ -2229,9 +2228,10 @@ class CanopenView(QWidget):
         menu = QMenu(self.od)
         how_many = "object" if len(chosen) == 1 else f"{len(chosen)} objects"
         add = menu.addMenu(f"Add {how_many} to a custom pane")
-        for name in custom_names():
+        panes = custom_names(CANOPEN)  # a pane for XCP or UDS has no use for an index
+        for name in panes:
             add.addAction(name, lambda n=name: self.add_to_custom_pane.emit(n, chosen))
-        if custom_names():
+        if panes:
             add.addSeparator()
         icons.beside(
             add.addAction("New custom pane...", lambda: self.add_to_custom_pane.emit("", chosen)),
@@ -2279,7 +2279,7 @@ class CanopenView(QWidget):
         if column == 4 and item.flags() & Qt.ItemIsEditable:
             return  # editing the value column, not a read request
         if self._od_file is not None and item.childCount() == 0:
-            self._od_file.request(item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0)
+            self._od_file.request((item.data(0, ROLE_INDEX), item.data(0, ROLE_SUB) or 0))
             return
         node_id = self.selected_node()
         if node_id is not None and item.childCount() == 0:

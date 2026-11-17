@@ -440,9 +440,9 @@ def test_with_a_file_selected_remove_node_is_close_file(app, view, eds):
 def test_a_value_changed_back_is_not_an_edit(app, view, eds):
     """Changing something and then changing it back still said the file had changed."""
     source = view.open_file(eds)
-    source.write(0x2001, 0, 300)
+    source.write((0x2001, 0), 300)
     assert source.unsaved
-    source.write(0x2001, 0, 250)  # what the file says
+    source.write((0x2001, 0), 250)  # what the file says
     assert not source.unsaved and source.edited == {}
     app.processEvents()
     assert view._od_item(0x2001, 0).background(COL_VALUE) != EDITED_COLOUR

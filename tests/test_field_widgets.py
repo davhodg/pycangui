@@ -30,8 +30,8 @@ def made(item: Field, display: Display | None = None):
     written: list[tuple] = []
     asked: list[tuple] = []
     said: list[str] = []
-    widget.write_requested.connect(lambda *a: written.append(a))
-    widget.read_requested.connect(lambda *a: asked.append(a))
+    widget.write_requested.connect(lambda key, raw: written.append((key, raw)))
+    widget.read_requested.connect(asked.append)
     widget.message.connect(said.append)
     return widget, written, asked, said
 
@@ -83,7 +83,7 @@ def test_a_field_asks_for_what_it_needs(app):
 
 def test_a_value_for_another_object_is_not_this_field_s(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="value"))
-    widget.set_value(0x2002, 0, 999, None)
+    widget.set_value((0x2002, 0), 999, None)
     assert widget.value.text() == "--"
 
 
@@ -92,13 +92,13 @@ def test_a_read_only_value_is_said_in_its_own_terms(app):
     widget, _w, _a, _s = made(
         Field(index=0x2001, kind="value"), Display(unit="ms", factor=0.001, decimals=0)
     )
-    widget.set_value(0x2001, 0, 20000, None)
+    widget.set_value((0x2001, 0), 20000, None)
     assert widget.value.text() == "20 ms"
 
 
 def test_a_value_that_could_not_be_read_says_why(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="value"))
-    widget.set_value(0x2001, 0, None, "Abort 0x06020000")
+    widget.set_value((0x2001, 0), None, "Abort 0x06020000")
     assert widget.value.text() == "Abort 0x06020000"
 
 
@@ -108,17 +108,17 @@ def test_a_number_is_typed_in_the_units_it_is_shown_in(app):
     widget, written, _a, _s = made(
         Field(index=0x2001, kind="number"), Display(unit="A", factor=0.1, decimals=1)
     )
-    widget.set_value(0x2001, 0, 1234, None)
+    widget.set_value((0x2001, 0), 1234, None)
     assert widget.edit.text() == "123.4"
 
     widget.edit.setText("50")
     enter(widget.edit)
-    assert written == [(0x2001, 0, 500)]
+    assert written == [((0x2001, 0), 500)]
 
 
 def test_a_number_outside_the_limits_never_reaches_the_bus(app):
     widget, written, _a, said = made(Field(index=0x2001, kind="number"), Display(low=0, high=1000))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     widget.edit.setText("2000")
     enter(widget.edit)
 
@@ -129,7 +129,7 @@ def test_a_number_outside_the_limits_never_reaches_the_bus(app):
 
 def test_something_that_is_not_a_number_is_refused_the_same_way(app):
     widget, written, _a, said = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 7, None)
+    widget.set_value((0x2001, 0), 7, None)
     widget.edit.setText("fifty")
     enter(widget.edit)
     assert written == []
@@ -157,19 +157,19 @@ def test_a_source_that_cannot_be_written_to_does_not_offer_to(app):
 # --- hex ----------------------------------------------------------------------------------
 def test_hex_is_shown_and_typed_in_hex(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="hex"))
-    widget.set_value(0x2001, 0, 0x1F, None)
+    widget.set_value((0x2001, 0), 0x1F, None)
     assert widget.edit.text() == "0x1F"
 
     widget.edit.setText("2A")  # bare digits are hex, since that is what it shows
     enter(widget.edit)
-    assert written == [(0x2001, 0, 0x2A)]
+    assert written == [((0x2001, 0), 0x2A)]
 
 
 def test_a_hex_box_takes_a_prefix_too(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="hex"))
     widget.edit.setText("0x2A")
     enter(widget.edit)
-    assert written == [(0x2001, 0, 0x2A)]
+    assert written == [((0x2001, 0), 0x2A)]
 
 
 # --- a named choice -------------------------------------------------------------------------
@@ -178,21 +178,21 @@ def test_a_dropdown_offers_what_the_file_named(app):
     widget, written, _a, _s = made(item)
     assert widget.box.count() == 3
 
-    widget.set_value(0x2001, 0, 1, None)
+    widget.set_value((0x2001, 0), 1, None)
     assert "Run" in widget.box.currentText()
 
     widget.box.setCurrentIndex(2)
     widget.box.activated.emit(2)
     assert written == [] and widget.pending, "held, not written"
     widget.write_pending()
-    assert written == [(0x2001, 0, 2)] and not widget.pending
+    assert written == [((0x2001, 0), 2)] and not widget.pending
 
 
 def test_a_value_nobody_named_is_admitted_rather_than_hidden(app):
     """A dropdown quietly showing the wrong entry is worse than one that says
     it does not know this value."""
     widget, _w, _a, _s = made(Field(index=0x2001, kind="enum", choices={0: "Off", 1: "Run"}))
-    widget.set_value(0x2001, 0, 7, None)
+    widget.set_value((0x2001, 0), 7, None)
     assert "7" in widget.box.currentText() and "not named" in widget.box.currentText()
 
 
@@ -205,19 +205,19 @@ def test_only_the_named_bits_get_a_tick(app):
 
 def test_the_ticks_follow_the_word(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="flags", bits={0: "Ready", 3: "Fault"}))
-    widget.set_value(0x2001, 0, 0b1001, None)
+    widget.set_value((0x2001, 0), 0b1001, None)
     assert widget.boxes[0].isChecked() and widget.boxes[3].isChecked()
-    widget.set_value(0x2001, 0, 0b0001, None)
+    widget.set_value((0x2001, 0), 0b0001, None)
     assert widget.boxes[0].isChecked() and not widget.boxes[3].isChecked()
 
 
 def test_ticking_one_flag_keeps_the_rest_of_the_word(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="flags", bits={0: "Ready", 3: "Fault"}))
-    widget.set_value(0x2001, 0, 0b1010_0001, None)
+    widget.set_value((0x2001, 0), 0b1010_0001, None)
     widget.boxes[3].click()
     assert written == [] and widget.pending, "held, not written"
     widget.write_pending()
-    assert written == [(0x2001, 0, 0b1010_1001)], "the bits nobody is showing are still there"
+    assert written == [((0x2001, 0), 0b1010_1001)], "the bits nobody is showing are still there"
 
 
 def test_a_flag_will_not_be_written_before_the_word_is_read(app):
@@ -234,21 +234,21 @@ def test_a_flag_will_not_be_written_before_the_word_is_read(app):
 # --- a field inside a word ---------------------------------------------------------------------
 def test_some_bits_of_a_word_are_read_out_of_it(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="bits", first=4, width=3))
-    widget.set_value(0x2001, 0, 0x50, None)
+    widget.set_value((0x2001, 0), 0x50, None)
     assert widget.edit.text() == "5"
 
 
 def test_writing_some_bits_keeps_the_others(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="bits", first=4, width=3))
-    widget.set_value(0x2001, 0, 0xFF, None)
+    widget.set_value((0x2001, 0), 0xFF, None)
     widget.edit.setText("2")
     enter(widget.edit)
-    assert written == [(0x2001, 0, 0xAF)]
+    assert written == [((0x2001, 0), 0xAF)]
 
 
 def test_a_value_too_wide_for_the_field_is_refused(app):
     widget, written, _a, said = made(Field(index=0x2001, kind="bits", first=4, width=3))
-    widget.set_value(0x2001, 0, 0x00, None)
+    widget.set_value((0x2001, 0), 0x00, None)
     widget.edit.setText("9")  # three bits hold 0..7
     enter(widget.edit)
     assert written == []
@@ -282,7 +282,7 @@ def test_a_map_asks_how_many_points_before_asking_what_they_are(app):
     widget.refresh()
     assert asked == [(0x2100, 0)]
 
-    widget.set_value(0x2100, 0, 3, None)
+    widget.set_value((0x2100, 0), 3, None)
     assert asked[1:] == [(0x2100, 1), (0x2100, 2), (0x2100, 3)]
     assert widget.table.rowCount() == 3
 
@@ -290,9 +290,9 @@ def test_a_map_asks_how_many_points_before_asking_what_they_are(app):
 def test_the_points_fill_the_table_and_the_graph_together(app):
     widget, _w, _a, _s = made(Field(index=0x2100, kind="map"))
     widget.refresh()
-    widget.set_value(0x2100, 0, 3, None)
+    widget.set_value((0x2100, 0), 3, None)
     for point, value in ((1, 10), (2, 20), (3, 30)):
-        widget.set_value(0x2100, point, value, None)
+        widget.set_value((0x2100, point), value, None)
 
     assert [widget.table.item(r, 1).text() for r in range(3)] == ["10", "20", "30"]
     xs, ys = widget.curve.getData()
@@ -303,13 +303,13 @@ def test_the_points_fill_the_table_and_the_graph_together(app):
 def test_a_map_can_take_its_x_from_another_array(app):
     widget, _w, asked, _s = made(Field(index=0x2100, kind="map", x_index=0x2101))
     widget.refresh()
-    widget.set_value(0x2100, 0, 2, None)
+    widget.set_value((0x2100, 0), 2, None)
     assert (0x2101, 1) in asked and (0x2101, 2) in asked
 
-    widget.set_value(0x2100, 1, 5, None)
-    widget.set_value(0x2100, 2, 9, None)
-    widget.set_value(0x2101, 1, 100, None)
-    widget.set_value(0x2101, 2, 200, None)
+    widget.set_value((0x2100, 1), 5, None)
+    widget.set_value((0x2100, 2), 9, None)
+    widget.set_value((0x2101, 1), 100, None)
+    widget.set_value((0x2101, 2), 200, None)
     xs, ys = widget.curve.getData()
     assert list(xs) == [100, 200] and list(ys) == [5, 9]
 
@@ -317,21 +317,21 @@ def test_a_map_can_take_its_x_from_another_array(app):
 def test_editing_a_point_writes_that_sub_index(app):
     widget, written, _a, _s = made(Field(index=0x2100, kind="map"))
     widget.refresh()
-    widget.set_value(0x2100, 0, 2, None)
-    widget.set_value(0x2100, 1, 10, None)
-    widget.set_value(0x2100, 2, 20, None)
+    widget.set_value((0x2100, 0), 2, None)
+    widget.set_value((0x2100, 1), 10, None)
+    widget.set_value((0x2100, 2), 20, None)
 
     widget.table.item(1, 1).setText("25")
     assert written == [] and widget.pending, "held, not written"
     widget.write_pending()
-    assert written == [(0x2100, 2, 25)], "row two is sub-index two"
+    assert written == [((0x2100, 2), 25)], "row two is sub-index two"
 
 
 def test_a_point_outside_the_limits_is_refused_like_any_other_number(app):
     widget, written, _a, said = made(Field(index=0x2100, kind="map"), Display(low=0, high=100))
     widget.refresh()
-    widget.set_value(0x2100, 0, 1, None)
-    widget.set_value(0x2100, 1, 50, None)
+    widget.set_value((0x2100, 0), 1, None)
+    widget.set_value((0x2100, 1), 50, None)
 
     widget.table.item(0, 1).setText("500")
     assert written == []
@@ -344,13 +344,13 @@ def test_a_map_is_scaled_the_way_a_number_is(app):
         Field(index=0x2100, kind="map"), Display(unit="A", factor=0.1, decimals=1)
     )
     widget.refresh()
-    widget.set_value(0x2100, 0, 1, None)
-    widget.set_value(0x2100, 1, 1234, None)
+    widget.set_value((0x2100, 0), 1, None)
+    widget.set_value((0x2100, 1), 1234, None)
     assert widget.table.item(0, 1).text() == "123.4"
 
     widget.table.item(0, 1).setText("50")
     widget.write_pending()
-    assert written == [(0x2100, 1, 500)]
+    assert written == [((0x2100, 1), 500)]
 
 
 def test_a_map_that_cannot_be_written_is_not_editable(app):
@@ -362,7 +362,7 @@ def test_a_map_that_cannot_be_written_is_not_editable(app):
 def test_a_nonsense_count_does_not_ask_for_a_thousand_points(app):
     widget, _w, asked, _s = made(Field(index=0x2100, kind="map"))
     widget.refresh()
-    widget.set_value(0x2100, 0, 100000, None)
+    widget.set_value((0x2100, 0), 100000, None)
     assert len(asked) - 1 == field_widgets.MAX_POINTS
 
 
@@ -382,7 +382,7 @@ def test_the_tooltip_carries_what_the_column_cannot(app):
         Field(index=0x2001, sub=2, kind="number"),
         Display(description="Peak phase current", low=0, high=1000, unit="A", factor=0.1),
     )
-    widget.set_value(0x2001, 2, 1234, None)
+    widget.set_value((0x2001, 2), 1234, None)
     tip = widget.edit.toolTip()
     assert "0x2001:02" in tip
     assert "Peak phase current" in tip
@@ -406,24 +406,24 @@ def test_a_map_without_an_x_array_will_not_let_you_edit_the_x(app):
     """The sub-index number is the X, and a sub-index is not a value."""
     widget, _w, _a, _s = made(Field(index=0x2100, kind="map"))
     widget.refresh()
-    widget.set_value(0x2100, 0, 2, None)
+    widget.set_value((0x2100, 0), 2, None)
     assert not widget.table.item(0, 0).flags() & Qt.ItemIsEditable
 
 
 # --- typing a value: Enter writes, and nothing else does ------------------------------------
 def test_ctrl_enter_writes_as_enter_does(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     typed(widget.edit, "500")
     press(widget.edit, Qt.Key_Return, Qt.ControlModifier)
-    assert written == [(0x2001, 0, 500)]
+    assert written == [((0x2001, 0), 500)]
 
 
 def test_leaving_the_box_does_not_write_it(app):
     """How a value still being thought about reached a controller: somebody
     clicked on the plot."""
     widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     typed(widget.edit, "500")
     QApplication.sendEvent(widget.edit, QFocusEvent(QEvent.FocusOut, Qt.TabFocusReason))
     assert written == []
@@ -432,7 +432,7 @@ def test_leaving_the_box_does_not_write_it(app):
 
 def test_a_typed_value_is_marked_until_it_is_written(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     assert not widget.pending and widget.edit.styleSheet() == ""
 
     typed(widget.edit, "500")
@@ -444,7 +444,7 @@ def test_a_typed_value_is_marked_until_it_is_written(app):
 
 def test_typing_back_what_was_read_is_not_a_change(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     typed(widget.edit, "250")
     assert not widget.pending
 
@@ -452,24 +452,24 @@ def test_typing_back_what_was_read_is_not_a_change(app):
 def test_an_arriving_value_does_not_replace_one_not_yet_written(app):
     """Polling carries on while somebody decides, and must not decide for them."""
     widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     typed(widget.edit, "500")
 
-    widget.set_value(0x2001, 0, 260, None)
+    widget.set_value((0x2001, 0), 260, None)
     assert widget.edit.text() == "500"
 
     enter(widget.edit)
-    widget.set_value(0x2001, 0, 500, None)
+    widget.set_value((0x2001, 0), 500, None)
     assert widget.edit.text() == "500", "once written, the box follows the object again"
-    widget.set_value(0x2001, 0, 510, None)
+    widget.set_value((0x2001, 0), 510, None)
     assert widget.edit.text() == "510"
 
 
 def test_escape_puts_back_what_was_read(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     typed(widget.edit, "500")
-    widget.set_value(0x2001, 0, 260, None)  # arrived while it was typed
+    widget.set_value((0x2001, 0), 260, None)  # arrived while it was typed
 
     press(widget.edit, Qt.Key_Escape)
     assert widget.edit.text() == "260", "the latest reading, not the one typed over"
@@ -489,7 +489,7 @@ def test_the_keys_are_the_box_s_before_they_are_a_shortcut_s(app):
 # --- doubling and halving ---------------------------------------------------------------------
 def test_ctrl_up_doubles_and_ctrl_down_halves_without_writing(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
 
     press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
     assert widget.edit.text() == "500"
@@ -501,7 +501,7 @@ def test_ctrl_up_doubles_and_ctrl_down_halves_without_writing(app):
     assert widget.pending
 
     enter(widget.edit)
-    assert written == [(0x2001, 0, 500)]
+    assert written == [((0x2001, 0), 500)]
 
 
 def test_doubling_works_in_the_units_shown(app):
@@ -509,16 +509,16 @@ def test_doubling_works_in_the_units_shown(app):
     widget, written, _a, _s = made(
         Field(index=0x2001, kind="number"), Display(unit="A", factor=0.1, decimals=1)
     )
-    widget.set_value(0x2001, 0, 1234, None)
+    widget.set_value((0x2001, 0), 1234, None)
     press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
     assert widget.edit.text() == "246.8"
     enter(widget.edit)
-    assert written == [(0x2001, 0, 2468)]
+    assert written == [((0x2001, 0), 2468)]
 
 
 def test_doubling_what_was_typed_not_what_was_read(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     typed(widget.edit, "30")
     press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
     assert widget.edit.text() == "60"
@@ -527,7 +527,7 @@ def test_doubling_what_was_typed_not_what_was_read(app):
 def test_a_whole_number_halves_towards_zero(app):
     """1 goes to 0, not to a 0.5 the object cannot hold -- and never gets stuck."""
     widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 3, None)
+    widget.set_value((0x2001, 0), 3, None)
     shown = []
     for _ in range(3):
         press(widget.edit, Qt.Key_Down, Qt.ControlModifier)
@@ -537,14 +537,14 @@ def test_a_whole_number_halves_towards_zero(app):
 
 def test_a_real_number_halves_exactly(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 1.5, None)
+    widget.set_value((0x2001, 0), 1.5, None)
     press(widget.edit, Qt.Key_Down, Qt.ControlModifier)
     assert widget.edit.text() == "0.75"
 
 
 def test_doubled_past_the_limit_is_refused_when_written(app):
     widget, written, _a, said = made(Field(index=0x2001, kind="number"), Display(low=0, high=1000))
-    widget.set_value(0x2001, 0, 600, None)
+    widget.set_value((0x2001, 0), 600, None)
     press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
     assert widget.edit.text() == "1200", "shown, so it is clear what would have gone"
     enter(widget.edit)
@@ -556,14 +556,14 @@ def test_doubled_past_the_limit_is_refused_when_written(app):
 def test_a_code_in_hex_is_not_doubled(app):
     """0x10 is a mask or a code, and twice a code is not a thing."""
     widget, _w, _a, _s = made(Field(index=0x2001, kind="hex"))
-    widget.set_value(0x2001, 0, 0x10, None)
+    widget.set_value((0x2001, 0), 0x10, None)
     press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
     assert widget.edit.text() == "0x10"
 
 
 def test_a_read_only_number_is_not_doubled(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="number"))
-    widget.set_value(0x2001, 0, 250, None)
+    widget.set_value((0x2001, 0), 250, None)
     widget.set_writable(False)
     press(widget.edit, Qt.Key_Up, Qt.ControlModifier)
     assert widget.edit.text() == "250"
@@ -572,12 +572,12 @@ def test_a_read_only_number_is_not_doubled(app):
 # --- the same for a field inside a word --------------------------------------------------------
 def test_leaving_a_bits_box_does_not_write_it(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="bits", first=4, width=3))
-    widget.set_value(0x2001, 0, 0xFF, None)
+    widget.set_value((0x2001, 0), 0xFF, None)
     typed(widget.edit, "2")
     QApplication.sendEvent(widget.edit, QFocusEvent(QEvent.FocusOut, Qt.TabFocusReason))
     assert written == [] and widget.pending
 
-    widget.set_value(0x2001, 0, 0x0F, None)
+    widget.set_value((0x2001, 0), 0x0F, None)
     assert widget.edit.text() == "2", "not replaced while it waits"
     press(widget.edit, Qt.Key_Escape)
     assert widget.edit.text() == "0", "bits 4..6 of 0x0F"
@@ -588,20 +588,20 @@ def test_a_held_tick_goes_on_top_of_the_newest_word(app):
     """A read arriving while a tick is held moves the rest of the word on; the
     write puts the tick on the newest value, not on the one it was made over."""
     widget, written, _a, _s = made(Field(index=0x2001, kind="flags", bits={0: "Ready", 3: "Fault"}))
-    widget.set_value(0x2001, 0, 0b0000_0001, None)
+    widget.set_value((0x2001, 0), 0b0000_0001, None)
     widget.boxes[3].click()
-    widget.set_value(0x2001, 0, 0b0100_0001, None)  # polled meanwhile
+    widget.set_value((0x2001, 0), 0b0100_0001, None)  # polled meanwhile
     assert widget.boxes[3].isChecked(), "the held tick stays on screen"
     widget.write_pending()
-    assert written == [(0x2001, 0, 0b0100_1001)]
+    assert written == [((0x2001, 0), 0b0100_1001)]
 
 
 def test_a_held_choice_survives_polling_and_can_be_thrown_away(app):
     widget, written, _a, _s = made(Field(index=0x2001, kind="enum", choices={0: "Off", 1: "Run"}))
-    widget.set_value(0x2001, 0, 0, None)
+    widget.set_value((0x2001, 0), 0, None)
     widget.box.setCurrentIndex(1)
     widget.box.activated.emit(1)
-    widget.set_value(0x2001, 0, 0, None)  # polled meanwhile
+    widget.set_value((0x2001, 0), 0, None)  # polled meanwhile
     assert widget.box.currentData() == 1, "polling does not replace a held choice"
     widget.discard()
     assert widget.box.currentData() == 0 and not widget.pending and written == []
@@ -609,7 +609,7 @@ def test_a_held_choice_survives_polling_and_can_be_thrown_away(app):
 
 def test_choosing_what_was_read_is_not_a_change(app):
     widget, _w, _a, _s = made(Field(index=0x2001, kind="enum", choices={0: "Off", 1: "Run"}))
-    widget.set_value(0x2001, 0, 1, None)
+    widget.set_value((0x2001, 0), 1, None)
     widget.box.setCurrentIndex(1)
     widget.box.activated.emit(1)
     assert not widget.pending
@@ -618,10 +618,10 @@ def test_choosing_what_was_read_is_not_a_change(app):
 def test_a_held_map_point_is_kept_through_a_redraw_and_thrown_away_on_discard(app):
     widget, written, _a, _s = made(Field(index=0x2100, kind="map"))
     widget.refresh()
-    widget.set_value(0x2100, 0, 2, None)
-    widget.set_value(0x2100, 1, 10, None)
+    widget.set_value((0x2100, 0), 2, None)
+    widget.set_value((0x2100, 1), 10, None)
     widget.table.item(0, 1).setText("15")
-    widget.set_value(0x2100, 1, 10, None)  # polled meanwhile
+    widget.set_value((0x2100, 1), 10, None)  # polled meanwhile
     assert widget.table.item(0, 1).text() == "15"
     widget.discard()
     assert widget.table.item(0, 1).text() == "10" and written == []

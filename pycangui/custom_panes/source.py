@@ -19,10 +19,18 @@ node reads over SDO on a worker thread and answers later; a file answers now.
 Making the file pretend to be slow is a great deal less trouble than making the
 pane able to cope with both, and it means the pane has exactly one path
 through it rather than a fast one that only ever gets exercised in tests.
+
+**Objects are asked for by key, and only the source looks inside one.**  A
+CANopen object is ``(index, sub)``, an XCP measurement is its A2L name, a UDS
+data identifier is its number. The pane, the widgets and the poller pass the
+key along without knowing which, so a source for another protocol needs
+nothing changed above it. Settled before anything outside pycangui provides
+sources, because changing it after would break whatever had.
 """
 
 from __future__ import annotations
 
+from collections.abc import Hashable
 from pathlib import Path
 from typing import Any
 
@@ -30,18 +38,24 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from pycangui.canopen import NodeIdentity, eds_extras, eds_identity, load_od
 from pycangui.canopen.display import Display, from_variable, with_overrides
+from pycangui.custom_panes.model import CANOPEN
+
+#: What a source is asked for. See the module's note.
+Key = Hashable
 
 
 class Source(QObject):
     """One place values are read from and written to."""
 
-    #: index, sub, raw value, error text or None. The only way an answer
-    #: arrives, whichever kind of source produced it.
-    value = Signal(int, int, object, object)
+    #: key, raw value, error text or None. The only way an answer arrives,
+    #: whichever kind of source produced it.
+    value = Signal(object, object, object)
     #: The source itself changed -- a different node identified, a file
     #: reloaded -- so anything showing its name should ask again.
     changed = Signal()
 
+    #: Which panes it serves: those for the same protocol.
+    protocol = CANOPEN
     #: What to call this source on screen.
     label = ""
     #: Whether writing means anything. An EDS's defaults are readable and not
@@ -52,18 +66,18 @@ class Source(QObject):
     #: would be work with a guaranteed answer of "the same".
     live = False
 
-    def display(self, index: int, sub: int) -> Display:
+    def display(self, key: Key) -> Display:
         """Name, unit, scaling, choices and limits for one object."""
         return Display()
 
-    def request(self, index: int, sub: int) -> None:
+    def request(self, key: Key) -> None:
         """Ask for a value. The answer comes back on ``value``."""
 
-    def write(self, index: int, sub: int, raw: Any) -> None:
+    def write(self, key: Key, raw: Any) -> None:
         """Set a value. What the source made of it comes back on ``value``."""
 
-    def objects(self) -> list[tuple[int, int, str, str]]:
-        """Everything this source knows of, as (index, sub, name, access).
+    def objects(self) -> list[tuple[Key, str, str]]:
+        """Everything this source knows of, as (key, name, access).
 
         For picking from, so it is empty where the source does not know rather
         than wrong: a node with no EDS can still be read object by object, it
@@ -74,7 +88,7 @@ class Source(QObject):
         return []
 
 
-def _listed(od) -> list[tuple[int, int, str, str]]:
+def _listed(od) -> list[tuple[Key, str, str]]:
     """Flatten an object dictionary, leaving out the rows that are not objects."""
     from pycangui.canopen.manager import od_entries
 
@@ -85,7 +99,7 @@ def _listed(od) -> list[tuple[int, int, str, str]]:
         if var is None:
             continue  # the record itself; its sub-indices follow
         access = getattr(var, "access_type", "") or ""
-        out.append((index, sub or 0, name, access))
+        out.append(((index, sub or 0), name, access))
     return out
 
 
@@ -107,22 +121,23 @@ class NodeSource(Source):
         # Every pane bound to every node hears every read, so the filter is
         # the whole of what makes two custom_panes on two nodes independent.
         if node_id == self.node_id:
-            self.value.emit(index, sub, value, error)
+            self.value.emit((index, sub), value, error)
 
     def _on_identified(self, identity: NodeIdentity) -> None:
         if getattr(identity, "node_id", None) == self.node_id:
             self.changed.emit()
 
-    def display(self, index: int, sub: int) -> Display:
-        return self.manager.display(self.node_id, index, sub)
+    def display(self, key: Key) -> Display:
+        return self.manager.display(self.node_id, *key)
 
-    def request(self, index: int, sub: int) -> None:
-        self.manager.sdo_read(self.node_id, index, sub)
+    def request(self, key: Key) -> None:
+        self.manager.sdo_read(self.node_id, *key)
 
-    def write(self, index: int, sub: int, raw: Any) -> None:
+    def write(self, key: Key, raw: Any) -> None:
+        index, sub = key
         self.manager.sdo_write(self.node_id, index, sub, str(raw))
 
-    def objects(self) -> list[tuple[int, int, str, str]]:
+    def objects(self) -> list[tuple[Key, str, str]]:
         node = self.manager.node(self.node_id)
         return _listed(getattr(node, "object_dictionary", None) if node else None)
 
@@ -180,7 +195,8 @@ class FileSource(Source):
         except Exception:
             return None
 
-    def display(self, index: int, sub: int) -> Display:
+    def display(self, key: Key) -> Display:
+        index, sub = key
         base = from_variable(self._variable(index, sub))
         overrides = None
         if self.hooks is not None:
@@ -223,30 +239,30 @@ class FileSource(Source):
         raw = getattr(var, "value", None)
         return getattr(var, "default", None) if raw is None else raw
 
-    def request(self, index: int, sub: int) -> None:
-        self._answer(index, sub, *self.current(index, sub))
+    def request(self, key: Key) -> None:
+        self._answer(key, *self.current(*key))
 
-    def write(self, index: int, sub: int, raw: Any) -> None:
+    def write(self, key: Key, raw: Any) -> None:
+        index, sub = key
         if self._variable(index, sub) is None:
-            self._answer(index, sub, None, "not in this file")
+            self._answer(key, None, "not in this file")
             return
-        key = (index, sub)
         if key not in self._saved and raw == self._in_file(index, sub):
             # Changed back to what the file says: no longer an edit, so the
             # file is not "edited" for it and closing does not ask.
             self._values.pop(key, None)
         else:
             self._values[key] = raw
-        self._answer(index, sub, raw, None)
+        self._answer(key, raw, None)
         self.modified.emit(self.unsaved)
 
-    def objects(self) -> list[tuple[int, int, str, str]]:
+    def objects(self) -> list[tuple[Key, str, str]]:
         return _listed(self._od)
 
-    def _answer(self, index: int, sub: int, raw: Any, error: str | None) -> None:
+    def _answer(self, key: Key, raw: Any, error: str | None) -> None:
         # Through the event loop, so a file behaves the way a node does and the
         # pane has one path through it rather than two.
-        QTimer.singleShot(0, self, lambda: self.value.emit(index, sub, raw, error))
+        QTimer.singleShot(0, self, lambda: self.value.emit(key, raw, error))
 
     # --- and back out again -------------------------------------------------------------
     @property

@@ -26,7 +26,7 @@ what the bus is doing.
 from __future__ import annotations
 
 import time
-from collections.abc import Iterable
+from collections.abc import Hashable, Iterable
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -50,9 +50,16 @@ DEFAULT_HZ = 2.0
 
 
 class Poller(QObject):
-    """One set of objects, read over and over at up to a requested rate."""
+    """One set of objects, read over and over at up to a requested rate.
 
-    #: Ask for this object. Whatever the pane is bound to answers it.
+    The objects are keys -- ``(index, sub)``, an A2L name, a DID -- and the
+    poller never looks inside one. ``answered`` takes the key back.
+    """
+
+    #: Ask for this object, by its key. Whatever the pane is bound to answers it.
+    asked = Signal(object)
+    #: The same, for an ``(index, sub)`` key only, as index and sub: what the
+    #: poller sent before keys, kept for the code written against it.
     read = Signal(int, int)
     #: Requested rate, and the rate actually being achieved (0 until a round
     #: has completed).
@@ -62,8 +69,8 @@ class Poller(QObject):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._objects: list[tuple[int, int]] = []
-        self._outstanding: set[tuple[int, int]] = set()
+        self._objects: list[Hashable] = []
+        self._outstanding: set[Hashable] = set()
         self._hz = DEFAULT_HZ
         self._running = False
         self._round_started = 0.0
@@ -77,12 +84,12 @@ class Poller(QObject):
         self._paused = False
 
     # --- what to read, and how often --------------------------------------------------
-    def set_objects(self, objects: Iterable[tuple[int, int]]) -> None:
+    def set_objects(self, objects: Iterable[Hashable]) -> None:
         """The objects to read each round. Takes effect at the next one."""
         self._objects = list(dict.fromkeys(objects))  # in order, without repeats
 
     @property
-    def objects(self) -> list[tuple[int, int]]:
+    def objects(self) -> list[Hashable]:
         return list(self._objects)
 
     @property
@@ -152,14 +159,19 @@ class Poller(QObject):
         self._round_started = time.monotonic()
         self._outstanding = set(self._objects)
         self._watchdog.start(int(ROUND_TIMEOUT_S * 1000))
-        for index, sub in self._objects:
-            self.read.emit(index, sub)
+        for key in self._objects:
+            self.asked.emit(key)
+            if _is_index_sub(key):
+                self.read.emit(*key)
 
-    def answered(self, index: int, sub: int) -> None:
-        """An answer arrived. When they all have, the round is done."""
+    def answered(self, *key) -> None:
+        """An answer arrived. When they all have, the round is done.
+
+        Given the key, or -- as before keys -- an index and a sub.
+        """
         if not self._running:
             return
-        self._outstanding.discard((index, sub))
+        self._outstanding.discard(key[0] if len(key) == 1 else tuple(key))
         if self._outstanding:
             return
         self._watchdog.stop()
@@ -200,6 +212,14 @@ class Poller(QObject):
 
     def _announce(self) -> None:
         self.rate.emit(self._hz, self.achieved)
+
+
+def _is_index_sub(key: Hashable) -> bool:
+    return (
+        isinstance(key, tuple)
+        and len(key) == 2
+        and all(isinstance(part, int) and not isinstance(part, bool) for part in key)
+    )
 
 
 def rate_text(requested: float, achieved: float, running: bool, paused: bool = False) -> str:

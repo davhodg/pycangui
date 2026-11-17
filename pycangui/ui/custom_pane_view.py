@@ -50,9 +50,9 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.context import Context
 from pycangui.custom_panes import model
-from pycangui.custom_panes.model import CustomPane, Field
+from pycangui.custom_panes.model import CANOPEN, CustomPane, Field, key_text
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
-from pycangui.custom_panes.source import FileSource, NodeSource, Source
+from pycangui.custom_panes.source import FileSource, Key, NodeSource, Source
 from pycangui.ui import field_widgets, folders, fonts, icons, messages
 from pycangui.ui.persist import remember
 
@@ -62,6 +62,8 @@ MAX_WAITING = 8
 
 #: Offered in the source selector, above whatever nodes are on the bus.
 FILE_ENTRY = "Open a DCF or EDS..."
+#: In the selector of a pane for a protocol with no source here yet.
+NO_SOURCE = "Nothing to read from yet"
 
 READ_TIP = (
     "Read every object on this pane again. Changes not yet written are\n"
@@ -128,9 +130,9 @@ class CustomPaneView(QWidget):
         self._widgets: list[field_widgets.FieldWidget] = []
         #: Per object, oldest first: True where polling asked for the read
         #: and False where a person did. See ``_request``.
-        self._asked: dict[tuple[int, int], list[bool]] = {}
+        self._asked: dict[Key, list[bool]] = {}
         self.poller = Poller(self)
-        self.poller.read.connect(self._on_poll_read)
+        self.poller.asked.connect(self._on_poll_read)
         # rate is connected once the label it writes to exists, below.
 
         self.heading = QLabel()
@@ -240,7 +242,7 @@ class CustomPaneView(QWidget):
         self._widgets.clear()
 
         for item in self.pane.fields:
-            display = self.source.display(item.index, item.sub) if self.source else None
+            display = self.source.display(item.key) if self.source else None
             widget = field_widgets.build(item, display or _no_display())
             widget.read_requested.connect(self._on_read_requested)
             widget.write_requested.connect(self._on_write_requested)
@@ -250,7 +252,7 @@ class CustomPaneView(QWidget):
             self._widgets.append(widget)
         self._apply_writable()
         self._show_unsent()
-        self.poller.set_objects(f.where for f in self.pane.fields)
+        self.poller.set_objects(f.key for f in self.pane.fields)
         self._fill_sources()
 
     def refresh(self) -> None:
@@ -312,6 +314,12 @@ class CustomPaneView(QWidget):
             current = self.sources.currentData()
         self.sources.blockSignals(True)
         self.sources.clear()
+        if self.pane.protocol != CANOPEN:
+            # Only the sources of the pane's own protocol are offered, and
+            # there are none here yet for this one.
+            self.sources.addItem(NO_SOURCE, None)
+            self.sources.blockSignals(False)
+            return
         nodes = sorted(self.manager.nodes()) if hasattr(self.manager, "nodes") else []
         if self.pane.node is not None and self.pane.node not in nodes:
             nodes = sorted({*nodes, self.pane.node})
@@ -503,13 +511,13 @@ class CustomPaneView(QWidget):
         self.poll.setChecked(False)
 
     # --- and back again ------------------------------------------------------------------
-    def _on_poll_read(self, index: int, sub: int) -> None:
-        self._request(index, sub, polling=True)
+    def _on_poll_read(self, key: Key) -> None:
+        self._request(key, polling=True)
 
-    def _on_read_requested(self, index: int, sub: int) -> None:
-        self._request(index, sub, polling=False)
+    def _on_read_requested(self, key: Key) -> None:
+        self._request(key, polling=False)
 
-    def _request(self, index: int, sub: int, polling: bool) -> None:
+    def _request(self, key: Key, polling: bool) -> None:
         """Ask the source for a value, and remember who wanted it.
 
         Who wanted it is the whole point. A source answers in the order it
@@ -520,36 +528,36 @@ class CustomPaneView(QWidget):
         if self.source is None:
             self.ctx.warn(f"{self.pane.title or self.name}: no node or file selected")
             return
-        waiting = self._asked.setdefault((index, sub), [])
+        waiting = self._asked.setdefault(key, [])
         waiting.append(polling)
         # A source that answers some reads and not others would otherwise grow
         # this list for as long as the polling runs. The oldest are the ones
         # whose answers are never coming.
         del waiting[:-MAX_WAITING]
-        self.source.request(index, sub)
+        self.source.request(key)
 
-    def _on_write_requested(self, index: int, sub: int, raw: Any) -> None:
+    def _on_write_requested(self, key: Key, raw: Any) -> None:
         if self.source is None:
             self.ctx.warn(f"{self.pane.title or self.name}: no node or file selected")
             return
-        self.source.write(index, sub, raw)
+        self.source.write(key, raw)
 
-    def _on_value(self, index: int, sub: int, raw: Any, error: Any) -> None:
+    def _on_value(self, key: Key, raw: Any, error: Any) -> None:
         # Handed to every widget rather than routed: a map wants many
         # sub-indices of one object, and only it knows which.
         for widget in self._widgets:
-            widget.set_value(index, sub, raw, error)
+            widget.set_value(key, raw, error)
         # Only if this answer is one polling asked for. Reading a pane by
         # hand while it polls used to finish whichever round was in flight,
         # and the rate then read faster than the bus was really managing --
         # which is the one thing the rate is there not to do.
-        waiting = self._asked.get((index, sub))
+        waiting = self._asked.get(key)
         if waiting and waiting.pop(0):
-            self.poller.answered(index, sub)
+            self.poller.answered(key)
         if not error:
-            self._to_signals(index, sub, raw)
+            self._to_signals(key, raw)
 
-    def _to_signals(self, index: int, sub: int, raw: Any) -> None:
+    def _to_signals(self, key: Key, raw: Any) -> None:
         """A polled number is a signal, so it plots and exports like one.
 
         Only while polling: a value read once by hand is a reading, and putting
@@ -560,7 +568,7 @@ class CustomPaneView(QWidget):
             return
         if not isinstance(raw, int | float) or isinstance(raw, bool):
             return  # a string or a block of bytes is not a trace
-        widget = next((w for w in self._widgets if w.field.where == (index, sub)), None)
+        widget = next((w for w in self._widgets if w.field.key == key), None)
         if widget is None:
             return
         display = widget.display
@@ -616,6 +624,7 @@ class CustomPaneEditor(QDialog):
         self.resize(560, 460)
         self.source = source
         self._fields = list(pane.fields)
+        self._protocol = pane.protocol
 
         self.title = QLineEdit(pane.title)
         self.description = QLineEdit(pane.description)
@@ -674,7 +683,7 @@ class CustomPaneEditor(QDialog):
     def _fill(self) -> None:
         self.table.setRowCount(len(self._fields))
         for row, item in enumerate(self._fields):
-            where = QTableWidgetItem(f"0x{item.index:04X}:{item.sub:02X}")
+            where = QTableWidgetItem(key_text(item.key))
             where.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
             self.table.setItem(row, 0, where)
             self.table.setItem(row, 1, QTableWidgetItem(item.label))
@@ -739,6 +748,7 @@ class CustomPaneEditor(QDialog):
             description=self.description.text().strip(),
             fields=list(self._fields),
             node=int(node, 0) if node.isdigit() or node.lower().startswith("0x") else None,
+            protocol=self._protocol,
         )
 
 
@@ -755,7 +765,7 @@ class AddObjects(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Add objects")
         self.resize(520, 480)
-        self._entries: list[tuple[int, int, str, str]] = []
+        self._entries: list[tuple[Key, str, str]] = []
         if source is not None:
             self._entries = list(source.objects())
 
@@ -768,8 +778,8 @@ class AddObjects(QDialog):
         self.list.setFont(fonts.mono())
         self.list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
-        for index, sub_index, name, access in self._entries:
-            self.list.addItem(f"{index:04X}:{sub_index:02X}  {name}  ({access or '?'})")
+        for key, name, access in self._entries:
+            self.list.addItem(f"{_listed_key(key)}  {name}  ({access or '?'})")
 
         self.index = QLineEdit()
         self.index.setPlaceholderText("2001")
@@ -832,16 +842,23 @@ class AddObjects(QDialog):
         # Whatever the source says about it, where it knows: a typed index that
         # happens to be in the dictionary should arrive named, like a picked one.
         for entry in self._entries:
-            if (entry[0], entry[1]) == (index, sub_index):
+            if entry[0] == (index, sub_index):
                 return self._as_field(*entry)
         return Field(index=index, sub=sub_index, kind="number")
 
     @staticmethod
-    def _as_field(index: int, sub_index: int, name: str, access: str) -> Field:
+    def _as_field(key: Key, name: str, access: str) -> Field:
         """A writable object is one to type into, a read-only one a reading."""
-        return Field(
-            index=index,
-            sub=sub_index,
-            kind="number" if "w" in (access or "").lower() else "value",
-            label=name,
-        )
+        kind = "number" if "w" in (access or "").lower() else "value"
+        if isinstance(key, tuple):
+            return Field(index=key[0], sub=key[1], kind=kind, label=name)
+        if isinstance(key, int):
+            return Field(did=key, kind=kind, label=name)
+        return Field(name=str(key), kind=kind)
+
+
+def _listed_key(key: Key) -> str:
+    """A key in the picking list: as the object dictionary writes it, for CANopen."""
+    if isinstance(key, tuple):
+        return f"{key[0]:04X}:{key[1]:02X}"
+    return key_text(key)

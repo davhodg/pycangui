@@ -227,7 +227,7 @@ def test_a_node_source_only_hears_about_its_own_node(app, manager):
 
     manager.sdo_result.emit(5, 0x2001, 0, 1234, None)
     settle(app)
-    assert heard_five == [(0x2001, 0, 1234, None)]
+    assert heard_five == [((0x2001, 0), 1234, None)]
     assert heard_seven == []
 
 
@@ -237,8 +237,8 @@ def test_a_node_source_reads_and_writes_through_the_manager(app, manager, monkey
     monkeypatch.setattr(manager, "sdo_write", lambda *a: written.append(a))
     source = custom_panes.NodeSource(manager, 5)
 
-    source.request(0x2001, 0)
-    source.write(0x2001, 0, 1234)
+    source.request((0x2001, 0))
+    source.write((0x2001, 0), 1234)
     assert asked == [(5, 0x2001, 0)]
     assert written == [(5, 0x2001, 0, "1234")]
 
@@ -249,7 +249,7 @@ def test_an_error_from_the_node_arrives_as_an_error(app, manager):
     source.value.connect(lambda *a: heard.append(a))
     manager.sdo_result.emit(5, 0x2001, 0, None, "Abort 0x06020000")
     settle(app)
-    assert heard == [(0x2001, 0, None, "Abort 0x06020000")]
+    assert heard == [((0x2001, 0), None, "Abort 0x06020000")]
 
 
 def test_a_live_node_is_writable_and_says_which_node_it_is(app, manager):
@@ -303,9 +303,9 @@ def test_a_file_source_reads_what_the_file_says(app, eds):
     source = custom_panes.FileSource(eds)
     heard = []
     source.value.connect(lambda *a: heard.append(a))
-    source.request(0x2001, 0)
+    source.request((0x2001, 0))
     settle(app)
-    assert heard == [(0x2001, 0, 250, None)], "the EDS default, since it has no value"
+    assert heard == [((0x2001, 0), 250, None)], "the EDS default, since it has no value"
 
 
 def test_a_file_source_answers_the_way_a_node_does(app, eds):
@@ -314,7 +314,7 @@ def test_a_file_source_answers_the_way_a_node_does(app, eds):
     source = custom_panes.FileSource(eds)
     heard = []
     source.value.connect(lambda *a: heard.append(a))
-    source.request(0x2001, 0)
+    source.request((0x2001, 0))
     assert heard == [], "not before the caller has finished"
     settle(app)
     assert heard
@@ -324,16 +324,16 @@ def test_an_object_the_file_does_not_have_says_so(app, eds):
     source = custom_panes.FileSource(eds)
     heard = []
     source.value.connect(lambda *a: heard.append(a))
-    source.request(0x9999, 0)
+    source.request((0x9999, 0))
     settle(app)
-    assert heard[0][3] == "not in this file"
+    assert heard[0][2] == "not in this file"
 
 
 def test_editing_a_file_changes_the_file_and_not_a_machine(app, eds):
     """The difference between building a configuration at a desk and
     configuring something."""
     source = custom_panes.FileSource(eds)
-    source.write(0x2001, 0, 500)
+    source.write((0x2001, 0), 500)
     settle(app)
     assert source.edited == {(0x2001, 0): 500}
     assert "ParameterValue" not in eds.read_text(), "nothing written until it is saved"
@@ -341,19 +341,19 @@ def test_editing_a_file_changes_the_file_and_not_a_machine(app, eds):
 
 def test_a_written_value_is_what_is_read_back(app, eds):
     source = custom_panes.FileSource(eds)
-    source.write(0x2001, 0, 500)
+    source.write((0x2001, 0), 500)
     settle(app)
     heard = []
     source.value.connect(lambda *a: heard.append(a))
-    source.request(0x2001, 0)
+    source.request((0x2001, 0))
     settle(app)
-    assert heard == [(0x2001, 0, 500, None)]
+    assert heard == [((0x2001, 0), 500, None)]
 
 
 def test_saving_writes_a_dcf_through_the_original_text(app, eds, tmp_path):
     """A round trip that loses the comments loses the units and the scaling."""
     source = custom_panes.FileSource(eds)
-    source.write(0x2001, 0, 500)
+    source.write((0x2001, 0), 500)
     settle(app)
     out = source.save(tmp_path / "out.dcf", node_id=5)
     text = out.read_text()
@@ -363,7 +363,7 @@ def test_saving_writes_a_dcf_through_the_original_text(app, eds, tmp_path):
 
 
 def test_a_file_source_reads_the_meaning_the_file_carries(app, eds):
-    display = custom_panes.FileSource(eds).display(0x2001, 0)
+    display = custom_panes.FileSource(eds).display((0x2001, 0))
     assert display.name == "Motor current"
     assert (display.low, display.high) == (0, 1000)
 
@@ -382,7 +382,7 @@ def test_a_file_source_asks_the_hook_with_the_file_s_own_extras(app, eds, home):
         return real(module, name, *args, **kwargs)
 
     hooks.call = spy
-    custom_panes.FileSource(eds, hooks=hooks).display(0x2001, 0)
+    custom_panes.FileSource(eds, hooks=hooks).display((0x2001, 0))
     assert seen and seen[0][0] == 0x2001
     assert seen[0][2].get("ACMEFIELD UNITS") == "A", "what the parser dropped"
     assert seen[0][3] is not None and seen[0][3].vendor_id == 1
@@ -394,9 +394,9 @@ def test_a_file_that_is_not_an_eds_is_an_empty_source_rather_than_a_crash(app, t
     source = custom_panes.FileSource(path)
     heard = []
     source.value.connect(lambda *a: heard.append(a))
-    source.request(0x2001, 0)
+    source.request((0x2001, 0))
     settle(app)
-    assert heard[0][3] == "not in this file"
+    assert heard[0][2] == "not in this file"
 
 
 # --- and saving it -----------------------------------------------------------------------------
@@ -406,7 +406,7 @@ def test_a_file_source_knows_when_the_disk_is_behind(app, eds, tmp_path):
     source.modified.connect(heard.append)
     assert not source.unsaved, "nothing edited yet"
 
-    source.write(0x2001, 0, 500)
+    source.write((0x2001, 0), 500)
     settle(app)
     assert source.unsaved and heard == [True]
 
@@ -417,12 +417,12 @@ def test_a_file_source_knows_when_the_disk_is_behind(app, eds, tmp_path):
 def test_saved_under_another_name_the_source_becomes_that_file(app, eds, tmp_path):
     """The edits that follow belong to the copy, and so does the next Save."""
     source = custom_panes.FileSource(eds)
-    source.write(0x2001, 0, 500)
+    source.write((0x2001, 0), 500)
     out = source.save(tmp_path / "desk.dcf")
     assert (source.path, source.label) == (out, "desk.dcf")
     assert "ParameterValue" not in eds.read_text(), "the EDS keeps its defaults"
 
-    source.write(0x2001, 0, 600)
+    source.write((0x2001, 0), 600)
     source.save()
     settle(app)
     text = out.read_text()

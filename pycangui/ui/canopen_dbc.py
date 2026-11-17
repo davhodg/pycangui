@@ -78,7 +78,7 @@ def file_device(source: FileSource, taken: set[str], notes: list[str]):
         return None
     od = source.object_dictionary
     node_id = int(od.node_id)
-    device = to_dbc.Device(name, node_id, display=source.display)
+    device = to_dbc.Device(name, node_id, display=lambda index, sub: source.display((index, sub)))
     try:
         device.tpdos, device.rpdos = to_dbc.from_dictionary(od, node_id)
     except Exception as exc:  # an odd file

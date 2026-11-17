@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Hashable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,17 @@ from pycangui.core import workspaces
 #: ``map``    an array object as an editable XY table beside its graph
 KINDS = ("value", "number", "hex", "enum", "flags", "bits", "map")
 
+#: What a pane is for. One protocol to a pane: its fields are addressed the
+#: way that protocol addresses things, and only its sources are offered.
+CANOPEN = "canopen"
+XCP = "xcp"
+UDS = "uds"
+PROTOCOLS = (CANOPEN, XCP, UDS)
+#: The kinds that only make sense on CANopen: a map is an array object, one
+#: sub-index a point.
+CANOPEN_ONLY = ("map",)
+MAX_DID = 0xFFFF
+
 MAX_INDEX = 0xFFFF
 MAX_SUB = 0xFF
 #: A pane name is a file name, so it has to survive being one.
@@ -49,9 +61,15 @@ SUFFIX = ".json"
 
 @dataclass(frozen=True)
 class Field:
-    """One object on a pane, and how it is shown."""
+    """One object on a pane, and how it is shown.
 
-    index: int
+    Addressed one of three ways, by the pane's protocol: ``index`` and ``sub``
+    on CANopen, ``name`` (the A2L's) on XCP and CCP, ``did`` on UDS. ``key``
+    is whichever it is, and it is all the pane, the widgets and the poller ever
+    see; only the source looks inside it.
+    """
+
+    index: int = 0
     sub: int = 0
     kind: str = "number"
     #: What to call it here. Empty means whatever the source says it is
@@ -88,8 +106,24 @@ class Field:
     x_label: str = ""
     y_label: str = ""
 
+    # --- other protocols ------------------------------------------------------------
+    #: XCP and CCP: the measurement or characteristic, by its A2L name.
+    name: str = ""
+    #: UDS: the data identifier.
+    did: int | None = None
+
     @property
     def where(self) -> tuple[int, int]:
+        """CANopen's address, whatever the field is: see ``key``."""
+        return (self.index, self.sub)
+
+    @property
+    def key(self) -> Hashable:
+        """What the source is asked for: the name, the DID, or (index, sub)."""
+        if self.name:
+            return self.name
+        if self.did is not None:
+            return self.did
         return (self.index, self.sub)
 
     @property
@@ -124,6 +158,8 @@ class CustomPane:
     #: bound to a *source* rather than to a node -- the same pane serves a
     #: live node, a DCF and an EDS's defaults -- so this is only a default.
     node: int | None = None
+    #: Which protocol's sources it is for. CANopen unless the file says.
+    protocol: str = CANOPEN
 
     def with_field(self, new: Field) -> CustomPane:
         return replace(self, fields=[*self.fields, new])
@@ -179,6 +215,8 @@ def field_from_dict(data: dict) -> Field:
         x_sub=_number(data.get("x_sub"), 0),
         x_label=str(data.get("x_label", "")),
         y_label=str(data.get("y_label", "")),
+        name=str(data.get("name", "")),
+        did=None if data.get("did") is None else _number(data.get("did")),
     )
 
 
@@ -197,9 +235,15 @@ def field_to_dict(item: Field) -> dict:
     A field written out with all twenty keys, eighteen of them at their
     defaults, is a file nobody will edit twice.
     """
-    out: dict[str, Any] = {"index": f"0x{item.index:04X}", "kind": item.kind}
-    if item.sub:
-        out["sub"] = item.sub
+    out: dict[str, Any]
+    if item.name:
+        out = {"name": item.name, "kind": item.kind}
+    elif item.did is not None:
+        out = {"did": f"0x{item.did:04X}", "kind": item.kind}
+    else:
+        out = {"index": f"0x{item.index:04X}", "kind": item.kind}
+        if item.sub:
+            out["sub"] = item.sub
     if item.label:
         out["label"] = item.label
     for name in ("unit", "x_label", "y_label"):
@@ -226,6 +270,9 @@ def pane_from_dict(data: dict) -> CustomPane:
         title=str(data.get("title", "")),
         description=str(data.get("description", "")),
         node=None if data.get("node") is None else _number(data.get("node")),
+        # Kept as written even when unknown, so problems() can say so rather
+        # than the pane quietly turning into a CANopen one.
+        protocol=str(data.get("protocol", CANOPEN)).strip().lower() or CANOPEN,
         fields=[field_from_dict(f) for f in raw_fields if isinstance(f, dict)]
         if isinstance(raw_fields, list)
         else [],
@@ -234,6 +281,8 @@ def pane_from_dict(data: dict) -> CustomPane:
 
 def pane_to_dict(pane: CustomPane) -> dict:
     out: dict[str, Any] = {"title": pane.title}
+    if pane.protocol != CANOPEN:
+        out["protocol"] = pane.protocol  # so a CANopen pane's file is as it always was
     if pane.description:
         out["description"] = pane.description
     if pane.node is not None:
@@ -272,9 +321,14 @@ def path_for(name: str) -> Path:
     return directory() / f"{name}{SUFFIX}"
 
 
-def names() -> list[str]:
-    """Every pane in the workspace, by name."""
-    return sorted(p.stem for p in directory().glob(f"*{SUFFIX}") if p.is_file())
+def names(protocol: str | None = None) -> list[str]:
+    """Every pane in the workspace, by name; only those for ``protocol`` if given."""
+    every = sorted(p.stem for p in directory().glob(f"*{SUFFIX}") if p.is_file())
+    if protocol is None:
+        return every
+    return [
+        name for name in every if (pane := load(name)) is not None and pane.protocol == protocol
+    ]
 
 
 def why_not(name: str) -> str:
@@ -325,13 +379,14 @@ def problems(pane: CustomPane) -> list[str]:
     found: list[str] = []
     if not pane.title.strip():
         found.append("The pane has no title.")
-    seen: set[tuple[int, int, int, int]] = set()
+    if pane.protocol not in PROTOCOLS:
+        found.append(f"{pane.protocol!r} is not one of {', '.join(PROTOCOLS)}.")
+    seen: set[tuple[Hashable, int, int]] = set()
     for item in pane.fields:
-        where = f"0x{item.index:04X}:{item.sub:02X}"
-        if not 0 <= item.index <= MAX_INDEX:
-            found.append(f"{where}: an index is 0 to 0xFFFF.")
-        if not 0 <= item.sub <= MAX_SUB:
-            found.append(f"{where}: a sub-index is 0 to 0xFF.")
+        where = key_text(item.key)
+        found.extend(f"{where}: {why}" for why in _address_problems(pane.protocol, item))
+        if item.kind in CANOPEN_ONLY and pane.protocol != CANOPEN:
+            found.append(f"{where}: {item.kind!r} is for CANopen panes.")
         if item.kind not in KINDS:
             found.append(f"{where}: {item.kind!r} is not one of {', '.join(KINDS)}.")
         if item.kind == "bits":
@@ -345,8 +400,37 @@ def problems(pane: CustomPane) -> list[str]:
             found.append(f"{where}: a dropdown needs the choices naming, here or in the EDS.")
         # The same object twice is allowed -- a word of flags beside one of its
         # bits is a real layout -- but the same *field* twice is a copy/paste.
-        key = (item.index, item.sub, item.first, item.width)
-        if key in seen and item.kind not in ("value",):
+        same = (item.key, item.first, item.width)
+        if same in seen and item.kind not in ("value",):
             found.append(f"{where}: appears twice with the same bits.")
-        seen.add(key)
+        seen.add(same)
     return found
+
+
+def _address_problems(protocol: str, item: Field) -> list[str]:
+    """Whether a field is addressed the way its pane's protocol addresses things."""
+    if protocol == XCP:
+        return [] if item.name else ["a field on an XCP pane is named, as in the A2L."]
+    if protocol == UDS:
+        if item.name or item.did is None:
+            return ["a field on a UDS pane has a DID."]
+        return [] if 0 <= item.did <= MAX_DID else ["a DID is 0 to 0xFFFF."]
+    if protocol != CANOPEN:
+        return []  # said once for the pane already
+    if item.name or item.did is not None:
+        return ["a field on a CANopen pane has an index and a sub-index."]
+    out = []
+    if not 0 <= item.index <= MAX_INDEX:
+        out.append("an index is 0 to 0xFFFF.")
+    if not 0 <= item.sub <= MAX_SUB:
+        out.append("a sub-index is 0 to 0xFF.")
+    return out
+
+
+def key_text(key: Hashable) -> str:
+    """A key as it is written: 0x2001:00, a name, or a DID in hex."""
+    if isinstance(key, tuple) and len(key) == 2:
+        return f"0x{int(key[0]):04X}:{int(key[1]):02X}"
+    if isinstance(key, int) and not isinstance(key, bool):
+        return f"DID 0x{key:04X}"
+    return str(key)

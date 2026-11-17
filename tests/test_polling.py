@@ -215,7 +215,7 @@ def test_a_slow_rate_keeps_a_second_decimal():
 class FakeNode(QObject):
     """A source that answers after a delay, the way a node does."""
 
-    value = Signal(int, int, object, object)
+    value = Signal(object, object, object)
     changed = Signal()
     label = "Node 5"
     writable = True
@@ -226,12 +226,12 @@ class FakeNode(QObject):
         self.delay_ms = delay_ms
         self.reads = 0
 
-    def display(self, _index, _sub):
+    def display(self, _key):
         return Display(unit="A", factor=0.1, decimals=1)
 
-    def request(self, index, sub):
+    def request(self, key):
         self.reads += 1
-        QTimer.singleShot(self.delay_ms, lambda: self.value.emit(index, sub, 1234, None))
+        QTimer.singleShot(self.delay_ms, lambda: self.value.emit(key, 1234, None))
 
     def write(self, *_a):
         pass
@@ -373,7 +373,7 @@ def test_a_box_being_typed_into_is_not_overwritten(app, tmp_path, monkeypatch):
     if not widget.edit.hasFocus():
         pytest.skip("no focus under this platform plugin")
 
-    widget.set_value(0x2001, 0, 4321, None)
+    widget.set_value((0x2001, 0), 4321, None)
     assert widget.edit.text() == "999", "what was being typed is still there"
     window.close()
 
@@ -388,8 +388,8 @@ def test_an_answer_nobody_polled_for_does_not_finish_a_round(app, pane):
     wait_until(app, lambda: answered(view))  # the reads bind() started have landed
 
     told = []
-    view.poller.answered = lambda index, sub: told.append((index, sub))
-    view._widgets[0].read_requested.emit(0x2001, 0)  # somebody pressing Read
+    view.poller.answered = told.append
+    view._widgets[0].read_requested.emit((0x2001, 0))  # somebody pressing Read
     wait_until(app, lambda: answered(view))  # and that one has been answered
     assert told == [], "a read by hand is not an answer to a poll"
 
@@ -400,8 +400,8 @@ def test_an_answer_polling_did_ask_for_reaches_it(app, pane):
     wait_until(app, lambda: answered(view))  # the reads bind() started have landed
 
     told = []
-    view.poller.answered = lambda index, sub: told.append((index, sub))
-    view._on_poll_read(0x2001, 0)
+    view.poller.answered = told.append
+    view._on_poll_read((0x2001, 0))
     wait_until(app, lambda: answered(view))
     assert told == [(0x2001, 0)]
 
@@ -419,7 +419,7 @@ def test_reading_by_hand_while_polling_does_not_flatter_the_rate(app, pane):
     pump(app, 0.2)
 
     for _ in range(5):
-        view._widgets[0].read_requested.emit(0x2001, 0)
+        view._widgets[0].read_requested.emit((0x2001, 0))
         pump(app, 0.05)
     assert "asked for 50" in view.poll_rate.text(), view.poll_rate.text()
 
@@ -432,12 +432,12 @@ def test_reads_that_are_never_answered_do_not_pile_up(app, pane):
     _window, view = pane
 
     class Silent(FakeNode):
-        def request(self, index, sub):
+        def request(self, key):
             self.reads += 1  # asked, and never answered
 
     view.bind(Silent())
     for _ in range(MAX_WAITING * 3):
-        view._on_poll_read(0x2001, 0)
+        view._on_poll_read((0x2001, 0))
     assert len(view._asked[(0x2001, 0)]) == MAX_WAITING
 
 

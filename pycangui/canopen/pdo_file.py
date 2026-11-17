@@ -167,5 +167,5 @@ def apply(source, config: PdoConfig) -> str:
             continue  # many devices have only sub-indices 1 and 2 of the record
         now = was if (at, sub) == (index, 1) else _value(source, at, sub)
         if now != value:
-            source.write(at, sub, value)
+            source.write((at, sub), value)
     return ""

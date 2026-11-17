@@ -264,7 +264,7 @@ def test_a_value_reaches_the_field_it_belongs_to(app, window):
     source = _Fake([])
     view.bind(source)
 
-    source.value.emit(0x2001, 0, 1234, None)
+    source.value.emit((0x2001, 0), 1234, None)
     settle(app)
     assert view._widgets[0].edit.text() == "1234"
 
@@ -278,7 +278,7 @@ def test_writing_goes_to_the_source_and_not_to_the_bus(app, window):
 
     view._widgets[0].edit.setText("42")
     press_enter(view._widgets[0].edit)
-    assert source.written == [(0x2001, 0, 42)]
+    assert source.written == [((0x2001, 0), 42)]
 
 
 def test_a_source_that_cannot_be_written_to_makes_the_pane_read_only(app, window):
@@ -339,7 +339,7 @@ class _Fake:
         from PySide6.QtCore import QObject, Signal
 
         class Emitter(QObject):
-            value = Signal(int, int, object, object)
+            value = Signal(object, object, object)
             changed = Signal()
 
         self._emitter = Emitter()
@@ -350,14 +350,14 @@ class _Fake:
         self.asked = asked
         self.written = []
 
-    def display(self, _index, _sub):
+    def display(self, _key):
         return Display()
 
-    def request(self, index, sub):
-        self.asked.append((index, sub))
+    def request(self, key):
+        self.asked.append(key)
 
-    def write(self, index, sub, raw):
-        self.written.append((index, sub, raw))
+    def write(self, key, raw):
+        self.written.append((key, raw))
 
 
 # --- adding objects from the editor -----------------------------------------------------
@@ -376,8 +376,8 @@ def test_a_source_says_what_it_holds(app):
     what lets a pane be built at a desk."""
     entries = demo_source().objects()
     assert entries, "the demo EDS has objects in it"
-    assert all(len(e) == 4 for e in entries)
-    assert (0x1018, 1) in {(index, sub) for index, sub, _n, _a in entries}
+    assert all(len(e) == 3 for e in entries)
+    assert (0x1018, 1) in {key for key, _n, _a in entries}
 
 
 def test_a_source_that_knows_nothing_says_nothing(app):
@@ -731,8 +731,8 @@ def held_pane(app, window):
     view = window._custom_pane_view("battery")
     source = _Fake([])
     view.bind(source)
-    source.value.emit(0x2001, 0, 10, None)
-    source.value.emit(0x2002, 0, 0, None)
+    source.value.emit((0x2001, 0), 10, None)
+    source.value.emit((0x2002, 0), 0, None)
     settle(app)
     number, mode = view._widgets
     number.edit.setText("42")
@@ -747,7 +747,7 @@ def test_write_all_sends_every_held_change(app, window):
     assert view.unsent == 2 and source.written == [], "held, not sent"
     assert view.write_all_button.isEnabled()
     view.write_all()
-    assert sorted(source.written) == [(0x2001, 0, 42), (0x2002, 0, 1)]
+    assert sorted(source.written) == [((0x2001, 0), 42), ((0x2002, 0), 1)]
     assert view.unsent == 0 and not view.write_all_button.isEnabled()
 
 
