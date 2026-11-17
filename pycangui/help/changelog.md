@@ -32,6 +32,7 @@ since the last version, and comes out in the next one.
 - XCP / CCP: the *A2L* button is on its own row above the tabs, since the Transfer tab uses the file too.
 - The Python Console's Clear button is gone: *Clear all* on its right-click does the same.
 - The Replay menu shows the file loaded, ticks it in a *Recent files* submenu, and has icons; *Loop* is with the speeds.
+- CANopen firmware download is a *Firmware* tab of the CANopen pane, no longer a plugin; a device's own sequence is set by firmware hooks in `hooks/canopen.py`, chosen by the node's identity.
 
 ## [0.5.2] - 2026-11-12
 

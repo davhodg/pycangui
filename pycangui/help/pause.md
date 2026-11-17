@@ -26,7 +26,7 @@ What you do by hand still goes out, from a pane, the console or a script. So do
 session open and a network quiet, which is what a flash needs.
 
 **A flash pauses it by itself**, for as long as it runs: a UDS download or upload,
-and a program downloaded by the [CANopen firmware](firmware.md) plugin. A pause
+and a program downloaded from the CANopen pane's [Firmware](firmware.md) tab. A pause
 can also be held **by hand**, from the status bar's right-click or *Tools > Pause
 automatic traffic*, for anything else; it then reads *Resume automatic traffic*.
 While a flash holds it, pausing by hand is greyed: the flash gives it back when

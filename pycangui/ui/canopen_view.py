@@ -86,6 +86,7 @@ from pycangui.ui import (
     messages,
     pre_operational,
 )
+from pycangui.ui.canopen_firmware import FirmwareTab
 from pycangui.ui.canopen_log_view import CanopenLogView
 from pycangui.ui.column_widths import ColumnWidths
 from pycangui.ui.compare_view import CompareView, CompareWindow
@@ -363,7 +364,13 @@ class CanopenView(QWidget):
     add_to_custom_pane = Signal(str, object)
 
     def __init__(
-        self, manager: CanopenManager, hooks: Hooks, ctx: Context, signals=None, now=None
+        self,
+        manager: CanopenManager,
+        hooks: Hooks,
+        ctx: Context,
+        signals=None,
+        now=None,
+        confirm=None,
     ) -> None:
         super().__init__()
         self.manager = manager
@@ -815,6 +822,10 @@ class CanopenView(QWidget):
         bottom.addTab(self.faults, "Faults")
         self.lss = LssView(manager, ctx)
         bottom.addTab(self.lss, "LSS")
+        # A program downloaded to the node selected above: CiA 302-3, or the
+        # maker's own sequence from the firmware hooks.
+        self.firmware = FirmwareTab(manager, hooks, ctx, self.selected_node, confirm)
+        bottom.addTab(self.firmware, "Firmware")
         self.log = CanopenLogView(manager, ctx, self.selected_node)
         bottom.addTab(self.log, "CANopen log")
         self.bottom_tabs = bottom
@@ -2065,6 +2076,8 @@ class CanopenView(QWidget):
         self._offer_node_buttons()
         node_id = None if current is None else current.data(0, ROLE_INDEX)
         self.faults.set_node(node_id)
+        if hasattr(self, "firmware"):
+            self.firmware.node_changed()
         self.clear_live_pdos()
         if (source := self.selected_file()) is not None:
             self.pdo_config.set_file(source)

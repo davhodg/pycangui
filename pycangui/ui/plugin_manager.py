@@ -39,7 +39,7 @@ from PySide6.QtWidgets import (
 
 from pycangui.core import plugin_package
 from pycangui.core.context import Context
-from pycangui.core.plugins import NO_VERSION, Plugins, supplied
+from pycangui.core.plugins import ENTRY, NO_VERSION, Plugins, describe, supplied
 from pycangui.ui import folders, icons, messages
 
 #: Said before every install, and not remembered. Each one is a different
@@ -73,6 +73,27 @@ WHAT_IT_STAYS = (
 #: Where the fingerprints of installed plugins live: the workspace, not
 #: the plugin folders, so exporting one carries no bookkeeping with it.
 AS_INSTALLED = "plugins.as_installed"
+
+#: Plugins pycangui once supplied that are now part of it: the folder they were
+#: installed as, what they called themselves, and where they went.
+NOW_BUILT_IN = {
+    "firmware": (
+        "CANopen firmware (CiA 302-3)",
+        "the Firmware tab of the CANopen pane, and its sequence to the firmware hooks "
+        "in hooks/canopen.py",
+    ),
+}
+#: Which of those an edited copy has been said of, so it is said once.
+BUILT_IN_SAID = "plugins.built_in_said"
+MOVED_REMOVED = (
+    "{label} is now part of pycangui: {where}. The plugin copy in this workspace "
+    "had not been changed, so it has been removed."
+)
+MOVED_KEPT = (
+    "{label} is now part of pycangui: {where}. The plugin copy in this workspace has "
+    "been changed, so it is left as it was and still loads; copy what you changed in "
+    "it into those hooks, then remove the plugin. Said once."
+)
 
 UPDATE_TIP = "This one is the same as the one pycangui ships."
 UPDATE_DIFFERS = (
@@ -137,6 +158,37 @@ class PluginActions(QObject):
     @property
     def folder(self) -> Path:
         return self.plugins.folder or (self.ctx.workspace_dir / "plugins")
+
+    def retire_built_in(self) -> list[str]:
+        """Plugins that are now part of pycangui: what to say about each.
+
+        Asked before the plugins load. A copy nobody changed is pycangui's
+        own, and goes: two of the same screen helps nobody. A changed one is
+        somebody's work, possibly the only copy of it, so it stays and goes on
+        loading, and is said once.
+        """
+        said = []
+        told = list(self.ctx.settings.get(BUILT_IN_SAID, []) or [])
+        for name, (label, where) in NOW_BUILT_IN.items():
+            folder = self.folder / name
+            entry = folder / ENTRY
+            if not entry.is_file():
+                continue
+            if describe(entry).title != label:
+                continue  # somebody's own plugin of the same folder name
+            if not self._edited(name):
+                plugin_package.uninstall(self.folder, name)
+                record = self._as_installed()
+                record.pop(name, None)
+                self.ctx.settings.set(AS_INSTALLED, record)
+                self.plugins.disabled.discard(name)
+                self._save_disabled()
+                said.append(MOVED_REMOVED.format(label=label, where=where))
+            elif name not in told:
+                told.append(name)
+                self.ctx.settings.set(BUILT_IN_SAID, told)
+                said.append(MOVED_KEPT.format(label=label, where=where))
+        return said
 
     # --- getting one -----------------------------------------------------------------
     def install_file(self, parent: QWidget | None = None) -> None:

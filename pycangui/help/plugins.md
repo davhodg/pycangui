@@ -81,9 +81,9 @@ def register(app):
 ```
 
 Say in the name what the plugin talks to, where that is not obvious: the ones
-supplied here are *CANopen* firmware and *CANopen* motor control, because
-neither sequence is the one a UDS or XCP device would want and a list of
-plugins reading "Firmware" tells nobody which. Where the profile number is how
+supplied here is *CANopen* motor control, because its sequence is not the
+one a UDS or XCP device would want, and a list of plugins reading "Motor
+control" tells nobody which. Where the profile number is how
 people refer to the thing -- CiA 402 is -- it earns its place in brackets.
 
 A plugin folder is a package rooted at itself, so a second file beside
@@ -131,8 +131,11 @@ Supplied rather than installed: *Plugins > Supplied with pycangui* and
 *Plugins > Manage plugins...* are where they are, and until one is installed
 none of it is meant to run. Each has a page of its own:
 
-- [CANopen firmware (CiA 302-3)](firmware.md) --- downloading a program to a CANopen node
 - [CANopen motor control (CiA 402)](cia402.md) --- driving a motor controller
+
+CANopen firmware download used to be a plugin too, and is now the Firmware tab
+of the CANopen pane, with a device's own sequence in hooks: see
+[CANopen firmware](firmware.md).
 
 pycangui's own plugins are packaged, installed and loaded exactly the way one
 of yours is -- installing a supplied plugin packs it and unpacks it through the

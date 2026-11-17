@@ -358,3 +358,121 @@ def current_level(node, *, ctx) -> int | None:
         # return node.sdo.upload(0x2F01, 0)[0]
     """
     return None
+
+
+# --- firmware download --------------------------------------------------------------------
+# The CANopen pane's Firmware tab downloads a program to a node. By default it
+# does what CiA 302-3 says: stop the program (0x1F51), clear it, write the image
+# to 0x1F50, start it again. Most devices want a sequence of their maker's own
+# instead, and these are where it goes. Each is given the node's ``identity``
+# (``vendor_id``, ``product_code``, ``revision``; None for a node that has not
+# said who it is), so one workspace can hold the sequence for each product.
+#
+# ``device`` is what the sequence reads and writes the node through. They run
+# on a worker thread, so they may take their time:
+#
+#     device.read(index, sub)                        a value, or bytes without an EDS
+#     device.write(index, sub, value)                a value
+#     device.write_domain(index, sub, data, progress)  bytes, with progress(done, total)
+#     with device.patient(seconds): ...              longer to wait for each answer
+#
+# ``program`` is the program number chosen in the tab, counted from 1. An SDO
+# abort raises, and a hook that raises is reported in the Event Log -- for a
+# download, that stops it there.
+
+
+@hook
+def firmware_check(device, identity, image, program: int, *, ctx) -> str | None:
+    """Refuse an image that does not belong to this node.
+
+    Called before anything is stopped or written. Return a reason to refuse,
+    or None to go ahead, which is the default. ``image`` is what was loaded:
+    ``image.path``, ``image.size``, ``image.address`` and ``image.segments``,
+    each segment with its own ``address`` and ``data``.
+
+    Examples:
+
+        # Only this product's files
+        # if identity is not None and identity.product_code == 0x1234:
+        #     if "motor" not in image.path.lower():
+        #         return "this node takes the motor firmware"
+    """
+    return None
+
+
+@hook
+def enter_bootloader(device, identity, program: int, *, ctx) -> bool | None:
+    """Put the node in its loader, for Enter bootloader.
+
+    Return True when done, or None for CiA 302-3: stop the program (write 0 to
+    0x1F51). A device with a way of its own -- a write to one of the maker's
+    objects, then a reset -- does it here.
+
+    Example:
+
+        # if identity is not None and identity.vendor_id == 0x00000123:
+        #     device.write(0x2F10, 0, 0xB007)   # the maker's "go to loader" request
+        #     return True
+    """
+    return None
+
+
+@hook
+def exit_bootloader(device, identity, program: int, *, ctx) -> bool | None:
+    """Leave the loader, for Exit bootloader.
+
+    Return True when done, or None for CiA 302-3: start the program (write 1 to
+    0x1F51).
+    """
+    return None
+
+
+@hook
+def firmware_steps(device, identity, image, program: int, progress, *, ctx) -> list | None:
+    """The whole download, as steps, for Download.
+
+    Return a list of ``Step(what, run)`` from ``pycangui.canopen.firmware``:
+    ``what`` is said in the Event Log as the step starts, and ``run`` is called
+    with nothing. Or return None for CiA 302-3: stop, clear, write the image to
+    0x1F50, start. The image is yours to shape: one in several pieces is
+    refused by CiA 302-3, and may be exactly what your loader wants.
+
+    Example:
+
+        # from pycangui.canopen.firmware import Step
+        # if identity is None or identity.product_code != 0x1234:
+        #     return None
+        # data = image.segments[0].data
+        # return [
+        #     Step("Unlocking", lambda: device.write(0x2F10, 1, 0x55AA)),
+        #     Step("Erasing", lambda: device.write(0x2F10, 2, len(data))),
+        #     Step(f"Writing {len(data)} bytes",
+        #          lambda: device.write_domain(0x2F11, 0, data, progress)),
+        #     Step("Checking", lambda: device.write(0x2F10, 3, 1)),
+        # ]
+    """
+    return None
+
+
+@hook
+def firmware_version(device, identity, program: int, *, ctx) -> str | None:
+    """What the node says it runs, for Read version and after a download.
+
+    Return the text, or None for the manufacturer software version (0x100A).
+
+    Example:
+
+        # raw = device.read(0x2F20, 1)
+        # return f"{raw >> 16}.{raw & 0xFFFF}"
+    """
+    return None
+
+
+@hook
+def flash_status(device, identity, program: int, *, ctx) -> str | None:
+    """How the last download went, as the node keeps it, for Read version.
+
+    Return the text, or None for CiA 302-3: the software identification
+    (0x1F56) and flash status (0x1F57), where the node keeps them.
+    """
+    return None

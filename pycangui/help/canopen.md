@@ -317,7 +317,9 @@ EDS...* in its own selector.
 
 The lower half of the pane is a row of tabs, the **Object dictionary** first:
 it, the live PDOs and LSS each want the whole height, and sharing it between
-them left every one too short to read.
+them left every one too short to read. The *Firmware* tab downloads a program
+to the node selected, by CiA 302-3 or by your own sequence; see
+[CANopen firmware](firmware.md).
 
 The *PDO configuration* tab shows
 every TPDO and RPDO with its COB-ID, transmission type, inhibit time, event
@@ -569,5 +571,5 @@ and ticking it back loses nothing. *Selected node only* leaves out the other
 nodes, keeping what went to all of them. *Clear* empties it, and *Save...*
 writes what is shown to a text file. The newest few thousand lines are kept.
 
-A firmware download's block transfer is not in it; the Firmware pane reports
+A firmware download's block transfer is not in it; the Firmware tab reports
 its own progress.

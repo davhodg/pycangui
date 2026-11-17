@@ -832,6 +832,8 @@ class MainWindow(QMainWindow):
         )
         self.plugin_actions = PluginActions(self, self.ctx, self.plugins)
         self.plugin_actions.changed.connect(self._plugins_changed)
+        for said in self.plugin_actions.retire_built_in():
+            self.events.information(said)
         self.plugins.load_all()
         # A plugin lives in the workspace as a copy, so pulling a newer
         # pycangui leaves it exactly as it was and nothing said so.
@@ -1093,7 +1095,12 @@ class MainWindow(QMainWindow):
                 "CANopen",
                 Qt.RightDockWidgetArea,
                 lambda _name: CanopenView(
-                    self.canopen, self.hooks, self.ctx, signals=self.signals, now=self.bus.now
+                    self.canopen,
+                    self.hooks,
+                    self.ctx,
+                    signals=self.signals,
+                    now=self.bus.now,
+                    confirm=self.confirm,
                 ),
                 detached_first=True,
                 floating_size=PROTOCOL_PANE_SIZE,

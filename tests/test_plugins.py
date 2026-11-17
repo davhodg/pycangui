@@ -513,17 +513,17 @@ def test_a_file_that_is_not_a_plugin_is_refused_with_a_reason(
 def test_one_pycangui_ships_can_be_installed_from_the_menu(app, window, agrees):
     """And is then an ordinary plugin in the workspace, which is the copy that
     runs -- so editing it is editing yours rather than the installation."""
-    window.plugin_actions.install_supplied("firmware")
+    window.plugin_actions.install_supplied("cia402")
     settle(app)
-    assert (window.ctx.workspace_dir / "plugins" / "firmware" / "program.py").is_file()
-    assert "CANopen firmware (CiA 302-3)" in [r.label for r in window.plugins.working()]
+    assert (window.ctx.workspace_dir / "plugins" / "cia402" / "drive.py").is_file()
+    assert "CANopen motor control (CiA 402)" in [r.label for r in window.plugins.working()]
 
 
 def test_what_is_already_installed_is_not_offered_again(app, window, agrees):
-    assert "firmware" in [s.name for s in window.plugin_actions.not_installed()]
-    window.plugin_actions.install_supplied("firmware")
+    assert "cia402" in [s.name for s in window.plugin_actions.not_installed()]
+    window.plugin_actions.install_supplied("cia402")
     settle(app)
-    assert "firmware" not in [s.name for s in window.plugin_actions.not_installed()]
+    assert "cia402" not in [s.name for s in window.plugin_actions.not_installed()]
 
 
 def test_a_plugin_can_be_written_back_out_as_a_package(app, window, tmp_path, agrees, monkeypatch):
@@ -682,11 +682,13 @@ def test_the_copy_it_reaches_is_the_one_beside_it(app, window, agrees):
     """The point of installing into the workspace: the copy you edit is the
     copy that runs. Named absolutely, an installed plugin would reach back
     into the one pycangui ships and editing your own would do nothing."""
-    window.plugin_actions.install_supplied("firmware")
+    window.plugin_actions.install_supplied("cia402")
     settle(app)
-    installed = window.ctx.workspace_dir / "plugins" / "firmware" / "program.py"
+    installed = window.ctx.workspace_dir / "plugins" / "cia402" / "drive.py"
     installed.write_text(
-        installed.read_text(encoding="utf-8").replace("BLOCK = 1024", "BLOCK = 7"),
+        installed.read_text(encoding="utf-8").replace(
+            'POSITION_UNITS = "position units"', 'POSITION_UNITS = "steps"'
+        ),
         encoding="utf-8",
     )
     window._reload_plugins()
@@ -694,10 +696,10 @@ def test_the_copy_it_reaches_is_the_one_beside_it(app, window, agrees):
 
     import sys
 
-    assert sys.modules["pycangui_plugins.firmware.program"].BLOCK == 7
-    from pycangui.plugins.firmware import program
+    assert sys.modules["pycangui_plugins.cia402.drive"].POSITION_UNITS == "steps"
+    from pycangui.plugins.cia402 import drive
 
-    assert program.BLOCK == 1024, "and the one pycangui ships is untouched"
+    assert drive.POSITION_UNITS == "position units", "and the one pycangui ships is untouched"
 
 
 def test_reloading_picks_up_an_edit_to_the_second_file_too(app, window):
