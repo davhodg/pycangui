@@ -43,7 +43,7 @@ On Linux, Qt needs a system library to draw the window, and Debian, Ubuntu, Linu
 sudo apt install libxcb-cursor0
 ```
 
-To include everything optional up front -- currently that is only the reader for MDF and MF4 measurement files -- install `all`. Without it, pycangui offers to install the reader the first time a measurement file is opened. On Python 3.15 the reader cannot be installed yet: a library it needs has not been released for 3.15. Everything else installs and runs there.
+To include everything optional up front -- currently that is only the reader for MDF and MF4 measurement files -- install `all`. Without it, pycangui offers to install the reader the first time a measurement file is opened.
 
 ```
 pip install "pycangui[all]"

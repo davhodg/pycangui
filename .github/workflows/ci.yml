@@ -38,12 +38,9 @@ jobs:
           # Fusion, as on a Windows 10 desktop -- the Qt style step says which.
           # The tests themselves run offscreen, where Qt starts in Fusion anyway.
           - { os: windows-2022, python: "3.14" }
-          # The newest Python, without the optional MDF reader: asammdf limits
-          # isal to 1.8.0, which has no wheels for 3.15 and will not build without
-          # tools the runners lack. Back to the dev extra, and the MDF tests
-          # with it, once asammdf allows a newer isal -- checked before each release.
-          - { os: windows-latest, python: "3.15", extras: test }
-          - { os: ubuntu-latest, python: "3.15", extras: test }
+          # The newest Python.
+          - { os: windows-latest, python: "3.15" }
+          - { os: ubuntu-latest, python: "3.15" }
           - { os: ubuntu-latest, python: "3.14" }
           - { os: ubuntu-latest, python: "3.13" }  # what current Debian, Ubuntu and Fedora ship
           - { os: ubuntu-latest, python: "3.12" }  # the floor: requires-python

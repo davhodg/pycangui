@@ -31,6 +31,7 @@ since the last version, and comes out in the next one.
 
 ### Changed
 
+- Python 3.15: the optional MDF reader installs there too.
 - XCP / CCP: the *A2L* button is on its own row above the tabs, since the Transfer tab uses the file too.
 - The Python Console's Clear button is gone: *Clear all* on its right-click does the same.
 - The Replay menu shows the file loaded, ticks it in a *Recent files* submenu, and has icons; *Loop* is with the speeds.
