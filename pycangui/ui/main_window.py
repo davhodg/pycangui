@@ -1277,10 +1277,23 @@ class MainWindow(QMainWindow):
         name = custom_name(instance)
         pane = custom_model.load(name) or custom_model.CustomPane(title=name)
         view = CustomPaneView(
-            name, pane, self.canopen, self.ctx, signals=self.signals, now=self.bus.now, xcp=self.xcp
+            name,
+            pane,
+            self.canopen,
+            self.ctx,
+            signals=self.signals,
+            now=self.bus.now,
+            xcp=self.xcp,
+            open_table=self._open_xcp_table,
+            uds=self.uds,
         )
         view.changed.connect(lambda n=name: self._on_custom_pane_changed(n))
         return view
+
+    def _open_xcp_table(self, name: str) -> None:
+        """A curve or a map from a custom pane: in the XCP pane's table window, read."""
+        self.xcp_view.open_table(name)
+        self.xcp.read(name)
 
     def open_custom_pane(self, name: str) -> str:
         """Open a custom pane by name, making an empty one if there is no file yet."""

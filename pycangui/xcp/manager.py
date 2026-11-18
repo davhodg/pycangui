@@ -518,6 +518,46 @@ class XcpManager(QObject):
 
         self._jobs.put((fn, f"read {name}"))
 
+    def write_value(self, name: str, phys: float) -> None:
+        """One characteristic set to a physical value, then read back.
+
+        Answered on ``answered`` with what the slave holds afterwards -- what
+        it made of the write, which is not always what was sent -- or with why
+        it was not written. The pane has already refused a value outside the
+        A2L's limits, as it refuses one outside an EDS's, so nothing here
+        asks. Said in the Event Log either way: a calibration change is worth
+        a line, and there are few of them.
+        """
+        param = self.a2l.find(name) if self.a2l else None
+        why = self._why_not_plain(param)
+        if not why and not param.writable:
+            why = "not a writable characteristic"
+        if why or self.engine is None:
+            said = why or "no XCP engine"
+            QTimer.singleShot(0, self, lambda: self.answered.emit(name, None, said))
+            return
+
+        def fn() -> str:
+            try:
+                raw = param.conversion.to_raw(phys) if param.conversion else phys
+                if (mask := _mask(param)) is not None:
+                    kept = int(self._read_raw(param)) & ~mask
+                    raw = kept | ((round(raw) << _shift(mask)) & mask)
+                data = encode_value(raw, param.datatype, self._big_endian(param))
+                self.engine.write(param.address, data, **_space(param))
+                now = self._read_value(param)
+            except TimeoutError:
+                self.answered.emit(name, None, "timeout")
+                return f"write {name}: timeout"
+            except Exception as exc:
+                said = str(exc) or type(exc).__name__
+                self.answered.emit(name, None, said)
+                return f"write {name}: {said}"
+            self.answered.emit(name, now, None)
+            return f"{name} <- {self.shown(name, now)}"
+
+        self._jobs.put((fn, f"write {name}"))
+
     def _why_not_plain(self, param: Parameter | None) -> str:
         """Why this is not one value that ``read_value`` can read, or ""."""
         if self.a2l is None:

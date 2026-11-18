@@ -269,6 +269,41 @@ class ValueWidget(FieldWidget):
         self.value.setToolTip(self._tooltip())
 
 
+class TableWidget(FieldWidget):
+    """A curve or a map, opened in a window of its own rather than squeezed in.
+
+    The XCP pane's table window, with its axes and its own Read, is already
+    how one is read and written; a pane field that redid it in a form row
+    would be a worse copy. So this is a button, and
+    what it says about the table beside it.
+    """
+
+    edits = False
+    #: Open this table, by its key.
+    open_requested = Signal(object)
+
+    def __init__(self, item: Field, display: Display) -> None:
+        super().__init__(item, display)
+        self.open = QPushButton("Open table...")
+        self.open.setToolTip(
+            "Open it in the XCP / CCP pane's table window, read from the slave,\n"
+            "where its values are typed in and written."
+        )
+        self.open.clicked.connect(lambda: self.open_requested.emit(self.field.key))
+        self.about = QLabel(self.display.description)
+        self.about.setWordWrap(True)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.open)
+        layout.addWidget(self.about, 1)
+
+    def refresh(self) -> None:
+        """Nothing to read here: the window reads it, all of it, when opened."""
+
+    def set_value(self, key: Any, raw: Any, error: Any = None) -> None:
+        """Its values go to the window, not to a row of a form."""
+
+
 class _EntryWidget(FieldWidget):
     """A box you type into, and the shared business of typing into one."""
 
@@ -332,6 +367,22 @@ class _EntryWidget(FieldWidget):
     @staticmethod
     def _to_wire(raw: float) -> Any:
         return int(raw) if float(raw).is_integer() else raw
+
+
+class TextWidget(_EntryWidget):
+    """Text, typed and written as it is.
+
+    For what is not a number: a UDS identifier read through its
+    ``did_decode`` hook and written through ``did_encode``, a part number, a
+    string. Nothing is checked here; the hook, or the device, says no.
+    """
+
+    def _as_raw(self, typed: str) -> str:
+        return typed
+
+    @staticmethod
+    def _to_wire(raw: Any) -> Any:
+        return raw
 
 
 class NumberWidget(_EntryWidget):
@@ -844,6 +895,8 @@ def _wire(value: float) -> Any:
 
 BY_KIND = {
     "value": ValueWidget,
+    "table": TableWidget,
+    "text": TextWidget,
     "number": NumberWidget,
     "hex": HexWidget,
     "enum": EnumWidget,

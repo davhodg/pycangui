@@ -50,16 +50,40 @@ on with that DCF.
 A pane can read from the slave the [XCP / CCP](xcp.md) pane is connected to
 instead. Choose *XCP or CCP* under *Values from* in *Edit...* while the pane is
 still empty -- its fields are then the A2L's names rather than indexes, so it is
-fixed once there are any. **Add...** lists the A2L's measurements, or takes a
-name typed in, and a pane like this is bound to the slave as soon as it opens.
+fixed once there are any. **Add...** lists the A2L's measurements and
+characteristics that are one value each, or takes a name typed in, and a pane
+like this is bound to the slave as soon as it opens.
 
 What a field shows comes from the A2L: the unit, the places after the point,
 the names of values and the limits. The values arrive already converted, so a
 field's own factor and offset are not needed. **Polling** works the same way,
 and puts the values in *Signals and Plot* under the slave's name.
 
-For now it reads measurements only; characteristics are written in the XCP /
-CCP pane.
+A characteristic is written as on a CANopen pane: held until **Write all**, or
+written on its own with Enter. The value typed is run back through the A2L's
+conversion, and the field then shows what the slave holds -- read again after
+the write, not assumed. A value outside the A2L's limits is refused before it
+is sent; the XCP / CCP pane is where one is written beyond them on purpose. A
+slave that has calibration locked says so against the field until it is
+unlocked in the XCP / CCP pane.
+
+A curve or a map is a `table` field: **Open table...** opens it in the XCP /
+CCP pane's own table window and reads it, with its axes, and it is changed
+there. It is read when opened rather than polled with the rest.
+
+## A pane over a UDS ECU
+
+Choosing *UDS* under *Values from* makes a pane of data identifiers, read from
+and written to the ECU the [UDS](uds.md) pane has open. **Add...** lists the
+identifiers the UDS pane's dropdown offers, or takes a DID typed in hex.
+
+What an identifier is called, and how its bytes read as a value and a value
+goes back into bytes, is the `did_*` [hooks](hooks.md) in `hooks/uds.py` -- the
+same ones the UDS pane uses. Where they say nothing, a value is its bytes in
+hex, and what is typed is taken as bytes the same way. A DID arrives as a
+`text` field; one a hook reads as a plain number can be made a `number` field,
+to step it and plot it. A write is read back afterwards, and a refusal -- a
+locked ECU, the wrong session -- shows against the field and in the Event Log.
 
 ## Polling
 
@@ -91,7 +115,7 @@ change while you watch it.
 
 ## How an object is shown
 
-Each field has one of seven kinds, changed in *Edit...*:
+Each field has one of nine kinds, changed in *Edit...*:
 
 | Kind | What it is |
 |---|---|
@@ -101,7 +125,9 @@ Each field has one of seven kinds, changed in *Edit...*:
 | `enum` | a dropdown of the values that have names |
 | `flags` | one named tick per bit |
 | `bits` | a field packed into some of the bits of a larger object |
-| `map` | an array as an editable table beside its graph |
+| `map` | an array as an editable table beside its graph (CANopen) |
+| `table` | an A2L curve or map, opened in the XCP / CCP pane's table window (XCP) |
+| `text` | text, typed and written as it is: a UDS identifier, a part number |
 
 Names, units, scaling, limits and bit meanings come from the EDS where it
 carries them and from [`hooks/canopen.py::object_display`](hooks.md) where it

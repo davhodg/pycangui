@@ -38,7 +38,9 @@ from pycangui.core import workspaces
 #: ``flags``  one named tick per bit of the object
 #: ``bits``   a field packed into some of the bits of a larger object
 #: ``map``    an array object as an editable XY table beside its graph
-KINDS = ("value", "number", "hex", "enum", "flags", "bits", "map")
+#: ``table``  an A2L curve or map, opened in the XCP pane's table window
+#: ``text``   text, typed and written as it is: a UDS identifier, a string
+KINDS = ("value", "number", "hex", "enum", "flags", "bits", "map", "table", "text")
 
 #: What a pane is for. One protocol to a pane: its fields are addressed the
 #: way that protocol addresses things, and only its sources are offered.
@@ -49,6 +51,8 @@ PROTOCOLS = (CANOPEN, XCP, UDS)
 #: The kinds that only make sense on CANopen: a map is an array object, one
 #: sub-index a point.
 CANOPEN_ONLY = ("map",)
+#: And on XCP: a curve or a map is the A2L's, by name, with its axes.
+XCP_ONLY = ("table",)
 MAX_DID = 0xFFFF
 
 MAX_INDEX = 0xFFFF
@@ -387,6 +391,8 @@ def problems(pane: CustomPane) -> list[str]:
         found.extend(f"{where}: {why}" for why in _address_problems(pane.protocol, item))
         if item.kind in CANOPEN_ONLY and pane.protocol != CANOPEN:
             found.append(f"{where}: {item.kind!r} is for CANopen panes.")
+        if item.kind in XCP_ONLY and pane.protocol != XCP:
+            found.append(f"{where}: {item.kind!r} is for XCP panes.")
         if item.kind not in KINDS:
             found.append(f"{where}: {item.kind!r} is not one of {', '.join(KINDS)}.")
         if item.kind == "bits":

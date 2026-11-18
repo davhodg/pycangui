@@ -6,6 +6,7 @@ for the pane, so the pane never touches udsoncan directly."""
 
 from __future__ import annotations
 
+import re
 import struct
 import threading
 import time
@@ -152,6 +153,9 @@ class UdsManager(QObject):
     result = Signal(str)  # one readable line per request outcome
     opened = Signal(bool)  # client open state changed
     did_value = Signal(int, bytes)  # did, raw data (for scripts / future signal hub use)
+    #: One identifier asked for by ``read_did_value`` or ``write_did_value``:
+    #: the DID, its value or None, and why there is none or None.
+    did_answered = Signal(int, object, object)
     progress = Signal(str, int, int)  # what, bytes done, bytes expected
     transferring = Signal(bool)  # a transfer started or finished
     #: Tester present turned itself off, and why: the adapter would not send it.
@@ -846,6 +850,71 @@ class UdsManager(QObject):
             return f"DID {self.did_label(did)} written ({len(data)} bytes)"
 
         self._run(f"WriteDID {did:04X}", fn)
+
+    # --- for a custom pane: one answer to each, a failure included ------------------------
+    def read_did_value(self, did: int) -> None:
+        """One identifier, answered on ``did_answered``: its value or why there is none.
+
+        The value is what ``did_decode`` makes of it, and a number where that
+        is one, so a number field can show and step it; the bytes, spaced in
+        hex, where the hook says nothing. Not said in the Event Log -- a pane
+        polling would fill it -- but on the pane, against the field.
+        """
+        self._did_job(did, None)
+
+    def write_did_value(self, did: int, text: str) -> None:
+        """Write an identifier from text, through ``did_encode``, then read it back.
+
+        Answered on ``did_answered`` with what the ECU holds afterwards, or with
+        what was written where it will not be read back -- some identifiers
+        are written and never read -- or with why it was not written. Said in
+        the Event Log, as a change to an ECU should be.
+        """
+        self._did_job(did, text)
+
+    def _did_job(self, did: int, text: str | None) -> None:
+        client = self.client
+        if client is None:
+            QTimer.singleShot(0, self, lambda: self.did_answered.emit(did, None, "UDS not open"))
+            return
+        label = f"{'WriteDID' if text is not None else 'ReadDID'} {did:04X}"
+
+        def read(c: Client):
+            req = Request(services.ReadDataByIdentifier, data=struct.pack(">H", did))
+            data = bytes(c.send_request(req).data[2:])  # without the echoed DID
+            decoded = self._hooks.call("uds", "did_decode", did, data)
+            return _as_number_or(decoded) if decoded is not None else describe_bytes(data)
+
+        def job():
+            try:
+                if text is not None:
+                    data = self._hooks.call("uds", "did_encode", did, text)
+                    if data is None:
+                        data = parse_bytes(text)
+                    payload = struct.pack(">H", did) + bytes(data)
+                    client.send_request(Request(services.WriteDataByIdentifier, data=payload))
+                    said = f"DID {self.did_label(did)} written: {text}"
+                    try:
+                        return read(client), None, said
+                    except Exception:  # written; it just will not be read back
+                        return _as_number_or(text), None, said
+                return read(client), None, ""
+            except NegativeResponseException as exc:
+                r = exc.response
+                why = f"NRC 0x{r.code:02X} {r.code_name}"
+            except TimeoutException:
+                why = "timeout (no response)"
+            except Exception as exc:  # a bad hook, bytes that would not parse
+                why = str(exc) or type(exc).__name__
+            return None, why, f"{label}: {why}" if text is not None else ""
+
+        def done(outcome, error: str | None) -> None:
+            value, why, said = (None, error, f"{label}: {error}") if error is not None else outcome
+            if said:
+                self.result.emit(said)
+            self.did_answered.emit(did, value, why)
+
+        self._worker.submit(job, done)
 
     def read_dtcs(self, status_mask: int) -> None:
         """The everyday one: every DTC matching a status mask."""
@@ -1690,3 +1759,18 @@ def status_flags(status: udsoncan.Dtc.Status) -> str:
         if getattr(status, attr, False):
             names.append(short)
     return "[" + ", ".join(names) + "]" if names else ""
+
+
+def _as_number_or(value: Any) -> Any:
+    """A number where the text is plainly one, so a number field can show and
+    step it; the value as it was otherwise. Plainly: "0123" is a part number,
+    not 123, so a leading zero keeps it text."""
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return value
+    text = str(value).strip()
+    if not _PLAIN_NUMBER.fullmatch(text):
+        return value
+    return float(text) if "." in text else int(text)
+
+
+_PLAIN_NUMBER = re.compile(r"-?(0|[1-9][0-9]*)(\.[0-9]+)?")

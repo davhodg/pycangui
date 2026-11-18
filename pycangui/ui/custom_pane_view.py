@@ -50,9 +50,10 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.context import Context
 from pycangui.custom_panes import model
-from pycangui.custom_panes.model import CANOPEN, XCP, CustomPane, Field, key_text
+from pycangui.custom_panes.model import CANOPEN, UDS, XCP, CustomPane, Field, key_text
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
 from pycangui.custom_panes.source import FileSource, Key, NodeSource, Source
+from pycangui.custom_panes.uds_source import UdsSource
 from pycangui.custom_panes.xcp_source import XcpSource
 from pycangui.ui import field_widgets, folders, fonts, icons, messages
 from pycangui.ui.persist import remember
@@ -68,6 +69,7 @@ NO_SOURCE = "Nothing to read from yet"
 #: What the selector holds for the XCP pane's slave. Not a string, which is
 #: what a file's path is.
 XCP_ENTRY = ("xcp",)
+UDS_ENTRY = ("uds",)
 
 READ_TIP = (
     "Read every object on this pane again. Changes not yet written are\n"
@@ -112,10 +114,11 @@ SAVE_AS_TIP = "Write the edited values to a new DCF, and carry on editing that o
 UNSAVED = "Unsaved changes"
 #: What a pane can be for, in the editor. UDS is not offered until there is a
 #: source for it.
-PROTOCOL_CHOICES = (("CANopen", CANOPEN), ("XCP or CCP", XCP))
+PROTOCOL_CHOICES = (("CANopen", CANOPEN), ("XCP or CCP", XCP), ("UDS", UDS))
 PROTOCOL_TIP = (
-    "What the pane reads from: CANopen nodes and DCF or EDS files, or the\n"
-    "slave the XCP pane is connected to, by its A2L's names."
+    "What the pane reads from: CANopen nodes and DCF or EDS files, the slave\n"
+    "the XCP pane is connected to by its A2L's names, or the ECU the UDS pane\n"
+    "has open by its data identifiers."
 )
 
 
@@ -134,6 +137,8 @@ class CustomPaneView(QWidget):
         signals=None,
         now=None,
         xcp=None,
+        open_table=None,
+        uds=None,
     ) -> None:
         super().__init__()
         self.name = name
@@ -141,6 +146,10 @@ class CustomPaneView(QWidget):
         self.manager = manager
         #: The XCP manager, for a pane over the slave the XCP pane talks to.
         self.xcp = xcp
+        #: name -> opens that curve or map in the XCP pane's table window.
+        self._open_table = open_table
+        #: The UDS manager, for a pane over the ECU the UDS pane has open.
+        self.uds = uds
         self.ctx = ctx
         #: Where polled values go, so that one plots and exports like any other
         #: signal rather than being a number that only exists on this form.
@@ -245,10 +254,10 @@ class CustomPaneView(QWidget):
             # destroyed while it keeps a lambda alive to reach for widgets
             # that have gone.
             manager.node_seen.connect(self._on_node_seen)
-        if self.pane.protocol == XCP and xcp is not None:
-            # There is one slave to read from, so the pane is bound to it from
-            # the start rather than waiting to be told.
-            self.bind(XcpSource(xcp))
+        if self.pane.protocol != CANOPEN:
+            # There is one slave or ECU to read from, so the pane is bound to it
+            # from the start rather than waiting to be told.
+            self.bind(self._source_for(self.pane.protocol))
 
     # --- the form ------------------------------------------------------------------
     def rebuild(self) -> None:
@@ -272,11 +281,14 @@ class CustomPaneView(QWidget):
             widget.write_requested.connect(self._on_write_requested)
             widget.message.connect(self.ctx.warn)
             widget.pending_changed.connect(self._show_unsent)
+            if isinstance(widget, field_widgets.TableWidget):
+                widget.open_requested.connect(self._on_open_table)
             self.form.addRow(QLabel(widget.label_text() + ":"), widget)
             self._widgets.append(widget)
         self._apply_writable()
         self._show_unsent()
-        self.poller.set_objects(f.key for f in self.pane.fields)
+        # A table is read whole by its window, not a value at a time here.
+        self.poller.set_objects(f.key for f in self.pane.fields if f.kind != "table")
         self._fill_sources()
 
     def refresh(self) -> None:
@@ -343,6 +355,8 @@ class CustomPaneView(QWidget):
             if self.pane.protocol == XCP and self.xcp is not None:
                 label = self.source.label if isinstance(self.source, XcpSource) else "XCP slave"
                 self.sources.addItem(label, XCP_ENTRY)
+            elif self.pane.protocol == UDS and self.uds is not None:
+                self.sources.addItem("UDS ECU", UDS_ENTRY)
             else:
                 self.sources.addItem(NO_SOURCE, None)
             self.sources.blockSignals(False)
@@ -364,6 +378,8 @@ class CustomPaneView(QWidget):
         """What the selector calls a source: a node id, a file's path, the slave."""
         if isinstance(source, XcpSource):
             return XCP_ENTRY
+        if isinstance(source, UdsSource):
+            return UDS_ENTRY
         if isinstance(source, NodeSource):
             return source.node_id
         if isinstance(source, FileSource):
@@ -380,8 +396,8 @@ class CustomPaneView(QWidget):
         if chosen == FILE_ENTRY:
             self._choose_file()
             return
-        if chosen == XCP_ENTRY and self.xcp is not None:
-            self.bind(XcpSource(self.xcp))
+        if chosen in (XCP_ENTRY, UDS_ENTRY):
+            self.bind(self._source_for(self.pane.protocol))
         elif isinstance(chosen, int):
             self.bind(NodeSource(self.manager, chosen))
         elif isinstance(chosen, str):
@@ -413,7 +429,7 @@ class CustomPaneView(QWidget):
                     self.source.modified.disconnect(self._apply_file_controls)
                 except (RuntimeError, TypeError):
                     pass
-            if isinstance(self.source, XcpSource):
+            if isinstance(self.source, XcpSource | UdsSource):
                 try:
                     self.source.changed.disconnect(self._on_source_changed)
                 except (RuntimeError, TypeError):
@@ -426,9 +442,9 @@ class CustomPaneView(QWidget):
             source.value.connect(self._on_value)
         if isinstance(source, FileSource):
             source.modified.connect(self._apply_file_controls)
-        if isinstance(source, XcpSource):
-            # Another A2L, or connected again: the names, units and limits the
-            # fields show may all have changed, and the selector's label too.
+        if isinstance(source, XcpSource | UdsSource):
+            # Another A2L, connected or opened again: the names, units and
+            # limits the fields show may all have changed, and the label too.
             source.changed.connect(self._on_source_changed)
         # The display comes from the source, so the labels and the units may
         # be different ones now: rebuilt rather than patched.
@@ -436,6 +452,12 @@ class CustomPaneView(QWidget):
         self._apply_file_controls()
         if source is not None:
             self.refresh()
+
+    def _on_open_table(self, key: Key) -> None:
+        if self._open_table is None:
+            self.ctx.warn(f"{self.pane.title or self.name}: no XCP pane to open {key} in")
+            return
+        self._open_table(str(key))
 
     def _on_source_changed(self) -> None:
         self.rebuild()
@@ -649,6 +671,8 @@ class CustomPaneView(QWidget):
             return self.source
         if protocol == XCP and self.xcp is not None:
             return XcpSource(self.xcp)
+        if protocol == UDS and self.uds is not None:
+            return UdsSource(self.uds)
         return None
 
     def add_field(self, item: Field) -> None:
@@ -885,11 +909,16 @@ class AddObjects(QDialog):
         self.sub.setToolTip("Sub-index, in hex. Blank means 0.")
         typed = QHBoxLayout()
         named = protocol == XCP
-        typed.addWidget(QLabel("or name:" if named else "or index:"))
+        by_did = protocol == UDS
+        typed.addWidget(QLabel("or name:" if named else "or DID:" if by_did else "or index:"))
         typed.addWidget(self.index, 1)
         if named:
             self.index.setPlaceholderText("EngineSpeed")
             self.index.setToolTip("A measurement's name, as the A2L spells it.")
+            self.sub.hide()
+        elif by_did:
+            self.index.setPlaceholderText("F190")
+            self.index.setToolTip("A data identifier, in hex. 0xF190 works too.")
             self.sub.hide()
         else:
             typed.addWidget(QLabel("sub:"))
@@ -907,6 +936,8 @@ class AddObjects(QDialog):
             missing = QLabel(
                 "Nothing to pick from: no A2L is loaded in the XCP pane. Type a name instead."
                 if named
+                else "Nothing named in hooks/uds.py's did_choices. Type a DID instead."
+                if by_did
                 else "Nothing to pick from: this pane is not bound to a node with an "
                 "EDS loaded, or to a file. Type an index instead."
             )
@@ -941,6 +972,16 @@ class AddObjects(QDialog):
                 if entry[0] == text:
                     return self._as_field(*entry)
             return Field(name=text, kind="value")
+        if self.protocol == UDS:
+            try:
+                did = int(text, 16 if not text.lower().startswith("0x") else 0)
+            except ValueError:
+                messages.warning(self.parent(), "Not a DID", f"{text!r} is not a hex identifier.")
+                return None
+            for entry in self._entries:
+                if entry[0] == did:
+                    return self._as_field(*entry)
+            return Field(did=did, kind="text")
         try:
             index = int(text, 16 if not text.lower().startswith("0x") else 0)
             sub_text = self.sub.text().strip() or "0"
@@ -958,11 +999,15 @@ class AddObjects(QDialog):
     @staticmethod
     def _as_field(key: Key, name: str, access: str) -> Field:
         """A writable object is one to type into, a read-only one a reading."""
+        if access == "table":
+            return Field(name=str(key), kind="table")
         kind = "number" if "w" in (access or "").lower() else "value"
         if isinstance(key, tuple):
             return Field(index=key[0], sub=key[1], kind=kind, label=name)
         if isinstance(key, int):
-            return Field(did=key, kind=kind, label=name)
+            # A DID's value is usually text -- a VIN, a part number -- so a
+            # writable one is a box that takes text, not a number.
+            return Field(did=key, kind="text" if kind == "number" else kind, label=name)
         return Field(name=str(key), kind=kind, label="" if name == key else name)
 
 

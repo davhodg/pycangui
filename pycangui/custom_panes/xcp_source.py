@@ -8,10 +8,10 @@ called (COMPU_VTAB), the limits. Values arrive already converted, physical
 rather than raw, so the display carries no scaling of its own: the conversion
 is the A2L's, done once, in the manager.
 
-Read only, for now. Measurements are what a slave reports, and reading them
-is enough to prove the pane does not care what its keys are; writing
-characteristics -- with their conversion run backwards and their limits
-checked -- comes next.
+Measurements are read; characteristics are read and written, the value typed
+run back through the conversion by the manager and read back afterwards, so
+the field shows what the slave holds rather than what was sent. Limits are
+checked by the pane before anything is sent, as an EDS's are.
 """
 
 from __future__ import annotations
@@ -24,13 +24,16 @@ from pycangui.canopen.display import Display
 from pycangui.custom_panes.model import XCP
 from pycangui.custom_panes.source import Key, Source
 
+#: What ``objects`` says a curve or a map is, so it arrives as a table field.
+TABLE = "table"
+
 
 class XcpSource(Source):
     """The slave the XCP pane is connected to."""
 
     protocol = XCP
     live = True
-    writable = False
+    writable = True
 
     def __init__(self, manager) -> None:
         super().__init__()
@@ -62,9 +65,13 @@ class XcpSource(Source):
         param = self._parameter(key)
         if param is None:
             return Display(name=str(key))
+        description = param.description
+        if param.is_table and param.sizes:
+            shape = " by ".join(str(size) for size in param.sizes)
+            description = f"{description} ({shape})" if description else shape
         return Display(
             name=param.name,
-            description=param.description,
+            description=description,
             unit=param.unit,
             decimals=param.decimals,
             choices=dict(param.choices),
@@ -76,22 +83,31 @@ class XcpSource(Source):
         self.manager.read_value(str(key))
 
     def write(self, key: Key, raw: Any) -> None:
-        """Not yet: say so against the field rather than drop it."""
-        QTimer.singleShot(
-            0, self, lambda: self.value.emit(key, None, "writing is not offered here yet")
-        )
+        try:
+            phys = float(raw)
+        except (TypeError, ValueError):
+            text = f"{raw!r} is not a number"
+            QTimer.singleShot(0, self, lambda: self.value.emit(key, None, text))
+            return
+        self.manager.write_value(str(key), phys)
 
     def objects(self) -> list[tuple[Key, str, str]]:
-        """The A2L's measurements that are one value each, by name.
+        """What a pane can show: single values, and curves and maps.
 
-        Arrays, curves, maps and text are left out: a pane field shows one
-        value, and they are not one.
+        A characteristic the slave lets be written is ``rw``, so it arrives as
+        a field to type into; a curve or a map is ``table``, a button opening
+        it. Arrays and text are left out, being neither one value nor a table.
         """
         a2l = self.manager.a2l
         if a2l is None:
             return []
-        return [
-            (param.name, param.name, "ro")
-            for param in sorted(a2l.measurements(), key=lambda p: p.name.lower())
-            if param.readable and not (param.is_array or param.is_table or param.is_text)
-        ]
+        every = sorted([*a2l.measurements(), *a2l.characteristics()], key=lambda p: p.name.lower())
+        out = []
+        for param in every:
+            if not param.readable or param.is_text:
+                continue
+            if param.is_table:
+                out.append((param.name, param.name, TABLE))
+            elif not param.is_array:
+                out.append((param.name, param.name, "rw" if param.writable else "ro"))
+        return out
