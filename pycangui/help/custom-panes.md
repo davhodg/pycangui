@@ -45,6 +45,22 @@ to save them. A pane pointed at an EDS saves with **Save as...**, so the EDS
 stays as it came and the edits go to a DCF of their own; the pane then carries
 on with that DCF.
 
+## A pane over an XCP or CCP slave
+
+A pane can read from the slave the [XCP / CCP](xcp.md) pane is connected to
+instead. Choose *XCP or CCP* under *Values from* in *Edit...* while the pane is
+still empty -- its fields are then the A2L's names rather than indexes, so it is
+fixed once there are any. **Add...** lists the A2L's measurements, or takes a
+name typed in, and a pane like this is bound to the slave as soon as it opens.
+
+What a field shows comes from the A2L: the unit, the places after the point,
+the names of values and the limits. The values arrive already converted, so a
+field's own factor and offset are not needed. **Polling** works the same way,
+and puts the values in *Signals and Plot* under the slave's name.
+
+For now it reads measurements only; characteristics are written in the XCP /
+CCP pane.
+
 ## Polling
 
 *Read all* reads the pane once. **Poll** reads it over and over, so the values

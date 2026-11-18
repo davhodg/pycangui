@@ -85,6 +85,10 @@ class XcpManager(QObject):
     reshaped = Signal(str)
     #: Text read from an ASCII characteristic: its name, and the text.
     text = Signal(str, str)
+    #: One value asked for by ``read_value``: its name, the physical value or
+    #: None, and why there is none or None. Every such read gets exactly one,
+    #: a failure included -- a custom pane's polling waits on it.
+    answered = Signal(str, object, object)
 
     def __init__(self, bus: BusManager, hooks: Hooks, signals: SignalHub, ctx: Context) -> None:
         super().__init__()
@@ -486,6 +490,49 @@ class XcpManager(QObject):
             return f"{name} = {self.shown(name, phys)}{unit}"
 
         self._submit(f"read {name}", fn)
+
+    def read_value(self, name: str) -> None:
+        """One plain value, answered on ``answered`` whether it was read or not.
+
+        For a custom pane rather than a person: nothing goes to the Event Log
+        either way, because a pane polling at 10 Hz would fill it, and the
+        answer -- a failure too -- is shown on the pane, against the field.
+        """
+        param = self.a2l.find(name) if self.a2l else None
+        why = self._why_not_plain(param)
+        if why or self.engine is None:
+            # Through the event loop, so even a refusal arrives the way an
+            # answer does: after the request has returned.
+            said = why or "no XCP engine"
+            QTimer.singleShot(0, self, lambda: self.answered.emit(name, None, said))
+            return
+
+        def fn() -> str:
+            try:
+                self.answered.emit(name, self._read_value(param), None)
+            except TimeoutError:
+                self.answered.emit(name, None, "timeout")
+            except Exception as exc:  # said on the pane, and the worker carries on
+                self.answered.emit(name, None, str(exc) or type(exc).__name__)
+            return ""
+
+        self._jobs.put((fn, f"read {name}"))
+
+    def _why_not_plain(self, param: Parameter | None) -> str:
+        """Why this is not one value that ``read_value`` can read, or ""."""
+        if self.a2l is None:
+            return "no A2L loaded"
+        if param is None:
+            return "not in the A2L"
+        if not param.readable:
+            return param.unreadable
+        if param.is_table or param.is_array or param.is_text:
+            return "not a single value"
+        if not self._connected:
+            return "not connected"
+        if self._busy:
+            return "a transfer is running"
+        return ""
 
     def _read_array(self, array: Parameter) -> None:
         """Every value of an array, one read each, as one job.

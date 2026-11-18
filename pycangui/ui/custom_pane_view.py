@@ -50,9 +50,10 @@ from PySide6.QtWidgets import (
 
 from pycangui.core.context import Context
 from pycangui.custom_panes import model
-from pycangui.custom_panes.model import CANOPEN, CustomPane, Field, key_text
+from pycangui.custom_panes.model import CANOPEN, XCP, CustomPane, Field, key_text
 from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
 from pycangui.custom_panes.source import FileSource, Key, NodeSource, Source
+from pycangui.custom_panes.xcp_source import XcpSource
 from pycangui.ui import field_widgets, folders, fonts, icons, messages
 from pycangui.ui.persist import remember
 
@@ -64,6 +65,9 @@ MAX_WAITING = 8
 FILE_ENTRY = "Open a DCF or EDS..."
 #: In the selector of a pane for a protocol with no source here yet.
 NO_SOURCE = "Nothing to read from yet"
+#: What the selector holds for the XCP pane's slave. Not a string, which is
+#: what a file's path is.
+XCP_ENTRY = ("xcp",)
 
 READ_TIP = (
     "Read every object on this pane again. Changes not yet written are\n"
@@ -106,6 +110,13 @@ SAVE_EDS_TIP = (
 )
 SAVE_AS_TIP = "Write the edited values to a new DCF, and carry on editing that one."
 UNSAVED = "Unsaved changes"
+#: What a pane can be for, in the editor. UDS is not offered until there is a
+#: source for it.
+PROTOCOL_CHOICES = (("CANopen", CANOPEN), ("XCP or CCP", XCP))
+PROTOCOL_TIP = (
+    "What the pane reads from: CANopen nodes and DCF or EDS files, or the\n"
+    "slave the XCP pane is connected to, by its A2L's names."
+)
 
 
 class CustomPaneView(QWidget):
@@ -115,12 +126,21 @@ class CustomPaneView(QWidget):
     changed = Signal()
 
     def __init__(
-        self, name: str, pane: CustomPane, manager, ctx: Context, signals=None, now=None
+        self,
+        name: str,
+        pane: CustomPane,
+        manager,
+        ctx: Context,
+        signals=None,
+        now=None,
+        xcp=None,
     ) -> None:
         super().__init__()
         self.name = name
         self.pane = pane
         self.manager = manager
+        #: The XCP manager, for a pane over the slave the XCP pane talks to.
+        self.xcp = xcp
         self.ctx = ctx
         #: Where polled values go, so that one plots and exports like any other
         #: signal rather than being a number that only exists on this form.
@@ -225,6 +245,10 @@ class CustomPaneView(QWidget):
             # destroyed while it keeps a lambda alive to reach for widgets
             # that have gone.
             manager.node_seen.connect(self._on_node_seen)
+        if self.pane.protocol == XCP and xcp is not None:
+            # There is one slave to read from, so the pane is bound to it from
+            # the start rather than waiting to be told.
+            self.bind(XcpSource(xcp))
 
     # --- the form ------------------------------------------------------------------
     def rebuild(self) -> None:
@@ -315,9 +339,12 @@ class CustomPaneView(QWidget):
         self.sources.blockSignals(True)
         self.sources.clear()
         if self.pane.protocol != CANOPEN:
-            # Only the sources of the pane's own protocol are offered, and
-            # there are none here yet for this one.
-            self.sources.addItem(NO_SOURCE, None)
+            # Only the sources of the pane's own protocol are offered.
+            if self.pane.protocol == XCP and self.xcp is not None:
+                label = self.source.label if isinstance(self.source, XcpSource) else "XCP slave"
+                self.sources.addItem(label, XCP_ENTRY)
+            else:
+                self.sources.addItem(NO_SOURCE, None)
             self.sources.blockSignals(False)
             return
         nodes = sorted(self.manager.nodes()) if hasattr(self.manager, "nodes") else []
@@ -333,8 +360,10 @@ class CustomPaneView(QWidget):
         self.sources.blockSignals(False)
 
     @staticmethod
-    def _key_of(source: Source | None) -> int | str | None:
-        """What the selector calls a source: a node id, or a file's path."""
+    def _key_of(source: Source | None) -> int | str | tuple | None:
+        """What the selector calls a source: a node id, a file's path, the slave."""
+        if isinstance(source, XcpSource):
+            return XCP_ENTRY
         if isinstance(source, NodeSource):
             return source.node_id
         if isinstance(source, FileSource):
@@ -351,7 +380,9 @@ class CustomPaneView(QWidget):
         if chosen == FILE_ENTRY:
             self._choose_file()
             return
-        if isinstance(chosen, int):
+        if chosen == XCP_ENTRY and self.xcp is not None:
+            self.bind(XcpSource(self.xcp))
+        elif isinstance(chosen, int):
             self.bind(NodeSource(self.manager, chosen))
         elif isinstance(chosen, str):
             self.bind(FileSource(chosen, hooks=getattr(self.manager, "_hooks", None)))
@@ -382,16 +413,33 @@ class CustomPaneView(QWidget):
                     self.source.modified.disconnect(self._apply_file_controls)
                 except (RuntimeError, TypeError):
                     pass
+            if isinstance(self.source, XcpSource):
+                try:
+                    self.source.changed.disconnect(self._on_source_changed)
+                except (RuntimeError, TypeError):
+                    pass
         self.source = source
+        # Reads still out with the old source answer to it, not here: left
+        # waiting, they would take the new source's first answers for theirs.
+        self._asked.clear()
         if source is not None:
             source.value.connect(self._on_value)
         if isinstance(source, FileSource):
             source.modified.connect(self._apply_file_controls)
+        if isinstance(source, XcpSource):
+            # Another A2L, or connected again: the names, units and limits the
+            # fields show may all have changed, and the selector's label too.
+            source.changed.connect(self._on_source_changed)
         # The display comes from the source, so the labels and the units may
         # be different ones now: rebuilt rather than patched.
         self.rebuild()
         self._apply_file_controls()
         if source is not None:
+            self.refresh()
+
+    def _on_source_changed(self) -> None:
+        self.rebuild()
+        if self.source is not None:
             self.refresh()
 
     # --- saving a file ---------------------------------------------------------------
@@ -579,15 +627,29 @@ class CustomPaneView(QWidget):
 
     # --- changing the pane itself ----------------------------------------------------------
     def _edit(self) -> None:
-        dialog = CustomPaneEditor(self, self.pane, self.source)
+        dialog = CustomPaneEditor(self, self.pane, self.source, self._source_for)
         if dialog.exec() != QDialog.Accepted:
             return
+        before = self.pane.protocol
         self.pane = dialog.result_pane()
         model.save(self.name, self.pane)
-        self.rebuild()
-        if self.source is not None:
-            self.refresh()
+        if self.pane.protocol != before:
+            # A source of the old protocol is no use to it: bound to the new
+            # one's where there is one to bind to, which rebuilds it too.
+            self.bind(self._source_for(self.pane.protocol))
+        else:
+            self.rebuild()
+            if self.source is not None:
+                self.refresh()
         self.changed.emit()
+
+    def _source_for(self, protocol: str) -> Source | None:
+        """Something to pick objects from for a pane of this protocol."""
+        if self.source is not None and getattr(self.source, "protocol", CANOPEN) == protocol:
+            return self.source
+        if protocol == XCP and self.xcp is not None:
+            return XcpSource(self.xcp)
+        return None
 
     def add_field(self, item: Field) -> None:
         """Put another object on this pane, from wherever it was picked."""
@@ -618,13 +680,25 @@ class CustomPaneEditor(QDialog):
 
     COLUMNS = ("Object", "Label", "Shown as")
 
-    def __init__(self, parent: QWidget | None, pane: CustomPane, source=None) -> None:
+    def __init__(
+        self, parent: QWidget | None, pane: CustomPane, source=None, source_for=None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Edit pane")
         self.resize(560, 460)
         self.source = source
+        #: protocol -> something to pick from, for a pane changed to another.
+        self._source_for = source_for
         self._fields = list(pane.fields)
         self._protocol = pane.protocol
+
+        self.protocol = QComboBox()
+        for label, value in PROTOCOL_CHOICES:
+            self.protocol.addItem(label, value)
+        if self.protocol.findData(pane.protocol) < 0:
+            self.protocol.addItem(pane.protocol, pane.protocol)  # as the file says
+        self.protocol.setCurrentIndex(self.protocol.findData(pane.protocol))
+        self.protocol.currentIndexChanged.connect(self._on_protocol)
 
         self.title = QLineEdit(pane.title)
         self.description = QLineEdit(pane.description)
@@ -637,6 +711,7 @@ class CustomPaneEditor(QDialog):
         details = QFormLayout()
         details.addRow("Title:", self.title)
         details.addRow("Note:", self.description)
+        details.addRow("Values from:", self.protocol)
         details.addRow("Usual node:", self.node)
 
         self.table = QTableWidget(0, len(self.COLUMNS))
@@ -680,7 +755,22 @@ class CustomPaneEditor(QDialog):
         layout.addWidget(closer)
         self._fill()
 
+    def _on_protocol(self, _at: int) -> None:
+        self._protocol = self.protocol.currentData()
+        self._apply_protocol()
+
+    def _apply_protocol(self) -> None:
+        # Fields are addressed the way their pane's protocol addresses things,
+        # so it is chosen before there are any, and fixed once there are.
+        empty = not self._fields
+        self.protocol.setEnabled(empty)
+        self.protocol.setToolTip(
+            PROTOCOL_TIP if empty else PROTOCOL_TIP + "\nRemove the objects to change it."
+        )
+        self.node.setEnabled(self._protocol == CANOPEN)
+
     def _fill(self) -> None:
+        self._apply_protocol()
         self.table.setRowCount(len(self._fields))
         for row, item in enumerate(self._fields):
             where = QTableWidgetItem(key_text(item.key))
@@ -693,7 +783,10 @@ class CustomPaneEditor(QDialog):
             self.table.setCellWidget(row, 2, kinds)
 
     def _add(self) -> None:
-        chosen = AddObjects(self, self.source).chosen_fields()
+        source = self.source
+        if source is None or getattr(source, "protocol", CANOPEN) != self._protocol:
+            source = self._source_for(self._protocol) if self._source_for else None
+        chosen = AddObjects(self, source, self._protocol).chosen_fields()
         if not chosen:
             return
         self._collect()
@@ -758,13 +851,15 @@ class AddObjects(QDialog):
     Both, rather than either. A list to search is how somebody who does not
     know the index finds it, and typing one is how somebody who does gets on
     with it -- and there is no list at all when the pane is bound to a node
-    that has no EDS, which must not be a dead end.
+    that has no EDS, which must not be a dead end. On an XCP pane what is
+    typed is an A2L name rather than an index.
     """
 
-    def __init__(self, parent: QWidget | None, source) -> None:
+    def __init__(self, parent: QWidget | None, source, protocol: str = CANOPEN) -> None:
         super().__init__(parent)
         self.setWindowTitle("Add objects")
         self.resize(520, 480)
+        self.protocol = protocol
         self._entries: list[tuple[Key, str, str]] = []
         if source is not None:
             self._entries = list(source.objects())
@@ -779,7 +874,8 @@ class AddObjects(QDialog):
         self.list.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list.itemDoubleClicked.connect(lambda _i: self.accept())
         for key, name, access in self._entries:
-            self.list.addItem(f"{_listed_key(key)}  {name}  ({access or '?'})")
+            shown = name if key == name else f"{_listed_key(key)}  {name}"
+            self.list.addItem(f"{shown}  ({access or '?'})")
 
         self.index = QLineEdit()
         self.index.setPlaceholderText("2001")
@@ -788,10 +884,16 @@ class AddObjects(QDialog):
         self.sub.setPlaceholderText("0")
         self.sub.setToolTip("Sub-index, in hex. Blank means 0.")
         typed = QHBoxLayout()
-        typed.addWidget(QLabel("or index:"))
+        named = protocol == XCP
+        typed.addWidget(QLabel("or name:" if named else "or index:"))
         typed.addWidget(self.index, 1)
-        typed.addWidget(QLabel("sub:"))
-        typed.addWidget(self.sub)
+        if named:
+            self.index.setPlaceholderText("EngineSpeed")
+            self.index.setToolTip("A measurement's name, as the A2L spells it.")
+            self.sub.hide()
+        else:
+            typed.addWidget(QLabel("sub:"))
+            typed.addWidget(self.sub)
 
         buttons = icons.on_buttons(QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel))
         buttons.accepted.connect(self.accept)
@@ -803,7 +905,9 @@ class AddObjects(QDialog):
             layout.addWidget(self.list, 1)
         else:
             missing = QLabel(
-                "Nothing to pick from: this pane is not bound to a node with an "
+                "Nothing to pick from: no A2L is loaded in the XCP pane. Type a name instead."
+                if named
+                else "Nothing to pick from: this pane is not bound to a node with an "
                 "EDS loaded, or to a file. Type an index instead."
             )
             missing.setWordWrap(True)
@@ -832,6 +936,11 @@ class AddObjects(QDialog):
         text = self.index.text().strip()
         if not text:
             return None
+        if self.protocol == XCP:
+            for entry in self._entries:
+                if entry[0] == text:
+                    return self._as_field(*entry)
+            return Field(name=text, kind="value")
         try:
             index = int(text, 16 if not text.lower().startswith("0x") else 0)
             sub_text = self.sub.text().strip() or "0"
@@ -854,7 +963,7 @@ class AddObjects(QDialog):
             return Field(index=key[0], sub=key[1], kind=kind, label=name)
         if isinstance(key, int):
             return Field(did=key, kind=kind, label=name)
-        return Field(name=str(key), kind=kind)
+        return Field(name=str(key), kind=kind, label="" if name == key else name)
 
 
 def _listed_key(key: Key) -> str:

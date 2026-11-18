@@ -233,7 +233,9 @@ def test_a_pane_polls_by_name(app, window):
 
 
 def test_a_pane_for_another_protocol_is_not_offered_the_nodes(app, window):
-    view = named_pane(window)
+    model.save("ids", CustomPane(title="Identification", protocol=UDS, fields=[Field(did=0xF190)]))
+    window.open_custom_pane("ids")
+    view = window._custom_pane_view("ids")
     offered = [view.sources.itemData(i) for i in range(view.sources.count())]
     assert offered == [None], "no node, no CANopen file: nothing of its protocol yet"
 

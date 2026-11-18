@@ -1277,7 +1277,7 @@ class MainWindow(QMainWindow):
         name = custom_name(instance)
         pane = custom_model.load(name) or custom_model.CustomPane(title=name)
         view = CustomPaneView(
-            name, pane, self.canopen, self.ctx, signals=self.signals, now=self.bus.now
+            name, pane, self.canopen, self.ctx, signals=self.signals, now=self.bus.now, xcp=self.xcp
         )
         view.changed.connect(lambda n=name: self._on_custom_pane_changed(n))
         return view

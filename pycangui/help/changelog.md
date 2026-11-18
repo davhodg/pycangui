@@ -26,6 +26,7 @@ since the last version, and comes out in the next one.
 - XCP: connecting asks GET_ID for the slave's A2L, and says it.
 - XCP / CCP: the A2L is watched, and a change on disk asks whether to read it again; *A2L > Reload* does so by hand, keeping plot ticks and open tables.
 - Loaded databases are watched, and a change on disk asks whether to read them again, once for all that changed together.
+- Custom panes over an XCP or CCP slave: measurements by A2L name, read and polled into Signals and Plot.
 
 ### Changed
 
