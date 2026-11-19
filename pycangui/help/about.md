@@ -39,6 +39,23 @@ identifiers are listed; hook contents and passwords never are.
 
 **Help > About pycangui** shows the version alongside Python, every package pycangui runs on and the platform, in a form you can copy. It also says where it is running from: the Python it started with, that Python's environment, the folder the pycangui package was loaded from, and how it got there -- pip, an editable install of a source folder, or the Windows installer. On a computer with more than one Python that answers which one it is. Started from inside a source folder, Python loads pycangui from that folder even when the environment has no pycangui installed, or a different one; About says so.
 
+## Uninstalling
+
+- **The Windows installer:** *Settings > Apps* (or *Add or remove programs*), or *Uninstall
+  pycangui* in its Start menu folder. It takes away its file associations and shortcuts too.
+- **pip:** `pip uninstall pycangui`, and what *Tools > Settings* added, as for a source folder.
+- **A source folder (a Git clone):** delete the folder. If *Tools > Settings* was used to add
+  a shortcut or to open `.dcf`, `.eds` and `.dbc` files with it, take those away as well: the
+  shortcuts are `%APPDATA%\Microsoft\Windows\Start Menu\Programs\pycangui.lnk` and
+  `pycangui.lnk` on the desktop (on Linux, `~/.local/share/applications/pycangui.desktop`),
+  and the file types are `HKEY_CURRENT_USER\Software\Classes\pycangui.dcf`, `pycangui.eds`
+  and `pycangui.dbc` with their entries under `.dcf`, `.eds` and `.dbc` (on Linux,
+  `pycangui-open.desktop` and `mime/packages/pycangui.xml` under `~/.local/share`). The same
+  applies to a pip installation that used them.
+
+Your workspaces, hooks, EDS files and settings are in [pycangui's own folder](files.md), and
+no way of uninstalling touches them; delete that folder to remove them too.
+
 ## If pycangui will not start
 
 Started from the source folder, `pycangui.cmd` and `pycangui.sh` install anything missing before they start pycangui, and a library that is still missing is reported in a window rather than as nothing happening. The entry made by *Tools > Settings > Add shortcut to Start menu* (*Add shortcut to applications menu* on Linux), or by *Add shortcut to desktop* on Windows, starts the launcher too, so starting from it after a pull does the same. Installed with pip, the same two make a shortcut that starts pycangui with the Python it is installed in. The first start says where they are in the Event Log; the launchers ask nothing. On Linux, a library Qt needs to draw the window is named, with the package it comes in, before Qt is started: Qt itself says only that it could not load the "xcb" plugin. `python -m pycangui --selftest` imports everything a build is most likely to be missing and exits with 0 if it is all there, which is how the build checks itself.

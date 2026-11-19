@@ -21,21 +21,21 @@ A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, X
 
 ## What it does
 
-- **Adapters**: every interface python-can supports -- PEAK PCAN, Vector, Kvaser, IXXAT, ETAS, Intrepid neoVI, NI-CAN and NI-XNET, SYS TEC, Neousys, CANalyst-II, CANtact, candleLight and other gs_usb devices, SLCAN (CANable, Lawicel), 8devices USB2CAN, Seeed Studio, Robotell, isCAN and serial adapters; SocketCAN and socketcand on Linux; UDP multicast, to share frames with other python-can programs on the same computer or the local network; and a virtual bus that needs no hardware at all.
+- **Adapters**: every interface python-can supports -- PEAK PCAN, Vector, Kvaser, IXXAT, ETAS, Intrepid neoVI, NI-CAN and NI-XNET, SYS TEC, Neousys, CANalyst-II, CANtact, candleLight and other gs_usb devices, SLCAN (CANable, Lawicel), 8devices USB2CAN, Seeed Studio, Robotell, isCAN and serial adapters; SocketCAN and socketcand on Linux; and UDP multicast, to share frames with other python-can programs on the same computer or the local network.
 - **Live trace** of every connected channel on one timebase, CAN FD included, with recording to six log formats and replay of a log onto a bus. Filtering is at two levels: an acceptance filter on a channel, which drops frames before they arrive, and a filter on the trace, which hides them and discards nothing.
 - **Transmit** raw frames, DBC messages edited by signal, or a CANopen RPDO, once or repeating, with a rolling counter and a checksum -- XOR, sums, CRC-8, CRC-16 or your own -- worked out for every frame.
 - **Signals and Plot** from DBC decode, CANopen TPDOs or XCP and CCP polling, with export to CSV and import of MDF and MF4 measurement files.
 - **Database**: every message and signal in the loaded DBC files, with each message's bits drawn out -- a multiplexed one for one value of its multiplexer at a time -- and a message sent to Transmit or the trace, or a signal to the plot, from there.
-- **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save, apply and compare, and the network's PDOs, heartbeats and emergencies saved as a DBC.
-- **Custom panes**: the CANopen objects a job needs, laid out as a form with labels and units. Built from the object dictionary with no code, and polled into Signals and Plot.
+- **CANopen**: node list, object dictionary, PDO configuration, EMCY, LSS, SYNC, DCF save, apply and compare, firmware download (CiA 302-3), and the network's PDOs, heartbeats and emergencies saved as a DBC.
 - **UDS** over ISO-TP: sessions, security access, DIDs, DTCs, routines, and firmware transfer in either direction.
 - **J1939**: nodes from address claims, DM1 faults with lamp status and the failure mode in words, multi-packet messages (TP.BAM and TP.CM), requesting and sending PGNs, and SPNs decoded from a J1939 DBC.
-- **XCP and CCP on CAN**: connect, seed and key, and reading and writing A2L measurements and characteristics by polling.
+- **XCP and CCP on CAN**: connect, seed and key, reading and writing A2L measurements and characteristics by polling, curves and maps as tables, and flashing.
+- **Custom panes**: the values a job needs -- CANopen objects, XCP and CCP measurements and characteristics by their A2L names, or UDS data identifiers -- laid out as a form with labels and units. Built with no code, and polled into Signals and Plot.
 - **ASCII Log**: reads any CAN identifier as text, for devices that print a console into the data bytes.
 - **CAN off an oscilloscope**: frames that [pyscopegui](https://github.com/davhodg/pyscopegui), also on [PyPI](https://pypi.org/project/pyscopegui/), decodes from a scope's channel arrive by UDP multicast, and are traced, decoded and plotted like frames from an adapter.
 - **Python** hooks with hot reload, replaceable components (your own CAN interface, ISO-TP transport, or XCP or CCP engine), a live console and *Run script*.
-- **Plugins** that add a pane of their own, installed from a zip. Two come with pycangui: CANopen firmware download (CiA 302-3) and CiA 402 motor control.
-- **Simulated nodes**: devices written as Python files, on a virtual bus or standing on a real adapter, and gateways between channels.
+- **Plugins** that add a pane of their own, installed from a zip. One comes with pycangui: CiA 402 motor control.
+- **Simulated nodes**: devices written as Python files, on a virtual bus or standing on a real adapter, and gateways between channels. A demo device that answers CANopen, UDS, J1939, XCP and CCP comes with pycangui.
 - **Workspaces**: one for each device or project you work on, holding its hooks, EDS files, databases, channels and layout, and exported as one zip.
 
 Full details in [the manual](pycangui/help/manual.md), which is also under **Help > Documentation** in the application. What each version added, changed and fixed is in [the changelog](pycangui/help/changelog.md), which is part of the manual too.
@@ -104,7 +104,7 @@ sudo apt install libxcb-cursor0
 
 Without it pycangui stops as it starts, with a message about the *xcb* platform plugin.
 
-**Where your own files are kept** is the same whichever way it was installed: your workspaces, hooks, EDS files and settings are in `%APPDATA%\pycangui` on Windows, `~/.config/pycangui` on Linux and `~/Library/Application Support/pycangui` on macOS. Upgrading and uninstalling leave that folder alone.
+**Where your own files are kept** is the same whichever way it was installed: your workspaces, hooks, EDS files and settings are in `%APPDATA%\pycangui` on Windows, `~/.config/pycangui` on Linux and `~/Library/Application Support/pycangui` on macOS. Upgrading and uninstalling leave that folder alone. How to uninstall, for each of the three, is in [the manual](pycangui/help/about.md#uninstalling).
 
 ## Supported systems
 
@@ -112,7 +112,7 @@ Without it pycangui stops as it starts, with a message about the *xcb* platform 
 
 **macOS** passes the same tests on Apple silicon and Intel Macs, run for each release, but has not yet been tested on real CAN hardware.
 
-Any adapter [python-can](https://github.com/hardbyte/python-can) supports, listed under *What it does* above. The adapter maker's driver is not bundled: install it and python-can finds it at run time. A `virtual` channel needs no hardware at all.
+Any adapter [python-can](https://github.com/hardbyte/python-can) supports, listed under *What it does* above. The adapter maker's driver is not bundled: install it and python-can finds it at run time.
 
 ## Built with
 
@@ -150,22 +150,6 @@ a company machine that blocks them, say -- install with pip instead (`pip instal
 above), which SmartScreen does not apply to. Signing is intended, and
 [CODE_SIGNING.md](CODE_SIGNING.md) is the policy -- what will be signed and how, the team
 roles, and the privacy policy.
-
-## Uninstalling
-
-- **The Windows installer:** *Settings > Apps* (or *Add or remove programs*), or *Uninstall
-  pycangui* in its Start menu folder. It takes away its file associations and shortcuts too.
-- **pip:** `pip uninstall pycangui`, and what *Tools > Settings* added, as for a clone.
-- **A Git clone:** delete the folder. If *Tools > Settings* was used to add a shortcut
-  or to open `.dcf`, `.eds` and `.dbc` files with it, take those away as well: the shortcuts are
-  `%APPDATA%\Microsoft\Windows\Start Menu\Programs\pycangui.lnk` and `pycangui.lnk` on
-  the desktop (on Linux, `~/.local/share/applications/pycangui.desktop`), and the file types are
-  `HKEY_CURRENT_USER\Software\Classes\pycangui.dcf`, `pycangui.eds` and `pycangui.dbc` with their
-  entries under `.dcf`, `.eds` and `.dbc` (on Linux, `pycangui-open.desktop` and `mime/packages/pycangui.xml` under
-  `~/.local/share`). The same applies to a pip installation that used them.
-
-Your hooks, EDS files and settings are in `%APPDATA%\pycangui` (`~/.config/pycangui` on
-Linux), and no way of uninstalling touches them; delete that folder to remove them too.
 
 ## Contributing
 
