@@ -31,7 +31,7 @@ def stack(app, tmp_path, monkeypatch, demo_device):
     bus = BusManager()
     manager = CanopenManager(bus)
     bus.connect_bus("virtual", "vcan_scan", 500000, False)
-    demo_device(bus, kinds=["canopen_device"])
+    manager.demo = demo_device(bus, kinds=["canopen_device"])
     wait_until(lambda: 5 in manager.last_heartbeat)
     yield manager
     manager.shutdown()
@@ -54,7 +54,14 @@ def test_a_node_that_sends_no_heartbeat_is_found(stack, caplog):
     manager.set_node_ids({5, 6, 7})
     seen = []
     manager.node_seen.connect(lambda node_id, state: seen.append((node_id, state)))
-    manager.last_heartbeat.clear()  # as if its heartbeat were off
+    # Its heartbeat really off: forgetting the last one is not enough, since
+    # the next, every 500 ms, may come before the scan asks.
+    manager.demo["canopen_device"].state.device.nmt.stop_heartbeat()
+    end = time.monotonic() + 0.2  # one already sent is let through first
+    while time.monotonic() < end:
+        QCoreApplication.processEvents()
+        time.sleep(0.01)
+    manager.last_heartbeat.clear()
     with caplog.at_level(logging.WARNING, logger="canopen"):
         found, asked, stopped = scanned(manager)
     assert (found, asked, stopped) == ([5], 3, False)

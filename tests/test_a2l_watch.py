@@ -28,6 +28,21 @@ def _settle(seconds=0.4):
         time.sleep(0.01)
 
 
+def _replace(new, path):
+    """os.replace, given a moment: on Windows a file just written can be held
+    open briefly by something else -- a virus scanner, the indexer -- and the
+    rename is refused until it lets go."""
+    end = time.monotonic() + 5
+    while True:
+        try:
+            os.replace(new, path)
+            return
+        except PermissionError:
+            if time.monotonic() > end:
+                raise
+            time.sleep(0.05)
+
+
 def _touched(path, text):
     path.write_text(text, encoding="utf-8")
     stat = path.stat()
@@ -69,7 +84,7 @@ def test_a_file_replaced_by_another_of_the_same_name_is_still_watched(app, tmp_p
     watch.watch(path)
     new = tmp_path / "a.a2l.tmp"
     new.write_text("two", encoding="utf-8")
-    os.replace(new, path)  # how a build tool or an editor saves
+    _replace(new, path)  # how a build tool or an editor saves
     wait_until(lambda: said, timeout=3)
     _touched(path, "three")
     wait_until(lambda: len(said) == 2, timeout=3)
@@ -88,7 +103,7 @@ def test_one_renamed_over_it_with_the_same_size_and_time_is_a_change(app, tmp_pa
     watch.watch(path)
     new = tmp_path / "a.a2l.tmp"
     new.write_text("two", encoding="utf-8")
-    os.replace(new, path)
+    _replace(new, path)
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))  # the old one's time
     wait_until(lambda: said, timeout=3)
 
