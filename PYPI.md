@@ -78,7 +78,6 @@ Any adapter [python-can](https://github.com/hardbyte/python-can) supports, as li
 
 - [Source, issues and releases](https://github.com/davhodg/pycangui)
 - [Standalone Windows installer](https://github.com/davhodg/pycangui/releases)
-- [Questions and ideas](https://github.com/davhodg/pycangui/discussions)
 - [Manual](https://github.com/davhodg/pycangui/blob/master/pycangui/help/manual.md)
 
 ## Safety notice and licence
