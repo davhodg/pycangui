@@ -9,6 +9,12 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-19
+
+### Changed
+
+- Questions and ideas are issues, with a *Question or idea* form, rather than Discussions; the links to Discussions are gone.
+
 ## [0.6.0] - 2026-11-18
 
 ### Added
@@ -407,7 +413,8 @@ The first release, on PyPI (`pip install pycangui`) and as a Windows installer.
 - **Simulated nodes** on a virtual bus or a real adapter, and gateways between channels.
 - **Workspaces**, one per product, exported and imported as one zip.
 
-[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/davhodg/pycangui/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/davhodg/pycangui/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/davhodg/pycangui/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/davhodg/pycangui/compare/v0.5.0...v0.5.1
