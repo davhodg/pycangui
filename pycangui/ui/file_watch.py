@@ -40,12 +40,20 @@ def digest(path: Path) -> str | None:
         return None
 
 
-def _stamp(path: Path) -> tuple[int, int] | None:
+def _stamp(path: Path) -> tuple[int, int, int] | None:
+    """The file's size, time and identity.
+
+    The identity (the inode, the file ID on Windows) because a file renamed
+    over the old one can have the same size and, on Windows, whose clock for
+    file times moves only every few milliseconds, the same time as well: it
+    is still another file. A drive that has no identities gives 0, and size
+    and time are all there is to go on.
+    """
     try:
         stat = path.stat()
     except OSError:
         return None
-    return stat.st_size, stat.st_mtime_ns
+    return stat.st_size, stat.st_mtime_ns, stat.st_ino
 
 
 class FileWatch(QObject):

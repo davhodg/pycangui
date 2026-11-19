@@ -75,6 +75,24 @@ def test_a_file_replaced_by_another_of_the_same_name_is_still_watched(app, tmp_p
     wait_until(lambda: len(said) == 2, timeout=3)
 
 
+def test_one_renamed_over_it_with_the_same_size_and_time_is_a_change(app, tmp_path, quick):
+    """Windows's clock for file times moves only every few milliseconds, so a
+    file written and renamed over the old one at once can have the same size
+    and time: it is told apart by being another file."""
+    path = tmp_path / "a.a2l"
+    path.write_text("one", encoding="utf-8")
+    stat = path.stat()
+    watch = file_watch.FileWatch()
+    said = []
+    watch.changed.connect(said.append)
+    watch.watch(path)
+    new = tmp_path / "a.a2l.tmp"
+    new.write_text("two", encoding="utf-8")
+    os.replace(new, path)
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))  # the old one's time
+    wait_until(lambda: said, timeout=3)
+
+
 # --- the pane ------------------------------------------------------------------------------------
 @pytest.fixture
 def pane(demo, tmp_path, quick):  # noqa: F811
