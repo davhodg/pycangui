@@ -404,6 +404,13 @@ class PdoConfigView(QWidget):
                 ]
             )
             child.setData(0, ROLE_ENTRY, entry)
+            if entry.missing:
+                child.setForeground(0, MISMATCH_COLOUR)
+                child.setToolTip(
+                    0,
+                    "Mapped here, and not in the object dictionary. Not decoded, but its\n"
+                    "bits are kept in place and it is written back as it is.",
+                )
             type_bits = self._type_bits(entry)
             if type_bits is not None and type_bits != entry.bits:
                 # Mapped at a size the object's type in the EDS does not have:

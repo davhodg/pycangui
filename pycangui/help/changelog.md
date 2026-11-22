@@ -14,6 +14,7 @@ since the last version, and comes out in the next one.
 - A frame nobody acknowledges no longer floods the Event Log: an adapter's warnings that take turns, and the bus reader's error, are each said once and then counted.
 - Connecting with the channel left empty, on an adapter that needs one (IXXAT, Kvaser, Vector, SLCAN), says to choose one, rather than an error from inside python-can.
 - An object an EDS maps into a PDO but does not describe is said with the PDO that maps it, and whether that PDO is enabled, rather than canopen's bare "not found in Object Dictionary".
+- A PDO keeps a mapped object the EDS does not describe: what follows it decodes at the right bits, the PDO tab shows it, and writing the PDO back no longer removes it.
 
 ## [0.6.1] - 2026-11-19
 

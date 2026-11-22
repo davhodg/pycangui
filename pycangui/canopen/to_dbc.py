@@ -28,7 +28,7 @@ from typing import Any
 
 from canopen.objectdictionary import datatypes
 
-from pycangui.canopen import pdo_name, read_pdos
+from pycangui.canopen import is_missing, pdo_name, read_pdos
 from pycangui.canopen.display import Display
 
 #: The DBC node that sends the RPDOs and the network's own messages: the
@@ -227,7 +227,7 @@ def build(devices: Iterable[Device], network: bool = True) -> Made:
             return None
         signals, taken, at = [], set(), 0
         for var in pdo.map:
-            if var.od.index in DUMMIES:
+            if var.od.index in DUMMIES or is_missing(var):
                 at += var.length  # a gap, kept as one
                 continue
             shown = device.display(var.od.index, var.od.subindex)

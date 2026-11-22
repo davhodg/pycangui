@@ -39,6 +39,8 @@ from pycangui.canopen import (
     eds_identity,
     eds_text,
     faults,
+    is_missing,
+    keep_missing_entries,
     load_od,
     node_ids,
     pdo_name,
@@ -555,6 +557,8 @@ class CanopenManager(QObject):
         # rest of the PDO, and says which it was rather than failing the frame.
         values = {}
         for var in pdo_map.map:
+            if is_missing(var):
+                continue  # its bits are held; there is no type to read them by
             try:
                 values[var.name] = self._pdo_value(node_id, pdo_map, var)
             except Exception:
@@ -1469,6 +1473,8 @@ class CanopenManager(QObject):
         self._eds_checked.add(str(Path(path).resolve()))
         if not findings:
             return
+        # What matters first, should the list be cut short.
+        findings = sorted(findings, key=lambda finding: finding.note)
         listed = [str(f) for f in findings[:EDS_FINDINGS_SAID]]
         if len(findings) > EDS_FINDINGS_SAID:
             listed.append(f"and {len(findings) - EDS_FINDINGS_SAID} more")
@@ -1476,7 +1482,7 @@ class CanopenManager(QObject):
         self.message.emit(
             f"{who}: {Path(path).name} has {count} thing{'s' if count != 1 else ''} "
             "to check; loaded as it is:" + "".join(f"\n  {line}" for line in listed),
-            WARNING,
+            INFORMATION if all(finding.note for finding in findings) else WARNING,
         )
 
     # --- how an object is shown ------------------------------------------------
@@ -1702,7 +1708,7 @@ class CanopenManager(QObject):
                     continue
                 for var in pdo_map.map:
                     od = var.od
-                    if var.length != len(od):
+                    if not is_missing(var) and var.length != len(od):
                         out.append(
                             f"{pdo_name(pdo_map)} (0x{pdo_map.cob_id:03X}): {od.index:04X}:"
                             f"{od.subindex:02X} {var.name} is mapped as {var.length} bits; "
@@ -1795,6 +1801,8 @@ class CanopenManager(QObject):
         """The named values of a PDO's mapped objects that have any: {name: {1: "Run"}}."""
         out = {}
         for var in pdo_map:
+            if is_missing(var):
+                continue
             if choices := self.display(node_id, var.index, var.subindex).choices:
                 out[var.name] = dict(choices)
         return out
@@ -1862,7 +1870,10 @@ class CanopenManager(QObject):
                         transmission_type=pdo_map.trans_type,
                         inhibit_time_us=(pdo_map.inhibit_time or 0) * 100,
                         event_timer_ms=pdo_map.event_timer,
-                        entries=[PdoEntry(v.index, v.subindex, v.length, v.name) for v in pdo_map],
+                        entries=[
+                            PdoEntry(v.index, v.subindex, v.length, v.name, is_missing(v))
+                            for v in pdo_map
+                        ],
                     )
                 )
         return out
@@ -1997,6 +2008,7 @@ class CanopenManager(QObject):
         pdo_map.event_timer = config.event_timer_ms if 5 in has else None
         if 6 not in has:
             pdo_map.sync_start_value = None
+        keep_missing_entries(pdo_map)
         pdo_map.clear()
         for entry in config.entries:
             pdo_map.add_variable(entry.index, entry.subindex, entry.bits)
@@ -2597,9 +2609,9 @@ class CanopenManager(QObject):
         if node is None:
             return []
         return [
-            (number, pdo_name(pdo_map), [v.name for v in pdo_map])
+            (number, pdo_name(pdo_map), [v.name for v in pdo_map if not is_missing(v)])
             for number, pdo_map in node.rpdo.map.items()
-            if pdo_map.cob_id is not None and len(pdo_map.map)
+            if pdo_map.cob_id is not None and any(not is_missing(v) for v in pdo_map)
         ]
 
     def load_pdos_from_eds(self, node_id: int) -> None:
@@ -2640,7 +2652,7 @@ class CanopenManager(QObject):
         if pdo_map is None or pdo_map.cob_id is None:
             return None
         for var in pdo_map:
-            if var.name not in values:
+            if is_missing(var) or var.name not in values:
                 continue
             od = var.od
             if var.length != len(od) and od.data_type in datatypes.INTEGER_TYPES:

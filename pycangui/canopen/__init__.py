@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import configparser
 import io
+import logging
 import re
 import threading
 from dataclasses import dataclass, field
@@ -223,6 +224,8 @@ class PdoEntry:
     subindex: int
     bits: int
     name: str = ""
+    #: Mapped by the node or the file, and not in the object dictionary.
+    missing: bool = field(default=False, compare=False)
 
     def __str__(self) -> str:
         return f"{self.index:04X}:{self.subindex:02X} {self.name} ({self.bits} bits)"
@@ -294,28 +297,71 @@ def pdo_name(pdo_map) -> str:
     return f"{'Tx' if sent else 'Rx'}PDO{number}_node{node_id}"
 
 
-#: The PDO map this thread is reading, and whether from the object dictionary
-#: (the file's values) rather than from the node -- so that canopen's line
-#: about an object it cannot find can say which PDO maps it.
+#: The PDO map this thread is reading from the node, so that the line about
+#: an object the dictionary lacks can say which PDO maps it.
 _reading = threading.local()
 
-#: canopen's line for a mapping entry whose object the dictionary lacks: the
-#: text of the KeyError it caught, quotes and all.
-NOT_FOUND = re.compile(r"'?(0x[0-9A-Fa-f]+) was not found in Object Dictionary'?")
+#: The line for a mapping entry whose object the dictionary lacks.
+NOT_FOUND = re.compile(
+    r"'?(0x[0-9A-Fa-f]+(?::[0-9A-Fa-f]{2})?) was not found in Object Dictionary'?"
+)
+
+
+def is_missing(var) -> bool:
+    """Whether a PDO's mapped variable is a place kept for an object not in the EDS."""
+    return getattr(var.od, "not_in_dictionary", False)
+
+
+def keep_missing_entries(pdo_map) -> None:
+    """Have a PDO map keep an entry whose object the dictionary lacks.
+
+    canopen logs such an entry and leaves it out, so whatever is mapped after
+    it moves to the wrong bits, the PDO comes out short, and saving the map
+    writes the node a mapping without it. In its place goes a variable with
+    the entry's index, sub and length and no type: never decoded, but holding
+    its bits. Through ``_get_variable``, the one place canopen looks an entry up.
+    """
+    if getattr(pdo_map, "_pycangui_keeps_missing", False):
+        return
+    from canopen.objectdictionary import ODVariable
+    from canopen.pdo.base import PdoVariable
+
+    look_up = getattr(pdo_map, "_get_variable", None)
+    if look_up is None:  # a canopen without it: entries are left out, as it always did
+        return
+
+    def get_variable(index, subindex):
+        try:
+            return look_up(index, subindex)
+        except KeyError:
+            if not isinstance(index, int) or not isinstance(subindex, int):
+                raise
+        shown = f"0x{index:04X}" + (f":{subindex:02X}" if subindex else "")
+        if getattr(_reading, "pdo", None) is pdo_map:
+            logging.getLogger("canopen.pdo.base").warning(
+                "%s was not found in Object Dictionary", shown
+            )
+        od = ODVariable("not in the EDS", index, subindex)
+        od.not_in_dictionary = True
+        var = PdoVariable(od)
+        var.pdo_parent = pdo_map
+        return var
+
+    pdo_map._get_variable = get_variable
+    pdo_map._pycangui_keeps_missing = True
 
 
 def read_pdos(maps, from_od: bool = False) -> None:
     """canopen's ``read()`` of a node's TPDOs or RPDOs, one map at a time.
 
-    The same reads in the same order; each map is noted as this thread's
-    while it is read, for ``mapped_not_found()``. canopen leaves out of a
-    map any entry whose object is not in the dictionary, and says only the
-    object's index -- which, with sixteen of them from a file's default
-    mappings, reads as sixteen faults with no PDO behind them.
+    Each keeps the entries whose objects the dictionary lacks. Read from the
+    node, each such entry is said with its PDO; a file's own mappings are the
+    EDS check's to report, once, when the file is loaded.
     """
     for pdo_map in maps.map.values():
+        keep_missing_entries(pdo_map)
         before = getattr(_reading, "pdo", None)
-        _reading.pdo = (pdo_map, from_od)
+        _reading.pdo = None if from_od else pdo_map
         try:
             pdo_map.read(from_od=from_od)
         finally:
@@ -323,18 +369,15 @@ def read_pdos(maps, from_od: bool = False) -> None:
 
 
 def mapped_not_found(text: str) -> tuple[str, bool] | None:
-    """canopen's "not found in Object Dictionary", with the PDO that maps it.
+    """The line for an object a node maps and the EDS lacks, with its PDO.
 
-    The line, and whether that PDO is enabled; None when the line is not
-    that one, or no PDO is being read on this thread. An enabled PDO is
-    decoded wrong from there on -- canopen leaves the entry out, so what
-    follows it moves -- while a disabled one is only a mapping nobody uses.
+    The line, and whether that PDO is enabled; None when the line is not that
+    one, or no PDO is being read from a node on this thread.
     """
-    reading = getattr(_reading, "pdo", None)
+    pdo_map = getattr(_reading, "pdo", None)
     match = NOT_FOUND.fullmatch(text.strip())
-    if reading is None or match is None:
+    if pdo_map is None or match is None:
         return None
-    pdo_map, from_od = reading
     try:
         index = pdo_map.com_record.od.index
         node_id = pdo_map.pdo_node.node.id
@@ -343,11 +386,10 @@ def mapped_not_found(text: str) -> tuple[str, bool] | None:
     sent = index >= TPDO_COM
     number = index - (TPDO_COM if sent else RPDO_COM) + 1
     name = f"{'TPDO' if sent else 'RPDO'}{number}"
-    source = "default value in the EDS" if from_od else "mapping read from the node"
     enabled = bool(pdo_map.enabled)
     line = (
         f"Node {node_id}: {match.group(1)} not found in the object dictionary, but mapped "
-        f"in {name}'s {source} ({index + MAPPING_OFFSET:04X}, "
+        f"in {name}'s mapping read from the node ({index + MAPPING_OFFSET:04X}, "
         f"{name} {'enabled' if enabled else 'disabled'})"
     )
     return line, enabled

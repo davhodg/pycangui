@@ -70,6 +70,8 @@ _NODEID = re.compile(r"\$NODEID", re.IGNORECASE)
 class Finding:
     where: str  # "0x1A00 sub 1", "[DeviceInfo]", ...
     what: str
+    #: Worth knowing, but nothing goes wrong because of it.
+    note: bool = False
 
     def __str__(self) -> str:
         return f"{self.where}: {self.what}"
@@ -132,8 +134,8 @@ class _Checker:
             else:
                 self.subs[(index, int(match.group(2), 16))] = name
 
-    def say(self, where_: str, what: str) -> None:
-        self.found.append(Finding(where_, what))
+    def say(self, where_: str, what: str, note: bool = False) -> None:
+        self.found.append(Finding(where_, what, note))
 
     def run(self) -> list[Finding]:
         self.mandatory()
@@ -292,6 +294,17 @@ class _Checker:
             elif index in TPDO_MAP:
                 self.mapping(index, rpdo=False)
 
+    def pdo_of(self, mapping: int, rpdo: bool) -> tuple[str, bool]:
+        """A mapping record's PDO by name, and whether the file has it enabled."""
+        first = RPDO_MAP if rpdo else TPDO_MAP
+        name = f"{'RPDO' if rpdo else 'TPDO'}{mapping - first.start + 1}"
+        comm = (RPDO_COMM if rpdo else TPDO_COMM).start + mapping - first.start
+        section = self.entry(comm, 1)
+        if section is None:
+            return name, True
+        cob_id = number(self.get(section, "parametervalue") or self.get(section, "defaultvalue"))
+        return name, cob_id is None or not cob_id & 0x80000000
+
     def mapping(self, index: int, rpdo: bool) -> None:
         count_at = self.entry(index, 0)
         if count_at is None:
@@ -300,6 +313,9 @@ class _Checker:
         if not count:
             return
         total = 0
+        pdo, enabled = self.pdo_of(index, rpdo)
+        unused: list[str] = []  # objects a disabled PDO maps and the file lacks
+        source = "default value"
         for sub in range(1, count + 1):
             section = self.entry(index, sub)
             if section is None:
@@ -308,6 +324,8 @@ class _Checker:
             value = number(self.get(section, "parametervalue") or self.get(section, "defaultvalue"))
             if value is None:
                 continue
+            if self.get(section, "parametervalue"):
+                source = "ParameterValue"
             target, target_sub, length = value >> 16, (value >> 8) & 0xFF, value & 0xFF
             total += length
             if rpdo and target in DUMMIES:
@@ -317,7 +335,14 @@ class _Checker:
             name = where(target) if plain else where(target, target_sub)
             if mapped is None:
                 if not (target in self.objects and target_sub <= self.compact(target)):
-                    self.say(where(index, sub), f"maps {name}, which the file does not describe")
+                    if enabled:
+                        self.say(
+                            where(index, sub),
+                            f"{pdo} (enabled) maps {name} in its {source}, not found in the "
+                            "object dictionary: it is not decoded",
+                        )
+                    else:
+                        unused.append(name)
                 continue
             if self.get(mapped, "pdomapping") not in ("1", "0x1", "0x01"):
                 self.say(where(index, sub), f"maps {name}, which is not marked PDOMapping=1")
@@ -334,6 +359,13 @@ class _Checker:
             kind = number(self.get(mapped, "datatype"))
             if kind in BITS and length > BITS[kind]:
                 self.say(where(index, sub), f"maps {length} bits of {name}, which has {BITS[kind]}")
+        if unused:
+            self.say(
+                where(index),
+                f"{pdo} (disabled) maps {', '.join(unused)} in its {source}, not found in "
+                "the object dictionary; nothing is decoded or sent by it",
+                note=True,
+            )
         if total > PDO_BITS:
             self.say(where(index), f"maps {total} bits, more than the {PDO_BITS} a PDO carries")
 

@@ -3,6 +3,7 @@
 """Reading a node's PDO configuration from it without being asked, or not."""
 
 import time
+from dataclasses import replace
 
 import pytest
 from canopen.nmt import NMT_STATES
@@ -155,3 +156,21 @@ def test_a_last_read_that_fails_still_says_an_earlier_one_changed_it(bus_and_man
     assert len(calls) == 2
     QCoreApplication.processEvents()
     assert said == [NODE]
+
+
+def test_a_pdo_written_back_keeps_an_entry_the_eds_lacks(bus_and_manager):
+    from pycangui.canopen import PdoEntry, read_pdos
+
+    load_eds(bus_and_manager)
+    manager = bus_and_manager
+    node = manager.node(NODE)
+    read_pdos(node.tpdo, from_od=True)
+    pdo_map = node.tpdo[1]
+    pdo_map.save = lambda: None  # what is put in the map is the question, not the SDO
+    config = next(c for c in manager.pdo_configs(NODE) if (c.direction, c.number) == ("TPDO", 1))
+    entries = [PdoEntry(0x6841, 0, 16, "not in the EDS", True), *config.entries]
+    manager._write_one_pdo(pdo_map, replace(config, entries=entries))
+    assert pdo_map.map[0].index == 0x6841
+    assert pdo_map.length == sum(entry.bits for entry in entries)
+    saved = next(c for c in manager.pdo_configs(NODE) if (c.direction, c.number) == ("TPDO", 1))
+    assert saved.entries[0].missing

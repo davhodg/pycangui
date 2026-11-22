@@ -100,6 +100,24 @@ def test_a_tpdo_mapping_an_object_that_is_not_there(tmp_path):
     assert places(path) == {"0x1A00 sub 3"}
 
 
+def test_a_missing_object_in_a_disabled_pdo_is_only_a_note(tmp_path):
+    text = DEMO.read_text(encoding="utf-8")
+    start = text.index("[1800sub1]")
+    old = text[start : text.index("[1800sub2]")]
+    cob = next(line for line in old.splitlines() if line.startswith("DefaultValue="))
+    path = broken(
+        tmp_path,
+        ("DefaultValue=0x20000220", "DefaultValue=0x2FFF0020"),
+        (old, old.replace(cob, "DefaultValue=0x80000181")),
+    )
+    assert [(f.where, f.note) for f in check(path)] == [("0x1A00", True)]
+
+
+def test_a_missing_object_in_an_enabled_pdo_is_not_a_note(tmp_path):
+    path = broken(tmp_path, ("DefaultValue=0x20000220", "DefaultValue=0x2FFF0020"))
+    assert [f.note for f in check(path)] == [False]
+
+
 def test_an_rpdo_mapping_an_object_that_cannot_be_written(tmp_path):
     path = broken(tmp_path, ("DefaultValue=0x20010010", "DefaultValue=0x60410010"))
     assert places(path) == {"0x1600 sub 1"}

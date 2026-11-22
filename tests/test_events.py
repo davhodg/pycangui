@@ -558,11 +558,29 @@ def _eds_mapping_missing_objects(path):
     return path
 
 
-def test_an_object_mapped_but_not_in_the_eds_is_said_with_its_pdo(app, tmp_path):
+def test_an_object_a_node_maps_but_the_eds_lacks_is_said_with_its_pdo(app, tmp_path, monkeypatch):
     """Reported: sixteen bare "0x6840 was not found in Object Dictionary" lines
-    from canopen on loading an EDS, while the PDOs shown mapped none of them --
-    canopen leaves such an entry out of the map. They are the EDS's own
-    default mappings: said with the PDO, a warning only where it is enabled."""
+    from canopen. Read from a node, each is a warning only if its PDO is enabled."""
+    import canopen
+    from canopen.pdo.base import PdoMap
+
+    from pycangui.canopen import read_pdos
+    from pycangui.core.logbridge import LogBridge
+
+    node = canopen.Network().add_node(1, str(_eds_mapping_missing_objects(tmp_path / "t.eds")))
+    # The file's values standing in for what the node would answer over SDO.
+    read = PdoMap.read
+    monkeypatch.setattr(PdoMap, "read", lambda self, from_od=False: read(self, from_od=True))
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    try:
+        read_pdos(node.tpdo)
+    finally:
+        bridge.detach()
+    assert [level for level, _text in said] == [WARNING, INFORMATION]
+
+
+def test_a_files_own_mappings_are_left_to_the_eds_check(app, tmp_path):
     import canopen
 
     from pycangui.canopen import read_pdos
@@ -575,5 +593,20 @@ def test_an_object_mapped_but_not_in_the_eds_is_said_with_its_pdo(app, tmp_path)
         read_pdos(node.tpdo, from_od=True)
     finally:
         bridge.detach()
-    assert [level for level, _text in said] == [WARNING, INFORMATION]
-    assert [v.index for v in node.tpdo[1]] == [0x6041], "canopen's reading is unchanged"
+    assert said == []
+
+
+def test_a_missing_entry_keeps_its_place_in_the_pdo(app, tmp_path):
+    """canopen left it out: what followed moved to the wrong bits, the PDO came
+    out short, and saving it wrote the node a mapping without it."""
+    import canopen
+
+    from pycangui.canopen import is_missing, read_pdos
+
+    path = _eds_mapping_missing_objects(tmp_path / "t.eds")
+    node = canopen.Network().add_node(1, str(path))
+    read_pdos(node.tpdo, from_od=True)
+    pdo = node.tpdo[1]
+    assert [(v.index, v.offset, v.length) for v in pdo] == [(0x6041, 0, 16), (0x606C, 16, 32)]
+    assert pdo.length == 48
+    assert [is_missing(v) for v in pdo] == [False, True]
