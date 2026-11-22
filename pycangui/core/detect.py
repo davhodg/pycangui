@@ -259,6 +259,12 @@ def channel_default(interface: str) -> str:
     return str(parameter.default)
 
 
+def needs_channel(interface: str) -> bool:
+    """Whether the backend has a channel parameter with no default to fall back on."""
+    parameter = channel_parameter(interface)
+    return parameter is not None and parameter.default is inspect.Parameter.empty
+
+
 def coerce_channel(interface: str, channel: object) -> object:
     """Turn a typed-in channel into what the backend actually expects.
 

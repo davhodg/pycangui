@@ -28,7 +28,7 @@ from typing import Any
 
 from canopen.objectdictionary import datatypes
 
-from pycangui.canopen import pdo_name
+from pycangui.canopen import pdo_name, read_pdos
 from pycangui.canopen.display import Display
 
 #: The DBC node that sends the RPDOs and the network's own messages: the
@@ -89,8 +89,8 @@ def from_dictionary(object_dictionary: Any, node_id: int) -> tuple[list[Any], li
 
     node = canopen.RemoteNode(node_id, object_dictionary)
     canopen.Network().add_node(node)
-    node.tpdo.read(from_od=True)
-    node.rpdo.read(from_od=True)
+    read_pdos(node.tpdo, from_od=True)
+    read_pdos(node.rpdo, from_od=True)
 
     def configured(pdo_map) -> bool:
         return (

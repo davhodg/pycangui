@@ -43,18 +43,73 @@ LEVEL_NAMES = {
 #: something a device keeps sending -- is said once, and then how many more
 #: times at most this often, rather than a line a frame.
 REPEATS_SAID_EVERY_S = 10.0
+#: How many different lines are remembered as recent. A backend can say two
+#: or three things about each frame -- the IXXAT one says "CAN acknowledgment
+#: error" and then the frame's flags -- so a line is a repeat if it was said
+#: lately, not only if it was the last thing said.
+RECENT_LINES = 16
+
+
+class Repeats:
+    """Which lines to say, out of a stream where the same few come again and again.
+
+    A line not said lately is said. One said lately is counted, and the count
+    is said with the line now and then (``REPEATS_SAID_EVERY_S``), and once
+    more when it stops: when it has not come for longer than that, or when a line
+    that is not one of the recent ones arrives. Lines are whatever the caller
+    compares by -- (text, level) for the Event Log. Not thread safe on its
+    own; the caller holds a lock where lines arrive on several threads.
+    """
+
+    def __init__(self) -> None:
+        #: line -> [repeats not yet said, when it was last said, when last seen]
+        self._recent: dict[tuple[str, str], list[float]] = {}
+
+    def say(self, line: tuple[str, str], now: float) -> list[tuple[str, str]]:
+        out = self._gone_quiet(now)
+        seen = self._recent.get(line)
+        if seen is not None:
+            seen[0] += 1
+            seen[2] = now
+            if now - seen[1] >= REPEATS_SAID_EVERY_S:
+                out.append(self._count(line, seen, now))
+            return out
+        # Something new: whatever is still being counted is said first, so the
+        # counts come before the line that ended them.
+        for was, pending in self._recent.items():
+            if pending[0]:
+                out.append(self._count(was, pending, now))
+        self._recent[line] = [0, now, now]
+        if len(self._recent) > RECENT_LINES:
+            del self._recent[min(self._recent, key=lambda k: self._recent[k][2])]
+        out.append(line)
+        return out
+
+    def _gone_quiet(self, now: float) -> list[tuple[str, str]]:
+        """The counts of lines that have stopped coming, and those lines forgotten."""
+        out = []
+        for line, seen in list(self._recent.items()):
+            if now - seen[2] > REPEATS_SAID_EVERY_S:
+                if seen[0]:
+                    out.append(self._count(line, seen, now))
+                del self._recent[line]
+        return out
+
+    @staticmethod
+    def _count(line: tuple[str, str], seen: list[float], now: float) -> tuple[str, str]:
+        text, level = line
+        said = (repeated(text, int(seen[0]), now - seen[1]), level)
+        seen[0], seen[1] = 0, now
+        return said
 
 
 class _Bridge(logging.Handler):
     def __init__(self, sink: Callable[[str, str], None]) -> None:
         super().__init__(level=QUIET_LEVEL)
         self._sink = sink
-        #: The last line said, its level, how many times it has come again
-        #: since, and when that was last said. Records arrive on any thread.
+        #: Records arrive on any thread.
         self._lock = threading.Lock()
-        self._last: tuple[str, str] | None = None
-        self._repeats = 0
-        self._repeats_said = 0.0
+        self._repeats = Repeats()
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -65,19 +120,28 @@ class _Bridge(logging.Handler):
         # aborted by client with code 0x05040000" -- and stops there, which
         # is a code and a shrug. It has the table, and so do we, so the
         # meaning goes in beside it.
+        level = LEVEL_NAMES.get(record.levelno, INFORMATION)
+        said_as = record.levelname.title()
         if record.name.startswith("canopen"):
-            from pycangui.canopen import explain_aborts, sdo_log
+            from pycangui.canopen import explain_aborts, mapped_not_found, sdo_log
 
             text = explain_aborts(text)
             # Nor does it say whose: this thread's transfer, where there is one,
             # which also keeps two nodes' failures from reading as one repeated.
             if record.name.startswith("canopen.sdo") and (doing := sdo_log.under_way()):
                 text = f"{sdo_log.where(doing)}: {text}"
+            # A mapping entry whose object the file lacks is said with the PDO
+            # that maps it, and where the mapping came from. In a disabled PDO
+            # it is only a note: nothing is decoded or sent by it.
+            if record.name.startswith("canopen.pdo") and (mapped := mapped_not_found(text)):
+                text, enabled = mapped
+                if not enabled:
+                    level, said_as = INFORMATION, "Info"
         # The logger name says which backend spoke, which is the useful part
         # when two adapters are connected at once.
-        line = f"{record.levelname.title()} [{record.name}]: {text}"
+        line = f"{said_as} [{record.name}]: {text}"
         try:
-            for said in self._what_to_say(line, LEVEL_NAMES.get(record.levelno, INFORMATION)):
+            for said in self._what_to_say(line, level):
                 self._sink(*said)
         except RuntimeError:
             # The Event Log's C++ side has gone: the window is being torn down
@@ -95,21 +159,8 @@ class _Bridge(logging.Handler):
         time it is said the line may have scrolled out of sight, or out of the
         diagnostics report's last few problems.
         """
-        now = time.monotonic()
         with self._lock:
-            if (line, level) == self._last:
-                self._repeats += 1
-                if now - self._repeats_said < REPEATS_SAID_EVERY_S:
-                    return []
-                said = repeated(line, self._repeats, now - self._repeats_said)
-                self._repeats, self._repeats_said = 0, now
-                return [(said, level)]
-            out = []
-            if self._repeats and self._last is not None:
-                was, was_level = self._last
-                out.append((repeated(was, self._repeats, now - self._repeats_said), was_level))
-            self._last, self._repeats, self._repeats_said = (line, level), 0, now
-            return [*out, (line, level)]
+            return self._repeats.say((line, level), time.monotonic())
 
 
 def repeated(line: str, count: int, seconds: float) -> str:

@@ -28,8 +28,15 @@ import can
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from pycangui.core import bus_health, udp_reach
-from pycangui.core.detect import coerce_channel, summarise, takes_data_bitrate, takes_fd
+from pycangui.core.detect import (
+    coerce_channel,
+    needs_channel,
+    summarise,
+    takes_data_bitrate,
+    takes_fd,
+)
 from pycangui.core.filters import Rule, as_can_filters, describe
+from pycangui.core.logbridge import Repeats
 
 
 def frame_bits(dlc: int, extended: bool, fd: bool) -> int:
@@ -243,6 +250,8 @@ class BusManager(QObject):
         self._bits_at = time.monotonic()
         self._connected_at = 0.0
         self._seen_a_frame = False
+        #: The reader's errors, said once and then counted.
+        self._reader_repeats = Repeats()
         self._state = ""
         #: How the controller is doing: one of the states in core.bus_health.
         self.health = bus_health.DOWN
@@ -297,6 +306,13 @@ class BusManager(QObject):
         # The channel is coerced because the backends disagree about its type
         # and a text box can only produce a string.
         channel_value = coerce_channel(interface, channel)
+        if channel_value == "" and needs_channel(interface):
+            # Left to the backend, an empty box is "invalid literal for int()".
+            self.error.emit(
+                f"Connect failed: no {interface} channel chosen. Choose one in the "
+                "Channel list, which lists the adapters found when it is opened."
+            )
+            return
         kwargs: dict = {"interface": interface, "channel": channel_value}
         # So the trace shows what pycangui sent -- except on a backend that
         # cannot, which echoes it here instead (see _echo_sends).
@@ -852,7 +868,13 @@ class BusManager(QObject):
             self.note.emit(f"{self.channel_name}: {self._quiet_advice()}")
         if self.notifier is not None and self.notifier.exception is not None:
             exc, self.notifier.exception = self.notifier.exception, None
-            self.error.emit(f"Bus reader error: {exc}")
+            # A frame nobody acknowledges is sent again and again by the
+            # controller, and some backends raise for every one of them: said
+            # once, then counted, as the libraries' own lines are.
+            for text, _level in self._reader_repeats.say(
+                (f"Bus reader error: {exc}", "error"), time.monotonic()
+            ):
+                self.error.emit(text)
 
 
 def available_interfaces() -> list[str]:

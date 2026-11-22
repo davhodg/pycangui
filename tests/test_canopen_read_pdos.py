@@ -9,6 +9,7 @@ from canopen.nmt import NMT_STATES
 from PySide6.QtCore import QCoreApplication
 
 from pycangui import resources
+from pycangui.canopen import manager as manager_module
 from pycangui.canopen.manager import CanopenManager
 from pycangui.core.bus import BusManager
 from pycangui.core.context import Context
@@ -137,16 +138,17 @@ def test_a_last_read_that_fails_still_says_an_earlier_one_changed_it(bus_and_man
     said = []
     manager.rpdos_read.connect(said.append)
     node = manager.node(NODE)
-    real = node.tpdo.read
+    real = manager_module.read_pdos
     calls = []
 
-    def second_fails(*args, **kwargs):
-        calls.append(1)
-        if len(calls) > 1:
-            raise OSError("no answer")
-        return real(*args, **kwargs)
+    def second_fails(maps, *args, **kwargs):
+        if maps is node.tpdo:
+            calls.append(1)
+            if len(calls) > 1:
+                raise OSError("no answer")
+        return real(maps, *args, **kwargs)
 
-    monkeypatch.setattr(node.tpdo, "read", second_fails)
+    monkeypatch.setattr(manager_module, "read_pdos", second_fails)
     manager.read_pdo_config(NODE)
     manager.read_pdo_config(NODE)
     settle(manager)

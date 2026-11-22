@@ -477,3 +477,103 @@ def test_the_choice_is_kept_for_the_next_window(app, tmp_path, monkeypatch):
     finally:
         second.close()
         QSettings().clear()
+
+
+def test_lines_that_take_turns_are_counted_too(app, monkeypatch):
+    """Reported: an unacknowledged frame, sent again by the controller some 40
+    times a second, put 8,500 lines in the Event Log in a minute. The IXXAT
+    backend says two things each time -- the acknowledgment error, then the
+    frame's flags -- so no line ever followed itself and none was counted."""
+    import logging
+
+    from pycangui.core import logbridge
+    from pycangui.core.logbridge import LogBridge
+
+    now = [100.0]
+    monkeypatch.setattr(logbridge.time, "monotonic", lambda: now[0])
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    ixxat = logging.getLogger("can.ixxat")
+    try:
+        for _ in range(1000):
+            ixxat.warning("CAN acknowledgment error")
+            ixxat.warning("CAN message flags bAddFlags/bFlags2 0x00 bflags 0x05")
+            now[0] += 0.025
+        assert 2 < len(said) < 20, "each said once, then counted now and then"
+        counted = len(said)
+        now[0] += logbridge.REPEATS_SAID_EVERY_S
+        logging.getLogger("can.interface").warning("something else")
+    finally:
+        bridge.detach()
+    assert said[-1][1].endswith("something else")
+    assert len(said) > counted + 1, "what was still being counted is said when it stops"
+
+
+def test_a_line_that_stops_is_forgotten_and_said_again_when_it_comes_back(app, monkeypatch):
+    import logging
+
+    from pycangui.core import logbridge
+    from pycangui.core.logbridge import LogBridge
+
+    now = [100.0]
+    monkeypatch.setattr(logbridge.time, "monotonic", lambda: now[0])
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    flood = logging.getLogger("can.ixxat")
+    try:
+        flood.warning("CAN acknowledgment error")
+        now[0] += 2 * logbridge.REPEATS_SAID_EVERY_S
+        flood.warning("CAN acknowledgment error")
+    finally:
+        bridge.detach()
+    assert len(said) == 2, "a minute later it is news again"
+
+
+def _eds_mapping_missing_objects(path):
+    """An EDS whose default mappings name objects it does not describe: TPDO1
+    (enabled) maps 0x6041 and the missing 0x606C, TPDO2 (disabled) the
+    missing 0x6841 -- the second axis of a two-axis template, left behind."""
+
+    def var(section, value, dtype="0x0007", access="rw", mapping=0):
+        return (
+            f"[{section}]\nParameterName={section}\nDataType={dtype}\nAccessType={access}\n"
+            f"DefaultValue={value}\nPDOMapping={mapping}\n"
+        )
+
+    text = "[DeviceInfo]\nNrOfRXPDO=0\nNrOfTXPDO=2\n"
+    text += var("1000", "0x20192", access="ro") + var("6041", "0", "0x0006", "ro", 1)
+    for comm, cob, maps in (
+        (0x1800, "0x181", ["0x60410010", "0x606C0020"]),
+        (0x1801, "0x80000281", ["0x68410010"]),
+    ):
+        text += f"[{comm:X}]\nParameterName=comm\nObjectType=0x9\nSubNumber=3\n"
+        text += var(f"{comm:X}sub0", "2", "0x0005", "ro")
+        text += var(f"{comm:X}sub1", cob) + var(f"{comm:X}sub2", "1", "0x0005")
+        mapping = comm + 0x200
+        text += f"[{mapping:X}]\nParameterName=map\nObjectType=0x9\nSubNumber={len(maps) + 1}\n"
+        text += var(f"{mapping:X}sub0", str(len(maps)), "0x0005")
+        for sub, value in enumerate(maps, 1):
+            text += var(f"{mapping:X}sub{sub}", value)
+    path.write_text(text)
+    return path
+
+
+def test_an_object_mapped_but_not_in_the_eds_is_said_with_its_pdo(app, tmp_path):
+    """Reported: sixteen bare "0x6840 was not found in Object Dictionary" lines
+    from canopen on loading an EDS, while the PDOs shown mapped none of them --
+    canopen leaves such an entry out of the map. They are the EDS's own
+    default mappings: said with the PDO, a warning only where it is enabled."""
+    import canopen
+
+    from pycangui.canopen import read_pdos
+    from pycangui.core.logbridge import LogBridge
+
+    node = canopen.Network().add_node(1, str(_eds_mapping_missing_objects(tmp_path / "t.eds")))
+    said: list = []
+    bridge = LogBridge(lambda text, level: said.append((level, text)))
+    try:
+        read_pdos(node.tpdo, from_od=True)
+    finally:
+        bridge.detach()
+    assert [level for level, _text in said] == [WARNING, INFORMATION]
+    assert [v.index for v in node.tpdo[1]] == [0x6041], "canopen's reading is unchanged"

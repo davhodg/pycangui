@@ -8,6 +8,7 @@ from __future__ import annotations
 import configparser
 import io
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -269,6 +270,8 @@ class PdoConfig:
 #: Where each direction's communication parameters start in the object
 #: dictionary: TPDO1 at 0x1800, RPDO1 at 0x1400.
 TPDO_COM, RPDO_COM = 0x1800, 0x1400
+#: A PDO's mapping parameters, this far after its communication parameters.
+MAPPING_OFFSET = 0x200
 
 
 def pdo_name(pdo_map) -> str:
@@ -289,3 +292,62 @@ def pdo_name(pdo_map) -> str:
     sent = index >= TPDO_COM
     number = index - (TPDO_COM if sent else RPDO_COM) + 1
     return f"{'Tx' if sent else 'Rx'}PDO{number}_node{node_id}"
+
+
+#: The PDO map this thread is reading, and whether from the object dictionary
+#: (the file's values) rather than from the node -- so that canopen's line
+#: about an object it cannot find can say which PDO maps it.
+_reading = threading.local()
+
+#: canopen's line for a mapping entry whose object the dictionary lacks: the
+#: text of the KeyError it caught, quotes and all.
+NOT_FOUND = re.compile(r"'?(0x[0-9A-Fa-f]+) was not found in Object Dictionary'?")
+
+
+def read_pdos(maps, from_od: bool = False) -> None:
+    """canopen's ``read()`` of a node's TPDOs or RPDOs, one map at a time.
+
+    The same reads in the same order; each map is noted as this thread's
+    while it is read, for ``mapped_not_found()``. canopen leaves out of a
+    map any entry whose object is not in the dictionary, and says only the
+    object's index -- which, with sixteen of them from a file's default
+    mappings, reads as sixteen faults with no PDO behind them.
+    """
+    for pdo_map in maps.map.values():
+        before = getattr(_reading, "pdo", None)
+        _reading.pdo = (pdo_map, from_od)
+        try:
+            pdo_map.read(from_od=from_od)
+        finally:
+            _reading.pdo = before
+
+
+def mapped_not_found(text: str) -> tuple[str, bool] | None:
+    """canopen's "not found in Object Dictionary", with the PDO that maps it.
+
+    The line, and whether that PDO is enabled; None when the line is not
+    that one, or no PDO is being read on this thread. An enabled PDO is
+    decoded wrong from there on -- canopen leaves the entry out, so what
+    follows it moves -- while a disabled one is only a mapping nobody uses.
+    """
+    reading = getattr(_reading, "pdo", None)
+    match = NOT_FOUND.fullmatch(text.strip())
+    if reading is None or match is None:
+        return None
+    pdo_map, from_od = reading
+    try:
+        index = pdo_map.com_record.od.index
+        node_id = pdo_map.pdo_node.node.id
+    except AttributeError:
+        return None
+    sent = index >= TPDO_COM
+    number = index - (TPDO_COM if sent else RPDO_COM) + 1
+    name = f"{'TPDO' if sent else 'RPDO'}{number}"
+    source = "default value in the EDS" if from_od else "mapping read from the node"
+    enabled = bool(pdo_map.enabled)
+    line = (
+        f"Node {node_id}: {match.group(1)} not found in the object dictionary, but mapped "
+        f"in {name}'s {source} ({index + MAPPING_OFFSET:04X}, "
+        f"{name} {'enabled' if enabled else 'disabled'})"
+    )
+    return line, enabled

@@ -42,6 +42,7 @@ from pycangui.canopen import (
     load_od,
     node_ids,
     pdo_name,
+    read_pdos,
     sdo_log,
 )
 from pycangui.canopen.dcf import values_from, write_dcf
@@ -1887,9 +1888,9 @@ class CanopenManager(QObject):
         self._pdo_reads[node_id] = self._pdo_reads.get(node_id, 0) + 1
 
         def job() -> int:
-            node.tpdo.read()
+            read_pdos(node.tpdo)
             self._mapping_from_node(node_id)
-            node.rpdo.read()
+            read_pdos(node.rpdo)
             self._rpdo_read.add(node_id)
             self._decode_pdos(node_id, node)
             self.emcy_cob_ids[node_id] = self._optional(node, 0x1014)[0]
@@ -2615,8 +2616,8 @@ class CanopenManager(QObject):
         self._rpdo_read.discard(node_id)
         self._pdo_size_said = {key for key in self._pdo_size_said if key[0] != node_id}
         try:
-            node.rpdo.read(from_od=True)
-            node.tpdo.read(from_od=True)
+            read_pdos(node.rpdo, from_od=True)
+            read_pdos(node.tpdo, from_od=True)
         except Exception as exc:  # an EDS without PDO objects, or an odd one
             self.message.emit(f"Node {node_id}: no PDO mapping in the EDS ({exc})", WARNING)
             return

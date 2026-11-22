@@ -172,3 +172,42 @@ def test_the_advice_for_a_quiet_real_bus_is_about_wiring(app, bus):
 
     assert notes and "bitrate" in notes[0] and "termination" in notes[0]
     assert "loopback" not in notes[0]
+
+
+# --- a reader that fails on every frame ------------------------------------------------
+def test_the_readers_error_is_said_once_and_then_counted(app, bus, monkeypatch):
+    """Reported: "Bus reader error: Error warning limit exceeded" 2,128 times
+    in a minute, one for each time the controller sent a frame nobody
+    acknowledged."""
+    from pycangui.core import bus as bus_module
+    from pycangui.core import logbridge
+
+    now = [100.0]
+    monkeypatch.setattr(bus_module.time, "monotonic", lambda: now[0])
+    errors = []
+    bus.error.connect(errors.append)
+    for _ in range(500):
+        bus.notifier.exception = can.CanError("Error warning limit exceeded")
+        bus._drain()
+        now[0] += 0.025
+    app.processEvents()
+    assert 1 <= len(errors) < 10, "once, then how many more now and then"
+    assert errors[0].endswith("Error warning limit exceeded")
+    now[0] += logbridge.REPEATS_SAID_EVERY_S
+    bus.notifier.exception = can.CanError("something else went wrong")
+    bus._drain()
+    assert errors[-1].endswith("something else went wrong")
+
+
+def test_an_adapter_that_needs_a_channel_is_not_opened_without_one(app, tmp_path, monkeypatch):
+    """Reported: Connect with the IXXAT's channel box empty said only "invalid
+    literal for int() with base 10: ''", from inside the backend."""
+    monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
+    opened = []
+    monkeypatch.setattr(can, "Bus", lambda **kwargs: opened.append(kwargs))
+    manager = BusManager()
+    errors = []
+    manager.error.connect(errors.append)
+    manager.connect_bus("ixxat", "", 1000000, False)
+    assert opened == [], "the backend is not asked"
+    assert errors and manager.bus is None
