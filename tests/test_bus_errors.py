@@ -201,13 +201,15 @@ def test_the_readers_error_is_said_once_and_then_counted(app, bus, monkeypatch):
 
 def test_an_adapter_that_needs_a_channel_is_not_opened_without_one(app, tmp_path, monkeypatch):
     """Reported: Connect with the IXXAT's channel box empty said only "invalid
-    literal for int() with base 10: ''", from inside the backend."""
+    literal for int() with base 10: ''", from inside the backend. Tried on SLCAN,
+    whose channel has no default either: IXXAT's backend imports only on Windows,
+    and one that does not import cannot say what it needs."""
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     opened = []
     monkeypatch.setattr(can, "Bus", lambda **kwargs: opened.append(kwargs))
     manager = BusManager()
     errors = []
     manager.error.connect(errors.append)
-    manager.connect_bus("ixxat", "", 1000000, False)
+    manager.connect_bus("slcan", "", 1000000, False)
     assert opened == [], "the backend is not asked"
     assert errors and manager.bus is None
