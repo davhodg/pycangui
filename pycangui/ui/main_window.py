@@ -391,6 +391,8 @@ class MainWindow(QMainWindow):
         self.replay = ReplayAction(self.connect_bar, self.channels, self.ctx, self.confirm)
 
         self.canopen = CanopenManager(self.bus, self.hooks)
+        #: Names plugins have put in the Python Console and scripts: ``ecat``.
+        self.plugin_names: dict[str, object] = {}
         #: What plugins drive: CANopen nodes, and a plugin's own later.
         self.devices = Devices(self.canopen)
         self.uds = UdsManager(self.bus, self.hooks, self.ctx)
@@ -1008,6 +1010,7 @@ class MainWindow(QMainWindow):
             loop.exec()
 
         return {
+            **self.plugin_names,  # first, so that none of them can hide one of these
             "ctx": self.ctx,
             "bus": self.bus,  # the selected channel
             "channels": self.channels,

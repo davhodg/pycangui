@@ -58,7 +58,8 @@ from typing import Any
 #: which is a worse way to find out. 2 added on_pause, on_stop_all,
 #: hold_traffic and release_traffic; 3 added with_icon, mono_font,
 #: emcy_text and poller, so that a plugin need import nothing of pycangui's,
-#: and devices, device and on_devices_changed, to drive one by any protocol.
+#: devices, device and on_devices_changed, to drive one by any protocol, and
+#: settings and add_console_name.
 API_VERSION = 3
 
 #: The file inside a plugin folder. A folder rather than a single file so that

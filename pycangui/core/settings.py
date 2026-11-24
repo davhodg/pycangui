@@ -39,6 +39,38 @@ class Settings:
         if self._data.pop(key, None) is not None:
             self.save()
 
+    def under(self, prefix: str) -> Settings:
+        """These settings seen through ``prefix.``: a plugin's own, say."""
+        return _Under(self, prefix)
+
     def save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(self._data, indent=2, sort_keys=True), encoding="utf-8")
+
+
+class _Under(Settings):
+    """The keys of one store that start with a prefix, without the prefix.
+
+    Saved in the store itself, so in the same file; nothing of its own.
+    """
+
+    def __init__(self, store: Settings, prefix: str) -> None:
+        self._store = store
+        self._prefix = f"{prefix}."
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._store.get(self._prefix + key, default)
+
+    def set(self, key: str, value: Any) -> None:
+        self._store.set(self._prefix + key, value)
+
+    def keys(self) -> list[str]:
+        return [
+            key[len(self._prefix) :] for key in self._store.keys() if key.startswith(self._prefix)
+        ]
+
+    def remove(self, key: str) -> None:
+        self._store.remove(self._prefix + key)
+
+    def save(self) -> None:
+        self._store.save()

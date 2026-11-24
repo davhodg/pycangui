@@ -989,3 +989,68 @@ def test_a_plugin_is_told_of_devices_and_stops_being_told_once_unloaded(app, win
     monkeypatch.setattr(window.canopen, "nodes", lambda: [5, 6])
     window.canopen.node_seen.emit(6, "OPERATIONAL")
     assert heard == [[5]], "the unloaded plugin's callback is not called"
+
+
+NAMED = """
+NAME = "Named"
+API_VERSION = 3
+
+
+class Thing:
+    pass
+
+
+def register(app):
+    app.thing = Thing()
+    app.add_console_name("thing", app.thing)
+    app.settings.set("rate", 5)
+"""
+
+
+def test_a_plugin_has_settings_of_its_own_in_the_workspace(app, window):
+    write_plugin(window, "named", NAMED)
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["named"]
+    assert record.ok, record.error
+    assert record.app.settings.get("rate") == 5
+    assert record.app.settings.keys() == ["rate"]
+    assert window.ctx.settings.get("plugins.named.rate") == 5, "under its own name"
+    record.app.settings.remove("rate")
+    assert window.ctx.settings.get("plugins.named.rate") is None
+
+
+def test_a_plugins_console_name_is_there_until_it_is_unloaded(app, window):
+    write_plugin(window, "named", NAMED)
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["named"]
+    assert record.ok, record.error
+    first = record.app.thing
+    assert window.console.namespace["thing"] is first
+    assert window._console_namespace()["thing"] is first, "and in scripts"
+
+    window._reload_plugins()
+    settle(app)
+    again = window.plugins.loaded["named"].app.thing
+    assert again is not first
+    assert window.console.namespace["thing"] is again, "the old object is gone with the old code"
+
+
+@pytest.mark.parametrize("name", ["canopen", "not a name", "class"])
+def test_a_console_name_pycangui_has_or_python_cannot_take_is_refused(app, window, name):
+    write_plugin(window, "named", NAMED.replace('"thing", app.thing', f"{name!r}, app.thing"))
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["named"]
+    assert not record.ok
+    assert window._console_namespace()["canopen"] is window.canopen
+
+
+def test_two_plugins_cannot_take_one_console_name(app, window):
+    write_plugin(window, "named", NAMED)
+    write_plugin(window, "named_too", NAMED.replace('NAME = "Named"', 'NAME = "Named too"'))
+    window._reload_plugins()
+    settle(app)
+    loaded = window.plugins.loaded
+    assert sorted(record.ok for record in (loaded["named"], loaded["named_too"])) == [False, True]

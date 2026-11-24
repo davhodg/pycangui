@@ -17,6 +17,7 @@ the new ones, and the second reload leaves three.
 
 from __future__ import annotations
 
+import keyword
 from collections.abc import Callable
 from typing import Any
 
@@ -83,6 +84,10 @@ class PluginApp:
         self._holding: list[str] = []
         self._devices = window.devices
         self._on_devices: list[Callable] = []
+        #: This plugin's own settings, in the workspace: see ``settings``.
+        self.settings = self.ctx.settings.under(f"plugins.{plugin}")
+        #: The names it put in the console, taken out when it is unloaded.
+        self._console_names: dict[str, object] = {}
 
     # --- a screen of its own ------------------------------------------------------------
     def add_pane(
@@ -322,6 +327,31 @@ class PluginApp:
         self._devices.changed.connect(callback)
         self._on_devices.append(callback)
 
+    # --- its own settings, and its own name in the console (API 3) -------------------------
+    # ``settings`` (set in __init__): get(key, default), set(key, value),
+    # keys() and remove(key), kept in the workspace's settings under
+    # ``plugins.<the plugin>.``, so another plugin's keys cannot collide with
+    # these and moving to another workspace takes them along. Left when the
+    # plugin is uninstalled, as a program's settings are. API 3.
+
+    def add_console_name(self, name: str, obj: object) -> None:
+        """Put ``obj`` in the Python Console and in scripts as ``name``.
+
+        Taken out again when the plugin is unloaded. Refused if pycangui or
+        another plugin already uses the name: a script written against
+        ``canopen`` must not find a plugin's object there instead. API 3.
+        """
+        if not name.isidentifier() or keyword.iskeyword(name):
+            raise ValueError(f"{name!r} cannot be a name in Python")
+        taken = self.window.plugin_names.get(name, self._console_names.get(name))
+        builtin = name in self.window._console_namespace() and taken is None
+        if builtin or (taken is not None and name not in self._console_names):
+            raise ValueError(f"{name!r} is already a name in the Python Console")
+        self._console_names[name] = obj
+        self.window.plugin_names[name] = obj
+        if (console := getattr(self.window, "console", None)) is not None:
+            console.namespace[name] = obj
+
     # --- saying something -------------------------------------------------------------------
     def log(self, message: str) -> None:
         self.ctx.events.information(f"{self.plugin}: {message}")
@@ -352,6 +382,13 @@ class PluginApp:
             for callback in callbacks:
                 signal.disconnect(callback)
             callbacks.clear()
+        console = getattr(self.window, "console", None)
+        for name, obj in self._console_names.items():
+            if self.window.plugin_names.get(name) is obj:
+                del self.window.plugin_names[name]
+            if console is not None and console.namespace.get(name) is obj:
+                del console.namespace[name]  # unless somebody has used the name since
+        self._console_names.clear()
         for callback in self._on_devices:
             try:
                 self._devices.changed.disconnect(callback)
