@@ -263,6 +263,47 @@ class PluginApp:
             self._holding.remove(why)
         self.ctx.pause.release(why)
 
+    # --- looking like the rest of pycangui, and doing what it does (API 3) ---------------------
+    # So that a plugin imports nothing of pycangui's: what it imports from a
+    # module can be renamed or moved by the next release, and a plugin in its
+    # own repo would find out by failing to load.
+    def with_icon(self, thing: Any, name: str) -> Any:
+        """Give a button or menu item one of pycangui's icons, by name: ``"start"``.
+
+        Drawn in the text colour, and redrawn when the theme changes or icons
+        are turned off, as the built-in panes' are. Returns ``thing``, so it
+        can wrap the line that makes it. API 3.
+        """
+        from pycangui.ui import icons
+
+        return icons.beside(thing, name)
+
+    def mono_font(self):
+        """pycangui's fixed-pitch font, at the size the rest of its text is. API 3."""
+        from pycangui.ui import fonts
+
+        return fonts.mono()
+
+    def emcy_text(self, code: int) -> str:
+        """What CiA 301 calls an emergency error code, or its category. API 3."""
+        from pycangui.canopen.emcy import describe_code
+
+        return describe_code(code)
+
+    def poller(self, parent=None):
+        """Something that reads the same objects over and over, as custom panes do.
+
+        Its keys are whatever the plugin reads by; it emits ``asked(key)``
+        (``read(index, sub)`` for an ``(index, sub)`` key) and is told
+        ``answered(key)``, so no read goes out before the last came back.
+        ``MIN_HZ``, ``MAX_HZ`` and ``DEFAULT_HZ`` for a rate box, and
+        ``rate_text()`` for beside it. Held back while pycangui is paused only
+        if the plugin calls ``set_paused``: see ``on_pause``. API 3.
+        """
+        from pycangui.custom_panes.polling import Poller
+
+        return Poller(parent)
+
     # --- saying something -------------------------------------------------------------------
     def log(self, message: str) -> None:
         self.ctx.events.information(f"{self.plugin}: {message}")

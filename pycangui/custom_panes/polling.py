@@ -67,6 +67,11 @@ class Poller(QObject):
     #: Polling started or stopped.
     running_changed = Signal(bool)
 
+    #: The rates a box offering them should allow, and start at.
+    MIN_HZ = MIN_HZ
+    MAX_HZ = MAX_HZ
+    DEFAULT_HZ = DEFAULT_HZ
+
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._objects: list[Hashable] = []
@@ -209,6 +214,10 @@ class Poller(QObject):
         # managing 100 ms rounds is achieving 1 Hz, not 10.
         cycle = max(mean, 1.0 / self._hz)
         return 1.0 / cycle if cycle > 0 else 0.0
+
+    def rate_text(self) -> str:
+        """What to put beside the rate box now: see ``rate_text()``."""
+        return rate_text(self._hz, self.achieved, self._running, self._paused)
 
     def _announce(self) -> None:
         self.rate.emit(self._hz, self.achieved)

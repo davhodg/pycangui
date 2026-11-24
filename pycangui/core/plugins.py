@@ -56,8 +56,9 @@ from typing import Any
 #: and is refused if it is newer than this -- a plugin from the future asking
 #: for methods that do not exist yet fails in the middle of doing something,
 #: which is a worse way to find out. 2 added on_pause, on_stop_all,
-#: hold_traffic and release_traffic.
-API_VERSION = 2
+#: hold_traffic and release_traffic; 3 added with_icon, mono_font,
+#: emcy_text and poller, so that a plugin need import nothing of pycangui's.
+API_VERSION = 3
 
 #: The file inside a plugin folder. A folder rather than a single file so that
 #: a plugin can bring its own modules, icons and data with it. A single file

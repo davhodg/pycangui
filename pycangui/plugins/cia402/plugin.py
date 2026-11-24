@@ -39,34 +39,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pycangui.canopen.emcy import describe_code
-from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ, Poller, rate_text
-from pycangui.ui import icons
-
 # Relative, so that the copy of drive.py sitting beside *this* file is the
 # one that runs. Named absolutely, an installed plugin would reach back
 # into the one pycangui ships and editing your own would do nothing.
 from . import drive as cia402
 from .drive import Drive, Object
 
-API_VERSION = 1
-
-
-def _fixed_pitch() -> QFont:
-    """pycangui's fixed-pitch font, which follows the system's text size.
-
-    Asked for by name on a pycangui from before it had one to give, since a
-    copy of this plugin in a workspace can meet an older pycangui.
-    """
-    try:
-        from pycangui.ui import fonts
-    except ImportError:
-        return QFont("Consolas", 9)
-    return fonts.mono()
+API_VERSION = 3
 
 
 NAME = "CANopen motor control (CiA 402)"
-VERSION = "1.12"
+VERSION = "2.0"
 DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
@@ -144,9 +127,9 @@ NO_DEMAND_TIP = "{mode} has no demand to show."
 ERROR_CODE_TIP = "0x603F, read when the drive went to Fault: why it did."
 
 
-def error_text(code: int) -> str:
+def error_text(code: int, meaning: str) -> str:
     """0x603F as a line beside the state: the code, and what CiA 301 calls it."""
-    return f"Error code 0x{code:04X}: {describe_code(code)}"
+    return f"Error code 0x{code:04X}: {meaning}"
 
 
 WRITE_LIMITS_TIP = (
@@ -280,13 +263,13 @@ class MotorView(QWidget):
         self._nmt_state: str | None = None
         #: The selected node's NMT state, set from here: the two a drive is
         #: worked in. Start is asked about first, as Enable is.
-        self.pre_op_btn = icons.beside(QPushButton("Pre-operational"), icons.PAUSE)
+        self.pre_op_btn = self.app.with_icon(QPushButton("Pre-operational"), "pause")
         self.pre_op_btn.setToolTip(
             "Put the selected node in Pre-operational (NMT): SDO goes on working,\n"
             "and its PDOs stop -- an RPDO no longer overrides this pane."
         )
         self.pre_op_btn.clicked.connect(lambda: self._nmt("PRE-OPERATIONAL"))
-        self.start_btn = icons.beside(QPushButton("Start"), icons.START)
+        self.start_btn = self.app.with_icon(QPushButton("Start"), "start")
         self.start_btn.setToolTip(
             "Make the selected node Operational (NMT): its PDOs flow. Asked first,\n"
             "once per node, since an RPDO it is then sent may move it."
@@ -337,18 +320,18 @@ class MotorView(QWidget):
         maker_row.addWidget(self.maker_status)
         maker_row.addStretch()
 
-        self.enable = icons.beside(QPushButton("Enable"), icons.ENABLE)
+        self.enable = self.app.with_icon(QPushButton("Enable"), "enable")
         self.enable.setToolTip(
             "Walk the drive to Operation enabled: shutdown, switch on, enable.\n"
             "Asks first -- this is the state in which a motor turns."
         )
         self.enable.clicked.connect(self._enable)
-        self.disable = icons.beside(QPushButton("Disable"), icons.DISABLE)
+        self.disable = self.app.with_icon(QPushButton("Disable"), "disable")
         self.disable.setToolTip("Back to Switch on disabled. The motor is no longer driven.")
         self.disable.clicked.connect(
             lambda: self._command(lambda: cia402.steps_to_disable(self.statusword))
         )
-        self.quick_stop = icons.beside(QPushButton("Quick stop"), icons.STOP)
+        self.quick_stop = self.app.with_icon(QPushButton("Quick stop"), "stop")
         self.quick_stop.setToolTip(
             "Stop it the way the drive was configured to stop, which is not the\n"
             "same as removing power and is not a safety function."
@@ -356,7 +339,7 @@ class MotorView(QWidget):
         self.quick_stop.clicked.connect(
             lambda: self._command(lambda: cia402.steps_to_quick_stop(self.statusword))
         )
-        self.reset = icons.beside(QPushButton("Reset fault"), icons.RESET)
+        self.reset = self.app.with_icon(QPushButton("Reset fault"), "reset")
         self.reset.setToolTip(
             "Two writes, because the drive acts on the rising edge of bit 7\n"
             "rather than on its value."
@@ -373,7 +356,7 @@ class MotorView(QWidget):
         for number, name in sorted(cia402.MODES.items()):
             self.mode_box.addItem(f"{number}  {name}", number)
         self.mode_box.setToolTip(MODE_TIP)
-        set_mode = icons.beside(QPushButton("Set mode"), icons.SWITCH)
+        set_mode = self.app.with_icon(QPushButton("Set mode"), "switch")
         set_mode.clicked.connect(self._set_mode)
         self.mode_now = QLabel("")
 
@@ -381,9 +364,9 @@ class MotorView(QWidget):
         self.target = QSpinBox()
         self.target.setRange(-2_000_000_000, 2_000_000_000)
         self.target.setGroupSeparatorShown(True)
-        self.set_target = icons.beside(QPushButton("Set target"), icons.PICK)
+        self.set_target = self.app.with_icon(QPushButton("Set target"), "pick")
         self.set_target.clicked.connect(self._write_target)
-        self.apply_target = icons.beside(QPushButton("Go"), icons.START)
+        self.apply_target = self.app.with_icon(QPushButton("Go"), "start")
         self.apply_target.setToolTip(
             "Profile position only: the drive takes the target on the rising\n"
             "edge of bit 4 and ignores it until then."
@@ -422,10 +405,10 @@ class MotorView(QWidget):
             limits_grid.addWidget(unit, row, 2)
         limits_grid.setColumnStretch(3, 1)
 
-        self.read_limits_btn = icons.beside(QPushButton("Read limits"), icons.READ)
+        self.read_limits_btn = self.app.with_icon(QPushButton("Read limits"), "read")
         self.read_limits_btn.setToolTip("Read all three from the drive.")
         self.read_limits_btn.clicked.connect(self._read_limits)
-        self.write_limits_btn = icons.beside(QPushButton("Write limits"), icons.WRITE)
+        self.write_limits_btn = self.app.with_icon(QPushButton("Write limits"), "write")
         self.write_limits_btn.setToolTip(WRITE_LIMITS_TIP)
         self.write_limits_btn.clicked.connect(self._write_limits)
         limits_buttons = QHBoxLayout()
@@ -454,7 +437,7 @@ class MotorView(QWidget):
             value = QLabel("--")
             # Fixed pitch, so the digits do not move sideways as they change,
             # and at the size of the text around them.
-            value.setFont(_fixed_pitch())
+            value.setFont(self.app.mono_font())
             value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             self.actuals[obj.where] = value
             name = QLabel(f"{obj.name}:")
@@ -472,7 +455,7 @@ class MotorView(QWidget):
         #: The mode's demand, under what the drive is actually doing: the
         #: object changes with the mode, so the row is relabelled with it.
         demand = (QLabel(""), QLabel("--"), QLabel(""))
-        demand[1].setFont(_fixed_pitch())
+        demand[1].setFont(self.app.mono_font())
         demand[1].setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self._demand_row = demand
         for column, widget in enumerate(demand):
@@ -497,8 +480,6 @@ class MotorView(QWidget):
         )
         self.poll.toggled.connect(self._set_polling)
         self.hz = QDoubleSpinBox()
-        self.hz.setRange(MIN_HZ, MAX_HZ)
-        self.hz.setValue(DEFAULT_HZ)
         self.hz.setSuffix(" Hz")
         self.hz.setToolTip("A ceiling, not a promise: what is being achieved is beside it.")
         self.rate = QLabel("")
@@ -558,13 +539,14 @@ class MotorView(QWidget):
         layout.addWidget(units)
         layout.addStretch()
 
-        self.poller = Poller(self)
+        self.poller = self.app.poller(self)
+        self.hz.setRange(self.poller.MIN_HZ, self.poller.MAX_HZ)
+        self.hz.setValue(self.poller.DEFAULT_HZ)
         self.poller.read.connect(self._read_one)
         self.poller.rate.connect(self._on_rate)
         self.hz.valueChanged.connect(self.poller.set_rate)
         self.poller.set_rate(self.hz.value())
-        if getattr(app, "api_version", 1) >= 2:  # an older pycangui has no pause
-            self.poller.set_paused(app.paused)
+        self.poller.set_paused(app.paused)
 
         self._fill_nodes()
         # A bound method rather than a lambda, and that is not a style choice.
@@ -1055,7 +1037,7 @@ class MotorView(QWidget):
             if self._went_wrong(cia402.ERROR_CODE, error):
                 return
             if cia402.is_faulted(self.statusword):  # not reset while it was asked
-                self.error_code.setText(error_text(int(value)))
+                self.error_code.setText(error_text(int(value), self.app.emcy_text(int(value))))
                 self.error_code.show()
 
         self.app.run_in_background(lambda: drive.read(cia402.ERROR_CODE), done)
@@ -1064,7 +1046,7 @@ class MotorView(QWidget):
         # Polling starting or stopping changes what the banner is entitled to
         # say, not only what the rate label says.
         self._show_banner()
-        self.rate.setText(rate_text(requested, achieved, self.poller.running, self.poller.paused))
+        self.rate.setText(self.poller.rate_text())
 
     # --- saying what it is ------------------------------------------------------------------
     def _show_state(self) -> None:
@@ -1393,8 +1375,6 @@ def register(app) -> None:
 
     app.on_pane_shown(shown)
     app.on_closing(closing)
-    if getattr(app, "api_version", 1) < 2:
-        return  # a pycangui from before pausing and Stop all
 
     def paused(on: bool) -> None:
         if (view := app.panes.view(f"{app.plugin}:main")) is not None:

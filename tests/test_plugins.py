@@ -913,3 +913,46 @@ def test_a_plugin_hears_of_a_pause_and_of_stop_all_and_can_hold_one(app, window)
     count = len(heard)
     pause.stop_all()
     assert len(heard) == count, "and the old code is no longer called"
+
+
+# --- what a plugin needs of pycangui without importing it (API 3) -----------------------
+NOTHING_IMPORTED = """
+NAME = "Nothing imported"
+API_VERSION = 3
+
+from PySide6.QtWidgets import QPushButton
+
+
+def register(app):
+    app.button = app.with_icon(QPushButton("Go"), "start")
+    app.font_given = app.mono_font()
+    app.emcy = app.emcy_text(0x2310)
+    app.polling = app.poller()
+"""
+
+
+def test_a_plugin_has_icons_the_font_emcy_text_and_polling_from_the_app(app, window):
+    from pycangui.canopen.emcy import describe_code
+    from pycangui.custom_panes.polling import DEFAULT_HZ, MAX_HZ, MIN_HZ
+    from pycangui.ui import fonts, icons
+
+    write_plugin(window, "nothing_imported", NOTHING_IMPORTED)
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["nothing_imported"]
+    assert record.ok, record.error
+    given = record.app
+    assert given.button.property(icons.PROPERTY) == "start", "redrawn with the theme"
+    assert given.font_given.family() == fonts.mono().family()
+    assert given.emcy == describe_code(0x2310)
+    polling = given.polling
+    assert (polling.MIN_HZ, polling.DEFAULT_HZ, polling.MAX_HZ) == (MIN_HZ, DEFAULT_HZ, MAX_HZ)
+    seen = []
+    polling.asked.connect(seen.append)
+    polling.set_objects([(0x6041, 0)])
+    polling.start()
+    settle(app)
+    assert seen and seen[0] == (0x6041, 0)
+    assert polling.rate_text(), "something to show while it runs"
+    polling.stop()
+    assert polling.rate_text() == ""
