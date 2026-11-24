@@ -16,6 +16,7 @@ from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QMessageBox
 
 from pycangui.core import plugin_package
+from pycangui.core.hooks import registry
 from pycangui.core.plugins import API_VERSION, Plugins, supplied
 from pycangui.ui import folders, plugin_manager
 from pycangui.ui.main_window import MainWindow
@@ -1054,3 +1055,97 @@ def test_two_plugins_cannot_take_one_console_name(app, window):
     settle(app)
     loaded = window.plugins.loaded
     assert sorted(record.ok for record in (loaded["named"], loaded["named_too"])) == [False, True]
+
+
+# --- a plugin's own hooks (API 3) ---------------------------------------------------------
+HOOKED = """
+NAME = "Hooked"
+API_VERSION = 3
+
+
+def register(app):
+    app.add_hooks("hooked", "hooks.py")
+    app.answer = lambda: app.hooks.call("hooked", "greeting", "Ada")
+"""
+
+HOOK_DEFAULTS = '''
+def greeting(name, *, ctx):
+    """What to call somebody."""
+    return f"Hello {name}"
+
+
+def _helper():
+    return "not a hook"
+'''
+
+
+def hooked(window, defaults=HOOK_DEFAULTS, name="hooked", source=HOOKED):
+    folder = write_plugin(window, name, source)
+    (folder / "hooks.py").write_text(defaults, encoding="utf-8")
+    return folder
+
+
+def test_a_plugins_hooks_are_in_the_workspace_and_called_like_pycanguis(app, window):
+    hooked(window)
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["hooked"]
+    assert record.ok, record.error
+    copy = window.ctx.hooks_dir / "hooked.py"
+    assert copy.exists(), "beside canopen.py and uds.py"
+    assert record.app.answer() == "Hello Ada"
+    assert set(registry()["hooked"]) == {"greeting"}, "only what is public is a hook"
+
+    copy.write_text(
+        copy.read_text(encoding="utf-8").replace('f"Hello {name}"', 'f"Hi {name}"'),
+        encoding="utf-8",
+    )
+    window.hooks.reload()
+    assert record.app.answer() == "Hi Ada", "the user's copy is what runs"
+
+
+def test_an_edited_copy_is_kept_and_given_a_hook_the_plugin_adds(app, window):
+    folder = hooked(window)
+    window._reload_plugins()
+    settle(app)
+    copy = window.ctx.hooks_dir / "hooked.py"
+    copy.write_text(copy.read_text(encoding="utf-8") + "\n# mine\n", encoding="utf-8")
+
+    grown = (
+        HOOK_DEFAULTS
+        + """
+
+def farewell(name, *, ctx):
+    return f"Bye {name}"
+"""
+    )
+    (folder / "hooks.py").write_text(grown, encoding="utf-8")
+    window._reload_plugins()
+    settle(app)
+    assert window.plugins.loaded["hooked"].ok
+    text = copy.read_text(encoding="utf-8")
+    assert "# mine" in text and "def farewell" in text
+    assert window.hooks.call("hooked", "farewell", "Ada") == "Bye Ada"
+
+
+def test_unloading_the_plugin_forgets_its_hooks_and_leaves_the_file(app, window):
+    folder = hooked(window)
+    window._reload_plugins()
+    settle(app)
+    (folder / "plugin.py").unlink()
+    window._reload_plugins()
+    settle(app)
+    assert "hooked" not in registry()
+    assert (window.ctx.hooks_dir / "hooked.py").exists(), "the user's edits, kept"
+
+
+def test_a_hook_module_pycangui_or_another_plugin_has_is_refused(app, window):
+    hooked(window, source=HOOKED.replace('add_hooks("hooked"', 'add_hooks("canopen"'))
+    hooked(window, name="hooked_too")
+    hooked(window, name="hooked_three")
+    window._reload_plugins()
+    settle(app)
+    loaded = window.plugins.loaded
+    assert not loaded["hooked"].ok, "pycangui's own canopen hooks"
+    assert sorted(loaded[n].ok for n in ("hooked_too", "hooked_three")) == [False, True]
+    assert "eds_for_node" in registry()["canopen"], "and pycangui's are untouched"

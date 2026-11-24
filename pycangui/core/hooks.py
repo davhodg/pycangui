@@ -52,6 +52,8 @@ class HookSpec:
 
 # module name -> hook name -> spec. Filled by @hook at import of the defaults.
 _REGISTRY: dict[str, dict[str, HookSpec]] = {}
+#: Hook modules plugins have added: module name -> its defaults file.
+_PLUGIN_DEFAULTS: dict[str, Path] = {}
 
 
 def hook(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -104,6 +106,12 @@ class Hooks:
         self._failed: set[tuple[str, str]] = set()  # (module, name) already reported
         #: (module, name) whose signature this build changed, from sync().
         self._changed: list[tuple[str, str]] = []
+        # The last window's plugins' modules are not this one's: a workspace
+        # opened since may not have those plugins, and one that has them adds
+        # them again as they load.
+        for module in _PLUGIN_DEFAULTS:
+            _REGISTRY.pop(module, None)
+        _PLUGIN_DEFAULTS.clear()
         #: The hook files as supplied: what was copied, and what ships now.
         self.supplied = Supplied(
             "hooks",
@@ -161,13 +169,17 @@ class Hooks:
             module: {name: _signature(spec.default) for name, spec in specs.items()}
             for module, specs in registry().items()
         }
+        return self._sync(current)
+
+    def _sync(self, current: dict[str, dict[str, str]]) -> dict[str, list[str]]:
+        """sync() for the modules in ``current``: all of them, or a plugin's."""
         known = self.ctx.settings.get("hooks.known") or {}
         if known:
             only = {
                 module: [name for name in specs if name not in known.get(module, {})]
                 for module, specs in current.items()
             }
-            self._changed = [
+            self._changed += [
                 (module, name)
                 for module, specs in current.items()
                 for name, signature in specs.items()
@@ -178,14 +190,17 @@ class Hooks:
             # just been copied whole and there is nothing to add, or an
             # upgrade from before this was written, where there may be plenty.
             only = None
-            self._changed = []
         added = self.update_stubs(only=only)
-        self.ctx.settings.set("hooks.known", current)
+        # A plugin's module not loaded this time keeps its record, so that a
+        # hook taken out of its file is not put back the next time it is.
+        self.ctx.settings.set("hooks.known", {**known, **current})
         return added
 
-    def report(self) -> None:
+    def report(self, only: str | None = None) -> None:
         """Say what sync() and reload() found, in the order it matters."""
         for module, um in self._user.items():
+            if only is not None and module != only:
+                continue
             for name, bad in um.mismatched.items():
                 because = (
                     "this version of pycangui changed it"
@@ -234,7 +249,9 @@ class Hooks:
             grown = _with_imports_for(module, text)
             chunks = ["\n\n# --- hooks pycangui added; yours to edit ---\n"]
             chunks += ["\n\n" + source for _name, source in _missing_constants(module, grown)]
-            chunks += ["\n\n@hook\n" + inspect.getsource(specs[n].default) for n in missing]
+            # A plugin's hooks need no decorator, and its file may not import one.
+            marked = "" if module in _PLUGIN_DEFAULTS else "@hook\n"
+            chunks += ["\n\n" + marked + inspect.getsource(specs[n].default) for n in missing]
             dest.write_text(grown.rstrip("\n") + "".join(chunks) + "\n", encoding="utf-8")
             # A working file that stops working is a worse outcome than a
             # missing stub, and this runs unattended at startup -- so put the
@@ -262,37 +279,85 @@ class Hooks:
 
     def _load_all(self) -> None:
         for module in registry():
-            path = self.ctx.hooks_dir / f"{module}.py"
-            um = _UserModule(path)
-            self._user[module] = um
-            if not path.exists():
-                continue
-            try:
-                spec = importlib.util.spec_from_file_location(f"pycangui_user_hooks.{module}", path)
-                assert spec is not None and spec.loader is not None
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-            except Exception:
-                um.error = traceback.format_exc()
-                self.ctx.warn(f"Hook file {path} failed to load, using defaults:\n{um.error}")
-                continue
-            um.functions = {
-                name: fn
-                for name, fn in vars(mod).items()
-                if callable(fn)
-                and name in registry()[module]
-                and getattr(fn, "__module__", "") == mod.__name__
-            }
-            # Checked here rather than discovered at the call, because the
-            # call may be hours away and in the middle of something: a hook
-            # written against an older pycangui should be a line in the log
-            # at startup, not a flash programming session that quietly used
-            # the default seed-to-key.
-            for name, fn in list(um.functions.items()):
-                why = _why_uncallable(fn, registry()[module][name].default)
-                if why is not None:
-                    um.mismatched[name] = _Mismatch(_signature(fn), why)
-                    del um.functions[name]
+            self._load_one(module)
+
+    def _load_one(self, module: str) -> None:
+        path = self.ctx.hooks_dir / f"{module}.py"
+        um = _UserModule(path)
+        self._user[module] = um
+        if not path.exists():
+            return
+        try:
+            spec = importlib.util.spec_from_file_location(f"pycangui_user_hooks.{module}", path)
+            assert spec is not None and spec.loader is not None
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        except Exception:
+            um.error = traceback.format_exc()
+            self.ctx.warn(f"Hook file {path} failed to load, using defaults:\n{um.error}")
+            return
+        um.functions = {
+            name: fn
+            for name, fn in vars(mod).items()
+            if callable(fn)
+            and name in registry()[module]
+            and getattr(fn, "__module__", "") == mod.__name__
+        }
+        # Checked here rather than discovered at the call, because the
+        # call may be hours away and in the middle of something: a hook
+        # written against an older pycangui should be a line in the log
+        # at startup, not a flash programming session that quietly used
+        # the default seed-to-key.
+        for name, fn in list(um.functions.items()):
+            why = _why_uncallable(fn, registry()[module][name].default)
+            if why is not None:
+                um.mismatched[name] = _Mismatch(_signature(fn), why)
+                del um.functions[name]
+
+    # --- a plugin's own ---------------------------------------------------------
+    def add_module(self, module: str, defaults: Path) -> None:
+        """A plugin's hooks, as ``hooks/<module>.py`` beside pycangui's own.
+
+        ``defaults`` is the file as the plugin ships it: every function in it
+        whose name does not start with ``_`` is a hook, called with the
+        arguments the plugin gives and ``ctx`` by keyword, as pycangui's are.
+        From here on it is like any other hook file: copied into the workspace
+        when there is none, replaced while nobody has edited it, given the
+        hooks a later version adds, its signatures checked, and *Reload hooks*
+        and *Restore supplied files* work on it.
+        """
+        if not module.isidentifier():
+            raise ValueError(f"{module!r} cannot be a hook module's name")
+        if module in registry():
+            raise ValueError(
+                f"hooks/{module}.py is already pycangui's or another plugin's: "
+                "choose another name for this plugin's hooks"
+            )
+        loaded = _import_file(f"pycangui_plugin_hooks.{module}", defaults)
+        specs = {
+            name: HookSpec(module, name, fn)
+            for name, fn in vars(loaded).items()
+            if inspect.isfunction(fn)
+            and fn.__module__ == loaded.__name__
+            and not name.startswith("_")
+        }
+        if not specs:
+            raise ValueError(f"{defaults.name} has no hooks: no function in it is public")
+        _PLUGIN_DEFAULTS[module] = defaults
+        _REGISTRY[module] = specs
+        self.supplied.sources[f"{module}.py"] = defaults
+        self.supplied.update(self.ctx.log)
+        self._sync({module: {name: _signature(spec.default) for name, spec in specs.items()}})
+        self._load_one(module)
+        self.report(only=module)
+
+    def remove_module(self, module: str) -> None:
+        """Forget a plugin's hooks, as it is unloaded. The file stays: it is the user's."""
+        if _PLUGIN_DEFAULTS.pop(module, None) is None:
+            return
+        _REGISTRY.pop(module, None)
+        self._user.pop(module, None)
+        self.supplied.sources.pop(f"{module}.py", None)
 
     def errors(self) -> dict[str, str]:
         return {m: um.error for m, um in self._user.items() if um.error}
@@ -508,4 +573,16 @@ def _top_of(text: str) -> int:
 
 
 def _defaults_path(module: str) -> Path:
+    if (plugins := _PLUGIN_DEFAULTS.get(module)) is not None:
+        return plugins
     return Path(str(resources.files(DEFAULTS_PACKAGE) / f"{module}.py"))
+
+
+def _import_file(name: str, path: Path):
+    """A Python file imported as a module of this name, not kept in sys.modules."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"{path} cannot be imported")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

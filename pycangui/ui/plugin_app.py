@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import keyword
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -86,6 +87,8 @@ class PluginApp:
         self._on_devices: list[Callable] = []
         #: This plugin's own settings, in the workspace: see ``settings``.
         self.settings = self.ctx.settings.under(f"plugins.{plugin}")
+        #: The hook modules it added, forgotten when it is unloaded.
+        self._hook_modules: list[str] = []
         #: The names it put in the console, taken out when it is unloaded.
         self._console_names: dict[str, object] = {}
 
@@ -352,6 +355,24 @@ class PluginApp:
         if (console := getattr(self.window, "console", None)) is not None:
             console.namespace[name] = obj
 
+    def add_hooks(self, module: str, defaults: str | Path) -> None:
+        """This plugin's hooks, as ``hooks/<module>.py`` in the workspace.
+
+        ``defaults`` is the file of them as the plugin ships it, relative to
+        the plugin's folder or absolute. Every function in it whose name does
+        not start with ``_`` is a hook, and takes ``ctx`` by keyword as
+        pycangui's own do; call one with ``app.hooks.call(module, name, ...)``.
+        The workspace copy is the user's to edit, kept up to date like the
+        built-in hook files, and left behind when the plugin is uninstalled.
+        Refused if pycangui or another plugin has a hook module of that name.
+        API 3.
+        """
+        path = Path(defaults)
+        if not path.is_absolute() and (record := self.window.plugins.loaded.get(self.plugin)):
+            path = record.path.parent / path
+        self.hooks.add_module(module, path)
+        self._hook_modules.append(module)
+
     # --- saying something -------------------------------------------------------------------
     def log(self, message: str) -> None:
         self.ctx.events.information(f"{self.plugin}: {message}")
@@ -382,6 +403,9 @@ class PluginApp:
             for callback in callbacks:
                 signal.disconnect(callback)
             callbacks.clear()
+        for module in self._hook_modules:
+            self.hooks.remove_module(module)
+        self._hook_modules.clear()
         console = getattr(self.window, "console", None)
         for name, obj in self._console_names.items():
             if self.window.plugin_names.get(name) is obj:

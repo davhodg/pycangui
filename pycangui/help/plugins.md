@@ -117,6 +117,7 @@ pycangui ships rather than the one you are editing.
 | `on_devices_changed(fn)` | `fn()` when a device appears or goes, not on every heartbeat (API 3) |
 | `settings` | your own settings, kept in the workspace: `get(key, default)`, `set(key, value)`, `keys()`, `remove(key)` (API 3) |
 | `add_console_name(name, obj)` | `obj` in the Python Console and in scripts as `name`; taken out when your plugin is unloaded, and refused if pycangui or another plugin has the name (API 3) |
+| `add_hooks(module, file)` | your own [hooks](hooks.md), as `hooks/<module>.py` in the workspace beside pycangui's: every function in `file` (in your plugin's folder) whose name does not start with `_` is one, taking `ctx` by keyword; call one with `hooks.call(module, name, ...)`. The copy is the user's to edit, kept up to date like pycangui's own, and left when your plugin is uninstalled (API 3) |
 | `log` / `warn` / `error` | say something in the Event Log, prefixed with your name |
 | `window` `ctx` `hooks` `panes` `channels` `bus` `signals` `canopen` `uds` `j1939` `xcp` `dbc` | the live objects |
 | `confirm` | the confirmations pycangui asks before disturbing equipment, for a plugin that does too |
