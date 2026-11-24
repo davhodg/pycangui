@@ -49,6 +49,7 @@ from pycangui.core.components import COMPONENTS, carry_over, write_readme
 from pycangui.core.context import Context
 from pycangui.core.dbc import DbcDecoder
 from pycangui.core.detect import DEMO_CHANNEL, summarise
+from pycangui.core.device import Devices
 from pycangui.core.events import PROBLEMS, EventLog, with_level, with_time
 from pycangui.core.excepthook import ExceptionLogger
 from pycangui.core.export import write_csv
@@ -390,6 +391,8 @@ class MainWindow(QMainWindow):
         self.replay = ReplayAction(self.connect_bar, self.channels, self.ctx, self.confirm)
 
         self.canopen = CanopenManager(self.bus, self.hooks)
+        #: What plugins drive: CANopen nodes, and a plugin's own later.
+        self.devices = Devices(self.canopen)
         self.uds = UdsManager(self.bus, self.hooks, self.ctx)
         self.j1939 = J1939Manager(self.bus, self.hooks)
         self.signals = SignalHub()

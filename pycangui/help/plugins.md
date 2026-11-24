@@ -113,6 +113,8 @@ pycangui ships rather than the one you are editing.
 | `mono_font()` | pycangui's fixed-pitch font, at the size its other text is (API 3) |
 | `emcy_text(code)` | what CiA 301 calls an emergency error code (API 3) |
 | `poller(parent)` | reads the same objects over and over, no faster than they answer, as custom panes do; `MIN_HZ`, `MAX_HZ`, `DEFAULT_HZ` and `rate_text()` for its rate box (API 3) |
+| `devices()`, `device(key)` | the live devices, and one by its key -- a CANopen node's is its node ID: `label`, `read(index, sub)` and `write(index, sub, data)` from inside `background(job, done)`, `has(index, sub)`, `states`, `state()` and `set_state(name)`, and `receives()` for what process data also writes; `changed` and `state_changed` say when to look again (API 3) |
+| `on_devices_changed(fn)` | `fn()` when a device appears or goes, not on every heartbeat (API 3) |
 | `log` / `warn` / `error` | say something in the Event Log, prefixed with your name |
 | `window` `ctx` `hooks` `panes` `channels` `bus` `signals` `canopen` `uds` `j1939` `xcp` `dbc` | the live objects |
 | `confirm` | the confirmations pycangui asks before disturbing equipment, for a plugin that does too |

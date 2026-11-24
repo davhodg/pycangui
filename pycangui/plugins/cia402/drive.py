@@ -585,24 +585,20 @@ def written_by_pane(mode: int) -> tuple[Object, ...]:
     return (CONTROLWORD, MODE) + ((target,) if target is not None else ())
 
 
-def rpdo_conflicts(configs, mode: int) -> list[str]:
-    """Each enabled RPDO that carries an object this pane writes, a line each.
+def rpdo_conflicts(received, mode: int) -> list[str]:
+    """Each object this pane writes that process data also carries, a line each.
 
     An RPDO is the drive being written to by whoever sends it, once a cycle or
-    on every change. While the node is Operational the next one overwrites an
-    SDO write from here -- the pane appears to do nothing, or its value flicks
-    back. ``configs`` is the node's PDO configuration, as the CANopen manager
-    holds it: anything with direction, number, enabled and entries.
+    on every change. While the node is Operational the next one overwrites a
+    write from here -- the pane appears to do nothing, or its value flicks
+    back. ``received`` is the device's ``receives()``: (index, sub, carried by).
     """
     wanted = {obj.where: obj for obj in written_by_pane(mode)}
-    out = []
-    for config in configs:
-        if config.direction != "RPDO" or not config.enabled:
-            continue
-        for entry in config.entries:
-            if (obj := wanted.get((entry.index, entry.subindex))) is not None:
-                out.append(f"RPDO{config.number} carries {obj.name} (0x{obj.index:04X})")
-    return out
+    return [
+        f"{carrier} carries {obj.name} (0x{obj.index:04X})"
+        for index, sub, carrier in received
+        if (obj := wanted.get((index, sub))) is not None
+    ]
 
 
 def stop_writes(mode: int, statusword: int, disable: bool = False) -> list[tuple[Object, int]]:

@@ -54,11 +54,11 @@ DESCRIPTION = "Drive state machine, modes and targets by CiA 402."
 
 ENABLE_TITLE = "Enable the drive?"
 ENABLE_TEXT = (
-    "Node {node} is about to be put into Operation enabled, which is the state "
+    "{node} is about to be put into Operation enabled, which is the state "
     "in which a motor turns.\n\n"
     "If a target is already set, it may move the moment it is enabled -- and "
     "what is bolted to the shaft moves with it.\n\n"
-    "Enable node {node}?"
+    "Enable {node}?"
 )
 
 #: Loud on purpose, and both colours given: the pane has to say that a motor is
@@ -67,9 +67,9 @@ ENABLE_TEXT = (
 BANNER_STYLE = (
     "background: #b34700; color: #ffffff; padding: 6px; border-radius: 3px; font-weight: bold;"
 )
-DEMANDING = "DEMAND ACTIVE - node {node} is enabled and acting on its target."
+DEMANDING = "DEMAND ACTIVE - {node} is enabled and acting on its target."
 STALE = (
-    "Node {node} was enabled when it was last read. Nothing is being read now, "
+    "{node} was enabled when it was last read. Nothing is being read now, "
     "so what it is doing at this moment is not known here."
 )
 
@@ -82,17 +82,17 @@ DISABLE_TOO_TIP = (
     "catches it is not something pycangui can know."
 )
 
-STOPPED = "Halted node {node} and zeroed its demand, because {why}."
+STOPPED = "Halted {node} and zeroed its demand, because {why}."
 #: Why the demand was taken away, for STOPPED.
 CLOSING = "this pane was closing"
 STOPPING_ALL = "everything that repeats was stopped"
 PAUSING = "pycangui's own traffic was paused, and nothing is watching the drive"
 COULD_NOT_STOP = (
-    "Node {node} was left enabled and could NOT be halted: {why}\n"
+    "{node} was left enabled and could NOT be halted: {why}\n"
     "It is still acting on the last target it was given."
 )
 BUS_GONE = (
-    "The bus closed while node {node} was enabled. It is still acting on the "
+    "The bus closed while {node} was enabled. It is still acting on the "
     "last target it was given, and nothing here can stop it now."
 )
 
@@ -199,10 +199,10 @@ RPDO_CONFLICT_TIP = (
 RPDO_WARNING_STYLE = "color: #e07000; font-weight: bold;"
 START_TITLE = "Start the node?"
 START_TEXT = (
-    "Node {node} is about to be made Operational. Its PDOs then flow both ways: "
+    "{node} is about to be made Operational. Its PDOs then flow both ways: "
     "an RPDO that carries the controlword or a target is acted on the moment it "
     "arrives, from whoever sends it.\n\n"
-    "Start node {node}?"
+    "Start {node}?"
 )
 NMT_UNKNOWN_TIP = (
     "This node sends no heartbeat, so its NMT state cannot be seen: pycangui\n"
@@ -211,24 +211,23 @@ NMT_UNKNOWN_TIP = (
 )
 
 
-class NodeDrive(Drive):
-    """A live node, read and written by index rather than through its EDS.
+class DeviceDrive(Drive):
+    """A live device -- a CANopen node, or another protocol's -- by index.
 
-    Deliberately not the manager's ``sdo_read``: that goes through the object
-    dictionary and answers with a typed value where the node has an EDS and
-    with raw bytes where it has not. The profile already says what type each
-    of these is, so packing them here means a drive nobody has an EDS for
-    behaves exactly like one that has -- which is most drives, most of the time.
+    Packed and unpacked here, from the profile, rather than by an EDS: the
+    profile already says what type each of these is, so a drive nobody has a
+    file for behaves exactly like one that has -- which is most drives, most
+    of the time.
     """
 
-    def __init__(self, node) -> None:
-        self.node = node
+    def __init__(self, device) -> None:
+        self.device = device
 
     def read(self, obj: Object) -> int:
-        return cia402.decode(obj, self.node.sdo.upload(obj.index, obj.sub))
+        return cia402.decode(obj, self.device.read(obj.index, obj.sub))
 
     def write(self, obj: Object, value: int) -> None:
-        self.node.sdo.download(obj.index, obj.sub, cia402.encode(obj, value))
+        self.device.write(obj.index, obj.sub, cia402.encode(obj, value))
 
 
 class MotorView(QWidget):
@@ -258,6 +257,8 @@ class MotorView(QWidget):
         self.node = QComboBox()
         self.node.setToolTip("Which drive.")
         self.node.currentIndexChanged.connect(lambda _i: self._forget())
+        #: The device whose signals are connected: the one chosen.
+        self._bound = None
         #: The node's NMT state, from its heartbeat: None when it sends none.
         self.nmt = QLabel("")
         self._nmt_state: str | None = None
@@ -550,45 +551,62 @@ class MotorView(QWidget):
 
         self._fill_nodes()
         # A bound method rather than a lambda, and that is not a style choice.
-        # The manager outlives this pane, so a connection to it has to end
+        # The devices outlive this pane, so a connection to them has to end
         # when the pane does: Qt drops a bound method of a widget as the
         # widget is destroyed, and holds on to a lambda for ever. The lambda
         # was still being called after the pane closed, reaching for a combo
         # box whose C++ half had already gone.
-        app.canopen.node_seen.connect(self._on_node_seen)
-        app.canopen.eds_loaded.connect(self._on_eds_loaded)
-        app.canopen.node_lost.connect(self._on_node_lost)
-        app.canopen.pdo_config.connect(self._on_pdo_config)
+        app.on_devices_changed(self._fill_nodes)
         app.bus.disconnected.connect(self._on_bus_lost)
         self._show_state()
         self._show_target()
 
     # --- which drive ---------------------------------------------------------------------
-    def _on_node_seen(self, node_id: int, _state: str) -> None:
-        self._fill_nodes()
-        if node_id == self.node.currentData():
-            self._show_nmt()
+    def _device(self):
+        """The device chosen, or None."""
+        key = self.node.currentData()
+        return None if key is None else self.app.device(key)
 
-    def _on_node_lost(self, node_id: int) -> None:
-        if node_id == self.node.currentData():
-            self._show_nmt()
+    def _label(self) -> str:
+        device = self._device()
+        return device.label if device is not None else "the drive"
+
+    def _bind(self) -> None:
+        """Listen to the device chosen, and no longer to the last one."""
+        device = self._device()
+        if device is self._bound:
+            return
+        if self._bound is not None:
+            self._bound.state_changed.disconnect(self._show_nmt)
+            self._bound.changed.disconnect(self._on_device_changed)
+        self._bound = device
+        if device is not None:
+            device.state_changed.connect(self._show_nmt)
+            device.changed.connect(self._on_device_changed)
+
+    def _on_device_changed(self) -> None:
+        """An EDS loaded, or the mapping changed: what is offered, and what is
+        carried by process data, may be different now."""
+        self._fit_to_drive()
+        self._show_rpdo_conflicts()
+
+    def _background(self, job, done) -> None:
+        """Where the chosen device's reads and writes go, one after another."""
+        device = self._device()
+        (device.background if device is not None else self.app.run_in_background)(job, done)
 
     def _nmt(self, command: str) -> None:
-        """Send the selected node an NMT command; its heartbeat says what came of it."""
-        node_id = self.node.currentData()
-        if node_id is None:
+        """Put the chosen device in a state; its heartbeat says what came of it."""
+        device = self._device()
+        if device is None:
             self.app.warn("No drive selected, or it is not on the bus.")
             return
         if command == "OPERATIONAL" and not self.app.confirm.ask(
-            self, f"cia402.start.{node_id}", START_TITLE, START_TEXT.format(node=node_id)
+            self, f"cia402.start.{device.key}", START_TITLE, START_TEXT.format(node=device.label)
         ):
             return
-        self.app.canopen.nmt(node_id, command)
-        self.app.log(f"Node {node_id}: NMT {command.lower()} sent")
-
-    def _on_pdo_config(self, node_id: int) -> None:
-        if node_id == self.node.currentData():
-            self._show_rpdo_conflicts()
+        device.set_state(command)
+        self.app.log(f"{device.label}: {command.lower()} asked for")
 
     def _show_rpdo_conflicts(self) -> None:
         """Warn when an enabled RPDO carries what this pane writes.
@@ -596,9 +614,9 @@ class MotorView(QWidget):
         Only said, never acted on: which of the two should win -- the RPDO's
         sender or this pane -- is a decision about the machine.
         """
-        node_id = self.node.currentData()
-        configs = [] if node_id is None else self.app.canopen.pdo_configs(node_id)
-        lines = cia402.rpdo_conflicts(configs, self.mode)
+        device = self._device()
+        received = [] if device is None else device.receives()
+        lines = cia402.rpdo_conflicts(received, self.mode)
         if not lines:
             self.rpdo_warning.hide()
             return
@@ -622,20 +640,21 @@ class MotorView(QWidget):
         sent to find it out. A node with no heartbeat says so, rather than
         showing a state somebody might take for the drive's.
         """
-        node_id = self.node.currentData()
-        manager = self.app.canopen
-        state = None if node_id is None else manager.nmt_states.get(node_id)
+        device = self._device()
+        state, lost = (None, False) if device is None else device.state()
         self._nmt_state = state
+        # Only a device that has the two states has the buttons for them.
+        has_states = device is None or {"PRE-OPERATIONAL", "OPERATIONAL"} <= set(device.states)
         for button in (self.pre_op_btn, self.start_btn):
-            button.setEnabled(node_id is not None)
-        if node_id is None:
+            button.setVisible(has_states)
+            button.setEnabled(device is not None)
+        if device is None or not has_states:
             self.nmt.setText("")
             self.nmt.setToolTip("")
         elif state is None:
             self.nmt.setText("NMT: not known (no heartbeat)")
             self.nmt.setToolTip(NMT_UNKNOWN_TIP)
         else:
-            lost = node_id in getattr(manager, "lost_nodes", ())
             said = state.capitalize()
             self.nmt.setText(f"NMT: lost (was {said})" if lost else f"NMT: {said}")
             self.nmt.setToolTip(NMT_TIP)
@@ -649,30 +668,21 @@ class MotorView(QWidget):
         which changed the current index, which forgot everything read so
         far: the values appeared and blanked, appeared and blanked.
         """
-        nodes = self.app.canopen.nodes()
-        if nodes == self._nodes_listed:
+        devices = self.app.devices()
+        keys = [device.key for device in devices]
+        if keys == self._nodes_listed:
             return
-        self._nodes_listed = nodes
+        self._nodes_listed = keys
         chosen = self.node.currentData()
         self.node.blockSignals(True)  # rebuilding is not somebody choosing
         self.node.clear()
-        for node_id in nodes:
-            self.node.addItem(f"Node {node_id}", node_id)
+        for device in devices:
+            self.node.addItem(device.label, device.key)
         at = self.node.findData(chosen)
         self.node.setCurrentIndex(max(at, 0))
         self.node.blockSignals(False)
         if self.node.currentData() != chosen:
             self._forget()
-
-    def _on_eds_loaded(self, node_id: int, _path: str, _product: str) -> None:
-        """An EDS says which objects a drive has, so it decides what is offered.
-
-        Loaded after the pane was opened it would otherwise change nothing
-        until the drive was picked again: the controls stayed live for
-        objects the file says are not there.
-        """
-        if node_id == self.node.currentData():
-            self._fit_to_drive()
 
     def _forget(self) -> None:
         """A different drive knows nothing about the last one's state.
@@ -680,6 +690,7 @@ class MotorView(QWidget):
         Its mode goes too: leaving the last drive's would offer a target box
         for a mode this one may not even be in.
         """
+        self._bind()
         self._read_something = False
         self.statusword = 0
         self.mode = 0
@@ -699,23 +710,18 @@ class MotorView(QWidget):
         self._fit_to_drive()
 
     # --- what this drive actually has ---------------------------------------------------
-    def _object_dictionary(self):
-        """The selected node's EDS, if it has one loaded."""
-        node_id = self.node.currentData()
-        node = self.app.canopen.node(node_id) if node_id is not None else None
-        od = getattr(node, "object_dictionary", None)
-        return od if od else None  # an empty one is "no EDS", not "no objects"
-
     def _has(self, obj: Object) -> bool:
         """Whether this drive has an object, as far as anything here knows.
 
         With no EDS the answer is yes: the profile says these exist, most
         drives have them, and grey controls because pycangui was never
         given a file would be worse than an SDO that comes back refused.
-        With an EDS, the file is believed -- that is what it is for.
+        With an EDS, the file is believed -- that is what it is for. Loaded
+        after the pane was opened, it decides then: see _on_device_changed.
         """
-        od = self._object_dictionary()
-        return True if od is None else obj.index in od
+        device = self._device()
+        has = None if device is None else device.has(obj.index, obj.sub)
+        return True if has is None else has
 
     def _fit_to_drive(self) -> None:
         """Offer what this drive has, and no more.
@@ -772,7 +778,7 @@ class MotorView(QWidget):
                     self._units[measures] = unit
                     self._show_units()
 
-            self.app.run_in_background(lambda o=obj: drive.read(o), done)
+            self._background(lambda o=obj: drive.read(o), done)
 
     def _show_units(self) -> None:
         for obj, label, widgets in self._unit_labels:
@@ -794,7 +800,7 @@ class MotorView(QWidget):
             if not self._went_wrong(cia402.SUPPORTED_MODES, error):
                 self._show_modes(cia402.modes_in(int(value)))
 
-        self.app.run_in_background(lambda: drive.read(cia402.SUPPORTED_MODES), done)
+        self._background(lambda: drive.read(cia402.SUPPORTED_MODES), done)
 
     def _show_modes(self, supported: set[int] | None) -> None:
         """Rebuild the mode list, keeping what was chosen if it survives."""
@@ -825,7 +831,7 @@ class MotorView(QWidget):
                 if not self._went_wrong(obj, error):
                     self.limits[obj.where].setValue(int(value))
 
-            self.app.run_in_background(lambda o=obj: drive.read(o), done)
+            self._background(lambda o=obj: drive.read(o), done)
 
     def _write_limits(self) -> None:
         """Write all three. A question first, because a limit is a promise
@@ -833,15 +839,15 @@ class MotorView(QWidget):
         drive = self._drive()
         if drive is None:
             return
-        node_id = self.node.currentData()
-        if not self.app.confirm.ask(self, f"cia402.limits.{node_id}", LIMITS_TITLE, LIMITS_WARNING):
+        key = self.node.currentData()
+        if not self.app.confirm.ask(self, f"cia402.limits.{key}", LIMITS_TITLE, LIMITS_WARNING):
             return
         for obj in cia402.LIMITS:
             if not self._has(obj):
                 continue
             self._write_limit(drive, obj, self.limits[obj.where].value())
 
-    def _write_limit(self, drive: NodeDrive, obj: Object, value: int) -> None:
+    def _write_limit(self, drive: DeviceDrive, obj: Object, value: int) -> None:
         """One limit, with the value bound rather than read again later."""
 
         def done(_result, error) -> None:
@@ -850,7 +856,7 @@ class MotorView(QWidget):
             else:
                 self.app.log(f"{obj.name} <- {value:,}")
 
-        self.app.run_in_background(lambda: drive.write(obj, value), done)
+        self._background(lambda: drive.write(obj, value), done)
 
     # --- the bits the profile leaves to the maker ----------------------------------------
     def _maker_bits(self) -> int:
@@ -863,13 +869,12 @@ class MotorView(QWidget):
         """
         return cia402.mask_of(bit for bit, box in self.maker_control.items() if box.isChecked())
 
-    def _drive(self) -> NodeDrive | None:
-        node_id = self.node.currentData()
-        node = self.app.canopen.node(node_id) if node_id is not None else None
-        if node is None:
+    def _drive(self) -> DeviceDrive | None:
+        device = self._device()
+        if device is None or not device.available():
             self.app.warn("No drive selected, or it is not on the bus.")
             return None
-        return NodeDrive(node)
+        return DeviceDrive(device)
 
     # --- reading it ------------------------------------------------------------------------
     def _set_polling(self, on: bool) -> None:
@@ -899,17 +904,16 @@ class MotorView(QWidget):
                 self._took(obj, value)
             self.poller.answered(index, sub)
 
-        self.app.run_in_background(lambda: drive.read(obj), done)
+        self._background(lambda: drive.read(obj), done)
 
-    def _quietly(self) -> NodeDrive | None:
+    def _quietly(self) -> DeviceDrive | None:
         """The drive, without saying anything if there is not one.
 
         Polling asks many times a second, and a warning per attempt would fill
         the Event Log with one fact.
         """
-        node_id = self.node.currentData()
-        node = self.app.canopen.node(node_id) if node_id is not None else None
-        return NodeDrive(node) if node is not None else None
+        device = self._device()
+        return DeviceDrive(device) if device is not None and device.available() else None
 
     def _went_wrong(self, obj: Object, error) -> bool:
         """Say that a read failed, once, and answer whether it did.
@@ -944,7 +948,7 @@ class MotorView(QWidget):
             if not self._went_wrong(obj, error):
                 self._took(obj, value)
 
-        self.app.run_in_background(lambda: drive.read(obj), done)
+        self._background(lambda: drive.read(obj), done)
 
     def _took(self, obj: Object, value: int) -> None:
         self._read_something = True
@@ -1040,7 +1044,7 @@ class MotorView(QWidget):
                 self.error_code.setText(error_text(int(value), self.app.emcy_text(int(value))))
                 self.error_code.show()
 
-        self.app.run_in_background(lambda: drive.read(cia402.ERROR_CODE), done)
+        self._background(lambda: drive.read(cia402.ERROR_CODE), done)
 
     def _on_rate(self, requested: float, achieved: float) -> None:
         # Polling starting or stopping changes what the banner is entitled to
@@ -1081,7 +1085,7 @@ class MotorView(QWidget):
         went on asserting the old answer would be worse than no banner: it would
         be a confident statement about equipment nobody is watching.
         """
-        node = self.node.currentData()
+        node = self._label()
         if not cia402.is_enabled(self.statusword):
             self.banner.hide()
             return
@@ -1108,15 +1112,15 @@ class MotorView(QWidget):
     # --- doing something to it -----------------------------------------------------------------
     def _enable(self) -> None:
         """The one command with a question in front of it."""
-        node_id = self.node.currentData()
-        if node_id is None:
+        device = self._device()
+        if device is None:
             self.app.warn("No drive selected, or it is not on the bus.")
             return
         agreed = self.app.confirm.ask(
             self,
-            f"cia402.enable.{node_id}",
+            f"cia402.enable.{device.key}",
             ENABLE_TITLE,
-            ENABLE_TEXT.format(node=node_id),
+            ENABLE_TEXT.format(node=device.label),
         )
         if agreed:
             self._command(lambda: cia402.steps_to_enable(self.statusword))
@@ -1157,7 +1161,7 @@ class MotorView(QWidget):
             self._run(steps)
 
         self._busy = True
-        self.app.run_in_background(lambda: drive.read(cia402.STATUSWORD), planned)
+        self._background(lambda: drive.read(cia402.STATUSWORD), planned)
 
     def _run(self, steps) -> None:
         """Write a sequence of controlwords, off the GUI thread.
@@ -1188,7 +1192,7 @@ class MotorView(QWidget):
             self._read_statusword()
 
         self._busy = True
-        self.app.run_in_background(job, done)
+        self._background(job, done)
 
     def _read_statusword(self) -> None:
         """After a command, so the screen says what happened rather than what was asked."""
@@ -1251,7 +1255,7 @@ class MotorView(QWidget):
                 then()
 
         self._busy = True
-        self.app.run_in_background(lambda: drive.write(obj, value), done)
+        self._background(lambda: drive.write(obj, value), done)
 
     # --- and stopping when nobody is looking ------------------------------------------------
     def set_visible_to_user(self, on: bool) -> None:
@@ -1300,7 +1304,7 @@ class MotorView(QWidget):
         would look like one. A close that pauses for an SDO timeout is a fair
         price.
         """
-        node = self.node.currentData()
+        node = self._label()
         writes = cia402.stop_writes(self.mode, self.statusword, self.disable_too.isChecked())
         if not writes:
             return  # not driving anything, as far as anything here knows
@@ -1327,7 +1331,7 @@ class MotorView(QWidget):
             self._show_state()
 
         if background:
-            self.app.run_in_background(job, done)
+            self._background(job, done)
             return
         try:
             job()
@@ -1344,7 +1348,7 @@ class MotorView(QWidget):
         told, and nothing in this window can reach it now.
         """
         if cia402.is_enabled(self.statusword):
-            self.app.error(BUS_GONE.format(node=self.node.currentData()))
+            self.app.error(BUS_GONE.format(node=self._label()))
         if self.poller.running:
             self.poll.setChecked(False)
 

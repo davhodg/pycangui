@@ -81,6 +81,8 @@ class PluginApp:
         self._on_stop_all: list[Callable] = []
         #: The pauses this plugin holds, given back if it is unloaded holding one.
         self._holding: list[str] = []
+        self._devices = window.devices
+        self._on_devices: list[Callable] = []
 
     # --- a screen of its own ------------------------------------------------------------
     def add_pane(
@@ -304,6 +306,22 @@ class PluginApp:
 
         return Poller(parent)
 
+    # --- a device, by whatever protocol reaches it (API 3) -------------------------------
+    def devices(self) -> list:
+        """The devices there are: each CANopen node now, and the devices a plugin
+        for another protocol provides. See ``pycangui.core.device.Device``. API 3."""
+        return self._devices.devices()
+
+    def device(self, key):
+        """One device by its ``key`` (a CANopen node's is its node ID), or None. API 3."""
+        return self._devices.device(key)
+
+    def on_devices_changed(self, callback: Callable[[], None]) -> None:
+        """Be told when which devices there are changes. Not on every heartbeat:
+        only when one appears or goes. API 3."""
+        self._devices.changed.connect(callback)
+        self._on_devices.append(callback)
+
     # --- saying something -------------------------------------------------------------------
     def log(self, message: str) -> None:
         self.ctx.events.information(f"{self.plugin}: {message}")
@@ -334,6 +352,12 @@ class PluginApp:
             for callback in callbacks:
                 signal.disconnect(callback)
             callbacks.clear()
+        for callback in self._on_devices:
+            try:
+                self._devices.changed.disconnect(callback)
+            except (RuntimeError, TypeError):  # a pane's, gone with the pane
+                pass
+        self._on_devices.clear()
         for why in self._holding:
             self.ctx.pause.release(why)  # a plugin gone cannot finish what it held it for
         self._holding.clear()

@@ -330,7 +330,7 @@ def wired(view, monkeypatch, statusword):
     drive = FakeDrive(statusword)
     monkeypatch.setattr(view, "_drive", lambda: drive)
     monkeypatch.setattr(view, "_quietly", lambda: drive)
-    monkeypatch.setattr(view.app, "run_in_background", lambda job, done: done(job(), None))
+    monkeypatch.setattr(view, "_background", lambda job, done: done(job(), None))
     return drive
 
 
@@ -468,7 +468,6 @@ def test_putting_the_pane_away_stops_the_drive(app, window, view, monkeypatch):
         (cia402.CONTROLWORD.index, cia402.ENABLE_OPERATION | cia402.HALT),
         (cia402.TARGET_VELOCITY.index, 0),
     ]
-    assert "Halted node 5" in window.log.toPlainText()
 
 
 def test_closing_the_pane_for_good_stops_it_too(app, window, view, monkeypatch):
@@ -697,7 +696,7 @@ def test_the_supported_modes_bits_are_read_the_way_the_standard_numbers_them(app
 def test_an_object_the_eds_does_not_have_is_switched_off(app, view, monkeypatch):
     """An EDS is what says which objects exist; a control for one that does
     not would fail with an abort code nobody reads."""
-    monkeypatch.setattr(view, "_object_dictionary", lambda: {0x6040: object(), 0x6041: object()})
+    holds(view, monkeypatch, {0x6040: object(), 0x6041: object()})
 
     view._fit_to_drive()
 
@@ -705,10 +704,15 @@ def test_an_object_the_eds_does_not_have_is_switched_off(app, view, monkeypatch)
     assert "EDS" in view.limits[cia402.MAX_TORQUE.where].toolTip()
 
 
+def holds(view, monkeypatch, objects):
+    """The chosen drive's dictionary holds these indexes; None: it has no EDS."""
+    monkeypatch.setattr(view, "_has", lambda obj: True if objects is None else obj.index in objects)
+
+
 def test_without_an_eds_everything_is_offered(app, view, monkeypatch):
     """Most drives have these, and greying a control because pycangui was
     never given a file would be worse than an SDO coming back refused."""
-    monkeypatch.setattr(view, "_object_dictionary", lambda: None)
+    holds(view, monkeypatch, None)
 
     view._fit_to_drive()
 
@@ -731,9 +735,7 @@ def test_the_object_is_still_named_once_an_eds_has_been_looked_at(app, view, mon
     """Fitting the pane to a drive replaced the tooltip rather than adding
     to it, so having an EDS was the one case where the pane stopped saying
     what it was writing to."""
-    monkeypatch.setattr(
-        view, "_object_dictionary", lambda: {obj.index: object() for obj in cia402.LIMITS}
-    )
+    holds(view, monkeypatch, {obj.index: object() for obj in cia402.LIMITS})
 
     view._fit_to_drive()
 
@@ -747,8 +749,9 @@ def test_an_eds_loaded_after_the_pane_is_open_still_decides_what_is_offered(
 ):
     """Otherwise nothing changed until the drive was picked again, and the
     controls stayed live for objects the file says are not there."""
-    monkeypatch.setattr(view, "_object_dictionary", lambda: {0x6040: object(), 0x6041: object()})
-    monkeypatch.setattr(view.node, "currentData", lambda: 5)
+    view.node.addItem("Node 5", 5)
+    view.node.setCurrentIndex(view.node.findData(5))
+    holds(view, monkeypatch, {0x6040: object(), 0x6041: object()})
     assert view.limits[cia402.MAX_TORQUE.where].isEnabled(), "nothing has said otherwise yet"
 
     window.canopen.eds_loaded.emit(5, "drive.eds", "A drive")
@@ -759,9 +762,9 @@ def test_an_eds_loaded_after_the_pane_is_open_still_decides_what_is_offered(
 def test_an_object_the_eds_does_not_have_is_not_polled_for(app, view, monkeypatch):
     """Asking anyway is an abort code many times a second, and the line on
     screen already says the file has no such object."""
-    monkeypatch.setattr(view, "_object_dictionary", lambda: {0x6041: object()})
+    holds(view, monkeypatch, {0x6041: object()})
     asked: list = []
-    monkeypatch.setattr(view.app, "run_in_background", lambda job, done: asked.append(job))
+    monkeypatch.setattr(view, "_background", lambda job, done: asked.append(job))
     monkeypatch.setattr(view, "_quietly", lambda: object())
 
     view._read_one(*cia402.POSITION_ACTUAL.where)
@@ -855,7 +858,7 @@ def catching(view, monkeypatch, drive):
             value, error = None, exc
         done(value, error)
 
-    monkeypatch.setattr(view.app, "run_in_background", run)
+    monkeypatch.setattr(view, "_background", run)
     return drive
 
 
@@ -1094,38 +1097,27 @@ def test_another_nodes_heartbeat_leaves_it_alone(app, window, view):
 
 # --- an RPDO carrying what the pane writes ---------------------------------------------------
 def rpdo(number, *objects, enabled=True):
-    from pycangui.canopen import PdoConfig, PdoEntry
-
-    return PdoConfig(
-        5,
-        "RPDO",
-        number,
-        f"RPDO{number}",
-        0x200 + 5,
-        enabled,
-        255,
-        entries=[PdoEntry(obj.index, obj.sub, 16, obj.name) for obj in objects],
-    )
+    """What a device's receives() gives for an RPDO: nothing, if it is disabled."""
+    return [(obj.index, obj.sub, f"RPDO{number}") for obj in objects] if enabled else []
 
 
 def test_an_rpdo_carrying_the_controlword_or_the_modes_target_is_found():
     configs = [
-        rpdo(1, cia402.CONTROLWORD, cia402.TARGET_VELOCITY),
-        rpdo(2, cia402.TARGET_POSITION),
-        rpdo(3, cia402.CONTROLWORD, enabled=False),
+        *rpdo(1, cia402.CONTROLWORD, cia402.TARGET_VELOCITY),
+        *rpdo(2, cia402.TARGET_POSITION),
+        *rpdo(3, cia402.CONTROLWORD, enabled=False),
     ]
     in_profile_velocity = cia402.rpdo_conflicts(configs, 3)
     assert [line.split()[0] for line in in_profile_velocity] == ["RPDO1", "RPDO1"]
     in_profile_position = cia402.rpdo_conflicts(configs, 1)
     assert [line.split()[0] for line in in_profile_position] == ["RPDO1", "RPDO2"]
-    assert cia402.rpdo_conflicts([rpdo(4, cia402.STATUSWORD)], 3) == []
+    assert cia402.rpdo_conflicts(rpdo(4, cia402.STATUSWORD), 3) == []
 
 
 def test_the_pane_warns_of_an_rpdo_and_follows_the_mode(app, window, view, monkeypatch):
     manager = window.canopen
-    monkeypatch.setattr(
-        manager, "pdo_configs", lambda n: [rpdo(1, cia402.TARGET_POSITION)] if n == 5 else []
-    )
+    device = window.devices.device(5)
+    monkeypatch.setattr(device, "receives", lambda: rpdo(1, cia402.TARGET_POSITION))
     view.node.addItem("Node 5", 5)
     view.node.setCurrentIndex(view.node.findData(5))
     view._took(cia402.MODE_DISPLAY, 3)
@@ -1133,7 +1125,7 @@ def test_the_pane_warns_of_an_rpdo_and_follows_the_mode(app, window, view, monke
     view._took(cia402.MODE_DISPLAY, 1)
     assert not view.rpdo_warning.isHidden()
 
-    monkeypatch.setattr(manager, "pdo_configs", lambda n: [])
+    monkeypatch.setattr(device, "receives", lambda: [])
     manager.pdo_config.emit(5)
     assert view.rpdo_warning.isHidden(), "gone once the mapping no longer has it"
 

@@ -956,3 +956,36 @@ def test_a_plugin_has_icons_the_font_emcy_text_and_polling_from_the_app(app, win
     assert polling.rate_text(), "something to show while it runs"
     polling.stop()
     assert polling.rate_text() == ""
+
+
+DEVICES = """
+NAME = "Devices"
+API_VERSION = 3
+
+heard = []
+
+
+def register(app):
+    app.on_devices_changed(lambda: heard.append([d.key for d in app.devices()]))
+    app.heard = heard
+"""
+
+
+def test_a_plugin_is_told_of_devices_and_stops_being_told_once_unloaded(app, window, monkeypatch):
+    write_plugin(window, "devices", DEVICES)
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["devices"]
+    assert record.ok, record.error
+    heard = record.app.heard
+    assert record.app.device(5) is window.devices.device(5)
+
+    monkeypatch.setattr(window.canopen, "nodes", lambda: [5])
+    window.canopen.node_seen.emit(5, "OPERATIONAL")
+    assert heard == [[5]]
+
+    window._reload_plugins()
+    settle(app)
+    monkeypatch.setattr(window.canopen, "nodes", lambda: [5, 6])
+    window.canopen.node_seen.emit(6, "OPERATIONAL")
+    assert heard == [[5]], "the unloaded plugin's callback is not called"
