@@ -37,10 +37,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pycangui.core import plugin_package
+from pycangui.core import installation, plugin_package
 from pycangui.core.context import Context
 from pycangui.core.plugins import ENTRY, NO_VERSION, Plugins, describe, supplied
-from pycangui.ui import folders, icons, messages
+from pycangui.ui import folders, icons, messages, pip_install
 
 #: Said before every install, and not remembered. Each one is a different
 #: file from a different person, so "you agreed last time" is not an answer.
@@ -134,6 +134,21 @@ INACTIVE_TIP = (
 
 def _version(text: str) -> str:
     return "" if text == NO_VERSION else text
+
+
+#: Where pip can install what a plugin needs.
+OFFER_PIP = (
+    "{label} needs {needs}, which is not installed here.\n\n"
+    "Install it now with pip? It is downloaded from the Python Package Index, "
+    "and the plugin is loaded again once it is there."
+)
+#: The Windows build, which has no pip.
+NO_PIP = (
+    "{label} needs {needs}, which this build of pycangui does not have and cannot "
+    "install: it has no pip.\n\n"
+    "A plugin can bring a pure-Python package with it, in a lib folder beside its "
+    "plugin.py. Otherwise it needs pycangui installed with pip."
+)
 
 
 class PluginActions(QObject):
@@ -287,6 +302,42 @@ class PluginActions(QObject):
         if kept is not None:
             self.ctx.events.information(f"The copy you had was kept as {kept.name}")
         self.changed.emit(package.name)
+        self.offer_packages(package.name, parent)
+
+    # --- the packages it needs ------------------------------------------------------------
+    def offer_packages(self, name: str, parent: QWidget | None = None, command=None) -> bool:
+        """Offer to install with pip what a plugin's REQUIRES names and this lacks.
+
+        Asked, not done: a download is not something to start unasked. The
+        Windows build has no pip, so there it says what is missing and how a
+        plugin can bring a pure-Python package itself. True if anything was
+        installed and the plugins were loaded again. ``command`` replaces pip,
+        for tests.
+        """
+        record = self.plugins.loaded.get(name)
+        if record is None or not record.missing:
+            return False
+        needs = ", ".join(record.missing)
+        where = parent or self.window
+        if installation.how_installed() == installation.FROZEN:
+            messages.information(
+                where, "Packages a plugin needs", NO_PIP.format(label=record.label, needs=needs)
+            )
+            return False
+        answer = messages.question(
+            where,
+            "Packages a plugin needs",
+            OFFER_PIP.format(label=record.label, needs=needs),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            return False
+        if not pip_install.install(where, self.ctx, list(record.missing), command):
+            return False
+        self.ctx.events.information(f"Installed {needs} for plugin {record.label}")
+        self.changed.emit(name)
+        return True
 
     @staticmethod
     def _label_version(version: str) -> str:
@@ -479,6 +530,9 @@ class ManagePlugins(QDialog):
         self.remove_button = icons.beside(QPushButton("Remove..."), icons.REMOVE)
         self.remove_button.setToolTip("Delete it from this workspace, edits and all.")
         self.remove_button.clicked.connect(self._uninstall)
+        self.packages_button = icons.beside(QPushButton("Install packages..."), icons.DOWNLOAD)
+        self.packages_button.setToolTip("Install with pip what this plugin needs and is not here.")
+        self.packages_button.clicked.connect(self._packages)
         self.update_button = icons.beside(QPushButton("Update..."), icons.RELOAD)
         self.update_button.setToolTip(UPDATE_TIP)
         self.update_button.clicked.connect(self._update)
@@ -486,6 +540,7 @@ class ManagePlugins(QDialog):
         mine = QHBoxLayout()
         mine.addWidget(install_file)
         mine.addStretch()
+        mine.addWidget(self.packages_button)
         mine.addWidget(self.update_button)
         mine.addWidget(self.export_button)
         mine.addWidget(self.remove_button)
@@ -570,6 +625,8 @@ class ManagePlugins(QDialog):
         mine = self._chosen(self.installed)
         self.export_button.setEnabled(bool(mine))
         self.remove_button.setEnabled(bool(mine))
+        record = self.actions.plugins.loaded.get(mine) if mine else None
+        self.packages_button.setEnabled(bool(record and record.missing))
         # Only where there is something newer to install: an Update button
         # that is always live invites pressing it to find out.
         behind = self.actions.out_of_date()
@@ -593,6 +650,11 @@ class ManagePlugins(QDialog):
     def _install_file(self) -> None:
         self.actions.install_file(self)
         self.refresh()
+
+    def _packages(self) -> None:
+        if name := self._chosen(self.installed):
+            self.actions.offer_packages(name, self)
+            self.refresh()
 
     def _update(self) -> None:
         """Install the supplied copy over the one in this workspace.

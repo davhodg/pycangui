@@ -91,6 +91,23 @@ A plugin folder is a package rooted at itself, so a second file beside
 you reach some other copy of it -- for an installed plugin, the copy
 pycangui ships rather than the one you are editing.
 
+### Packages it needs
+
+A package pycangui does not install can come with the plugin, or be named:
+
+- **In a `lib` folder beside `plugin.py`**, as `pip install --target lib <package>` leaves it.
+  It is on the import path while the plugin is loaded, so a pure-Python package needs no
+  pip at all, the Windows build included. Two plugins carrying different versions of one
+  package cannot both be loaded -- one process holds one copy -- so the second is refused,
+  naming both. One pycangui already has is not used from `lib`, and that is said.
+- **In `REQUIRES`**, in pip's form: `REQUIRES = ["pyserial>=3.5"]`. A plugin whose
+  `REQUIRES` is not met is listed, saying what it needs, rather than failing to import.
+  Installing it, or *Install packages...* in *Plugins > Manage plugins...*, offers to fetch
+  them with pip. The Windows build has no pip, so there it says what is missing; a package
+  with compiled parts needs pycangui installed with pip.
+
+A pycangui from before plugin API 3 ignores both.
+
 `app` is the whole API, and it offers:
 
 | | |

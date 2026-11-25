@@ -52,6 +52,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pycangui.core import plugin_needs
+from pycangui.core.plugin_needs import Libs
+
 #: What ``app`` offers. A plugin declares the version it was written against
 #: and is refused if it is newer than this -- a plugin from the future asking
 #: for methods that do not exist yet fails in the middle of doing something,
@@ -59,7 +62,7 @@ from typing import Any
 #: hold_traffic and release_traffic; 3 added with_icon, mono_font,
 #: emcy_text and poller, so that a plugin need import nothing of pycangui's,
 #: devices, device and on_devices_changed, to drive one by any protocol, and
-#: settings, add_console_name and add_hooks.
+#: settings, add_console_name and add_hooks; and REQUIRES and a lib folder.
 API_VERSION = 3
 
 #: The file inside a plugin folder. A folder rather than a single file so that
@@ -126,10 +129,18 @@ class Info:
     description: str = ""
     version: str = NO_VERSION
     api_version: int = 1
+    #: The packages it needs, in pip's form: see plugin_needs.
+    requires: tuple[str, ...] = ()
 
+
+#: Why a plugin was not loaded, when what it needs is not here.
+NEEDS = (
+    "Not loaded: it needs {needs}, not installed here. Plugins > Manage plugins... "
+    "offers to install it, where pip is available."
+)
 
 #: The module-level names read out of a plugin file without running it.
-WANTED = ("NAME", "DESCRIPTION", "VERSION", "API_VERSION")
+WANTED = ("NAME", "DESCRIPTION", "VERSION", "API_VERSION", "REQUIRES")
 
 
 def describe(entry: Path) -> Info:
@@ -162,11 +173,15 @@ def describe_source(source: str) -> Info:
                 except ValueError:
                     pass
     api = found.get("API_VERSION", 1)
+    requires = found.get("REQUIRES", ())
+    if isinstance(requires, str):
+        requires = (requires,)
     return Info(
         title=str(found.get("NAME", "") or ""),
         description=str(found.get("DESCRIPTION", "") or ""),
         version=str(found.get("VERSION", NO_VERSION) or NO_VERSION),
         api_version=api if isinstance(api, int) else 1,
+        requires=tuple(str(r) for r in requires) if isinstance(requires, list | tuple) else (),
     )
 
 
@@ -207,6 +222,8 @@ class Loaded:
     version: str = NO_VERSION
     error: str = ""
     app: Any = None
+    #: What of its REQUIRES is not installed, as written: why it was not loaded.
+    missing: list[str] = field(default_factory=list)
     #: Installed but switched off. Listed, so that a plugin somebody turned
     #: off six months ago is findable rather than mysteriously absent, but
     #: none of its code has been run.
@@ -237,6 +254,8 @@ class Plugins:
     log: Callable[[str], None] = print
     warn: Callable[[str], None] = print
     loaded: dict[str, Loaded] = field(default_factory=dict)
+    #: Whose lib/ folder is on the import path, with what in it.
+    libs: Libs = field(default_factory=Libs)
 
     # --- finding them --------------------------------------------------------------
     def found(self) -> dict[str, Path]:
@@ -304,6 +323,23 @@ class Plugins:
     def _load_one(self, name: str, entry: Path) -> None:
         record = Loaded(name=name, path=entry)
         self.loaded[name] = record
+        self._load_into(record)
+        if not record.ok:
+            self.libs.drop(name)  # nothing of it runs, so nothing of it is imported
+
+    def _load_into(self, record: Loaded) -> None:
+        name, entry = record.name, record.path
+        # Its own packages first: what it needs may be in them.
+        problem = self.libs.add(
+            name, entry.parent, lambda said: self.warn(f"Plugin {name}: {said}")
+        )
+        if problem is not None:
+            record.error = f"Not loaded: {problem}."
+            return
+        if needs := plugin_needs.missing(describe(entry).requires):
+            record.missing = [need.split(" (")[0] for need in needs]
+            record.error = NEEDS.format(needs=", ".join(needs))
+            return
         module = self._import(record)
         if module is None:
             return
@@ -365,6 +401,7 @@ class Plugins:
     def unload_all(self) -> None:
         for record in list(self.loaded.values()):
             self._undo(record)
+            self.libs.drop(record.name)
         self.loaded.clear()
 
     def forget_modules(self) -> None:
@@ -379,6 +416,7 @@ class Plugins:
         """
         for record in self.loaded.values():
             self._forget(record)
+            self.libs.drop(record.name)
 
     def _forget(self, record: Loaded) -> None:
         # The plugin's own modules go too, not just its entry file: a plugin

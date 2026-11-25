@@ -9,6 +9,7 @@ itself down, and reloading one really does remove what the last version added
 rather than leaving a second copy beside it.
 """
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -1149,3 +1150,46 @@ def test_a_hook_module_pycangui_or_another_plugin_has_is_refused(app, window):
     assert not loaded["hooked"].ok, "pycangui's own canopen hooks"
     assert sorted(loaded[n].ok for n in ("hooked_too", "hooked_three")) == [False, True]
     assert "eds_for_node" in registry()["canopen"], "and pycangui's are untouched"
+
+
+# --- packages a plugin needs (API 3) -------------------------------------------------------
+WANTING = """
+NAME = "Wanting"
+API_VERSION = 3
+REQUIRES = ["no-such-package-here>=1"]
+
+
+def register(app):
+    pass
+"""
+
+
+def test_what_a_plugin_needs_is_offered_with_pip_and_it_is_loaded_again(app, window, monkeypatch):
+    write_plugin(window, "wanting", WANTING)
+    window._reload_plugins()
+    settle(app)
+    actions = window.plugin_actions
+    assert actions.plugins.loaded["wanting"].missing == ["no-such-package-here>=1"]
+
+    monkeypatch.setattr(plugin_manager.installation, "how_installed", lambda: "pip")
+    monkeypatch.setattr(plugin_manager.messages, "question", lambda *a, **k: QMessageBox.Yes)
+    reloaded = []
+    actions.changed.connect(reloaded.append)
+    pip = [sys.executable, "-c", "pass"]  # standing in for pip, which succeeds
+    assert actions.offer_packages("wanting", window, command=pip)
+    assert reloaded == ["wanting"], "loaded again, now that it is there"
+
+
+def test_the_build_with_no_pip_says_what_is_missing_instead(app, window, monkeypatch):
+    write_plugin(window, "wanting", WANTING)
+    window._reload_plugins()
+    settle(app)
+    monkeypatch.setattr(
+        plugin_manager.installation, "how_installed", lambda: plugin_manager.installation.FROZEN
+    )
+    told = []
+    monkeypatch.setattr(plugin_manager.messages, "information", lambda *a, **k: told.append(a))
+    asked = []
+    monkeypatch.setattr(plugin_manager.messages, "question", lambda *a, **k: asked.append(a))
+    assert not window.plugin_actions.offer_packages("wanting", window)
+    assert told and not asked, "nothing to offer: told, not asked"
