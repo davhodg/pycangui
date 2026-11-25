@@ -9,6 +9,8 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-25
+
 ### Fixed
 
 - A frame nobody acknowledges no longer floods the Event Log: an adapter's warnings that take turns, and the bus reader's error, are each said once and then counted.
@@ -420,7 +422,8 @@ The first release, on PyPI (`pip install pycangui`) and as a Windows installer.
 - **Simulated nodes** on a virtual bus or a real adapter, and gateways between channels.
 - **Workspaces**, one per product, exported and imported as one zip.
 
-[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/davhodg/pycangui/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/davhodg/pycangui/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/davhodg/pycangui/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/davhodg/pycangui/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/davhodg/pycangui/compare/v0.5.1...v0.5.2
