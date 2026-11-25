@@ -458,9 +458,6 @@ def in_line(window, monkeypatch):
 def test_it_is_a_tab_of_the_canopen_pane_and_no_longer_a_plugin(window, tab):
     tabs = window.canopen_view.bottom_tabs
     assert tabs.indexOf(tab) >= 0
-    from pycangui.core.plugins import supplied
-
-    assert "firmware" not in [entry.name for entry in supplied()]
 
 
 def test_with_no_node_selected_nothing_can_be_started(window, tab, monkeypatch):

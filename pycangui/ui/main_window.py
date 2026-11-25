@@ -93,8 +93,6 @@ from pycangui.ui.panes import PaneKind, Panes
 from pycangui.ui.pause_status import PauseStatus
 from pycangui.ui.plugin_app import PluginApp
 from pycangui.ui.plugin_manager import (
-    BEHIND,
-    CHANGED,
     INACTIVE_TIP,
     ManagePlugins,
     PluginActions,
@@ -840,23 +838,6 @@ class MainWindow(QMainWindow):
         for said in self.plugin_actions.retire_built_in():
             self.events.information(said)
         self.plugins.load_all()
-        # A plugin lives in the workspace as a copy, so pulling a newer
-        # pycangui leaves it exactly as it was and nothing said so.
-        for name, (here, shipped) in self.plugin_actions.out_of_date().items():
-            record = self.plugins.loaded.get(name)
-            self.events.information(
-                BEHIND.format(
-                    label=record.label if record else name, installed=here, supplied=shipped
-                )
-            )
-        for name in self.plugin_actions.changed_since_install():
-            record = self.plugins.loaded.get(name)
-            self.events.information(
-                CHANGED.format(
-                    label=record.label if record else name,
-                    version=record.version if record else "?",
-                )
-            )
         timing.mark("plugins")
         self._build_plugins_menu()
         self._say_how_to_add_a_shortcut()
@@ -1961,6 +1942,7 @@ class MainWindow(QMainWindow):
         self.plugins.forget_modules()
         self.replay.stop()
         self.help_menu.shutdown()
+        self.plugin_actions.shutdown()
         self.connect_bar.shutdown()
         self.log_bridge.detach()
         self.exceptions.remove()
@@ -2513,18 +2495,12 @@ class MainWindow(QMainWindow):
             "A plugin package: a zip with a plugin.py in it. It is unpacked into\n"
             "this workspace, and you are told what is in it before it is."
         )
-        if offered := self.plugin_actions.not_installed():
-            supplied_menu = self.plugins_menu.addMenu("Supplied with pycangui")
-            supplied_menu.setToolTipsVisible(True)
-            for entry in offered:
-                action = supplied_menu.addAction(
-                    entry.label, lambda _=False, n=entry.name: self._install_supplied(n)
-                )
-                action.setToolTip(entry.info.description or f"Install the {entry.label} plugin.")
         manage = icons.beside(
             self.plugins_menu.addAction("Manage plugins...", self._manage_plugins), icons.MANAGE
         )
-        manage.setToolTip("Switch one off, remove one, or write one out as a package to send.")
+        manage.setToolTip(
+            "Find plugins to install, and update, switch off, remove or export the ones here."
+        )
 
         # Reload first and the folder second, as in the Tools menu.
         self.plugins_menu.addSeparator()
@@ -2549,9 +2525,6 @@ class MainWindow(QMainWindow):
 
     def _install_plugin(self) -> None:
         self.plugin_actions.install_file(self)
-
-    def _install_supplied(self, name: str) -> None:
-        self.plugin_actions.install_supplied(name, self)
 
     def _manage_plugins(self) -> None:
         ManagePlugins(self, self.plugin_actions).exec()

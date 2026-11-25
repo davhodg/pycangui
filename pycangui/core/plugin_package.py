@@ -218,22 +218,6 @@ def inspect(path: str | Path) -> Package:
     return Package(name=name, info=describe_source(source), root=root, path=path)
 
 
-def inspect_folder(folder: Path) -> Package:
-    """The same answer for a plugin that is still a folder -- one of ours.
-
-    So that the question asked before installing a supplied plugin can name
-    what is in it without packing it up first merely to look.
-    """
-    folder = Path(folder)
-    entry = folder / ENTRY
-    if not entry.is_file():
-        raise PackageError(f"{folder.name} has no {ENTRY} in it, so it is not a plugin.")
-    source = entry.read_text(encoding="utf-8", errors="replace")
-    return Package(
-        name=check_name(folder.name), info=describe_source(source), root=folder.name, path=folder
-    )
-
-
 def folder_fingerprint(folder: Path) -> str:
     """One hash for a plugin folder, so an edited copy can be told apart.
 
@@ -336,12 +320,11 @@ def pack(folder: Path, dest: str | Path) -> Path:
 
 
 def install_folder(folder: Path, into: Path, replace: bool = False) -> Package:
-    """Install a plugin that is already a folder -- one of the supplied ones.
+    """Install a plugin that is still a folder -- one being written, say.
 
     Packed and unpacked rather than copied, deliberately. It is two lines
-    either way, and this way the supplied plugins go in through exactly the
-    code a downloaded one does, so that path is exercised by everybody rather
-    than only by the people it has never been tried on.
+    either way, and this way it goes in through exactly the code a downloaded
+    one does.
     """
     folder = Path(folder)
     staging = into / f".{folder.name}.packing{SUFFIX}"

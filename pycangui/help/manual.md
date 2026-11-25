@@ -32,9 +32,9 @@
 ## Customise
 
 - [Hooks](hooks.md) --- customisable Python functions to support any device
-- [Plugins](plugins.md) --- code that adds a pane of its own, installed from a file
+- [Plugins](plugins.md) --- code that adds a pane of its own, from the plugin lists or a file
 - [CANopen firmware (CiA 302-3)](firmware.md) --- downloading a program to a CANopen node, from the CANopen pane
-- [CANopen motor control (CiA 402)](cia402.md) --- a plugin: driving a motor controller
+- [CANopen motor control (CiA 402)](https://github.com/davhodg/pycangui-cia402/blob/master/docs/cia402.md) --- a plugin from its own repository: driving a motor controller
 - [Replaceable components](components.md) --- your own CAN interface, transport or engine for testing
 
 ## Also

@@ -11,7 +11,8 @@ Python, it runs as part of the tool, and it can reach everything the tool can.
 The dialog behind *Manage plugins...* is deliberately two lists. "What have I
 got" and "what could I have" are different questions and people arrive with one
 of them; a single list holding both, some of it real and some of it an offer,
-answers neither well.
+answers neither well. What could be had comes from the plugin lists online
+(see core.plugin_index), read only when *Check for plugins* is pressed.
 
 Nothing here reloads anything. Every operation says what it changed and the
 window reloads the plugins, because a reload is what *Reload plugins* already
@@ -20,14 +21,17 @@ does and having two ways to do it is how they come to differ.
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, Signal
+from PySide6.QtCore import QObject, QSettings, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -37,9 +41,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pycangui.core import installation, plugin_package
+from pycangui.core import installation, plugin_index, plugin_package
 from pycangui.core.context import Context
-from pycangui.core.plugins import ENTRY, NO_VERSION, Plugins, describe, supplied
+from pycangui.core.plugin_index import Offer
+from pycangui.core.plugins import API_VERSION, ENTRY, NO_VERSION, Plugins, describe
+from pycangui.core.worker import Worker
 from pycangui.ui import folders, icons, messages, pip_install
 
 #: Said before every install, and not remembered. Each one is a different
@@ -95,27 +101,32 @@ MOVED_KEPT = (
     "it into those hooks, then remove the plugin. Said once."
 )
 
-UPDATE_TIP = "This one is the same as the one pycangui ships."
-UPDATE_DIFFERS = (
-    "The supplied one differs from the copy here, though both call "
-    "themselves the same version. Installing it takes the supplied one."
-)
+#: The extra plugin lists somebody has added, beside pycangui's own: kept for
+#: every workspace, as a browser keeps its bookmarks.
+SITES = "plugins/sites"
+
+UPDATE_TIP = "Nothing newer is known. Check for plugins to look."
 UPDATE_TO = (
-    "Install version {version}, the one this pycangui ships, over the one\n"
-    "in this workspace. A copy you have changed is moved aside and kept;\n"
-    "one you have not is overwritten."
+    "Install version {version} from its list over the one in this workspace.\n"
+    "A copy you have changed is moved aside and kept; one you have not is overwritten."
 )
-#: Said once a session, when a plugin in this workspace is behind the one
-#: pycangui now ships. A workspace copy does not change when pycangui is
-#: updated -- that is the point of it being a copy -- so nothing would
-#: otherwise say that the drive pane gained anything.
-CHANGED = (
-    "Plugin {label} here differs from the one this pycangui ships, "
-    "though both call themselves {version}. Plugins > Manage plugins... to take the new one."
+CHECK_TIP = (
+    "Read the plugin lists online: pycangui's, and any sites you have added.\n"
+    "Nothing is installed until you choose one, and nothing about you is sent."
 )
-BEHIND = (
-    "Plugin {label} {installed} is installed here; this pycangui ships "
-    "{supplied}. Plugins > Manage plugins... to update it."
+SITES_TIP = "Other plugin lists to read beside pycangui's: a URL or a file each."
+NOT_CHECKED = "Press Check for plugins to see what there is. It reads the plugin lists online."
+NONE_MORE = "Every plugin the lists offer is installed here."
+NEEDS_NEWER = (
+    "{label} {version} is written for plugin API {api}, and this pycangui has "
+    "plugin API {have}. A newer pycangui will install it."
+)
+NOT_WHAT_IT_SAID = (
+    "{url} holds plugin {found}, not {name} as its list says, so it was not installed."
+)
+SITES_TEXT = (
+    "Plugin lists to read beside pycangui's own, one per line: an https URL,\n"
+    "or a file on this computer. Each is JSON in the format the manual describes."
 )
 
 UNINSTALL = (
@@ -164,11 +175,29 @@ class PluginActions(QObject):
     #: just installed one should be shown it rather than told where to look.
     changed = Signal(str)
 
+    #: A check of the lists, or a download, has finished: show what there is.
+    settled = Signal()
+
     def __init__(self, window: QWidget, ctx: Context, plugins: Plugins) -> None:
         super().__init__(window)
         self.window = window
         self.ctx = ctx
         self.plugins = plugins
+        #: What the lists offered at the last check; None before any check.
+        self.offers: list[Offer] | None = None
+        #: What could not be read at the last check.
+        self.problems: list[str] = []
+        self.busy = False
+        self._worker: Worker | None = None
+
+    def shutdown(self) -> None:
+        if self._worker is not None:
+            self._worker.stop()
+
+    def _work(self) -> Worker:
+        if self._worker is None:
+            self._worker = Worker(self)
+        return self._worker
 
     @property
     def folder(self) -> Path:
@@ -223,20 +252,111 @@ class PluginActions(QObject):
                 lambda replace: plugin_package.install(path, self.folder, replace),
             )
 
-    def install_supplied(self, name: str, parent: QWidget | None = None) -> None:
-        """Install one of the ones pycangui ships.
+    # --- from the lists online ---------------------------------------------------------
+    def sites(self) -> list[str]:
+        """The plugin lists somebody has added, beside pycangui's own."""
+        saved = QSettings().value(SITES, [])
+        if isinstance(saved, str):
+            saved = [saved]
+        return [str(site).strip() for site in saved or [] if str(site).strip()]
 
-        Packed and unpacked rather than copied, so that the supplied plugins go
-        in through exactly the code a downloaded one does.
+    def set_sites(self, sites: list[str]) -> None:
+        QSettings().setValue(SITES, [site.strip() for site in sites if site.strip()])
+
+    def lists(self) -> list[str]:
+        return [plugin_index.INDEX, *self.sites()]
+
+    def check(self) -> bool:
+        """Read the lists, off the GUI thread; ``settled`` says when. False if busy."""
+        if self.busy:
+            return False
+        self.busy = True
+        lists = self.lists()
+        self._work().submit(lambda: plugin_index.read(lists), self._checked)
+        return True
+
+    def _checked(self, result, error: str | None) -> None:
+        self.busy = False
+        offers, problems = result if error is None else ([], [error])
+        self.offers, self.problems = offers, problems
+        for problem in problems:
+            self.ctx.events.warning(f"Plugin list: {problem}")
+        self.ctx.events.information(f"The plugin lists offer {len(offers)} plugins")
+        self.settled.emit()
+
+    def offer(self, name: str) -> Offer | None:
+        return next((o for o in self.offers or [] if o.name == name), None)
+
+    def available(self) -> list[Offer]:
+        """What the lists offer that this workspace has not got."""
+        here = set(self.plugins.found())
+        return [o for o in self.offers or [] if o.name not in here]
+
+    def newer(self, name: str) -> Offer | None:
+        """The offer of a newer version of an installed plugin, if the lists have one."""
+        record = self.plugins.loaded.get(name)
+        offer = self.offer(name)
+        if record is None or offer is None:
+            return None
+        return offer if _older(record.version, offer.version) else None
+
+    def install_offer(self, name: str, parent: QWidget | None = None) -> bool:
+        """Download a plugin a list offers, then install it as any other.
+
+        The download is checked against the list's sha256 before anything is
+        asked; the install question, and keeping an edited copy aside, are the
+        ones a zip from a file gets. False if nothing was started.
         """
-        entry = next((s for s in supplied() if s.name == name), None)
-        if entry is None:
-            return
-        self._install(
-            parent,
-            lambda: plugin_package.inspect_folder(entry.folder),
-            lambda replace: plugin_package.install_folder(entry.folder, self.folder, replace),
+        offer = self.offer(name)
+        if offer is None or self.busy:
+            return False
+        if offer.api_version > API_VERSION:
+            self._refuse(
+                parent,
+                NEEDS_NEWER.format(
+                    label=offer.label,
+                    version=offer.version,
+                    api=offer.api_version,
+                    have=API_VERSION,
+                ),
+            )
+            return False
+        self.busy = True
+        folder = Path(tempfile.mkdtemp(prefix="pycangui-plugin-"))
+
+        def job():
+            try:
+                return plugin_index.download(offer, folder), ""
+            except plugin_index.ListError as why:
+                return None, str(why)
+
+        self._work().submit(
+            job, lambda result, error: self._downloaded(offer, folder, parent, result, error)
         )
+        return True
+
+    def _downloaded(self, offer: Offer, folder: Path, parent, result, error: str | None) -> None:
+        self.busy = False
+        try:
+            path, problem = result if error is None else (None, error)
+            if path is None:
+                self._refuse(parent, problem)
+                return
+
+            def look():
+                package = plugin_package.inspect(path)
+                if package.name != offer.name:
+                    raise plugin_package.PackageError(
+                        NOT_WHAT_IT_SAID.format(url=offer.url, found=package.name, name=offer.name)
+                    )
+                return package
+
+            self._install(
+                parent, look, lambda replace: plugin_package.install(path, self.folder, replace)
+            )
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+            self.settled.emit()
 
     def _install(self, parent, look, doit) -> None:
         """Ask, then install, then say what happened.
@@ -411,12 +531,6 @@ class PluginActions(QObject):
     def _save_disabled(self) -> None:
         self.ctx.settings.set("plugins.disabled", sorted(self.plugins.disabled))
 
-    # --- what is on offer ------------------------------------------------------------------
-    def not_installed(self) -> list:
-        """The supplied plugins this workspace has not got."""
-        here = set(self.plugins.found())
-        return [s for s in supplied() if s.name not in here]
-
     # --- a copy somebody has worked on ---------------------------------------------
     def _as_installed(self) -> dict:
         saved = self.ctx.settings.get(AS_INSTALLED, {})
@@ -446,47 +560,6 @@ class PluginActions(QObject):
         if not folder.is_dir():
             return False
         return self._as_installed().get(name) != plugin_package.folder_fingerprint(folder)
-
-    def changed_since_install(self) -> list[str]:
-        """Plugins whose supplied copy has changed without the version moving.
-
-        The version is the author saying "this is different"; forgetting to
-        say it is the ordinary mistake, and the copy in the workspace then
-        sits there looking current. This asks the files instead: only for a
-        copy nobody has edited, because for an edited one "differs from what
-        is shipped" is what being edited means. And only where the version
-        has not moved: where it has, the files differ because it has, which
-        ``out_of_date`` says, and saying "though both call themselves 1.6"
-        beside it was untrue.
-        """
-        out = []
-        for entry in supplied():
-            record = self.plugins.loaded.get(entry.name)
-            if record is None or self._edited(entry.name):
-                continue
-            if record.version != entry.info.version:
-                continue
-            was = self._as_installed().get(entry.name)
-            if was is not None and was != plugin_package.folder_fingerprint(entry.folder):
-                out.append(entry.name)
-        return out
-
-    def out_of_date(self) -> dict[str, tuple[str, str]]:
-        """name -> (installed version, the version pycangui now ships).
-
-        A plugin is installed into a workspace, which is a copy: pulling a
-        newer pycangui leaves that copy exactly as it was, and nothing said
-        so. Reported rather than acted on -- the copy may be one somebody
-        has edited, and replacing it is what the install question is for.
-        """
-        out = {}
-        for entry in supplied():
-            record = self.plugins.loaded.get(entry.name)
-            if record is None:
-                continue
-            if _older(record.version, entry.info.version):
-                out[entry.name] = (record.version, entry.info.version)
-        return out
 
 
 def _older(new: str, old: str) -> bool:
@@ -550,13 +623,22 @@ class ManagePlugins(QDialog):
         self.offered = QListWidget()
         self.offered.setSelectionMode(QAbstractItemView.SingleSelection)
         self.offered.currentItemChanged.connect(lambda *_a: self._enable_buttons())
-        self.offered.itemDoubleClicked.connect(lambda _i: self._install_supplied())
+        self.offered.itemDoubleClicked.connect(lambda _i: self._install_offered())
+        self.check_button = icons.beside(QPushButton("Check for plugins"), icons.UPDATES)
+        self.check_button.setToolTip(CHECK_TIP)
+        self.check_button.clicked.connect(self._check)
+        sites = icons.beside(QPushButton("Sites..."), icons.MANAGE)
+        sites.setToolTip(SITES_TIP)
+        sites.clicked.connect(self._sites)
         self.add_button = icons.beside(QPushButton("Install"), icons.DOWNLOAD)
-        self.add_button.clicked.connect(self._install_supplied)
+        self.add_button.clicked.connect(self._install_offered)
 
         theirs = QHBoxLayout()
+        theirs.addWidget(self.check_button)
+        theirs.addWidget(sites)
         theirs.addStretch()
         theirs.addWidget(self.add_button)
+        actions.settled.connect(self.refresh)
 
         note = QLabel(WHAT_A_PLUGIN_IS)
         note.setWordWrap(True)
@@ -570,7 +652,7 @@ class ManagePlugins(QDialog):
         layout.addWidget(self.installed, 1)
         layout.addLayout(mine)
         layout.addSpacing(8)
-        layout.addWidget(QLabel("Supplied with pycangui"))
+        layout.addWidget(QLabel("Available from the plugin lists"))
         layout.addWidget(self.offered)
         layout.addLayout(theirs)
         layout.addWidget(note)
@@ -582,17 +664,12 @@ class ManagePlugins(QDialog):
     def refresh(self) -> None:
         self._filling = True
         self.installed.clear()
-        behind = self.actions.out_of_date()
-        changed = set(self.actions.changed_since_install())
         for record in sorted(self.actions.plugins.loaded.values(), key=lambda r: r.label.lower()):
             text = record.label + PluginActions._label_version(record.version)
             if not record.ok:
                 text += "  (failed to load -- why is in the Event Log)"
-            if (newer := behind.get(record.name)) is not None:
-                text += f"  --  {newer[1]} supplied with this pycangui"
-            elif record.name in changed:
-                # Same version, different files: the author forgot to say.
-                text += "  --  the supplied one differs, same version"
+            if (newer := self.actions.newer(record.name)) is not None:
+                text += f"  --  {newer.version} available"
             item = QListWidgetItem(text)
             item.setData(Qt.UserRole, record.name)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
@@ -605,17 +682,23 @@ class ManagePlugins(QDialog):
             self.installed.addItem(empty)
 
         self.offered.clear()
-        for entry in self.actions.not_installed():
-            text = entry.label + PluginActions._label_version(entry.info.version)
-            if entry.info.description:
-                text += f"  --  {entry.info.description}"
+        for offer in self.actions.available():
+            text = offer.label + PluginActions._label_version(offer.version)
+            if offer.description:
+                text += f"  --  {offer.description}"
+            if offer.api_version > API_VERSION:
+                text += "  (needs a newer pycangui)"
             item = QListWidgetItem(text)
-            item.setData(Qt.UserRole, entry.name)
+            item.setData(Qt.UserRole, offer.name)
+            item.setToolTip(f"From {offer.source}" + (f"\n{offer.page}" if offer.page else ""))
             self.offered.addItem(item)
         if self.offered.count() == 0:
-            done = QListWidgetItem("All of them are installed here.")
+            done = QListWidgetItem(NOT_CHECKED if self.actions.offers is None else NONE_MORE)
             done.setFlags(Qt.NoItemFlags)
             self.offered.addItem(done)
+        busy = self.actions.busy
+        self.check_button.setEnabled(not busy)
+        self.check_button.setText("Checking..." if busy else "Check for plugins")
         self._filling = False
         self._enable_buttons()
 
@@ -631,14 +714,12 @@ class ManagePlugins(QDialog):
         self.packages_button.setEnabled(bool(record and record.missing))
         # Only where there is something newer to install: an Update button
         # that is always live invites pressing it to find out.
-        behind = self.actions.out_of_date()
-        differs = mine in self.actions.changed_since_install()
-        self.update_button.setEnabled(mine in behind or differs)
-        if mine in behind:
-            self.update_button.setToolTip(UPDATE_TO.format(version=behind[mine][1]))
-        else:
-            self.update_button.setToolTip(UPDATE_DIFFERS if differs else UPDATE_TIP)
-        self.add_button.setEnabled(bool(self._chosen(self.offered)))
+        newer = self.actions.newer(mine) if mine else None
+        self.update_button.setEnabled(newer is not None and not self.actions.busy)
+        self.update_button.setToolTip(
+            UPDATE_TO.format(version=newer.version) if newer is not None else UPDATE_TIP
+        )
+        self.add_button.setEnabled(bool(self._chosen(self.offered)) and not self.actions.busy)
 
     # --- and what it does -------------------------------------------------------------
     def _toggled(self, item: QListWidgetItem) -> None:
@@ -659,19 +740,30 @@ class ManagePlugins(QDialog):
             self.refresh()
 
     def _update(self) -> None:
-        """Install the supplied copy over the one in this workspace.
+        """Install the newer version a list offers over the one in this workspace.
 
-        The same question as any other install, warning that edits are
-        lost: this is a replacement, not a merge, and the copy here may be
-        one somebody has changed on purpose.
+        The same question as any other install: this is a replacement, not a
+        merge, and a copy somebody has changed is moved aside and kept.
         """
         if name := self._chosen(self.installed):
-            self.actions.install_supplied(name, self)
-
-    def _install_supplied(self) -> None:
-        if name := self._chosen(self.offered):
-            self.actions.install_supplied(name, self)
+            self.actions.install_offer(name, self)
             self.refresh()
+
+    def _install_offered(self) -> None:
+        if name := self._chosen(self.offered):
+            self.actions.install_offer(name, self)
+            self.refresh()
+
+    def _check(self) -> None:
+        self.actions.check()
+        self.refresh()
+
+    def _sites(self) -> None:
+        text, ok = QInputDialog.getMultiLineText(
+            self, "Plugin lists", SITES_TEXT, "\n".join(self.actions.sites())
+        )
+        if ok:
+            self.actions.set_sites(text.splitlines())
 
     def _export(self) -> None:
         if name := self._chosen(self.installed):

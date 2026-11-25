@@ -103,17 +103,6 @@ def _ensure_parent() -> None:
         sys.modules[PACKAGE] = parent
 
 
-def builtin_dir() -> Path:
-    """The plugins pycangui ships with, as a catalogue to install *from*.
-
-    Shipped as plugins rather than compiled into the window on purpose: what
-    they do is not part of any protocol pycangui speaks, and building them
-    through the same door a user's plugin goes through is the only way to find
-    out whether that door is wide enough.
-    """
-    return Path(__file__).resolve().parent.parent / "plugins"
-
-
 @dataclass(frozen=True)
 class Info:
     """What a ``plugin.py`` says about itself, read without running it.
@@ -183,32 +172,6 @@ def describe_source(source: str) -> Info:
         api_version=api if isinstance(api, int) else 1,
         requires=tuple(str(r) for r in requires) if isinstance(requires, list | tuple) else (),
     )
-
-
-@dataclass(frozen=True)
-class Supplied:
-    """One of the plugins pycangui ships, before anybody has installed it."""
-
-    name: str
-    folder: Path
-    info: Info
-
-    @property
-    def label(self) -> str:
-        return self.info.title or self.name
-
-
-def supplied() -> list[Supplied]:
-    """The catalogue: what could be installed, in the order it is offered."""
-    out = []
-    folder = builtin_dir()
-    if not folder.is_dir():
-        return out
-    for child in sorted(folder.iterdir()):
-        entry = child / ENTRY
-        if child.is_dir() and not child.name.startswith(("_", ".")) and entry.is_file():
-            out.append(Supplied(child.name, child, describe(entry)))
-    return out
 
 
 @dataclass

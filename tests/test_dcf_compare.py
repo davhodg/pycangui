@@ -285,14 +285,12 @@ def test_it_is_a_window_of_the_canopen_panes_and_not_a_pane(app, tmp_path, monke
     the View menu and arranged: a window that is there when Compare is pressed."""
     from PySide6.QtCore import QSettings
 
-    from pycangui.core.plugins import supplied
     from pycangui.ui.main_window import MainWindow
 
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path))
     QSettings().clear()
     bare = MainWindow()
     panes_before = set(bare.panes.docks)
-    assert "dcf_compare" not in [s.name for s in supplied()]
     assert bare.canopen_view._compare_window is None, "nothing until it is asked for"
 
     bare.canopen_view.compare_action.trigger()

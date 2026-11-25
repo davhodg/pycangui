@@ -34,7 +34,7 @@ A graphical CAN bus tool: live trace and plots, transmit, CANopen, UDS, J1939, X
 - **ASCII Log**: reads any CAN identifier as text, for devices that print a console into the data bytes.
 - **CAN off an oscilloscope**: frames that [pyscopegui](https://github.com/davhodg/pyscopegui), also on [PyPI](https://pypi.org/project/pyscopegui/), decodes from a scope's channel arrive by UDP multicast, and are traced, decoded and plotted like frames from an adapter.
 - **Python** hooks with hot reload, replaceable components (your own CAN interface, ISO-TP transport, or XCP or CCP engine), a live console and *Run script*.
-- **Plugins** that add a pane of their own, installed from a zip. One comes with pycangui: CiA 402 motor control.
+- **Plugins** that add a pane of their own, from the plugin lists in *Manage plugins* or a zip: CiA 402 motor control is one.
 - **Simulated nodes**: devices written as Python files, on a virtual bus or standing on a real adapter, and gateways between channels. A demo device that answers CANopen, UDS, J1939, XCP and CCP comes with pycangui.
 - **Workspaces**: one for each device or project you work on, holding its hooks, EDS files, databases, channels and layout, and exported as one zip.
 

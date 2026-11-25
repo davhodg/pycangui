@@ -34,33 +34,66 @@ it:
   folder stays exactly as you left it, edits and all.
 * **Install from file...** installs a package, the same as *Plugins > Install
   plugin...*.
-* **Update...** replaces one of pycangui's own plugins with the version this
-  pycangui ships, and is available only when that one is newer. A plugin is
-  installed into a workspace as a *copy*, so updating pycangui leaves the
-  copy exactly as it was -- which is right for one you have edited, and not
-  what you want for one you have not. The row says which version is
-  available, the Event Log says so once when the window opens, and updating
-  asks first, because it is a replacement rather than a merge. Mostly this
-  goes by the version each one declares; where the supplied copy has changed
-  without its version moving -- an author forgetting to say so is the
-  ordinary mistake -- the files are compared instead, and the row says the
-  supplied one differs. If the copy
-  here has been changed since it was installed, it is moved aside and kept as
-  `_name.bak` rather than lost -- the same bargain as a hook file's `.bak`,
-  and the underscore is what keeps the copy from being loaded as a second
-  plugin. An earlier `.bak` is never written over.
+* **Check for plugins** reads the plugin lists online -- see below -- and fills
+  *Available from the plugin lists* with what you have not got; **Install**
+  downloads one and installs it. It is the only time *Manage plugins* goes
+  online, and nothing is installed until you choose.
+* **Update...** installs the newer version a list offers over the one here,
+  and is available only after a check has found one: the row says which
+  version. It asks first, because it is a replacement rather than a merge. If
+  the copy here has been changed since it was installed, it is moved aside
+  and kept as `_name.bak` rather than lost -- the same bargain as a hook
+  file's `.bak`, and the underscore is what keeps the copy from being loaded
+  as a second plugin. An earlier `.bak` is never written over.
 * **Export...** writes an installed plugin back out as a package, which is how
   one of yours gets to somebody else.
 * **Remove...** deletes it from the workspace, and says so first: whatever you
   edited into it goes too.
-* **Supplied with pycangui** lists the ones that ship with it and are not
-  installed here -- the same list is a submenu of the **Plugins** menu, one
-  click each. *Nothing pycangui ships is designed to load until you install it*, so a
-  window you have not asked anything of has no plugin panes in it at all.
 
-Installing a supplied plugin puts a copy in your workspace, and that copy is
-the one that runs -- so editing it is editing yours rather than the
-installation, and *Reload plugins* picks the edit up without a restart.
+An installed plugin is a copy in your workspace, and that copy is the one that
+runs -- so editing it is editing yours, and *Reload plugins* picks the edit up
+without a restart.
+
+### The plugin lists
+
+pycangui ships no plugins of its own: each lives wherever its author keeps it.
+What pycangui has is a list of where to find them, `plugins/index.json` in its
+repository, which *Check for plugins* reads -- and *Sites...* adds lists of your
+own beside it, a URL or a file on this computer each. Nothing about the host is
+assumed: a list is a JSON file at an `https` URL, or a local file, and the zips
+it names can be anywhere.
+
+```json
+{
+  "format": 1,
+  "plugins": [
+    {
+      "name": "thermistor",
+      "title": "Thermistor setup",
+      "description": "Calibrating the thermistor inputs.",
+      "version": "1.2",
+      "api_version": 3,
+      "url": "thermistor-1.2.zip",
+      "sha256": "64 hex digits",
+      "page": "https://example.org/thermistor"
+    }
+  ],
+  "include": ["https://example.org/other-plugins.json"]
+}
+```
+
+- `name` is the plugin's folder name, and the zip must hold that plugin.
+- `url`, `page` and `include` can be relative to the list, so a list can sit
+  beside its zips.
+- `sha256` is the zip's: a download that does not match is refused, so a list
+  and a zip cannot disagree unnoticed.
+- `include` reads other lists as well. pycangui's own list includes each
+  plugin repository's list, and one repository with several plugins lists
+  several.
+- A plugin whose `api_version` is newer than this pycangui's is listed, saying
+  it needs a newer pycangui, and not installed.
+- Where two lists offer the same name, the first read is used, pycangui's own
+  first, and the Event Log says so.
 
 The **Plugins** menu is also the answer to what you have installed: every
 plugin appears there whether or not it added any entries of its own, one that
@@ -80,8 +113,8 @@ def register(app):
     app.add_menu_action("Do the thing", run_it, "what it will do")
 ```
 
-Say in the name what the plugin talks to, where that is not obvious: the ones
-supplied here is *CANopen* motor control, because its sequence is not the
+Say in the name what the plugin talks to, where that is not obvious: the
+CiA 402 plugin is *CANopen* motor control, because its sequence is not the
 one a UDS or XCP device would want, and a list of plugins reading "Motor
 control" tells nobody which. Where the profile number is how
 people refer to the thing -- CiA 402 is -- it earns its place in brackets.
@@ -170,19 +203,14 @@ plugin added last time before loading it again, so editing one and pressing
 reload is how it gets written -- there is no need to restart, and no second
 copy of its pane appears beside the first.
 
-## The plugins that ship with it
+## Plugins there are
 
-Supplied rather than installed: *Plugins > Supplied with pycangui* and
-*Plugins > Manage plugins...* are where they are, and until one is installed
-none of it is meant to run. Each has a page of its own:
+*Check for plugins* lists them all; these are the ones pycangui's list names:
 
-- [CANopen motor control (CiA 402)](cia402.md) --- driving a motor controller
+- [CANopen motor control (CiA 402)](https://github.com/davhodg/pycangui-cia402) --- driving
+  a motor controller. It came with pycangui until 0.6; a workspace that has it keeps
+  it, and *Check for plugins* offers the newer version.
 
 CANopen firmware download used to be a plugin too, and is now the Firmware tab
 of the CANopen pane, with a device's own sequence in hooks: see
 [CANopen firmware](firmware.md).
-
-pycangui's own plugins are packaged, installed and loaded exactly the way one
-of yours is -- installing a supplied plugin packs it and unpacks it through the
-same code a downloaded one goes through, so the path a stranger's plugin takes
-is the path we take every time.

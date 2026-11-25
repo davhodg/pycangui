@@ -12,11 +12,16 @@ since the last version, and comes out in the next one.
 ### Added
 
 - Plugin API 3: devices, settings, Python Console names, hooks, needed packages (`REQUIRES` and a `lib` folder) and a helper program of a plugin's own, so a plugin imports nothing of pycangui's.
+- *Manage plugins*: *Check for plugins* reads plugin lists online -- pycangui's, and sites of your own -- to install or update from; any host, checked by sha256.
 
 ### Changed
 
-- The CiA 402 plugin is 2.0: it drives a device through plugin API 3 rather than reaching into pycangui.
+- The CiA 402 plugin is 2.0, in its own repository (pycangui-cia402): it drives a device through plugin API 3 rather than reaching into pycangui.
 - CI runs on every branch, not only master.
+
+### Removed
+
+- Plugins supplied with pycangui, and *Plugins > Supplied with pycangui*: plugins come from the plugin lists or a zip.
 
 ## [0.6.2] - 2026-11-25
 

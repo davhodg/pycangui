@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "plugins": [],
+  "include": [
+    "https://raw.githubusercontent.com/davhodg/pycangui-cia402/master/plugins.json"
+  ]
+}

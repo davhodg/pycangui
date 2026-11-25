@@ -14,7 +14,7 @@ traffic is running or paused, and who paused it.
 A pause holds back what pycangui sends by itself, and lets it go on again when
 it lifts:
 
-- **polling**, in [custom panes](custom-panes.md), the [CiA 402](cia402.md)
+- **polling**, in [custom panes](custom-panes.md), the [CiA 402](https://github.com/davhodg/pycangui-cia402/blob/master/docs/cia402.md)
   motor pane and [XCP / CCP](xcp.md). What is ticked stays ticked;
 - CANopen's **SYNC and TIME** producers, which start again as they were;
 - what [CANopen](canopen.md) reads of a node **unasked**: identifying one first

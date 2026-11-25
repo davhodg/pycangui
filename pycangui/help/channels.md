@@ -172,7 +172,7 @@ question is for.
 A few actions ask for themselves wherever they happen: switching
 [workspace](workspaces.md) while a channel is connected, because it closes the
 bus; writing to an ECU in a [UDS](uds.md) transfer; and enabling a drive from
-the [CiA 402 plugin](cia402.md), which is the moment a motor can move.
+the [CiA 402 plugin](https://github.com/davhodg/pycangui-cia402/blob/master/docs/cia402.md), which is the moment a motor can move.
 
 Each carries a **Do not ask me this again on this machine** tick box.
 

@@ -18,7 +18,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from pycangui.core import plugin_package
 from pycangui.core.hooks import registry
-from pycangui.core.plugins import API_VERSION, Plugins, supplied
+from pycangui.core.plugins import API_VERSION, Plugins
 from pycangui.ui import folders, plugin_manager
 from pycangui.ui.main_window import MainWindow
 
@@ -101,11 +101,10 @@ def test_folders_that_are_not_meant_to_be_plugins_are_skipped(tmp_path):
     assert Plugins(folder=tmp_path).found() == {}
 
 
-def test_nothing_pycangui_ships_is_loaded_until_it_is_installed(app, window):
-    """The catalogue is not a load path. A screen nobody asked for in every
-    window is exactly what installing is there to prevent."""
+def test_a_new_workspace_loads_no_plugins(app, window):
+    """A screen nobody asked for in every window is exactly what installing
+    is there to prevent."""
     assert window.plugins.loaded == {}
-    assert [s.name for s in supplied()], "and yet there are some to install"
 
 
 # --- loading them -----------------------------------------------------------------------
@@ -195,7 +194,6 @@ def test_with_nothing_installed_the_menu_still_shows_the_way_in(app, window):
     assert entries(window.plugins_menu) == [
         "No plugins installed",
         "Install plugin...",
-        "Supplied with pycangui",
         "Manage plugins...",
         "Reload plugins",
         "Open plugins folder",
@@ -512,22 +510,6 @@ def test_a_file_that_is_not_a_plugin_is_refused_with_a_reason(
     assert window.plugins.loaded == {}
 
 
-def test_one_pycangui_ships_can_be_installed_from_the_menu(app, window, agrees):
-    """And is then an ordinary plugin in the workspace, which is the copy that
-    runs -- so editing it is editing yours rather than the installation."""
-    window.plugin_actions.install_supplied("cia402")
-    settle(app)
-    assert (window.ctx.workspace_dir / "plugins" / "cia402" / "drive.py").is_file()
-    assert "CANopen motor control (CiA 402)" in [r.label for r in window.plugins.working()]
-
-
-def test_what_is_already_installed_is_not_offered_again(app, window, agrees):
-    assert "cia402" in [s.name for s in window.plugin_actions.not_installed()]
-    window.plugin_actions.install_supplied("cia402")
-    settle(app)
-    assert "cia402" not in [s.name for s in window.plugin_actions.not_installed()]
-
-
 def test_a_plugin_can_be_written_back_out_as_a_package(app, window, tmp_path, agrees, monkeypatch):
     """Which is how one of yours gets to somebody else, and the only way the
     format exists in both directions."""
@@ -680,30 +662,6 @@ def test_a_plugin_can_be_split_across_files(app, window):
     assert window.panes.view("split:screen").text() == "from the helper"
 
 
-def test_the_copy_it_reaches_is_the_one_beside_it(app, window, agrees):
-    """The point of installing into the workspace: the copy you edit is the
-    copy that runs. Named absolutely, an installed plugin would reach back
-    into the one pycangui ships and editing your own would do nothing."""
-    window.plugin_actions.install_supplied("cia402")
-    settle(app)
-    installed = window.ctx.workspace_dir / "plugins" / "cia402" / "drive.py"
-    installed.write_text(
-        installed.read_text(encoding="utf-8").replace(
-            'POSITION_UNITS = "position units"', 'POSITION_UNITS = "steps"'
-        ),
-        encoding="utf-8",
-    )
-    window._reload_plugins()
-    settle(app)
-
-    import sys
-
-    assert sys.modules["pycangui_plugins.cia402.drive"].POSITION_UNITS == "steps"
-    from pycangui.plugins.cia402 import drive
-
-    assert drive.POSITION_UNITS == "position units", "and the one pycangui ships is untouched"
-
-
 def test_reloading_picks_up_an_edit_to_the_second_file_too(app, window):
     """Otherwise the entry file is reloaded into the old version of its own
     modules, which is the opposite of what reload is for."""
@@ -719,160 +677,14 @@ def test_reloading_picks_up_an_edit_to_the_second_file_too(app, window):
     assert window.panes.view("split:screen").text() == "second"
 
 
-# --- a workspace copy left behind by an update -------------------------------------------
-def test_a_plugin_behind_the_supplied_one_is_reported(app, window):
-    """A plugin lives in the workspace as a copy, so pulling a newer
-    pycangui leaves it exactly as it was -- and nothing said so."""
-    from pycangui.core.plugins import Loaded, supplied
-
-    assert window.plugin_actions.out_of_date() == {}, "nothing installed, nothing to say"
-
-    entry = supplied()[0]
-    window.plugins.loaded[entry.name] = Loaded(
-        name=entry.name,
-        path=window.ctx.workspace_dir / "plugins" / entry.name,
-        title=entry.label,
-        version="0.1",  # as an older copy in this workspace would be
-    )
-
-    behind = window.plugin_actions.out_of_date()
-
-    assert behind[entry.name] == ("0.1", entry.info.version)
-
-
-def test_a_copy_level_with_the_supplied_one_is_not_remarked_on(app, window):
-    from pycangui.core.plugins import Loaded, supplied
-
-    entry = supplied()[0]
-    window.plugins.loaded[entry.name] = Loaded(
-        name=entry.name,
-        path=window.ctx.workspace_dir / "plugins" / entry.name,
-        version=entry.info.version,
-    )
-
-    assert window.plugin_actions.out_of_date() == {}
-
-
+# --- versions ---------------------------------------------------------------------------
 def test_the_versions_are_compared_not_the_names(app):
     from pycangui.ui.plugin_manager import _older
 
-    assert _older("1.0", "1.1"), "installed 1.0, shipped 1.1"
+    assert _older("1.0", "1.1"), "installed 1.0, offered 1.1"
     assert not _older("1.1", "1.0")
     assert not _older("1.0", "1.0")
     assert not _older("dated", "dated-2"), "and what cannot be compared is not remarked on"
-
-
-def test_the_update_button_is_live_only_where_there_is_one(app, window):
-    from pycangui.core.plugins import Loaded, supplied
-    from pycangui.ui.plugin_manager import ManagePlugins
-
-    entry = supplied()[0]
-    window.plugins.loaded[entry.name] = Loaded(
-        name=entry.name,
-        path=window.ctx.workspace_dir / "plugins" / entry.name,
-        title=entry.label,
-        version="0.1",
-    )
-    dialog = ManagePlugins(window, window.plugin_actions)
-
-    dialog.installed.setCurrentRow(0)
-
-    assert dialog.update_button.isEnabled()
-    assert entry.info.version in dialog.update_button.toolTip()
-    assert entry.info.version in dialog.installed.item(0).text(), "and the row says so too"
-    dialog.close()
-
-
-def test_an_edited_plugin_is_kept_when_it_is_replaced(app, window, monkeypatch):
-    """Same bargain as a hook file's .bak: what is replaced is somebody's
-    own work, and an install that threw it away would be the one operation
-    here with no way back."""
-    from pycangui.core.plugins import supplied
-    from pycangui.ui import messages
-
-    entry = supplied()[0]
-    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
-    window.plugin_actions.install_supplied(entry.name)
-    folder = window.ctx.workspace_dir / "plugins" / entry.name
-    assert not window.plugin_actions._edited(entry.name), "as installed, untouched"
-
-    (folder / "plugin.py").write_text(
-        (folder / "plugin.py").read_text(encoding="utf-8") + "\n# my own note\n", encoding="utf-8"
-    )
-    assert window.plugin_actions._edited(entry.name), "and now it is not"
-
-    window.plugin_actions.install_supplied(entry.name)
-
-    kept = folder.with_name(f"_{entry.name}.bak")
-    assert kept.is_dir(), "the edited copy is beside the new one"
-    assert "my own note" in (kept / "plugin.py").read_text(encoding="utf-8")
-    assert "my own note" not in (folder / "plugin.py").read_text(encoding="utf-8")
-
-
-def test_an_untouched_plugin_is_replaced_without_a_pile_of_copies(app, window, monkeypatch):
-    from pycangui.core.plugins import supplied
-    from pycangui.ui import messages
-
-    entry = supplied()[0]
-    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
-    window.plugin_actions.install_supplied(entry.name)
-
-    window.plugin_actions.install_supplied(entry.name)
-
-    folder = window.ctx.workspace_dir / "plugins"
-    assert not (folder / f"_{entry.name}.bak").exists(), "nothing was lost, so nothing was kept"
-
-
-def test_a_supplied_plugin_that_changed_without_a_version_bump_is_noticed(app, window, monkeypatch):
-    """The version is the author saying "this is different", and forgetting
-    to say it is the ordinary mistake -- which is how the CiA 402 pane
-    gained its limits and went on calling itself 1.0."""
-    from pycangui.core import plugin_package
-    from pycangui.core.plugins import supplied
-    from pycangui.ui import messages
-
-    entry = supplied()[0]
-    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
-    window.plugin_actions.install_supplied(entry.name)
-    assert window.plugin_actions.changed_since_install() == [], "just installed, so identical"
-
-    # As a pull does: the supplied copy moves on, the workspace's does not.
-    # Only the supplied folder is made to look different -- changing the
-    # record instead would make the local copy look edited, which is the
-    # other case and the one this must not be confused with.
-    real = plugin_package.folder_fingerprint
-    monkeypatch.setattr(
-        plugin_package,
-        "folder_fingerprint",
-        lambda folder: "moved on" if folder == entry.folder else real(folder),
-    )
-
-    assert entry.name in window.plugin_actions.changed_since_install()
-    assert window.plugin_actions.out_of_date() == {}, "and the versions still agree"
-
-    # A version that did move is the other thing, and is said as that alone:
-    # the Event Log had both lines, the second calling the two the same version.
-    record = window.plugins.loaded[entry.name]
-    monkeypatch.setattr(record, "version", "0.1")
-    assert entry.name in window.plugin_actions.out_of_date()
-    assert window.plugin_actions.changed_since_install() == []
-
-
-def test_an_edited_copy_is_not_called_out_of_date(app, window, monkeypatch):
-    """For an edited copy, "differs from what is shipped" is what being
-    edited means, and saying it every start would be noise."""
-    from pycangui.core.plugins import supplied
-    from pycangui.ui import messages
-
-    entry = supplied()[0]
-    monkeypatch.setattr(messages, "warning", lambda *a, **k: QMessageBox.Yes)
-    window.plugin_actions.install_supplied(entry.name)
-    folder = window.ctx.workspace_dir / "plugins" / entry.name
-    (folder / "plugin.py").write_text(
-        (folder / "plugin.py").read_text(encoding="utf-8") + "\n# mine\n", encoding="utf-8"
-    )
-
-    assert window.plugin_actions.changed_since_install() == []
 
 
 # --- pycangui's own traffic: paused, and stopped -----------------------------------------

@@ -34,8 +34,10 @@ What **is** worth reporting:
   that is meant to be data -- a DBC, EDS, DCF, A2L, firmware image, log or
   measurement file;
 - pycangui going online when you did not ask it to. It is designed to go
-  online only for *Help > Check for updates*, for a GitHub page you chose to
-  open, and to install the optional MDF reader from PyPI after you agreed to it;
+  online only for *Help > Check for updates*, for *Check for plugins* and the
+  plugin you then chose to install, for a GitHub page you chose to
+  open, and to install the optional MDF reader, or packages a plugin needs, from
+  PyPI after you agreed to it;
 - UDP multicast reaching further than *Tools > Settings > UDP multicast* says:
   frames or signals leaving this computer, or frames from another computer
   being received, while it is set to *This computer only* -- or anything at
