@@ -91,6 +91,8 @@ class PluginApp:
         self._hook_modules: list[str] = []
         #: The names it put in the console, taken out when it is unloaded.
         self._console_names: dict[str, object] = {}
+        #: The programs it runs beside pycangui, stopped when it is unloaded.
+        self._helpers: list = []
 
     # --- a screen of its own ------------------------------------------------------------
     def add_pane(
@@ -373,6 +375,56 @@ class PluginApp:
         self.hooks.add_module(module, path)
         self._hook_modules.append(module)
 
+    # --- a program of its own beside pycangui (API 3) ------------------------------------
+    def helper(
+        self,
+        program: str | Path,
+        *args: str,
+        port: bool = True,
+        on_ready: Callable[[int | None], None] | None = None,
+        on_exit: Callable[[int], None] | None = None,
+        timeout: float = 10.0,
+    ):
+        """Run ``program`` from the plugin's folder beside pycangui, and look after it.
+
+        ``program`` is relative to the plugin's folder (``.exe`` may be left
+        off on Windows); a ``.py`` file runs with pycangui's Python, which the
+        Windows build does not have. With ``port`` (the default), the first
+        line it prints must be the port it listens on: ``on_ready(port)`` is
+        called with it, and a helper that prints none within ``timeout``
+        seconds is stopped. Without, ``on_ready(None)`` is called once it has
+        started. Everything else it prints goes to the Event Log.
+
+        It is stopped when the plugin is unloaded and when pycangui closes:
+        its stdin is closed, and it is killed if it has not gone a second
+        later. If it stops on its own, the Event Log says so and the user is
+        offered a restart -- or ``on_exit(code)`` is called instead, if
+        given. Returns the helper: ``port``, ``running``, ``stop()`` and
+        ``start()``. API 3.
+        """
+        from pycangui.ui import plugin_helper
+
+        folder = Path(self.window.plugins.loaded[self.plugin].path).parent
+        made = plugin_helper.Helper(
+            self,
+            plugin_helper.command(folder, program, args),
+            folder,
+            port=port,
+            on_ready=on_ready,
+            on_exit=on_exit,
+            timeout=timeout,
+        )
+        if not self._helpers:
+            self.window.closing.connect(self._stop_helpers)
+            self._closers.append(self._stop_helpers)
+        self._helpers.append(made)
+        made.start()
+        return made
+
+    def _stop_helpers(self) -> None:
+        for helper in self._helpers:
+            helper.stop()
+
     # --- saying something -------------------------------------------------------------------
     def log(self, message: str) -> None:
         self.ctx.events.information(f"{self.plugin}: {message}")
@@ -396,6 +448,8 @@ class PluginApp:
         for closer in self._closers:
             self.window.closing.disconnect(closer)
         self._closers.clear()
+        self._stop_helpers()
+        self._helpers.clear()
         for signal, callbacks in (
             (self.ctx.pause.changed, self._on_pause),
             (self.ctx.pause.stop_all_requested, self._on_stop_all),

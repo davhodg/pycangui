@@ -1193,3 +1193,128 @@ def test_the_build_with_no_pip_says_what_is_missing_instead(app, window, monkeyp
     monkeypatch.setattr(plugin_manager.messages, "question", lambda *a, **k: asked.append(a))
     assert not window.plugin_actions.offer_packages("wanting", window)
     assert told and not asked, "nothing to offer: told, not asked"
+
+
+# --- a program of its own beside pycangui (API 3) ------------------------------------------
+FAKE_HELPER = """
+import sys
+from pathlib import Path
+
+mode = sys.argv[1]
+if mode == "silent":
+    sys.stdin.read()
+    sys.exit(0)
+print(4711 if mode != "garbled" else "hello", flush=True)
+print("listening", flush=True)
+print("a warning", file=sys.stderr, flush=True)
+if mode == "dies":
+    sys.exit(3)
+sys.stdin.read()  # until pycangui closes it: the polite way to be asked to stop
+Path("stopped").write_text("asked", encoding="utf-8")
+"""
+
+HELPED = """
+NAME = "Helped"
+API_VERSION = 3
+
+
+def register(app):
+    app.ports = []
+    app.exits = []
+    app.made = app.helper("fake_helper.py", "{mode}", on_ready=app.ports.append{extra})
+"""
+
+
+def helped(app, window, mode="serves", extra=""):
+    folder = write_plugin(window, "helped", HELPED.format(mode=mode, extra=extra))
+    (folder / "fake_helper.py").write_text(FAKE_HELPER, encoding="utf-8")
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["helped"]
+    assert record.ok, record.error
+    return folder, record.app
+
+
+def wait_for(app, condition, seconds=10.0):
+    import time
+
+    end = time.monotonic() + seconds
+    while not condition() and time.monotonic() < end:
+        app.processEvents()
+        time.sleep(0.01)
+    return condition()
+
+
+def test_a_helper_hands_over_its_port_and_its_output_goes_to_the_event_log(app, window):
+    levels = []
+    window.ctx.events.posted.connect(lambda _message, level: levels.append(level))
+    folder, plugin = helped(app, window)
+    assert wait_for(app, lambda: plugin.ports == [4711])
+    assert plugin.made.port == 4711
+    assert wait_for(app, lambda: "warning" in levels), "what it wrote to stderr"
+    window._reload_plugins()  # unloading it stops its helper
+    settle(app)
+    assert not plugin.made.running
+    assert (folder / "stopped").exists(), "asked by its stdin closing, not killed"
+
+
+def test_a_helper_is_stopped_when_pycangui_closes(app, window):
+    folder, plugin = helped(app, window)
+    assert wait_for(app, lambda: plugin.ports == [4711])
+    window.close()
+    settle(app)
+    assert not plugin.made.running
+    assert (folder / "stopped").exists()
+
+
+def test_a_helper_that_stops_on_its_own_is_offered_a_restart(app, window, monkeypatch):
+    from pycangui.ui import plugin_helper
+
+    asked = []
+
+    def answer(*_args, **_kwargs):
+        asked.append(True)
+        return QMessageBox.Yes if len(asked) == 1 else QMessageBox.No
+
+    monkeypatch.setattr(plugin_helper.messages, "question", answer)
+    _folder, plugin = helped(app, window, mode="dies")
+    assert wait_for(app, lambda: len(asked) == 2), "asked, restarted, and asked again"
+    assert plugin.ports == [4711, 4711]
+    assert not plugin.made.running
+
+
+def test_a_plugin_can_deal_with_its_helper_stopping_itself(app, window, monkeypatch):
+    from pycangui.ui import plugin_helper
+
+    monkeypatch.setattr(plugin_helper.messages, "question", lambda *_a, **_k: pytest.fail("asked"))
+    _folder, plugin = helped(app, window, mode="dies", extra=", on_exit=app.exits.append")
+    assert wait_for(app, lambda: plugin.exits == [3])
+
+
+def test_a_helper_that_prints_no_port_is_stopped(app, window):
+    _folder, plugin = helped(app, window, mode="silent", extra=", timeout=0.3")
+    assert wait_for(app, lambda: not plugin.made.running)
+    assert plugin.ports == []
+    _folder, plugin = helped(app, window, mode="garbled")
+    assert wait_for(app, lambda: not plugin.made.running)
+    assert plugin.ports == [] and plugin.made.port is None
+
+
+def test_a_helper_that_serves_nothing_is_ready_once_started(app, window):
+    _folder, plugin = helped(app, window, mode="silent", extra=", port=False")
+    assert wait_for(app, lambda: plugin.ports == [None])
+    assert plugin.made.running
+
+
+def test_a_python_helper_is_refused_in_the_build_without_python(tmp_path, monkeypatch):
+    from pycangui.core import installation
+    from pycangui.ui import plugin_helper
+
+    (tmp_path / "helper.py").write_text("", encoding="utf-8")
+    (tmp_path / "helper.exe").write_bytes(b"")
+    assert plugin_helper.command(tmp_path, "helper.py")[1:] == [str(tmp_path / "helper.py")]
+    monkeypatch.setattr(installation, "how_installed", lambda: installation.FROZEN)
+    with pytest.raises(ValueError):
+        plugin_helper.command(tmp_path, "helper.py")
+    with pytest.raises(FileNotFoundError):
+        plugin_helper.command(tmp_path, "nothing_here")

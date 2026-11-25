@@ -108,6 +108,24 @@ A package pycangui does not install can come with the plugin, or be named:
 
 A pycangui from before plugin API 3 ignores both.
 
+### A program of its own
+
+Work that does not belong in pycangui's process -- a fieldbus master written in Rust or
+C, a server for another tool -- can be a program in the plugin's folder that
+`app.helper("my_helper")` runs and looks after:
+
+- It starts in the plugin's folder. On Windows `.exe` may be left off the name; a `.py`
+  file runs with pycangui's Python, which the Windows build does not have.
+- The first line it prints is the port it listens on, handed to `on_ready(port)`, so no
+  port has to be agreed in advance. One that prints none within `timeout` seconds is
+  stopped. With `port=False` it serves nothing, and `on_ready(None)` comes once it starts.
+- Everything else it prints goes to the Event Log, what it writes to stderr as warnings.
+- It is stopped when the plugin is unloaded or reloaded and when pycangui closes: its
+  stdin is closed, so a helper should stop when reading stdin ends, and one still running
+  a second later is killed.
+- If it stops on its own, the Event Log says so and you are offered to start it again,
+  unless the plugin gave `on_exit(code)` to deal with that itself.
+
 `app` is the whole API, and it offers:
 
 | | |
@@ -135,6 +153,7 @@ A pycangui from before plugin API 3 ignores both.
 | `settings` | your own settings, kept in the workspace: `get(key, default)`, `set(key, value)`, `keys()`, `remove(key)` (API 3) |
 | `add_console_name(name, obj)` | `obj` in the Python Console and in scripts as `name`; taken out when your plugin is unloaded, and refused if pycangui or another plugin has the name (API 3) |
 | `add_hooks(module, file)` | your own [hooks](hooks.md), as `hooks/<module>.py` in the workspace beside pycangui's: every function in `file` (in your plugin's folder) whose name does not start with `_` is one, taking `ctx` by keyword; call one with `hooks.call(module, name, ...)`. The copy is the user's to edit, kept up to date like pycangui's own, and left when your plugin is uninstalled (API 3) |
+| `helper(program, *args, port, on_ready, on_exit, timeout)` | run a program from your plugin's folder beside pycangui, as [above](#a-program-of-its-own); returns it, with `port`, `running`, `stop()` and `start()` (API 3) |
 | `log` / `warn` / `error` | say something in the Event Log, prefixed with your name |
 | `window` `ctx` `hooks` `panes` `channels` `bus` `signals` `canopen` `uds` `j1939` `xcp` `dbc` | the live objects |
 | `confirm` | the confirmations pycangui asks before disturbing equipment, for a plugin that does too |
