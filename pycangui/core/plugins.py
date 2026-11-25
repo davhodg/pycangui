@@ -404,6 +404,17 @@ class Plugins:
             self.libs.drop(record.name)
         self.loaded.clear()
 
+    def unload(self, name: str) -> None:
+        """Unload one plugin, before its folder is deleted or replaced.
+
+        On Windows a running helper's program, and its working directory, cannot
+        be deleted, nor a compiled module its lib/ brought: unloading stops the
+        one and lets go of the other. It is loaded again with the rest.
+        """
+        if (record := self.loaded.pop(name, None)) is not None:
+            self._undo(record)
+            self.libs.drop(name)
+
     def forget_modules(self) -> None:
         """Drop the imported code without taking anything back off the window.
 

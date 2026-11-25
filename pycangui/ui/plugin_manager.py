@@ -286,6 +286,7 @@ class PluginActions(QObject):
             except OSError as why:
                 self._refuse(parent, f"{package.name} could not be moved aside: {why}")
                 return
+        self.plugins.unload(package.name)  # what it runs would hold its folder open
         try:
             doit(True)
         except plugin_package.PackageError as why:
@@ -360,6 +361,7 @@ class PluginActions(QObject):
         )
         if answer != QMessageBox.Yes:
             return
+        self.plugins.unload(name)  # what it runs would hold its folder open
         try:
             gone = plugin_package.uninstall(self.folder, name)
         except (OSError, plugin_package.PackageError) as why:
