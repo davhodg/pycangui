@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  # Every branch: work is tested where it is done, before it reaches master.
+  # Only the tests run for a branch; macOS, the installer and publishing are
+  # for tags and runs by hand.
   push:
-    branches: [master, main]
+    branches: ["**"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:

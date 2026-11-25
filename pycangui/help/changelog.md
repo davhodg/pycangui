@@ -9,6 +9,15 @@ since the last version, and comes out in the next one.
 
 ## [Unreleased]
 
+### Added
+
+- Plugin API 3: devices, settings, Python Console names, hooks, needed packages (`REQUIRES` and a `lib` folder) and a helper program of a plugin's own, so a plugin imports nothing of pycangui's.
+
+### Changed
+
+- The CiA 402 plugin is 2.0: it drives a device through plugin API 3 rather than reaching into pycangui.
+- CI runs on every branch, not only master.
+
 ### Fixed
 
 - A frame nobody acknowledges no longer floods the Event Log: an adapter's warnings that take turns, and the bus reader's error, are each said once and then counted.
