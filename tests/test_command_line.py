@@ -299,3 +299,42 @@ def test_the_name_belongs_to_the_user_folder(tmp_path, monkeypatch):
     one = handoff.server_name()
     monkeypatch.setenv("PYCANGUI_HOME", str(tmp_path / "two"))
     assert handoff.server_name() != one
+
+
+#: An open pycangui that says it took the files the moment it is reached,
+#: before it has read them.
+QUICK = """
+import sys
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtNetwork import QLocalServer
+app = QCoreApplication([])
+server = QLocalServer()
+server.listen(sys.argv[1])
+
+
+def answer():
+    socket = server.nextPendingConnection()
+    socket.readyRead.connect(socket.readAll)
+    socket.disconnected.connect(app.quit)
+    socket.write(b"ok\\n")
+    socket.flush()
+
+
+server.newConnection.connect(answer)
+print("listening", flush=True)
+app.exec()
+"""
+
+
+def test_an_answer_that_comes_during_the_writing_still_counts(name):
+    """More files than the pipe holds at once, so the writing waits on the open
+    pycangui reading them -- and the answer, already sent, is read during that
+    wait. It is there before the wait for it starts, which would see only more."""
+    first = subprocess.Popen([sys.executable, "-c", QUICK, name], stdout=subprocess.PIPE, text=True)
+    try:
+        assert first.stdout.readline().strip() == "listening"
+        many = [Path(f"C:/a/long/folder/name/{n:05}/" + "x" * 200 + ".dcf") for n in range(4000)]
+        assert handoff.hand_over(many, name)
+    finally:
+        first.kill()
+        first.wait()

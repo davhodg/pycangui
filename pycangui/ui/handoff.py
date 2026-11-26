@@ -52,7 +52,11 @@ def hand_over(files: list[Path], name: str | None = None) -> bool:
     socket.write(json.dumps([str(f) for f in files]).encode("utf-8") + b"\n")
     socket.waitForBytesWritten(CONNECT_MS)
     answer = b""
-    while not answer.endswith(b"\n") and socket.waitForReadyRead(ANSWER_MS):
+    while not answer.endswith(b"\n"):
+        # An answer quick enough to come during the wait for the write is
+        # already here, and waitForReadyRead waits only for more: read first.
+        if not socket.bytesAvailable() and not socket.waitForReadyRead(ANSWER_MS):
+            break
         answer += socket.readAll().data()
     socket.disconnectFromServer()
     return answer == TOOK_THEM

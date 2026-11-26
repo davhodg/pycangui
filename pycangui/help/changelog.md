@@ -23,6 +23,10 @@ since the last version, and comes out in the next one.
 
 - Plugins supplied with pycangui, and *Plugins > Supplied with pycangui*: plugins come from the plugin lists or a zip.
 
+### Fixed
+
+- A file double-clicked with pycangui open could open a second pycangui when the first answered quickly: the answer was missed.
+
 ## [0.6.2] - 2026-11-25
 
 ### Fixed
