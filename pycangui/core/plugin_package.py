@@ -35,6 +35,7 @@ What it refuses, and why:
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
 import zipfile
@@ -283,9 +284,9 @@ def install(path: str | Path, into: Path, replace: bool = False) -> Package:
     shutil.rmtree(staging, ignore_errors=True)
     try:
         with zipfile.ZipFile(package.path) as archive:
-            for member in archive.namelist():
-                if safe(member) and wanted(member):
-                    archive.extract(member, staging)
+            for member in archive.infolist():
+                if safe(member.filename) and wanted(member.filename):
+                    keep_mode(member, archive.extract(member, staging))
         unpacked = staging / package.root if package.root else staging
         if not (unpacked / ENTRY).is_file():
             raise PackageError(f"{Path(path).name} did not unpack into a plugin.")
@@ -295,6 +296,26 @@ def install(path: str | Path, into: Path, replace: bool = False) -> Package:
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     return package
+
+
+#: A zip member's system: Unix, whose permission bits are in the top of external_attr.
+_UNIX = 3
+
+
+def keep_mode(member: zipfile.ZipInfo, path: str) -> None:
+    """Give an extracted file the permissions it was packed with, off Windows.
+
+    ``ZipFile.extract`` leaves them out, so a helper program a plugin runs
+    (``app.helper``) arrived without its executable bit and could not be
+    started on Linux or macOS. Only the read, write and execute bits are
+    taken -- never set-user-ID and the like -- the owner always keeps read and
+    write, and only from a zip made on Unix: one made on Windows has none to give.
+    """
+    if os.name != "posix" or member.is_dir() or member.create_system != _UNIX:
+        return
+    mode = (member.external_attr >> 16) & 0o777
+    if mode:
+        os.chmod(path, mode | 0o600)
 
 
 def pack(folder: Path, dest: str | Path) -> Path:

@@ -11,6 +11,9 @@ Most of this file is about the refusals, because this is the one place in
 pycangui that takes a file from a stranger and turns it into code that runs.
 """
 
+import os
+import stat
+import sys
 import zipfile
 
 import pytest
@@ -64,6 +67,29 @@ def test_what_was_packed_is_what_is_installed(plugin, tmp_path, into):
     plugin_package.install(plugin_package.pack(plugin, tmp_path / "demo.zip"), into)
     assert (into / "demo" / "plugin.py").read_text(encoding="utf-8") == SOURCE
     assert (into / "demo" / "extra.py").is_file(), "a plugin brings its own modules with it"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows files have no permission bits")
+def test_a_helper_program_stays_a_program_once_installed(tmp_path, into):
+    """app.helper runs a program the plugin brings, which off Windows needs its
+    executable bit -- and extracting a zip drops every file's permissions.
+    Only the read, write and execute bits come through, never set-user-ID."""
+
+    def member(name: str, mode: int) -> zipfile.ZipInfo:
+        info = zipfile.ZipInfo(name)
+        info.create_system = 3  # made on Unix, as a release built on Linux is
+        info.external_attr = mode << 16
+        return info
+
+    package = tmp_path / "helped.zip"
+    with zipfile.ZipFile(package, "w") as archive:
+        archive.writestr(member("helped/plugin.py", 0o644), SOURCE)
+        archive.writestr(member("helped/bin/helper", 0o755), "#!/bin/sh\n")
+        archive.writestr(member("helped/bin/setuid", 0o4755), "#!/bin/sh\n")
+    plugin_package.install(package, into)
+    assert os.access(into / "helped" / "bin" / "helper", os.X_OK)
+    assert not os.access(into / "helped" / "plugin.py", os.X_OK)
+    assert not (into / "helped" / "bin" / "setuid").stat().st_mode & stat.S_ISUID
 
 
 def test_the_folder_is_the_top_level_inside_the_package(plugin, tmp_path):

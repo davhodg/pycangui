@@ -26,6 +26,7 @@ since the last version, and comes out in the next one.
 ### Fixed
 
 - A file double-clicked with pycangui open could open a second pycangui when the first answered quickly: the answer was missed.
+- On Linux and macOS, a plugin's own program could not run once installed: installing lost its permission to run.
 
 ## [0.6.2] - 2026-11-25
 
