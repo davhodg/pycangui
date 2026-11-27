@@ -19,39 +19,11 @@ you would rather not be.
 The latest release and `master`. Older releases are not patched: upgrading
 is the fix.
 
-## What is and is not a vulnerability
+## What to report
 
-pycangui runs Python you give it, on purpose. Hook files, simulated nodes,
-plugins, the Python console and *Run script* all execute code. The hooks in a
-workspace run as soon as it is opened, and its simulated nodes when they are
-started -- which for the demo nodes means connecting the demo channel. A
-workspace or a plugin from somebody else is code from somebody else, to be
-trusted as such. That is the design, not a flaw in it.
+A way for someone else to run code, read or write files, or send onto a network or a bus
+through pycangui without your say: from a file meant to be data (a DBC, EDS, A2L, log or
+firmware image), from another user on the same computer, or by a plugin installed although it
+does not match its list's checksum.
 
-What **is** worth reporting:
-
-- a way to run code, or to write outside the folder you chose, from a file
-  that is meant to be data -- a DBC, EDS, DCF, A2L, firmware image, log or
-  measurement file;
-- pycangui going online when you did not ask it to. It is designed to go
-  online only for *Help > Check for updates*, for *Check for plugins* and the
-  plugin you then chose to install, for a GitHub page you chose to
-  open, and to install the optional MDF reader, or packages a plugin needs, from
-  PyPI after you agreed to it;
-- UDP multicast reaching further than *Tools > Settings > UDP multicast* says:
-  frames or signals leaving this computer, or frames from another computer
-  being received, while it is set to *This computer only* -- or anything at
-  all while it is *Off*;
-- transmitting onto a real bus without asking first -- unless you told it to
-  stop asking -- or after you declined. It is designed to ask, but those
-  questions are a reminder rather than a safeguard, and pycangui is provided
-  without warranty of any kind.
-
-What is **not**, here:
-
-- CAN having no authentication. Anything on a bus can send anything, and
-  attacks on CAN, CANopen, UDS, J1939 or XCP themselves, or on the devices
-  that speak them, belong with those devices' makers;
-- problems in the libraries pycangui is built on -- Qt, python-can, canopen,
-  cantools, udsoncan and the rest. Report those upstream; do tell us if
-  pycangui uses one unsafely.
+Workspaces, hook files, scripts and plugins are code, and run as code: that is by design.

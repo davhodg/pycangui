@@ -165,6 +165,8 @@ Joining a bus at the wrong bitrate makes a controller signal an error on every f
 
 Know what is on the bus before you join it, and what a device will do before you write to it. Like any software, pycangui can have faults, so do not rely on it to keep anything off the bus. Where a mistake could hurt someone or damage equipment, keep a way to stop that equipment within reach.
 
+If you find pycangui doing something unsafe -- sending to a bus or a device without being asked, or not stopping what it says it stopped -- open an issue.
+
 ## Licence
 
 pycangui is free software, provided under the Apache License 2.0, without warranty of any kind; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
