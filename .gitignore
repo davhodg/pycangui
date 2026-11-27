@@ -19,4 +19,4 @@ THIRD-PARTY-NOTICES.txt
 
 # Working notes and analysis, kept local. The gap analysis is derived from a
 # manufacturer's reference manual: it is ours to read and not ours to publish.
-docs/
+private/
