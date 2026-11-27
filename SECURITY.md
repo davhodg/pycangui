@@ -9,8 +9,7 @@ which is also under the repository's *Security* tab.
 Say what you found, how to make it happen, and which version or commit you
 were running -- *Help > About pycangui* has a box to copy that from.
 
-pycangui is looked after by one person in their own time, so there is no
-promised response time. Every report is read and answered, the fix and the
+Every report is read and answered as soon as possible. The fix and the
 advisory are published together, and you are credited in the advisory unless
 you would rather not be.
 
