@@ -163,7 +163,7 @@ C, a server for another tool -- can be a program in the plugin's folder that
 
 | | |
 |---|---|
-| `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu, or *Plugins > your plugin*, opens it; `area` is `left`, `right`, `top` or `bottom` |
+| `add_pane(name, title, build, area, several)` | a dock of its own, hidden until the View menu, or *Plugins > your plugin*, opens it; `area` is `left`, `right`, `top` or `bottom`. Its title bar adds your `VERSION`: *title v1.2* |
 | `open_pane(name)` | show one of your panes, for a plugin with a reason to |
 | `show_panes()` | bring all of your panes out, as installing one does |
 | `on_pane_shown(fn)` | `fn(name, on)` when one of *your* panes appears or is put away |

@@ -175,6 +175,10 @@ class PaneKind:
     named: bool = False
     #: Undo whatever ``build`` wired up, when an instance is removed.
     shutdown: Callable[[QWidget], None] | None = None
+    #: The plugin's version, for a plugin's pane: on its title bar, so what is
+    #: installed can be seen without opening Manage plugins. Not on
+    #: ``title``, which the View menu and messages use.
+    version: str = ""
     #: Open in front of the window the first time, rather than in the dock
     #: area it was registered in. True for the panes nobody sees until they
     #: ask for one: a protocol pane arriving as a sliver down the right-hand
@@ -595,7 +599,8 @@ class Panes(QObject):
     def _title(self, kind: PaneKind, name: str) -> str:
         """Trace, then Trace 2: the number is the whole of how you tell them apart."""
         suffix = name[len(kind.name) :].strip()
-        return f"{kind.title} {suffix}" if suffix else kind.title
+        title = f"{kind.title} {suffix}" if suffix else kind.title
+        return f"{title} v{kind.version.removeprefix('v')}" if kind.version else title
 
     # --- the dock itself ----------------------------------------------------------------
     def _make_dock(self, name: str, title: str, widget: QWidget, area) -> QDockWidget:

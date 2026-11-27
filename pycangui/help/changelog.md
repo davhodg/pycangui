@@ -12,6 +12,7 @@ since the last version, and comes out in the next one.
 ### Added
 
 - Plugin API 3: devices, and devices a plugin provides by a protocol of its own; settings, Python Console names, hooks, needed packages (`REQUIRES` and a `lib` folder) and a helper program of a plugin's own, so a plugin imports nothing of pycangui's.
+- A plugin's pane shows the plugin's version on its title bar.
 - *Manage plugins*: *Check for plugins* reads plugin lists online -- pycangui's, and sites of your own -- to install or update from; any host, checked by sha256.
 
 ### Changed
@@ -27,6 +28,7 @@ since the last version, and comes out in the next one.
 
 - A file double-clicked with pycangui open could open a second pycangui when the first answered quickly: the answer was missed.
 - On Linux and macOS, a plugin's own program could not run once installed: installing lost its permission to run.
+- On Windows, a plugin carrying its program for both Windows and Linux ran the Linux one, which failed: the `.exe` is run now.
 
 ## [0.6.2] - 2026-11-25
 

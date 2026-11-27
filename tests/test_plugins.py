@@ -118,6 +118,41 @@ def test_a_plugin_gets_to_add_things(app, window):
     assert window.panes.docks["demo:screen"].windowTitle() == "Demo screen"
 
 
+VERSIONED = """
+from PySide6.QtWidgets import QLabel
+
+NAME = "Versioned"
+VERSION = "{version}"
+
+
+def register(app):
+    app.add_pane("screen", "Screen", lambda _name: QLabel(), several=True)
+"""
+
+
+def test_a_plugin_panes_title_bar_says_its_version_and_nothing_else_does(app, window):
+    write_plugin(window, "versioned", VERSIONED.format(version="1.2"))
+    window._reload_plugins()
+    settle(app)
+    panes = window.panes
+    assert panes.docks["versioned:screen"].windowTitle() == "Screen v1.2"
+    assert panes.kinds["versioned:screen"].title == "Screen", "the View menu's name is as given"
+    second = panes.add("versioned:screen")
+    assert panes.docks[second].windowTitle() == "Screen 2 v1.2"
+
+    panes.rename("versioned:screen", "Mine")
+    assert panes.docks["versioned:screen"].windowTitle() == "Mine", "a rename is as given"
+    panes.rename("versioned:screen", "")
+    assert panes.docks["versioned:screen"].windowTitle() == "Screen v1.2"
+
+
+def test_a_plugin_with_no_version_has_none_on_its_title_bar(app, window):
+    write_plugin(window, "versioned", VERSIONED.format(version=""))
+    window._reload_plugins()
+    settle(app)
+    assert window.panes.docks["versioned:screen"].windowTitle() == "Screen"
+
+
 def test_a_plugin_pane_starts_hidden_and_is_in_the_view_menu(app, window):
     """One more pane among a dozen; opening every one on top of whatever
     somebody was doing is how a tool becomes a wall."""
@@ -1235,6 +1270,21 @@ def test_a_helper_that_serves_nothing_is_ready_once_started(app, window):
     _folder, plugin = helped(app, window, mode="silent", extra=", port=False")
     assert wait_for(app, lambda: plugin.ports == [None])
     assert plugin.made.running
+
+
+def test_on_windows_the_exe_is_run_rather_than_the_linux_program_beside_it(tmp_path, monkeypatch):
+    """One plugin for every system carries both: helper for Linux, helper.exe for Windows."""
+    from pycangui.ui import plugin_helper
+
+    (tmp_path / "helper").write_bytes(b"ELF")
+    monkeypatch.setattr(plugin_helper.sys, "platform", "linux")
+    assert plugin_helper.command(tmp_path, "helper") == [str(tmp_path / "helper")]
+    monkeypatch.setattr(plugin_helper.sys, "platform", "win32")
+    assert plugin_helper.command(tmp_path, "helper") == [str(tmp_path / "helper")], "no exe"
+    (tmp_path / "helper.exe").write_bytes(b"MZ")
+    assert plugin_helper.command(tmp_path, "helper") == [str(tmp_path / "helper.exe")]
+    monkeypatch.setattr(plugin_helper.sys, "platform", "linux")
+    assert plugin_helper.command(tmp_path, "helper") == [str(tmp_path / "helper")]
 
 
 def test_a_python_helper_is_refused_in_the_build_without_python(tmp_path, monkeypatch):

@@ -26,7 +26,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QWidget
 
-from pycangui.core.plugins import API_VERSION
+from pycangui.core.plugins import API_VERSION, NO_VERSION
 from pycangui.ui.panes import PaneKind
 
 #: What a plugin may say instead of importing Qt to name a dock area. A plugin
@@ -106,7 +106,8 @@ class PluginApp:
         several: bool = False,
         shutdown: Callable[[QWidget], None] | None = None,
     ) -> str:
-        """Add a dock, and open it hidden.
+        """Add a dock, and open it hidden. Its title bar says the plugin's
+        ``VERSION`` after ``title``: "EtherCAT v0.1".
 
         Hidden because a plugin's screen is one more pane among a dozen, and
         opening every one of them on top of whatever somebody was doing is how
@@ -121,7 +122,11 @@ class PluginApp:
         """
         kind = f"{self.plugin}:{name}"
         where = AREAS.get(area.lower(), Qt.RightDockWidgetArea) if isinstance(area, str) else area
-        self.panes.register(PaneKind(kind, title, where, build, several=several, shutdown=shutdown))
+        record = self.window.plugins.loaded.get(self.plugin)
+        version = record.version if record is not None and record.version != NO_VERSION else ""
+        self.panes.register(
+            PaneKind(kind, title, where, build, several=several, shutdown=shutdown, version=version)
+        )
         self._kinds.append(kind)
         opened = self.panes.add(kind, show=False)
         if opened:

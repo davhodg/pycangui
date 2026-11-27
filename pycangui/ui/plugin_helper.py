@@ -44,12 +44,14 @@ def command(folder: Path, program: str | Path, args: Sequence[str] = ()) -> list
     """What to run for ``program``, relative to the plugin's ``folder``.
 
     A ``.py`` file runs with this Python; the Windows build has none to offer,
-    so there it is refused. On Windows ``.exe`` may be left off the name.
+    so there it is refused. On Windows ``.exe`` may be left off the name, and
+    is preferred when it is there: a plugin made for every system carries the
+    Linux program beside it, under the bare name, which Windows cannot run.
     """
     path = Path(program)
     if not path.is_absolute():
         path = folder / path
-    if not path.exists() and sys.platform == "win32" and not path.suffix:
+    if sys.platform == "win32" and not path.suffix and path.with_suffix(".exe").is_file():
         path = path.with_suffix(".exe")
     if not path.is_file():
         raise FileNotFoundError(f"no helper program {path}")
