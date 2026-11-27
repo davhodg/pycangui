@@ -208,8 +208,9 @@ copy of its pane appears beside the first.
 
 *Check for plugins* lists them all; these are the ones pycangui's list names:
 
-- [CANopen motor control (CiA 402)](https://github.com/davhodg/pycangui-cia402) --- driving
-  a motor controller. It came with pycangui until 0.6; a workspace that has it keeps
+- [Motor control (CiA 402)](https://github.com/davhodg/pycangui-cia402) --- driving
+  a motor controller, a CANopen node or a drive another plugin provides. It came with
+  pycangui until 0.6, as CANopen motor control; a workspace that has it keeps
   it, and *Check for plugins* offers the newer version.
 
 CANopen firmware download used to be a plugin too, and is now the Firmware tab
