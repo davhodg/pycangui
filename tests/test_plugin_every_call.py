@@ -122,6 +122,7 @@ def test_each_call_does_what_it_says(app, window):
     assert hasattr(seen["poller"], "asked")
     assert seen["devices"] == [], "no bus, no nodes"
     assert seen["device"] is window.devices.device(127), "one per key, kept"
+    assert seen["provider"] in window.devices._providers
 
     assert seen["count"] == 1 and plugin.settings.keys() == ["count"]
     assert window.plugin_names["every_call"] is plugin
@@ -152,6 +153,7 @@ def test_uninstalling_it_takes_all_of_that_back(app, window, agrees):
     assert "every_call" not in window.plugin_names
     assert "every_call" not in registry()
     assert not seen["helper"].running
+    assert seen["provider"] not in window.devices._providers
     assert "every_call_lib" not in sys.modules
     assert seen["count"] == 1, "its settings stay, as a program's do"
 

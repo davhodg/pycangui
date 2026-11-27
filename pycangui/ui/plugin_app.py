@@ -85,6 +85,8 @@ class PluginApp:
         self._holding: list[str] = []
         self._devices = window.devices
         self._on_devices: list[Callable] = []
+        #: The devices it brings, taken out of every list when it is unloaded.
+        self._providers: list = []
         #: This plugin's own settings, in the workspace: see ``settings``.
         self.settings = self.ctx.settings.under(f"plugins.{plugin}")
         #: The hook modules it added, forgotten when it is unloaded.
@@ -326,6 +328,14 @@ class PluginApp:
         """One device by its ``key`` (a CANopen node's is its node ID), or None. API 3."""
         return self._devices.device(key)
 
+    def add_device_provider(self, provider) -> None:
+        """Add devices of this plugin's own to the list: a
+        ``pycangui.core.device.DeviceProvider``. Its devices' keys must not be
+        ints, which are CANopen node IDs. Taken out when the plugin is unloaded,
+        each device that can still be reached saying ``leaving`` first. API 3."""
+        self._devices.add_provider(provider)
+        self._providers.append(provider)
+
     def on_devices_changed(self, callback: Callable[[], None]) -> None:
         """Be told when which devices there are changes. Not on every heartbeat:
         only when one appears or goes. API 3."""
@@ -415,8 +425,9 @@ class PluginApp:
             timeout=timeout,
         )
         if not self._helpers:
-            self.window.closing.connect(self._stop_helpers)
-            self._closers.append(self._stop_helpers)
+            # After every plugin's ``on_closing``, not among them: a last write
+            # to a device another plugin provides goes through this helper.
+            self.window.closing_last.connect(self._stop_helpers)
         self._helpers.append(made)
         made.start()
         return made
@@ -438,6 +449,11 @@ class PluginApp:
     # --- and taking it all back ----------------------------------------------------------------
     def remove_all(self) -> None:
         """Undo everything this plugin added. Called before it is loaded again."""
+        # First, while its panes and helpers are still there: a device's
+        # ``leaving`` is the last write to it, and has to be able to reach it.
+        for provider in self._providers:
+            self._devices.remove_provider(provider)
+        self._providers.clear()
         for kind in self._kinds:
             self.panes.unregister(kind)
         self._kinds.clear()
@@ -448,6 +464,8 @@ class PluginApp:
         for closer in self._closers:
             self.window.closing.disconnect(closer)
         self._closers.clear()
+        if self._helpers:
+            self.window.closing_last.disconnect(self._stop_helpers)
         self._stop_helpers()
         self._helpers.clear()
         for signal, callbacks in (

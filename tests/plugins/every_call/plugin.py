@@ -9,6 +9,7 @@ used here fails that test, so this stays the whole API.
 """
 
 import every_call_lib  # from its own lib/
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QLabel, QPushButton
 
 NAME = "Every call"
@@ -20,6 +21,18 @@ REQUIRES = ["python-can", "every-call-lib>=1"]
 
 class Shown(QLabel):
     """A way for a custom pane to show an object: add_field_widget."""
+
+
+class Provider(QObject):
+    """Devices of its own, by a protocol pycangui does not speak: add_device_provider."""
+
+    changed = Signal()
+
+    def devices(self):
+        return []
+
+    def device(self, key):
+        return None
 
 
 def register(app):
@@ -70,6 +83,8 @@ def register(app):
     seen["devices"] = app.devices()
     seen["device"] = app.device(127)
     app.on_devices_changed(lambda: note("devices", app.devices()))
+    seen["provider"] = Provider()
+    app.add_device_provider(seen["provider"])
 
     # its own settings, name, hooks and helper
     app.settings.set("count", app.settings.get("count", 0) + 1)

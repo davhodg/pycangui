@@ -298,6 +298,10 @@ class MainWindow(QMainWindow):
     #: state needs one last chance to take it back -- and a signal sent after
     #: the channels had closed would be a chance in name only.
     closing = Signal()
+    #: Straight after ``closing``, once every slot of it has run: plugins'
+    #: helpers stop here, so a last write sent on ``closing`` through another
+    #: plugin's helper still gets there.
+    closing_last = Signal()
     #: Up, and the startup hook has run: what ``--run`` waits for, so that a
     #: script finds the channels the workspace or the hook connected.
     started = Signal()
@@ -1928,6 +1932,7 @@ class MainWindow(QMainWindow):
         # left running is still running, and this is the last moment at which
         # a write can still reach it.
         self.closing.emit()
+        self.closing_last.emit()
         QSettings().setValue("geometry", self.saveGeometry())
         # Saved before they are closed: closing one puts its pane away, and
         # what is saved should be how things were left, not how they were

@@ -805,6 +805,97 @@ def test_a_plugin_is_told_of_devices_and_stops_being_told_once_unloaded(app, win
     assert heard == [[5]], "the unloaded plugin's callback is not called"
 
 
+PROVIDER = """
+NAME = "Provider"
+API_VERSION = 3
+
+from PySide6.QtCore import QObject, Signal
+
+
+class Thing(QObject):
+    changed = Signal()
+    state_changed = Signal()
+    leaving = Signal()
+    label = "Thing"
+    states = ()
+
+    def __init__(self, key):
+        super().__init__()
+        self.key = key
+        self.up = True
+
+    def available(self):
+        return self.up
+
+
+class Provider(QObject):
+    changed = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.things = [Thing(("provider", 1))]
+
+    def devices(self):
+        return list(self.things)
+
+    def device(self, key):
+        return next((thing for thing in self.things if thing.key == key), None)
+
+
+def register(app):
+    app.provider = Provider()
+    app.add_device_provider(app.provider)
+"""
+
+
+def provided(app, window):
+    write_plugin(window, "provider", PROVIDER)
+    window._reload_plugins()
+    settle(app)
+    record = window.plugins.loaded["provider"]
+    assert record.ok, record.error
+    return record.app.provider
+
+
+def test_a_plugins_devices_come_after_the_nodes_and_are_found_by_key(app, window, monkeypatch):
+    monkeypatch.setattr(window.canopen, "nodes", lambda: [5])
+    provider = provided(app, window)
+    thing = provider.things[0]
+    assert window.devices.devices() == [window.devices.device(5), thing]
+    assert window.devices.device(("provider", 1)) is thing
+    assert window.devices.device(("provider", 2)) is None
+
+    heard = []
+    window.devices.changed.connect(lambda: heard.append(len(window.devices.devices())))
+    provider.things.append(type(thing)(("provider", 2)))
+    provider.changed.emit()
+    assert heard == [3], "the provider's changed is the list's"
+
+
+def test_a_plugins_device_with_a_node_id_for_a_key_is_left_out(app, window):
+    provider = provided(app, window)
+    provider.things.append(type(provider.things[0])(5))
+    assert window.devices.devices() == provider.things[:1]
+    assert window.devices.device(5) is not provider.things[1], "5 is a CANopen node"
+
+
+def test_unloading_the_plugin_says_leaving_while_the_device_is_still_there(app, window):
+    provider = provided(app, window)
+    thing = provider.things[0]
+    gone = provider.things.append(type(thing)(("provider", 2))) or provider.things[1]
+    gone.up = False
+    said = []
+    thing.leaving.connect(lambda: said.append(window.devices.device(thing.key) is thing))
+    gone.leaving.connect(lambda: said.append("not reachable, so not said"))
+    heard = []
+    window.devices.changed.connect(lambda: heard.append(window.devices.devices()))
+
+    window.plugins.unload("provider")
+    settle(app)
+    assert said == [True], "said once, while it was still in the list"
+    assert heard == [[]] and window.devices.device(thing.key) is None
+
+
 NAMED = """
 NAME = "Named"
 API_VERSION = 3
@@ -1068,6 +1159,34 @@ def test_a_helper_hands_over_its_port_and_its_output_goes_to_the_event_log(app, 
     settle(app)
     assert not plugin.made.running
     assert (folder / "stopped").exists(), "asked by its stdin closing, not killed"
+
+
+CLOSING_WITH_A_HELPER = """
+NAME = "Closing"
+API_VERSION = 3
+
+
+def register(app):
+    app.ports = []
+    app.running_then = []
+    app.made = app.helper("fake_helper.py", "serves", on_ready=app.ports.append)
+    app.on_closing(lambda: app.running_then.append(app.made.running))
+"""
+
+
+def test_a_helper_is_still_running_for_every_plugins_last_word_on_closing(app, window):
+    """Its own, and another plugin's: a drive another plugin provides is
+    stopped through this helper, on ``closing``."""
+    folder = write_plugin(window, "closing", CLOSING_WITH_A_HELPER)
+    (folder / "fake_helper.py").write_text(FAKE_HELPER, encoding="utf-8")
+    window._reload_plugins()
+    settle(app)
+    plugin = window.plugins.loaded["closing"].app
+    assert wait_for(app, lambda: plugin.ports == [4711])
+    window.close()
+    settle(app)
+    assert plugin.running_then == [True]
+    assert not plugin.made.running
 
 
 def test_a_helper_is_stopped_when_pycangui_closes(app, window):
