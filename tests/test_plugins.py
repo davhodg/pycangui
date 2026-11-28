@@ -1142,6 +1142,7 @@ mode = sys.argv[1]
 if mode == "silent":
     sys.stdin.read()
     sys.exit(0)
+Path("token").write_text(sys.stdin.readline().strip(), encoding="utf-8")
 print(4711 if mode != "garbled" else "hello", flush=True)
 print("listening", flush=True)
 print("a warning", file=sys.stderr, flush=True)
@@ -1207,6 +1208,27 @@ def register(app):
     app.made = app.helper("fake_helper.py", "serves", on_ready=app.ports.append)
     app.on_closing(lambda: app.running_then.append(app.made.running))
 """
+
+
+def test_a_helper_is_given_its_token_on_stdin_and_a_new_one_each_start(app, window):
+    """A port on 127.0.0.1 is open to every program on the computer: the token,
+    which only the helper and its plugin have, is what a connection has to say."""
+    folder, plugin = helped(app, window)
+    assert wait_for(app, lambda: plugin.ports == [4711])
+    first = plugin.made.token
+    assert len(first) >= 32
+    assert (folder / "token").read_text(encoding="utf-8") == first
+    plugin.made.stop()
+    plugin.made.start()
+    assert wait_for(app, lambda: plugin.ports == [4711, 4711])
+    assert plugin.made.token != first
+    assert (folder / "token").read_text(encoding="utf-8") == plugin.made.token
+
+
+def test_a_helper_that_serves_nothing_is_given_no_token(app, window):
+    _folder, plugin = helped(app, window, mode="silent", extra=", port=False")
+    assert wait_for(app, lambda: plugin.ports == [None])
+    assert plugin.made.token == ""
 
 
 def test_a_helper_is_still_running_for_every_plugins_last_word_on_closing(app, window):

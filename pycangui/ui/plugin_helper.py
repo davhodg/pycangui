@@ -9,6 +9,10 @@ own crash. A plugin ships the program in its folder and pycangui runs it:
 * started from the plugin's folder, which is its working directory;
 * if it serves something, the first line it prints is the port it listens on,
   handed to the plugin, so nothing has to agree a fixed port in advance;
+* and the first line it reads on stdin is a token, new each time it starts,
+  which the plugin has too (``token``): a port on 127.0.0.1 can be reached by
+  any program on the computer, so a helper takes only a connection that says
+  the token -- the pipe to its stdin is the one place nothing else can read;
 * every later line it prints goes to the Event Log, stderr as warnings;
 * stopped when the plugin is unloaded or reloaded and when pycangui closes:
   its stdin is closed first, the polite way to ask, and if it has not gone a
@@ -22,6 +26,7 @@ nothing to poll and nothing for the plugin to lock.
 
 from __future__ import annotations
 
+import secrets
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -36,6 +41,8 @@ from pycangui.ui import messages
 PORT_TIMEOUT_S = 10.0
 #: How long a helper has to go once its stdin is closed, before it is killed.
 STOP_GRACE_MS = 1000
+#: Random bytes in a helper's token, written to its stdin as twice as many hex digits.
+TOKEN_BYTES = 16
 
 RESTART = "{plugin}'s helper {program} stopped (exit code {code}).\n\nStart it again?"
 
@@ -89,6 +96,9 @@ class Helper:
         self.name = Path(argv[1] if Path(argv[0]) == Path(sys.executable) else argv[0]).name
         #: The port it printed, once it has; None before, and when it serves none.
         self.port: int | None = None
+        #: What a connection to it must say, new each time it starts; "" when
+        #: it serves none, as it is then given none.
+        self.token = ""
         self._process: QProcess | None = None
         self._stopping = False
         self._partial = {"out": b"", "err": b""}
@@ -118,7 +128,10 @@ class Helper:
         else:
             process.started.connect(lambda: self._ready(None))
         self._process = process
+        self.token = secrets.token_hex(TOKEN_BYTES) if self._wants_port else ""
         process.start(self._argv[0], self._argv[1:])
+        if self.token:
+            process.write(f"{self.token}\n".encode("ascii"))  # waits in the pipe until it reads
 
     def stop(self) -> None:
         """Ask it to stop by closing its stdin; kill it if it has not a moment later."""

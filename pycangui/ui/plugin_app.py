@@ -414,7 +414,9 @@ class PluginApp:
         its stdin is closed, and it is killed if it has not gone a second
         later. If it stops on its own, the Event Log says so and the user is
         offered a restart -- or ``on_exit(code)`` is called instead, if
-        given. Returns the helper: ``port``, ``running``, ``stop()`` and
+        given. With ``port``, the first line it reads on stdin is a token,
+        new each start: it should take only a connection that says it. Returns
+        the helper: ``port``, ``token``, ``running``, ``stop()`` and
         ``start()``. API 3.
         """
         from pycangui.ui import plugin_helper
