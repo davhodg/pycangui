@@ -303,6 +303,13 @@ class PluginApp:
 
         return fonts.mono()
 
+    def signal(self, group: str, name: str, value: float, unit: str = "") -> None:
+        """A value for Signals and Plot, timed now on the clock frames are timed
+        on: listed under ``group``, plotted, exported and shared like any other
+        signal. For values read over and over, as polling does. API 3."""
+        self.signals.push(group, name, self.bus.now(), float(value), unit)
+        self.signals.updated.emit()
+
     def emcy_text(self, code: int) -> str:
         """What CiA 301 calls an emergency error code, or its category. API 3."""
         from pycangui.canopen.emcy import describe_code

@@ -81,6 +81,12 @@ class Device(QObject):
         ``(0x60FF, 0, "RPDO2")``. A write from here is overwritten by the next one."""
         return []
 
+    def cycles(self, index: int, sub: int = 0) -> bool:
+        """Whether a write to the object is sent again every cycle, as process
+        data the provider keeps sending, so a value written once is held: an
+        EtherCAT slave's mapped outputs. A CANopen SDO write is sent once."""
+        return False
+
 
 class DeviceProvider(QObject):
     """Devices a plugin brings, by a protocol pycangui does not speak itself.

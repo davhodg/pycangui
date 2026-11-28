@@ -120,6 +120,7 @@ def test_each_call_does_what_it_says(app, window):
 
     assert seen["emcy"]
     assert hasattr(seen["poller"], "asked")
+    assert list(window.signals.get("Every call/Value").values) == [7.0]
     assert seen["devices"] == [], "no bus, no nodes"
     assert seen["device"] is window.devices.device(127), "one per key, kept"
     assert seen["provider"] in window.devices._providers

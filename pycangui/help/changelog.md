@@ -11,7 +11,7 @@ since the last version, and comes out in the next one.
 
 ### Added
 
-- Plugin API 3: devices, and devices a plugin provides by a protocol of its own; settings, Python Console names, hooks, needed packages (`REQUIRES` and a `lib` folder) and a helper program of a plugin's own, so a plugin imports nothing of pycangui's.
+- Plugin API 3: devices, and devices a plugin provides by a protocol of its own; settings, Python Console names, hooks, values into Signals and Plot, needed packages (`REQUIRES` and a `lib` folder) and a helper program of a plugin's own, so a plugin imports nothing of pycangui's.
 - A plugin's pane shows the plugin's version on its title bar.
 - *Manage plugins*: *Check for plugins* reads plugin lists online -- pycangui's, and sites of your own -- to install or update from; any host, checked by sha256.
 

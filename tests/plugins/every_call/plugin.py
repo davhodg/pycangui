@@ -80,6 +80,7 @@ def register(app):
     # doing what pycangui does
     seen["emcy"] = app.emcy_text(0x8130)
     seen["poller"] = app.poller()
+    app.signal("Every call", "Value", 7, "V")
     seen["devices"] = app.devices()
     seen["device"] = app.device(127)
     app.on_devices_changed(lambda: note("devices", app.devices()))

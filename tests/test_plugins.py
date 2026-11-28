@@ -779,6 +779,27 @@ def register(app):
     app.polling = app.poller()
 """
 
+SIGNALLING = """
+NAME = "Signalling"
+API_VERSION = 3
+
+
+def register(app):
+    app.signal("Drive 1", "Velocity", 1500, "rpm")
+    app.signal("Drive 1", "Velocity", 1490)
+"""
+
+
+def test_a_plugin_puts_values_in_signals_and_plot(app, window):
+    write_plugin(window, "signalling", SIGNALLING)
+    window._reload_plugins()
+    settle(app)
+    assert window.plugins.loaded["signalling"].ok
+    series = window.signals.get("Drive 1/Velocity")
+    assert list(series.values) == [1500.0, 1490.0]
+    assert series.unit == "rpm"
+    assert series.times[0] <= series.times[1] <= window.bus.now(), "on the clock frames are on"
+
 
 def test_a_plugin_has_icons_the_font_emcy_text_and_polling_from_the_app(app, window):
     from pycangui.canopen.emcy import describe_code

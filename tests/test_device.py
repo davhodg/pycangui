@@ -90,6 +90,10 @@ def test_its_state_is_set_by_nmt(manager, monkeypatch):
     assert sent == [(DEMO_NODE, "OPERATIONAL")]
 
 
+def test_a_canopen_write_is_sent_once_not_every_cycle(manager):
+    assert Devices(manager).device(DEMO_NODE).cycles(0x60FF, 0) is False
+
+
 def test_what_it_receives_is_its_enabled_rpdos(manager, monkeypatch):
     def config(direction, number, enabled, *where):
         entries = [PdoEntry(index, sub, 16) for index, sub in where]
